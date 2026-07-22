@@ -75,7 +75,7 @@ smoke: export KVBENCH_METHOD := $(METHOD)
 smoke:
 	@$(PHASE2_VALIDATE) method
 	@$(PHASE2_CLI) run --plan configs/plans/smoke.yaml --dry-run
-	@echo '{"status":"validation_only","target":"smoke","timing_collected":false}'
+	@echo '{"status":"validation_only","target":"smoke","requested_method":"$(METHOD)","plan_scope":"all_methods","timing_collected":false}'
 
 pilot:
 	@$(PHASE2_CLI) run --plan configs/plans/pilot.yaml --dry-run

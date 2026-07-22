@@ -710,6 +710,11 @@ class RunSummary(StrictModel):
             ):
                 raise ValueError("timing summary requires unvalidated/performance_only quality metadata")
         if self.run_kind in {RunKind.NSYS, RunKind.NCU} and (
+            self.quality.quality_status is not QualityValidationState.UNVALIDATED
+            or self.quality.claim_eligibility is not ClaimEligibility.PERFORMANCE_ONLY
+        ):
+            raise ValueError("profiler summary requires unvalidated/performance_only quality metadata")
+        if self.run_kind in {RunKind.NSYS, RunKind.NCU} and (
             self.claim_class is not ClaimClass.MECHANISM_ONLY
         ):
             raise ValueError("profiler summaries must be mechanism_only")
@@ -721,6 +726,10 @@ class RunSummary(StrictModel):
                 or self.quality.claim_eligibility is not ClaimEligibility.NONE
             ):
                 raise ValueError("synthetic summaries require not-applicable quality metadata")
+        if self.run_kind in {RunKind.HARDWARE_PREFLIGHT, RunKind.CORRECTNESS} and (
+            self.claim_class is not ClaimClass.NONE
+        ):
+            raise ValueError("preflight/correctness summaries cannot carry claims")
         if self.scientific_conclusions_generated:
             raise ValueError("Phase 2 summaries cannot generate scientific conclusions")
 

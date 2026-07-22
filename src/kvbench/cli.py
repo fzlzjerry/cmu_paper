@@ -90,7 +90,7 @@ def command_preflight(args: argparse.Namespace) -> int:
 def command_run(args: argparse.Namespace) -> int:
     bundle = load_experiment_bundle(args.plan)
     admission = evaluate_admission(bundle)
-    plan_path = _repository_relative(Path(args.plan))
+    plan_path = _repository_relative(bundle.plan_path)
     intended = ("kvbench", "run", "--plan", plan_path, "--dry-run")
     payload = {
         "schema_version": "kvbench-dry-run-1.0.0",

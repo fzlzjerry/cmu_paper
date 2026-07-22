@@ -320,8 +320,8 @@ class KiviParameters(StrictModel):
     def __post_init__(self) -> None:
         if self.k_bits not in {2, 4} or self.v_bits not in {2, 4}:
             raise ValueError("KIVI bitwidth must be 2 or 4")
-        if self.group_size <= 0 or self.residual_length <= 0:
-            raise ValueError("KIVI group_size and residual_length must be positive")
+        if self.group_size != 32 or self.residual_length != 32:
+            raise ValueError("KIVI group_size and residual_length must remain 32")
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
@@ -359,6 +359,28 @@ class MethodVariant(StrictModel):
 
     def __post_init__(self) -> None:
         require_identifier(self.variant_id, field_name="variant_id")
+        if self.resolution.status is ResolutionState.RESOLVED:
+            if isinstance(self.parameters, TurboQuantParameters):
+                required = (
+                    self.parameters.cache_dtype_name,
+                    self.parameters.skipped_layers,
+                    self.parameters.block_size,
+                    self.parameters.decode_split_count,
+                )
+                if any(value is None for value in required):
+                    raise ValueError(
+                        "resolved TurboQuant variant requires every runtime parameter"
+                    )
+            if isinstance(self.parameters, KVQuantParameters):
+                if (
+                    self.parameters.outlier_cap is None
+                    or self.parameters.calibration_artifact_sha256 is None
+                    or not self.parameters.sparse_index_dtype
+                    or not self.parameters.lut_scale_dtype
+                ):
+                    raise ValueError(
+                        "resolved KVQuant variant requires calibration and dtype parameters"
+                    )
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
@@ -388,6 +410,11 @@ class MethodConfig(StrictModel):
             raise ValueError("variant IDs must be unique")
         if not self.authority_status.strip():
             raise ValueError("authority_status must be non-empty")
+        if (
+            self.resolution.status is ResolutionState.RESOLVED
+            and "unresolved" in self.authority_status.lower()
+        ):
+            raise ValueError("resolved method cannot retain unresolved authority status")
         parameter_types = {
             MethodName.BF16: BF16Parameters,
             MethodName.TURBOQUANT: TurboQuantParameters,
@@ -597,6 +624,10 @@ class AdmissionConfig(StrictModel):
             raise ValueError("required_gates must be unique")
         if len(set(self.blockers)) != len(self.blockers):
             raise ValueError("admission blockers must be unique")
+        if self.required_gates != ("G0", "G1", "G2", "G3", "G4", "G5"):
+            raise ValueError("Phase 2 plans must retain ordered G0-G5 admission gates")
+        if not self.require_container_parity_g0 or not self.require_admission_pass:
+            raise ValueError("container parity and unified admission must be required")
         if self.full_scan_state != "closed":
             raise ValueError("full scan must remain closed in Phase 2")
 
@@ -657,6 +688,8 @@ class ExperimentConfig(StrictModel):
             raise ValueError("run_kinds must be non-empty and unique")
         if not self.graph_modes or len(set(self.graph_modes)) != len(self.graph_modes):
             raise ValueError("graph_modes must be non-empty and unique")
+        if self.runner_kind is not RunnerKind.FIXED_L:
+            raise ValueError("Phase 2 plan templates must retain fixed_l runner semantics")
         if (
             self.quality.quality_status is not QualityValidationState.UNVALIDATED
             or self.quality.claim_eligibility is not ClaimEligibility.PERFORMANCE_ONLY
@@ -672,6 +705,8 @@ class ExperimentConfig(StrictModel):
                 raise ValueError("profiler subset must contain nsys and ncu run kinds")
             if self.claim_class is not ClaimClass.MECHANISM_ONLY:
                 raise ValueError("profiler subset is mechanism_only")
+            if self.graph_modes != (GraphMode.CUDA_GRAPH,):
+                raise ValueError("profiler subset template must retain cuda_graph mode")
         elif any(kind in {RunKind.NSYS, RunKind.NCU} for kind in self.run_kinds):
             raise ValueError("profiler run kinds require profiler_subset plan")
         if self.plan_kind is PlanKind.GRAPH_AB:
@@ -698,12 +733,16 @@ class ExperimentConfig(StrictModel):
             131072,
         )
         if self.plan_kind is PlanKind.SMOKE:
+            if self.graph_modes != (GraphMode.EAGER,):
+                raise ValueError("smoke template must retain eager mode")
             if self.grid.batch_sizes != (1,) or self.grid.context_lengths != (4096,):
                 raise ValueError("smoke plan must retain its validation-only singleton grid")
         if self.plan_kind is not PlanKind.PROFILER_SUBSET:
             if self.grid.output_tokens_for_request_validation != 256:
                 raise ValueError("request-validation output length must remain 256")
         if self.plan_kind is PlanKind.PILOT:
+            if self.graph_modes != (GraphMode.CUDA_GRAPH,):
+                raise ValueError("pilot template must retain cuda_graph mode")
             if self.grid.batch_sizes != (1, 4, 8) or self.grid.context_lengths != full_contexts:
                 raise ValueError("pilot grid does not match preregistration")
             values = (
@@ -723,6 +762,8 @@ class ExperimentConfig(StrictModel):
             if self.grid.batch_sizes != (1, 4) or self.grid.context_lengths != graph_contexts:
                 raise ValueError("graph A/B subset does not match preregistration")
         if self.plan_kind is PlanKind.FULL_SCAN:
+            if self.graph_modes != (GraphMode.CUDA_GRAPH,):
+                raise ValueError("full-scan template must retain cuda_graph mode")
             if self.resolution.status is not ResolutionState.BLOCKED:
                 raise ValueError("full scan must remain blocked in Phase 2")
             if self.admission.full_scan_state != "closed":

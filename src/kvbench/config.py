@@ -147,7 +147,10 @@ def load_experiment_bundle(
     path = Path(plan_path)
     if not path.is_absolute():
         path = root / path
-    plan_document = load_config(path)
+    resolved_plan_path = path.resolve(strict=True)
+    if not resolved_plan_path.is_relative_to(root):
+        raise ConfigLoadError("experiment plan must be tracked inside the repository")
+    plan_document = load_config(resolved_plan_path)
     if not isinstance(plan_document, ExperimentConfig):
         raise SchemaValidationError("--plan must reference an experiment document")
 
@@ -170,6 +173,8 @@ def load_experiment_bundle(
     blockers = set(plan_document.resolution.blockers)
     blockers.update(plan_document.admission.blockers)
     blockers.update(plan_document.software_environment.resolution.blockers)
+    blockers.update(plan_document.grid.resolution.blockers)
+    blockers.update(plan_document.measurement.resolution.blockers)
     blockers.update(hardware_document.resolution.blockers)
     blockers.update(model_document.resolution.blockers)
     for selection in plan_document.methods:
@@ -213,7 +218,7 @@ def load_experiment_bundle(
     if plan_document.resolution.status is ResolutionState.RESOLVED and blockers:
         raise SchemaValidationError("resolved plan cannot retain admission blockers")
     return ExperimentBundle(
-        plan_path=path.resolve(strict=True),
+        plan_path=resolved_plan_path,
         plan=plan_document,
         hardware=hardware_document,
         model=model_document,
