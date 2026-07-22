@@ -26,7 +26,7 @@ from kvbench.schema.phase3 import derive_cache_layout_fingerprint
 
 
 CUDA_ALLOCATOR_MIN_BLOCK_BYTES = 512
-PHASE3_ALLOCATION_AUDIT_SCHEMA_VERSION = 2
+PHASE3_ALLOCATION_AUDIT_SCHEMA_VERSION = 3
 PHASE3_ALLOCATION_WARMUP_ITERATIONS = 3
 PHASE3_ALLOCATION_MAX_HISTORY_ENTRIES = 100_000
 PHASE3_TORCH_VERSION = "2.12.1+cu130"
@@ -2075,10 +2075,11 @@ class AttributionRules:
         "cache.update",
         "cache_growth",
     )
-    audit_stack_markers: tuple[str, ...] = (
-        "allocation_audit",
-        "_record_memory_history",
-        "torch.profiler",
+    audit_instrumentation_python_frames: tuple[CanonicalFrameSelector, ...] = (
+        CanonicalFrameSelector(
+            function_name="_allocation_audit_capture_output",
+            source_suffix="src/kvbench/runtime/allocation_attribution.py",
+        ),
     )
     flash_split_k_cpp_markers: tuple[str, ...] = FLASH_SPLIT_K_CPP_MARKERS
 
@@ -2111,6 +2112,16 @@ class AttributionRules:
             raise AllocationAttributionError(
                 "allocation policy IDs must be unique"
             )
+        if (
+            not self.audit_instrumentation_python_frames
+            or any(
+                type(selector) is not CanonicalFrameSelector
+                for selector in self.audit_instrumentation_python_frames
+            )
+        ):
+            raise AllocationAttributionError(
+                "audit instrumentation requires exact canonical frames"
+            )
         if self.split_k_expected_pair_count is not None:
             _positive_int(
                 "split_k_expected_pair_count",
@@ -2118,7 +2129,6 @@ class AttributionRules:
             )
         for name in (
             "cache_stack_markers",
-            "audit_stack_markers",
             "flash_split_k_cpp_markers",
         ):
             markers = getattr(self, name)
@@ -2140,7 +2150,10 @@ class AttributionRules:
             "policy_catalog_sha256": self.policy_catalog_sha256,
             "production_binding_sha256": self.production_binding_sha256,
             "cache_stack_markers": list(self.cache_stack_markers),
-            "audit_stack_markers": list(self.audit_stack_markers),
+            "audit_instrumentation_python_frames": [
+                selector.to_dict()
+                for selector in self.audit_instrumentation_python_frames
+            ],
             "flash_split_k_cpp_markers": list(
                 self.flash_split_k_cpp_markers
             ),
@@ -2734,7 +2747,10 @@ def _classify(
             event_class=AllocationClass.CACHE_GROWTH,
             dependencies=DependencyFlags(None, True, None, None),
         )
-    if _has_any_marker(stack, rules.audit_stack_markers):
+    if _has_all_frame_selectors(
+        lifetime.python_stack,
+        rules.audit_instrumentation_python_frames,
+    ):
         return replace(
             lifetime,
             event_class=AllocationClass.AUDIT_INSTRUMENTATION,
