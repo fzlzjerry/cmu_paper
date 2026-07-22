@@ -5,7 +5,8 @@
 
 # Raw experimental outputs are append-only and are not normal code-PR content.
 # Audit and durable-publication requirements are in docs/artifact_policy.md.
-/artifacts/
+/artifacts/*
+!/artifacts/README.md
 
 # Local environments, caches, and profiler output.
 /.venv/

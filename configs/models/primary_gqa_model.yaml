@@ -1,0 +1,26 @@
+{
+  "schema_version": "kvbench.model.v1",
+  "document_type": "model",
+  "model_config_id": "primary_gqa_model",
+  "resolution": {
+    "schema_version": "kvbench.resolution.v1",
+    "status": "unresolved",
+    "blockers": [
+      "B-004"
+    ],
+    "reason": "The primary model identity, immutable revisions, hashes, geometry, and verified context limit remain unset."
+  },
+  "model_id": null,
+  "revision": null,
+  "config_sha256": null,
+  "tokenizer_id": null,
+  "tokenizer_revision": null,
+  "tokenizer_config_sha256": null,
+  "decoder_only": true,
+  "full_attention": true,
+  "gqa_required": true,
+  "min_parameters_billion": 7.0,
+  "max_parameters_billion": 9.0,
+  "target_context_length": 131072,
+  "geometry": null
+}

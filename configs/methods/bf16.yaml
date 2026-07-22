@@ -1,0 +1,56 @@
+{
+  "schema_version": "kvbench.method.v1",
+  "document_type": "method",
+  "method_config_id": "bf16",
+  "method": "bf16",
+  "resolution": {
+    "schema_version": "kvbench.resolution.v1",
+    "status": "unresolved",
+    "blockers": [
+      "B-004",
+      "B-010",
+      "E02"
+    ],
+    "reason": "The model, measurement container, and BF16 static-cache baseline are not yet resolved."
+  },
+  "source_lock_id": null,
+  "source_revision": null,
+  "authority_status": "project_baseline",
+  "implementation": {
+    "resolution": {
+      "schema_version": "kvbench.resolution.v1",
+      "status": "unresolved",
+      "blockers": [
+        "B-004",
+        "B-010",
+        "E02"
+      ],
+      "reason": "The BF16 static-cache implementation has not been built or admitted."
+    },
+    "attention_backend": null,
+    "cache_layout": null,
+    "adapter_source_sha256": null,
+    "kernel_binary_sha256": null,
+    "graph_support": "not_evaluated"
+  },
+  "variants": [
+    {
+      "variant_id": "bf16",
+      "role": "baseline",
+      "resolution": {
+        "schema_version": "kvbench.resolution.v1",
+        "status": "unresolved",
+        "blockers": [
+          "B-004",
+          "B-010",
+          "E02"
+        ],
+        "reason": "The BF16 baseline variant has not been implemented or admitted."
+      },
+      "parameters": {
+        "parameter_type": "bf16",
+        "cache_dtype": "bfloat16"
+      }
+    }
+  ]
+}
