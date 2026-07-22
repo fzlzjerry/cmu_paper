@@ -91,6 +91,23 @@ _FORBIDDEN_HOT_PATH_PATTERNS = (
     "DynamicCache(",
     ".expand(",
 )
+_REPORT_GENERATOR_CHANGE_PATHS = frozenset(
+    {
+        "scripts/validate_phase2.py",
+        "src/kvbench/runtime/phase3_report.py",
+        "tests/unit/test_phase3_report.py",
+    }
+)
+_POST_REPORT_CHANGE_PATHS = frozenset(
+    {
+        "docs/blockers.md",
+        "docs/evidence/phase3/g1-admission.json",
+        "docs/phase_reports/phase3.md",
+        "docs/risk_register.md",
+        "docs/status.md",
+        "docs/tasks.md",
+    }
+)
 
 
 class Phase3ReportError(RuntimeError):
@@ -504,6 +521,7 @@ def _join_setup_and_process_evidence(
     manifest: Phase3RunManifest,
     process_audit: Mapping[str, Any],
     ready: Mapping[str, Any],
+    worker_result: Phase3WorkerResult,
 ) -> None:
     plan_path = manifest.plan_source.path
     if plan_path is None:
@@ -539,14 +557,29 @@ def _join_setup_and_process_evidence(
         "blocker_b010": "OPEN",
     }
     _require_equal("live hardware", live_hardware, expected_hardware)
-    if process_audit != {
+    expected_process_audit = {
         "schema_version": "kvbench-phase3-process-audit-1.0.0",
-        "passed": True,
         "certified_helper": "preflight/process_query.py",
         "foreign_compute_allowed": False,
         "unknown_compute_allowed": False,
-    }:
-        raise Phase3ReportError("process audit outcome is not an exact pass")
+    }
+    audit_passed = process_audit.get("passed")
+    if (
+        set(process_audit) != {*expected_process_audit, "passed"}
+        or any(
+            process_audit.get(key) != value
+            for key, value in expected_process_audit.items()
+        )
+        or not isinstance(audit_passed, bool)
+    ):
+        raise Phase3ReportError("process audit outcome is malformed")
+    if not audit_passed and (
+        manifest.status is not RunStatus.ABORTED
+        or worker_result.status is not RunStatus.ABORTED
+        or worker_result.failure_reason
+        != "Phase3CoordinatorError: worker process audit detected foreign compute"
+    ):
+        raise Phase3ReportError("failed process audit is not joined to an aborted run")
     if (
         ready.get("schema_version") != "kvbench-phase3-worker-ready-1.0.0"
         or not isinstance(ready.get("pid"), int)
@@ -564,38 +597,96 @@ def _join_setup_and_process_evidence(
     during = _strict_json_object(run_dir / "environment" / "process.during.json")
     after = _strict_json_object(run_dir / "environment" / "process.after.json")
     samples = _sequence(during.get("samples"))
-    if (
-        not _process_snapshot_clean(before, allow_supervised=False)
-        or not _process_snapshot_clean(
+    common_process_evidence_valid = bool(
+        _process_snapshot_clean(before, allow_supervised=False)
+        and _process_snapshot_clean(
             release,
             allow_supervised=True,
             ready=ready,
             gpu_uuid=manifest.gpu_uuid,
         )
-        or not _process_snapshot_clean(after, allow_supervised=False)
-        or during.get("schema_version")
-        != "kvbench-phase3-process-monitor-1.0.0"
-        or during.get("sampling_target_seconds") != 2.0
-        or during.get("saw_allowed_compute") is not True
-        or during.get("monitoring_stopped_before_worker_exit") is not False
-        or samples is None
-        or not samples
-        or not all(
+        and _process_snapshot_clean(after, allow_supervised=False)
+        and during.get("schema_version")
+        == "kvbench-phase3-process-monitor-1.0.0"
+        and during.get("sampling_target_seconds") == 2.0
+        and samples is not None
+        and bool(samples)
+    )
+    if not common_process_evidence_valid:
+        raise Phase3ReportError("continuous GPU process evidence is malformed")
+    assert samples is not None
+    if audit_passed:
+        passed = bool(
+            set(during)
+            == {
+                "schema_version",
+                "sampling_target_seconds",
+                "samples",
+                "saw_allowed_compute",
+                "monitoring_stopped_before_worker_exit",
+            }
+            and during.get("saw_allowed_compute") is True
+            and during.get("monitoring_stopped_before_worker_exit") is False
+            and all(
+                _process_snapshot_clean(
+                    sample,
+                    allow_supervised=True,
+                    ready=ready,
+                    gpu_uuid=manifest.gpu_uuid,
+                )
+                for sample in samples
+            )
+            and any(
+                bool(_mapping(sample).get("allowed_compute_processes"))
+                for sample in samples
+                if _mapping(sample) is not None
+            )
+        )
+        if not passed:
+            raise Phase3ReportError(
+                "continuous GPU process evidence is not an exact pass"
+            )
+        return
+
+    terminal = _mapping(samples[-1])
+    if terminal is None:
+        raise Phase3ReportError("failed process audit terminal sample is malformed")
+    sanitized_terminal = dict(terminal)
+    sanitized_terminal["foreign_compute_processes"] = []
+    sanitized_terminal["unknown_processes"] = []
+    sanitized_terminal["errors"] = []
+    sanitized_terminal["query_exit_code"] = 0
+    failed_sequence_valid = bool(
+        set(during) == {"schema_version", "sampling_target_seconds", "samples"}
+        and all(
             _process_snapshot_clean(
                 sample,
                 allow_supervised=True,
                 ready=ready,
                 gpu_uuid=manifest.gpu_uuid,
             )
-            for sample in samples
+            for sample in samples[:-1]
         )
-        or not any(
+        and any(
             bool(_mapping(sample).get("allowed_compute_processes"))
-            for sample in samples
+            for sample in samples[:-1]
             if _mapping(sample) is not None
         )
-    ):
-        raise Phase3ReportError("continuous GPU process evidence is not an exact pass")
+        and _process_snapshot_clean(
+            sanitized_terminal,
+            allow_supervised=True,
+            ready=ready,
+            gpu_uuid=manifest.gpu_uuid,
+        )
+        and (
+            bool(terminal.get("foreign_compute_processes"))
+            or bool(terminal.get("unknown_processes"))
+        )
+        and isinstance(terminal.get("errors"), list)
+        and bool(terminal.get("errors"))
+    )
+    if not failed_sequence_valid:
+        raise Phase3ReportError("failed process audit evidence is not exact")
 
 
 def _load_validated_run(run_dir: Path, expected_run_id: str) -> ValidatedPhase3Run:
@@ -654,6 +745,7 @@ def _load_validated_run(run_dir: Path, expected_run_id: str) -> ValidatedPhase3R
         manifest,
         process_audit,
         ready_process,
+        worker_result,
     )
     worker_evidence = _optional_json_object(
         run_dir / "raw" / "worker_evidence.json"
@@ -704,7 +796,31 @@ def _load_validated_run(run_dir: Path, expected_run_id: str) -> ValidatedPhase3R
     stdout_path = run_dir / "logs" / "worker.stdout.txt"
     stdout = stdout_path.read_bytes()
     if stdout:
-        if stdout != canonical_json_bytes(worker_result) + b"\n":
+        try:
+            stdout_payload = json.loads(stdout.decode("utf-8"))
+            stdout_result = Phase3WorkerResult.from_dict(stdout_payload)
+        except (UnicodeError, ValueError, SchemaValidationError) as error:
+            raise Phase3ReportError("worker stdout is not a strict result") from error
+        if stdout != canonical_json_bytes(stdout_result) + b"\n":
+            raise Phase3ReportError("worker stdout is not canonical JSON")
+        if process_audit.get("passed") is False:
+            if (
+                stdout_result.run_id != worker_result.run_id
+                or stdout_result.point_id != worker_result.point_id
+                or stdout_result.runner_kind is not worker_result.runner_kind
+                or stdout_result.count_unit is not worker_result.count_unit
+                or stdout_result.expected_operations
+                != worker_result.expected_operations
+                or stdout_result.completed_operations
+                != worker_result.completed_operations
+                or stdout_result.failed_operations
+                != worker_result.failed_operations
+                or stdout_result.status is RunStatus.ABORTED
+            ):
+                raise Phase3ReportError(
+                    "coordinator-aborted worker stdout identity differs"
+                )
+        elif stdout_result != worker_result:
             raise Phase3ReportError("worker stdout differs from the strict worker result")
 
     if runtime is not None:
@@ -1563,6 +1679,107 @@ def _git_source_audit(
     }
 
 
+def _git_command(
+    repository: Path,
+    argv: Sequence[str],
+    *,
+    text: bool = False,
+) -> subprocess.CompletedProcess[Any]:
+    return subprocess.run(
+        ["git", *argv],
+        cwd=repository,
+        check=False,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=text,
+    )
+
+
+def _git_changed_paths(repository: Path, base: str, target: str) -> tuple[str, ...]:
+    result = _git_command(
+        repository,
+        ["diff", "--name-only", "-z", f"{base}..{target}"],
+    )
+    if result.returncode != 0 or not isinstance(result.stdout, bytes):
+        raise Phase3ReportError("cannot resolve report-generator Git diff")
+    try:
+        paths = tuple(
+            item.decode("utf-8")
+            for item in result.stdout.split(b"\0")
+            if item
+        )
+    except UnicodeError as error:
+        raise Phase3ReportError("report-generator Git diff path is not UTF-8") from error
+    if len(paths) != len(set(paths)):
+        raise Phase3ReportError("report-generator Git diff contains duplicate paths")
+    return tuple(sorted(paths))
+
+
+def _report_generator_provenance(
+    repository: Path,
+    source_execution_git_sha: str,
+    requested_generator_git_sha: str | None,
+) -> dict[str, Any]:
+    head = _git_command(repository, ["rev-parse", "HEAD"], text=True)
+    worktree = _git_command(repository, ["status", "--short"], text=True)
+    if (
+        head.returncode != 0
+        or not isinstance(head.stdout, str)
+        or worktree.returncode != 0
+        or not isinstance(worktree.stdout, str)
+        or bool(worktree.stdout.strip())
+    ):
+        raise Phase3ReportError("report derivation requires a clean Git worktree")
+    current_git_sha = head.stdout.strip()
+    generator_git_sha = requested_generator_git_sha or current_git_sha
+    if not re.fullmatch(r"[0-9a-f]{40}", generator_git_sha):
+        raise Phase3ReportError("report-generator Git SHA is invalid")
+    source_ancestor = _git_command(
+        repository,
+        ["merge-base", "--is-ancestor", source_execution_git_sha, generator_git_sha],
+    )
+    if source_ancestor.returncode != 0:
+        raise Phase3ReportError(
+            "execution Git SHA is not an ancestor of the report generator"
+        )
+    changed_paths = _git_changed_paths(
+        repository,
+        source_execution_git_sha,
+        generator_git_sha,
+    )
+    if any(path not in _REPORT_GENERATOR_CHANGE_PATHS for path in changed_paths):
+        raise Phase3ReportError(
+            "execution-to-report Git diff is not restricted to reporting code"
+        )
+    if requested_generator_git_sha is not None:
+        generator_ancestor = _git_command(
+            repository,
+            ["merge-base", "--is-ancestor", generator_git_sha, current_git_sha],
+        )
+        if generator_ancestor.returncode != 0:
+            raise Phase3ReportError(
+                "recorded report generator is not an ancestor of current HEAD"
+            )
+        post_report_paths = _git_changed_paths(
+            repository,
+            generator_git_sha,
+            current_git_sha,
+        )
+        if any(path not in _POST_REPORT_CHANGE_PATHS for path in post_report_paths):
+            raise Phase3ReportError(
+                "code changed after the recorded report generator"
+            )
+    return {
+        "schema_version": "kvbench-phase3-report-git-provenance-1.0.0",
+        "source_execution_git_sha": source_execution_git_sha,
+        "report_generator_git_sha": generator_git_sha,
+        "execution_to_generator_changed_paths": list(changed_paths),
+        "source_execution_is_ancestor": True,
+        "reporting_only_descendant": True,
+    }
+
+
 def _criterion(
     name: str,
     runs_by_point: Mapping[str, ValidatedPhase3Run],
@@ -1750,6 +1967,7 @@ def derive_phase3_g1_report(
     *,
     repository_root: str | Path = REPOSITORY_ROOT,
     generated_at_utc: str | None = None,
+    report_generator_git_sha: str | None = None,
 ) -> tuple[Phase3G1AdmissionReport, dict[str, dict[str, Any]], dict[str, Any]]:
     """Derive G1 solely from validated immutable run evidence."""
 
@@ -1761,31 +1979,11 @@ def derive_phase3_g1_report(
     git_sha = runs[0].manifest.git_sha
     if any(run.manifest.git_sha != git_sha for run in runs):
         raise Phase3ReportError("report input mixes Git SHAs")
-    head = subprocess.run(
-        ["git", "rev-parse", "HEAD"],
-        cwd=repository,
-        check=False,
-        stdin=subprocess.DEVNULL,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
+    report_git_provenance = _report_generator_provenance(
+        repository,
+        git_sha,
+        report_generator_git_sha,
     )
-    worktree = subprocess.run(
-        ["git", "status", "--short"],
-        cwd=repository,
-        check=False,
-        stdin=subprocess.DEVNULL,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-    )
-    if (
-        head.returncode != 0
-        or head.stdout.strip() != git_sha
-        or worktree.returncode != 0
-        or bool(worktree.stdout.strip())
-    ):
-        raise Phase3ReportError("report derivation requires the exact clean recorded Git SHA")
     if any(
         (repository / relative).exists()
         or (repository / relative).is_symlink()
@@ -1881,6 +2079,7 @@ def derive_phase3_g1_report(
     )
     derivation = {
         "schema_version": "kvbench-phase3-g1-derivation-1.0.0",
+        "report_git_provenance": report_git_provenance,
         "git_source_audit": source_audit,
         "selected_run_ids": [run.run_id for run in runs],
         "selected_point_ids": [run.point_id for run in runs],
@@ -1898,6 +2097,7 @@ def build_phase3_g1_report(
     *,
     repository_root: str | Path = REPOSITORY_ROOT,
     generated_at_utc: str | None = None,
+    report_generator_git_sha: str | None = None,
 ) -> tuple[Phase3G1AdmissionReport, dict[str, dict[str, Any]], dict[str, Any]]:
     """Load two explicit campaigns and derive their one admissible G1 report."""
 
@@ -1916,6 +2116,7 @@ def build_phase3_g1_report(
         runs,
         repository_root=repository,
         generated_at_utc=generated_at_utc,
+        report_generator_git_sha=report_generator_git_sha,
     )
     derivation["campaign_preregistration"] = [
         {
@@ -2094,20 +2295,31 @@ def validate_phase3_g1_report_directory(path: str | Path) -> dict[str, Any]:
             or source_payload.get("explicit_selection") is not True
         ):
             raise Phase3ReportError("report campaign sources are invalid")
+        derivation_payload = _strict_json_object(
+            directory / "derivation.json",
+            canonical=True,
+        )
+        report_git_provenance = _mapping(
+            derivation_payload.get("report_git_provenance")
+        )
+        recorded_generator_git_sha = (
+            None
+            if report_git_provenance is None
+            else report_git_provenance.get("report_generator_git_sha")
+        )
+        if not isinstance(recorded_generator_git_sha, str):
+            raise Phase3ReportError("report-generator provenance is absent")
         expected_report, expected_stability, expected_derivation = (
             build_phase3_g1_report(
                 fixed_campaign_id,
                 growing_campaign_id,
                 repository_root=directory.parents[2],
                 generated_at_utc=report.generated_at_utc,
+                report_generator_git_sha=recorded_generator_git_sha,
             )
         )
         if expected_report.to_dict() != report_payload:
             errors.append("report differs from independently rederived run evidence")
-        derivation_payload = _strict_json_object(
-            directory / "derivation.json",
-            canonical=True,
-        )
         if derivation_payload != expected_derivation:
             errors.append("derivation artifact differs from source runs")
         expected_files = {

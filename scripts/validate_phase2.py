@@ -1145,6 +1145,51 @@ def make_target_block(text: str, target: str) -> str | None:
     return "\n".join(lines[start:end]) + "\n"
 
 
+def validate_phase3_campaign_and_report_roots(artifacts: Path) -> list[str]:
+    errors: list[str] = []
+    campaigns = artifacts / "phase3_campaigns"
+    reports = artifacts / "phase3_reports"
+    if campaigns.exists() or campaigns.is_symlink():
+        if campaigns.is_symlink() or not campaigns.is_dir():
+            errors.append("Phase 3 campaign root is unsafe")
+        else:
+            from kvbench.runtime.phase3_campaign import (
+                validate_phase3_campaign_directory,
+            )
+
+            for child in sorted(campaigns.iterdir()):
+                if child.is_symlink() or not child.is_dir():
+                    errors.append(
+                        f"unsafe Phase 3 campaign child: {child.name}"
+                    )
+                    continue
+                validation = validate_phase3_campaign_directory(child)
+                if not validation.get("valid"):
+                    errors.append(
+                        f"invalid Phase 3 campaign: {child.name}"
+                    )
+    if reports.exists() or reports.is_symlink():
+        if reports.is_symlink() or not reports.is_dir():
+            errors.append("Phase 3 report root is unsafe")
+        else:
+            from kvbench.runtime.phase3_report import (
+                validate_phase3_g1_report_directory,
+            )
+
+            for child in sorted(reports.iterdir()):
+                if child.is_symlink() or not child.is_dir():
+                    errors.append(
+                        f"unsafe Phase 3 report child: {child.name}"
+                    )
+                    continue
+                validation = validate_phase3_g1_report_directory(child)
+                if not validation.get("valid"):
+                    errors.append(
+                        f"invalid Phase 3 report: {child.name}"
+                    )
+    return errors
+
+
 def validate_phase3_artifact_root() -> list[str]:
     errors: list[str] = []
     artifacts = ROOT / "artifacts"
@@ -1169,12 +1214,14 @@ def validate_phase3_artifact_root() -> list[str]:
         unexpected = sorted(
             path.name
             for path in artifacts.iterdir()
-            if path.name not in {"README.md", "phase3"}
+            if path.name
+            not in {"README.md", "phase3", "phase3_campaigns", "phase3_reports"}
         )
         if unexpected:
             errors.append(
                 f"unapproved artifact roots: {unexpected!r}"
             )
+    errors.extend(validate_phase3_campaign_and_report_roots(artifacts))
     if not phase3.exists() and not phase3.is_symlink():
         return errors
     if phase3.is_symlink() or not phase3.is_dir():

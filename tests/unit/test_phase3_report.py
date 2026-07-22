@@ -11,6 +11,7 @@ from types import SimpleNamespace
 import unittest
 from unittest import mock
 
+from scripts.validate_phase2 import validate_phase3_campaign_and_report_roots
 from kvbench.cli import build_parser, command_phase3_report
 from kvbench.runtime.phase3_report import (
     Phase3ReportError,
@@ -258,6 +259,19 @@ class StabilityDerivationTests(unittest.TestCase):
 
 
 class ImmutableReportBundleTests(unittest.TestCase):
+    def test_campaign_and_report_roots_validate_without_legacy_run_root(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_root:
+            artifacts = Path(raw_root) / "artifacts"
+            (artifacts / "phase3_campaigns" / "invalid-campaign").mkdir(
+                parents=True
+            )
+            (artifacts / "phase3_reports" / "invalid-report").mkdir(parents=True)
+            self.assertFalse((artifacts / "phase3").exists())
+            errors = validate_phase3_campaign_and_report_roots(artifacts)
+
+        self.assertIn("invalid Phase 3 campaign: invalid-campaign", errors)
+        self.assertIn("invalid Phase 3 report: invalid-report", errors)
+
     def test_run_and_report_json_readers_match_their_exact_writers(self) -> None:
         payload = {"b": [2, 3], "a": 1}
         with tempfile.TemporaryDirectory() as raw_root:
@@ -287,6 +301,14 @@ class ImmutableReportBundleTests(unittest.TestCase):
             root = Path(raw_root)
             derivation = {
                 "schema_version": "kvbench-phase3-g1-derivation-1.0.0",
+                "report_git_provenance": {
+                    "schema_version": "kvbench-phase3-report-git-provenance-1.0.0",
+                    "source_execution_git_sha": ZERO_GIT_SHA,
+                    "report_generator_git_sha": ZERO_GIT_SHA,
+                    "execution_to_generator_changed_paths": [],
+                    "source_execution_is_ancestor": True,
+                    "reporting_only_descendant": True,
+                },
                 "selected_run_ids": [],
             }
             with mock.patch(
