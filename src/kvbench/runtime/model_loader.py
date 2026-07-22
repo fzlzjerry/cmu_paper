@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import hashlib
 import importlib
 import json
@@ -61,6 +61,16 @@ class ModelAccessError(RuntimeError):
     """The exact gated checkpoint is not locally accessible."""
 
 
+_LOADED_FROZEN_MODEL_SEAL = object()
+_FROZEN_MODEL_LOAD_RECEIPT_SEAL = object()
+PARAMETER_BINDING_KIND = (
+    "object_storage_pointer_version_no_live_content_hash"
+)
+_MODEL_LOADER_SOURCE_SHA256_AT_IMPORT = hashlib.sha256(
+    Path(__file__).read_bytes()
+).hexdigest()
+
+
 @dataclass(frozen=True, slots=True)
 class FrozenModelIdentity:
     """Fully verified identity used by performance and later quality work."""
@@ -94,13 +104,403 @@ class FrozenModelIdentity:
 
 
 @dataclass(frozen=True, slots=True)
+class FrozenModelLoadReceipt:
+    """Runtime identity for one verified load; not a live weight-content hash."""
+
+    schema_version: str
+    parameter_binding_kind: str
+    frozen_identity_sha256: str
+    snapshot_file_ledger_sha256: str
+    loader_source_sha256: str
+    model_object_id: int
+    tokenizer_object_id: int
+    model_class_module: str
+    model_class_name: str
+    tokenizer_class_module: str
+    tokenizer_class_name: str
+    tokenizer_runtime_sha256: str
+    parameter_runtime_sha256: str
+    parameter_tensor_count: int
+    parameter_element_count: int
+    receipt_sha256: str
+    _model_ref: Any = field(repr=False, compare=False)
+    _tokenizer_ref: Any = field(repr=False, compare=False)
+    _parameter_names: tuple[str, ...] = field(repr=False, compare=False)
+    _parameter_refs: tuple[Any, ...] = field(repr=False, compare=False)
+    _storage_refs: tuple[Any, ...] = field(repr=False, compare=False)
+    _seal: object = field(repr=False, compare=False)
+
+    SCHEMA_VERSION = "kvbench-frozen-model-load-receipt-2.0.0"
+
+    def __post_init__(self) -> None:
+        if self._seal is not _FROZEN_MODEL_LOAD_RECEIPT_SEAL:
+            raise ModelIdentityError("frozen model load receipt is not factory sealed")
+        if self.schema_version != self.SCHEMA_VERSION:
+            raise ModelIdentityError("frozen model load receipt schema differs")
+        if self.parameter_binding_kind != PARAMETER_BINDING_KIND:
+            raise ModelIdentityError(
+                "frozen model parameter binding kind differs"
+            )
+        digests = (
+            self.frozen_identity_sha256,
+            self.snapshot_file_ledger_sha256,
+            self.loader_source_sha256,
+            self.tokenizer_runtime_sha256,
+            self.parameter_runtime_sha256,
+            self.receipt_sha256,
+        )
+        if any(
+            len(value) != 64
+            or any(character not in "0123456789abcdef" for character in value)
+            for value in digests
+        ):
+            raise ModelIdentityError("frozen model load receipt digest is invalid")
+        if (
+            self.model_object_id <= 0
+            or self.tokenizer_object_id <= 0
+            or self._model_ref is None
+            or self._tokenizer_ref is None
+            or id(self._model_ref) != self.model_object_id
+            or id(self._tokenizer_ref) != self.tokenizer_object_id
+            or self.parameter_tensor_count <= 0
+            or self.parameter_element_count <= 0
+            or not self.model_class_module
+            or not self.model_class_name
+            or not self.tokenizer_class_module
+            or not self.tokenizer_class_name
+        ):
+            raise ModelIdentityError("frozen model load receipt identity is invalid")
+        if (
+            len(self._parameter_names) != self.parameter_tensor_count
+            or len(self._parameter_refs) != self.parameter_tensor_count
+            or len(self._storage_refs) != self.parameter_tensor_count
+            or tuple(sorted(self._parameter_names)) != self._parameter_names
+            or len(set(self._parameter_names)) != self.parameter_tensor_count
+            or any(parameter is None for parameter in self._parameter_refs)
+            or any(storage is None for storage in self._storage_refs)
+        ):
+            raise ModelIdentityError(
+                "frozen model load receipt strong references are invalid"
+            )
+        if self.receipt_sha256 != _receipt_sha256(self._payload()):
+            raise ModelIdentityError("frozen model load receipt fingerprint differs")
+
+    def _payload(self) -> dict[str, Any]:
+        return {
+            "schema_version": self.schema_version,
+            "parameter_binding_kind": self.parameter_binding_kind,
+            "frozen_identity_sha256": self.frozen_identity_sha256,
+            "snapshot_file_ledger_sha256": self.snapshot_file_ledger_sha256,
+            "loader_source_sha256": self.loader_source_sha256,
+            "model_object_id": self.model_object_id,
+            "tokenizer_object_id": self.tokenizer_object_id,
+            "model_class_module": self.model_class_module,
+            "model_class_name": self.model_class_name,
+            "tokenizer_class_module": self.tokenizer_class_module,
+            "tokenizer_class_name": self.tokenizer_class_name,
+            "tokenizer_runtime_sha256": self.tokenizer_runtime_sha256,
+            "parameter_runtime_sha256": self.parameter_runtime_sha256,
+            "parameter_tensor_count": self.parameter_tensor_count,
+            "parameter_element_count": self.parameter_element_count,
+        }
+
+
+@dataclass(frozen=True, slots=True)
 class LoadedFrozenModel:
     """Loaded exact checkpoint and tokenizer plus verified identity."""
 
     model: Any
     tokenizer: Any
     identity: FrozenModelIdentity
+    receipt: FrozenModelLoadReceipt
+    _seal: object
 
+    def __post_init__(self) -> None:
+        if self._seal is not _LOADED_FROZEN_MODEL_SEAL:
+            raise ModelIdentityError("loaded frozen model is not factory sealed")
+        validate_loaded_frozen_model_receipt(self)
+
+
+def _receipt_sha256(value: Any) -> str:
+    raw = json.dumps(
+        value,
+        allow_nan=False,
+        ensure_ascii=True,
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode("utf-8")
+    return hashlib.sha256(raw).hexdigest()
+
+
+def _capture_parameter_runtime_identity(
+    model: Any,
+) -> tuple[
+    str,
+    int,
+    int,
+    tuple[str, ...],
+    tuple[Any, ...],
+    tuple[Any, ...],
+]:
+    named_parameters = getattr(model, "named_parameters", None)
+    if not callable(named_parameters):
+        raise ModelIdentityError("loaded model has no named parameter inventory")
+    try:
+        parameters = tuple(named_parameters())
+    except (RuntimeError, TypeError, ValueError) as error:
+        raise ModelIdentityError("loaded model parameter inventory is unreadable") from error
+    entries: list[tuple[dict[str, Any], Any, Any]] = []
+    names: set[str] = set()
+    total_elements = 0
+    for name, parameter in parameters:
+        if type(name) is not str or not name or name in names:
+            raise ModelIdentityError("loaded model parameter names are invalid")
+        names.add(name)
+        try:
+            storage = parameter.untyped_storage()
+            record = {
+                "name": name,
+                "parameter_object_id": id(parameter),
+                "shape": [int(value) for value in parameter.shape],
+                "stride": [int(value) for value in parameter.stride()],
+                "dtype": str(parameter.dtype),
+                "device": str(parameter.device),
+                "numel": int(parameter.numel()),
+                "requires_grad": parameter.requires_grad,
+                "data_ptr": int(parameter.data_ptr()),
+                "storage_data_ptr": int(storage.data_ptr()),
+                "storage_handle": int(storage._cdata),
+                "storage_nbytes": int(storage.nbytes()),
+                "storage_offset": int(parameter.storage_offset()),
+                "element_size": int(parameter.element_size()),
+                "version": int(parameter._version),
+            }
+        except (AttributeError, RuntimeError, TypeError, ValueError) as error:
+            raise ModelIdentityError(
+                f"loaded model parameter is unreadable: {name}"
+            ) from error
+        if (
+            record["numel"] <= 0
+            or record["data_ptr"] <= 0
+            or record["storage_data_ptr"] <= 0
+            or record["storage_handle"] <= 0
+            or record["storage_nbytes"] <= 0
+            or record["storage_offset"] < 0
+            or record["element_size"] <= 0
+            or record["version"] < 0
+            or record["requires_grad"] is not False
+            or record["data_ptr"]
+            != record["storage_data_ptr"]
+            + record["storage_offset"] * record["element_size"]
+        ):
+            raise ModelIdentityError(
+                f"loaded model parameter runtime identity is invalid: {name}"
+            )
+        total_elements += int(record["numel"])
+        entries.append((record, parameter, storage))
+    entries.sort(key=lambda value: str(value[0]["name"]))
+    if not entries or total_elements <= 0:
+        raise ModelIdentityError("loaded model parameter inventory is empty")
+    records = tuple(entry[0] for entry in entries)
+    parameter_names = tuple(str(record["name"]) for record in records)
+    parameter_refs = tuple(entry[1] for entry in entries)
+    storage_refs = tuple(entry[2] for entry in entries)
+    return (
+        _receipt_sha256(records),
+        len(records),
+        total_elements,
+        parameter_names,
+        parameter_refs,
+        storage_refs,
+    )
+
+
+def _canonical_tokenizer_runtime_value(value: Any) -> Any:
+    if value is None or type(value) in {bool, int, str}:
+        return value
+    if type(value) is float:
+        if value != value or value in {float("inf"), float("-inf")}:
+            raise ModelIdentityError(
+                "tokenizer runtime configuration contains a non-finite value"
+            )
+        return value
+    if isinstance(value, dict):
+        if any(type(key) not in {int, str} for key in value):
+            raise ModelIdentityError(
+                "tokenizer runtime configuration has an unsupported key"
+            )
+        return {
+            (
+                f"str:{key}"
+                if type(key) is str
+                else f"int:{key}"
+            ): _canonical_tokenizer_runtime_value(item)
+            for key, item in sorted(
+                value.items(),
+                key=lambda pair: (type(pair[0]).__name__, str(pair[0])),
+            )
+        }
+    if isinstance(value, (list, tuple)):
+        return [_canonical_tokenizer_runtime_value(item) for item in value]
+    token_fields = (
+        "content",
+        "single_word",
+        "lstrip",
+        "rstrip",
+        "normalized",
+        "special",
+    )
+    if all(hasattr(value, field_name) for field_name in token_fields):
+        return {
+            "class_module": value.__class__.__module__,
+            "class_name": value.__class__.__name__,
+            **{
+                field_name: _canonical_tokenizer_runtime_value(
+                    getattr(value, field_name)
+                )
+                for field_name in token_fields
+            },
+        }
+    raise ModelIdentityError(
+        "tokenizer runtime configuration contains an unsupported value"
+    )
+
+
+def _capture_tokenizer_runtime_identity(tokenizer: Any) -> str:
+    backend = getattr(tokenizer, "backend_tokenizer", None)
+    if backend is None:
+        backend = getattr(tokenizer, "_tokenizer", None)
+    to_str = getattr(backend, "to_str", None)
+    if not callable(to_str):
+        raise ModelIdentityError(
+            "loaded tokenizer backend serialization is unavailable"
+        )
+    try:
+        backend_json = to_str()
+    except (RuntimeError, TypeError, ValueError) as error:
+        raise ModelIdentityError(
+            "loaded tokenizer backend serialization failed"
+        ) from error
+    if type(backend_json) is not str or not backend_json:
+        raise ModelIdentityError(
+            "loaded tokenizer backend serialization is invalid"
+        )
+    configuration = {
+        "backend_tokenizer_sha256": hashlib.sha256(
+            backend_json.encode("utf-8")
+        ).hexdigest(),
+        "special_tokens_map_extended": _canonical_tokenizer_runtime_value(
+            getattr(tokenizer, "special_tokens_map_extended", {})
+        ),
+        "added_tokens_decoder": _canonical_tokenizer_runtime_value(
+            getattr(tokenizer, "added_tokens_decoder", {})
+        ),
+        "all_special_ids": _canonical_tokenizer_runtime_value(
+            tuple(getattr(tokenizer, "all_special_ids", ()))
+        ),
+        "chat_template": _canonical_tokenizer_runtime_value(
+            getattr(tokenizer, "chat_template", None)
+        ),
+        "model_max_length": _canonical_tokenizer_runtime_value(
+            getattr(tokenizer, "model_max_length", None)
+        ),
+        "padding_side": _canonical_tokenizer_runtime_value(
+            getattr(tokenizer, "padding_side", None)
+        ),
+        "truncation_side": _canonical_tokenizer_runtime_value(
+            getattr(tokenizer, "truncation_side", None)
+        ),
+    }
+    return _receipt_sha256(configuration)
+
+
+def validate_loaded_frozen_model_receipt(loaded: LoadedFrozenModel) -> None:
+    """Revalidate factory origin and live object/storage/version identity."""
+
+    if type(loaded) is not LoadedFrozenModel:
+        raise ModelIdentityError("loaded frozen model has the wrong type")
+    if loaded._seal is not _LOADED_FROZEN_MODEL_SEAL:
+        raise ModelIdentityError("loaded frozen model seal differs")
+    receipt = loaded.receipt
+    if (
+        type(receipt) is not FrozenModelLoadReceipt
+        or receipt._seal is not _FROZEN_MODEL_LOAD_RECEIPT_SEAL
+    ):
+        raise ModelIdentityError("loaded frozen model receipt seal differs")
+    receipt.__post_init__()
+    current_source_sha = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
+    if current_source_sha != _MODEL_LOADER_SOURCE_SHA256_AT_IMPORT:
+        raise ModelIdentityError(
+            "model loader source changed after module import"
+        )
+    (
+        parameter_sha,
+        parameter_count,
+        parameter_elements,
+        parameter_names,
+        parameter_refs,
+        storage_refs,
+    ) = _capture_parameter_runtime_identity(loaded.model)
+    if (
+        receipt._model_ref is not loaded.model
+        or receipt._tokenizer_ref is not loaded.tokenizer
+        or parameter_names != receipt._parameter_names
+        or len(parameter_refs) != len(receipt._parameter_refs)
+        or len(storage_refs) != len(receipt._storage_refs)
+        or any(
+            observed is not expected
+            for observed, expected in zip(
+                parameter_refs,
+                receipt._parameter_refs,
+                strict=True,
+            )
+        )
+        or any(
+            observed is not expected
+            for observed, expected in zip(
+                storage_refs,
+                receipt._storage_refs,
+                strict=True,
+            )
+        )
+    ):
+        raise ModelIdentityError(
+            "loaded model strong object or storage identity changed"
+        )
+    observed = (
+        _receipt_sha256(loaded.identity.to_dict()),
+        _receipt_sha256(dict(sorted(loaded.identity.file_hashes.items()))),
+        current_source_sha,
+        id(loaded.model),
+        id(loaded.tokenizer),
+        loaded.model.__class__.__module__,
+        loaded.model.__class__.__name__,
+        loaded.tokenizer.__class__.__module__,
+        loaded.tokenizer.__class__.__name__,
+        _capture_tokenizer_runtime_identity(loaded.tokenizer),
+        parameter_sha,
+        parameter_count,
+        parameter_elements,
+    )
+    expected = (
+        receipt.frozen_identity_sha256,
+        receipt.snapshot_file_ledger_sha256,
+        receipt.loader_source_sha256,
+        receipt.model_object_id,
+        receipt.tokenizer_object_id,
+        receipt.model_class_module,
+        receipt.model_class_name,
+        receipt.tokenizer_class_module,
+        receipt.tokenizer_class_name,
+        receipt.tokenizer_runtime_sha256,
+        receipt.parameter_runtime_sha256,
+        receipt.parameter_tensor_count,
+        receipt.parameter_element_count,
+    )
+    if observed != expected:
+        raise ModelIdentityError(
+            "loaded frozen model receipt no longer matches live objects"
+        )
 
 def sha256_file(path: Path) -> str:
     digest = hashlib.sha256()
@@ -269,7 +669,57 @@ def load_frozen_model(
         raise ModelIdentityError("loaded model parameter dtype is not uniformly BF16")
     if len(tokenizer) != 128256:
         raise ModelIdentityError("loaded tokenizer vocabulary size differs")
-    return LoadedFrozenModel(model=model, tokenizer=tokenizer, identity=identity)
+    current_source_sha = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
+    if current_source_sha != _MODEL_LOADER_SOURCE_SHA256_AT_IMPORT:
+        raise ModelIdentityError(
+            "model loader source changed after module import"
+        )
+    (
+        parameter_sha,
+        parameter_count,
+        parameter_elements,
+        parameter_names,
+        parameter_refs,
+        storage_refs,
+    ) = _capture_parameter_runtime_identity(model)
+    values = {
+        "schema_version": FrozenModelLoadReceipt.SCHEMA_VERSION,
+        "parameter_binding_kind": PARAMETER_BINDING_KIND,
+        "frozen_identity_sha256": _receipt_sha256(identity.to_dict()),
+        "snapshot_file_ledger_sha256": _receipt_sha256(
+            dict(sorted(identity.file_hashes.items()))
+        ),
+        "loader_source_sha256": current_source_sha,
+        "model_object_id": id(model),
+        "tokenizer_object_id": id(tokenizer),
+        "model_class_module": model.__class__.__module__,
+        "model_class_name": model.__class__.__name__,
+        "tokenizer_class_module": tokenizer.__class__.__module__,
+        "tokenizer_class_name": tokenizer.__class__.__name__,
+        "tokenizer_runtime_sha256": (
+            _capture_tokenizer_runtime_identity(tokenizer)
+        ),
+        "parameter_runtime_sha256": parameter_sha,
+        "parameter_tensor_count": parameter_count,
+        "parameter_element_count": parameter_elements,
+    }
+    receipt = FrozenModelLoadReceipt(
+        **values,
+        receipt_sha256=_receipt_sha256(values),
+        _model_ref=model,
+        _tokenizer_ref=tokenizer,
+        _parameter_names=parameter_names,
+        _parameter_refs=parameter_refs,
+        _storage_refs=storage_refs,
+        _seal=_FROZEN_MODEL_LOAD_RECEIPT_SEAL,
+    )
+    return LoadedFrozenModel(
+        model=model,
+        tokenizer=tokenizer,
+        identity=identity,
+        receipt=receipt,
+        _seal=_LOADED_FROZEN_MODEL_SEAL,
+    )
 
 
 def require_local_model() -> FrozenModelIdentity:
