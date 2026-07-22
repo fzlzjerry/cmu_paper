@@ -1,0 +1,9 @@
+{
+  "checksum_ledger_path": "checksums.sha256",
+  "checksum_ledger_sha256": "5a610162163979aca97beb2b7b0b480befb85d0b4e63b77c26ec46c36864eca8",
+  "finished_at_utc": "2026-07-22T05:07:20.374947Z",
+  "manifest_sha256": "d054df714bb5eea1f114bf10a03a2879f56ec8d17d3b07e24fe6efcaba6b7aca",
+  "run_id": "e00-20260722T050632.375718Z-6442ba1f7554-02d5bd32",
+  "status": "PASS",
+  "written_last": true
+}

@@ -1,0 +1,29 @@
+{
+  "architecture": {
+    "canonical": "12.0",
+    "compute": "compute_120",
+    "sass": "sm_120"
+  },
+  "build_directory": "/home/rockrock/cmu_paper/docs/evidence/e00/.e00-20260722T050632.375718Z-6442ba1f7554-02d5bd32.tmp/extension/build",
+  "cuda_flags": [
+    "-O2",
+    "-std=c++20",
+    "-lineinfo",
+    "-gencode=arch=compute_120,code=sm_120",
+    "-gencode=arch=compute_120,code=compute_120"
+  ],
+  "cuda_home": "/usr/local/cuda-13.0",
+  "cxx_flags": [
+    "-O2",
+    "-std=c++20"
+  ],
+  "module_name": "e00_cuda_cert",
+  "module_path": "/home/rockrock/cmu_paper/docs/evidence/e00/.e00-20260722T050632.375718Z-6442ba1f7554-02d5bd32.tmp/extension/build/e00_cuda_cert.so",
+  "module_sha256": "6b09a3706113cdb58fedb17861d9891f25483fc36cc34edf80dd951e142c718e",
+  "nvcc": "/usr/local/cuda-13.0/bin/nvcc",
+  "source_sha256": {
+    "binding.cpp": "201cb17f64e5230650e0f121aa55025f789a6d015852ed10478c9b6189b0d249",
+    "xor_kernel.cu": "3573815608bab76bfb0076569eccfca56e18efc5839ac08f2882e4dc42a36534",
+    "xor_kernel.h": "d03f97355cf877bc37369d8e81ee48eef0132f31995bf6ceb3a3c0799803a4fd"
+  }
+}

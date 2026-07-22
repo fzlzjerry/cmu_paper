@@ -8,16 +8,16 @@ requirements; and AGENTS.md. Decision 0005 records precedence.
 
 ## Current state
 
-- Current phase: Phase 1 / E00 blocked after formal G0 FAIL
+- Current phase: Phase 1 / E00 remediation complete; native-host G0 PASS
 - Phase 0 status: PASS
-- Next action: provision the matching CUDA 13.0 `nvdisasm`, extend the exact
-  system/tool lock, commit that environment definition, and rerun E00 under a
-  new run ID
-- Active admission gate: G0 FAIL
+- Next action: stop after Phase 1 remediation. Phase 2 may be proposed in a
+  new task, but must not start as part of this remediation task
+- Active admission gate: native-host G0 PASS; container-parity G0 remains a
+  later E01 requirement before E02
 - Benchmark implementation changes: none
-- CUDA builds or executions: the formal E00 extension binary was produced and
-  the CUDA identity probe completed; certification runtime and sanitizers were
-  not admitted because SASS inspection failed
+- CUDA builds or executions: the new formal E00 run passed extension build,
+  native execution, forced PTX/JIT, numerical golden, CUDA Graph, allocation,
+  SASS/PTX inspection, and all required Compute Sanitizer lanes
 - Benchmark or profiler data produced: none
 - Scientific performance claims: none
 - Quality protocol: preregistered by Decision 0005 before any performance or
@@ -31,9 +31,14 @@ The initial non-Git workspace contained three operator-provided inputs but no
 implementation. The reviewed Phase 0 records are committed on branch main at
 9569d938d9023a3e71d98f12234efa1897004533. The E00 collector and certification
 tests are committed at 980eff7b6f5904c4828aa79d684c01a8dc45320d. Formal run
-`e00-20260722T041628.190813Z-980eff7b6f59-0dd71f2d` finalized as immutable FAIL
-evidence after `cuobjdump --dump-sass` could not find `nvdisasm`. B-001 is
-resolved; B-002 remains active. No remote is configured.
+`e00-20260722T041628.190813Z-980eff7b6f59-0dd71f2d` remains immutable FAIL
+evidence after `cuobjdump --dump-sass` could not find `nvdisasm`. The quality
+protocol was preregistered at 6535a6f6a4e5caa53213e917e9fcf8fc9c0f0190,
+and the exact `cuda-nvdisasm-13-0=13.0.85-1` package/tool identity was locked at
+6442ba1f7554ea0ebf0b3bb1a920c94567cab689. New formal run
+`e00-20260722T050632.375718Z-6442ba1f7554-02d5bd32` finalized as immutable PASS
+evidence. B-001 and B-002 are resolved; B-009 and B-010 remain open. No remote
+is configured.
 
 At Phase 0 start, the only top-level inputs were AGENTS.md,
 CODEX_WORKFLOW.md, and Archive.zip. No implementation, model config, CUDA
@@ -79,7 +84,7 @@ repository.
 | Phase/gate | Status | Evidence |
 |---|---|---|
 | Phase 0 repository/input audit | PASS | literature manifests; method notes; source lock; decision, risks, blockers, tasks |
-| G0 hardware certification | FAIL | `docs/evidence/e00/e00-20260722T041628.190813Z-980eff7b6f59-0dd71f2d/` |
+| G0 native-host hardware certification | PASS | `docs/evidence/e00/e00-20260722T050632.375718Z-6442ba1f7554-02d5bd32/`; prior immutable FAIL retained |
 | G1 BF16 baseline | NOT EVALUATED | requires G0 and E01-E04 |
 | G2-TQ | NOT EVALUATED | requires E05-E06 |
 | G2-KIVI | NOT EVALUATED | requires E07-E08 |
@@ -103,10 +108,8 @@ repository.
 
 ## Next action
 
-Provision a CUDA 13.0-matched `nvdisasm` (expected package
-`cuda-nvdisasm-13-0`), add its exact package identity, executable path, hash,
-and version to the reviewed system/tool lock, commit, and invoke `make
-preflight` under a new run ID. Preserve the failed run unchanged. E01 and all
-non-E00 CUDA or timing work remain closed until host G0 passes; E01 must then
-implement the general append-only artifact policy, pin the measurement
-container, and pass container-parity G0 before E02.
+Stop after the successful Phase 1 remediation. Phase 2 may be proposed in a
+new task, but must not begin in this task. G1-G5 remain NOT EVALUATED, the full
+scan remains CLOSED, and quality execution remains LOCKED. When separately
+authorized, E01 must implement the general append-only artifact policy, pin
+the measurement container by digest, and pass container-parity G0 before E02.

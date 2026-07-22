@@ -1,0 +1,39 @@
+{
+  "effective_base_environment": {
+    "CC": "/usr/bin/gcc",
+    "CUDA_HOME": "/usr/local/cuda-13.0",
+    "CXX": "/usr/bin/c++",
+    "GIT_CONFIG_GLOBAL": "/dev/null",
+    "GIT_CONFIG_NOSYSTEM": "1",
+    "LANG": "C",
+    "LC_ALL": "C",
+    "PATH": "/usr/local/cuda-13.0/bin:/usr/bin:/bin",
+    "PYTHONHASHSEED": "0",
+    "PYTHONNOUSERSITE": "1",
+    "PYTHONOPTIMIZE": "0",
+    "TZ": "UTC"
+  },
+  "original_allowlisted_environment": {
+    "CC": "/usr/bin/gcc",
+    "CUDA_HOME": "/usr/local/cuda-13.0",
+    "CXX": "/usr/bin/c++",
+    "GIT_CONFIG_GLOBAL": "/dev/null",
+    "GIT_CONFIG_NOSYSTEM": "1",
+    "LANG": "C",
+    "LC_ALL": "C",
+    "PATH": "/usr/local/cuda-13.0/bin:/usr/bin:/bin",
+    "PYTHONHASHSEED": "0",
+    "PYTHONNOUSERSITE": "1",
+    "PYTHONOPTIMIZE": "0",
+    "TZ": "UTC"
+  },
+  "sanitized_keys": [
+    "CC",
+    "CUDA_HOME",
+    "CXX",
+    "GIT_CONFIG_GLOBAL",
+    "GIT_CONFIG_NOSYSTEM",
+    "PATH",
+    "PYTHONOPTIMIZE"
+  ]
+}

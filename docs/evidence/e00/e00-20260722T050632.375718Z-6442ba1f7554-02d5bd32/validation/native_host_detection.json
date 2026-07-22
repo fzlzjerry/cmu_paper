@@ -1,0 +1,11 @@
+{
+  "caller_container_marker_present": false,
+  "cgroup_container_tokens": [],
+  "errors": [],
+  "present_container_markers": [],
+  "status": "PASS",
+  "systemd_detect_virt": {
+    "exit_code": 1,
+    "stdout": "none"
+  }
+}

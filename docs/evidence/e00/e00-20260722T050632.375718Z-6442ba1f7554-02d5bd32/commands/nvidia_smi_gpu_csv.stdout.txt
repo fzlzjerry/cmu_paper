@@ -1,0 +1,1 @@
+0, NVIDIA RTX PRO 6000 Blackwell Workstation Edition, GPU-75bd273e-6b20-0d22-1b0b-5fbb6fb0025b, 00000000:05:00.0, 0x2BB110DE, 12.0, 97887, Disabled, Disabled, 6.97, 600.00, 600.00, 150.00, 600.00, 180, 405, 3090, 14001, 39, 98.02.81.00.07, Enabled, Default, [N/A], Disabled, P8, 595.71.05

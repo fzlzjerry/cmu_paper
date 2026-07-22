@@ -1,0 +1,1 @@
+ELF file    1: xor_kernel.sm_120.cubin

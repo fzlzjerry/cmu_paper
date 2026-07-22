@@ -1,0 +1,20 @@
+{
+  "audit_errors": [],
+  "checkpoint_verified": true,
+  "command_id": "cuda_graph",
+  "premature_release_detected": false,
+  "process_group_drained": true,
+  "protocol": "e00-process-audit-v1",
+  "ready_identity": {
+    "pid": 282688,
+    "process_start_time_ticks": 8673529
+  },
+  "release_published_by_collector": true,
+  "supervised_root_identity": {
+    "comm": "python",
+    "pid": 282688,
+    "ppid": 282400,
+    "start_time_ticks": 8673529
+  },
+  "timed_out": false
+}

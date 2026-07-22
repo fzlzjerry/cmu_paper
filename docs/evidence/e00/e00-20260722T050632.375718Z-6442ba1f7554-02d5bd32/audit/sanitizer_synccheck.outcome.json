@@ -1,0 +1,20 @@
+{
+  "audit_errors": [],
+  "checkpoint_verified": true,
+  "command_id": "sanitizer_synccheck",
+  "premature_release_detected": false,
+  "process_group_drained": true,
+  "protocol": "e00-process-audit-v1",
+  "ready_identity": {
+    "pid": 282969,
+    "process_start_time_ticks": 8674733
+  },
+  "release_published_by_collector": true,
+  "supervised_root_identity": {
+    "comm": "compute-sanitiz",
+    "pid": 282962,
+    "ppid": 282400,
+    "start_time_ticks": 8674733
+  },
+  "timed_out": false
+}
