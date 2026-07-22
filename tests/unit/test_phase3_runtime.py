@@ -2,12 +2,18 @@
 
 from __future__ import annotations
 
+from contextlib import ExitStack
+import copy
 from pathlib import Path
 import tempfile
+from types import SimpleNamespace
 import unittest
+from unittest import mock
 
 import torch
 
+from kvbench.config import REPOSITORY_ROOT
+from kvbench.runtime import phase3_coordinator
 from kvbench.runtime.allocation import MemorySnapshot, NormalTimingMemoryEvidence
 from kvbench.runtime.backend import (
     BackendFallbackError,
@@ -22,10 +28,15 @@ from kvbench.runtime.model_loader import (
     verify_frozen_snapshot,
 )
 from kvbench.runtime.phase3_coordinator import (
+    COMMAND_FINGERPRINT_ENV,
+    READY_NOT_OBSERVED_V2,
     SENSITIVE_ENV_FRAGMENTS,
     SENSITIVE_ENV_KEY_EXEMPTIONS,
+    _run_point,
+    _worker_argv,
     _worker_environment,
 )
+from kvbench.runtime.process_supervision import command_fingerprint
 from kvbench.runtime.numerical import (
     compare_tensors_untimed,
     small_attention_reference,
@@ -41,7 +52,12 @@ from kvbench.runtime.telemetry import (
     TelemetrySnapshot,
     telemetry_sampling_interval_seconds,
 )
-from kvbench.schema import BF16BackendIdentity
+from kvbench.schema import (
+    BF16BackendIdentity,
+    RunStatus,
+    canonical_json_bytes,
+    sha256_hex,
+)
 
 
 class Phase3StaticCacheTests(unittest.TestCase):
@@ -239,6 +255,351 @@ class Phase3IdentityAndBackendTests(unittest.TestCase):
 
 
 class Phase3EvidenceSerializationTests(unittest.TestCase):
+    def _captured_coordinator_run(
+        self,
+        *,
+        readiness_observed: bool,
+    ) -> tuple[
+        dict[str, object],
+        mock.Mock,
+        mock.Mock | None,
+        dict[str, str],
+    ]:
+        run_id = "phase3-unit-coordinator"
+        plan_path = "config/phase3_fixed_plan.json"
+        point = SimpleNamespace(
+            point_id="fixed_l-b1-l128-eager-r1",
+            process_replicate=1,
+            to_dict=lambda: {"point_id": "fixed_l-b1-l128-eager-r1"},
+        )
+        plan = SimpleNamespace(to_dict=lambda: {"schema_version": "unit-plan"})
+        bundle = SimpleNamespace(
+            plan=plan,
+            canonical_fingerprints=(),
+            all_blockers=(),
+        )
+        base_environment = {
+            "LANG": "C",
+            "PATH": "/usr/bin:/bin",
+            "KVBENCH_PHASE3_AUDIT_READY": "/tmp/unit-ready",
+        }
+        writes: dict[str, object] = {}
+        self_outer = self
+
+        class CapturingRun:
+            def start(self) -> None:
+                return None
+
+            def write_json(self, relative: str, payload: object) -> None:
+                writes[relative] = copy.deepcopy(payload)
+
+            def write_bytes(self, relative: str, payload: bytes) -> None:
+                writes[relative] = bytes(payload)
+
+            def finalize(self, manifest: object) -> Path:
+                writes["_final_manifest"] = manifest
+                return REPOSITORY_ROOT / "artifacts" / "phase3" / run_id
+
+        class CapturingStore:
+            def create(self, created_run_id: str, manifest: object) -> CapturingRun:
+                self_outer.assertEqual(created_run_id, run_id)
+                writes["_initial_manifest"] = manifest
+                return CapturingRun()
+
+        failure_reason = (
+            "Phase3CoordinatorError: worker release audit failed closed"
+            if readiness_observed
+            else "Phase3CoordinatorError: synthetic pre-registration failure"
+        )
+        failed_result = SimpleNamespace(
+            status=RunStatus.ABORTED,
+            failure_reason=failure_reason,
+            to_dict=lambda: {
+                "schema_version": "unit-worker-result",
+                "status": RunStatus.ABORTED.value,
+                "failure_reason": failure_reason,
+            },
+        )
+        initial_manifest = object()
+        terminal_manifest = object()
+        initial_manifest_mock = mock.Mock(return_value=initial_manifest)
+        process_snapshot_mock = mock.Mock(
+            side_effect=(
+                [
+                    {"before": True},
+                    {"release": True},
+                    {"after": True},
+                ]
+                if readiness_observed
+                else [
+                    phase3_coordinator.Phase3CoordinatorError(
+                        "synthetic pre-registration failure"
+                    ),
+                    {"after": True},
+                ]
+            )
+        )
+        common_patches = {
+            "_utc_now": mock.Mock(return_value="2026-07-23T00:00:00Z"),
+            "_worker_environment": mock.Mock(
+                return_value=dict(base_environment)
+            ),
+            "_cache_identity": mock.Mock(return_value=object()),
+            "_initial_manifest": initial_manifest_mock,
+            "phase3_artifact_store": mock.Mock(return_value=CapturingStore()),
+            "_process_snapshot": process_snapshot_mock,
+            "_snapshot_clean": mock.Mock(return_value=True),
+            "_failed_result": mock.Mock(return_value=failed_result),
+            "_terminal_manifest": mock.Mock(return_value=terminal_manifest),
+            "validate_run_directory": mock.Mock(
+                return_value=SimpleNamespace(valid=True, complete=True)
+            ),
+        }
+        register_spawn_mock: mock.Mock | None = None
+        with ExitStack() as stack:
+            stack.enter_context(
+                mock.patch.multiple(phase3_coordinator, **common_patches)
+            )
+            if readiness_observed:
+                outcome = {
+                    "disposition": "owned_worker_failure",
+                    "reason": "registered worker exited before evidence_flushed",
+                    "returncode": -15,
+                    "observed_stages": ["supervisor_reaped"],
+                    "missing_worker_stages": [
+                        "worker_started",
+                        "cuda_context_created",
+                        "measurement_started",
+                        "measurement_finished",
+                        "evidence_flushed",
+                        "worker_exiting",
+                    ],
+                    "evidence_flushed": False,
+                    "worker_exiting_observed": False,
+                    "full_handshake_observed": False,
+                    "exclusivity_passed": True,
+                }
+
+                class FakeRegistry:
+                    def __init__(self) -> None:
+                        self.reaped = False
+
+                    def refresh_handshake_directory(self, directory: Path) -> None:
+                        return None
+
+                    def note_exit_observed(self) -> None:
+                        return None
+
+                    def record_supervisor_reaped(
+                        self,
+                        returncode: int,
+                        *,
+                        recorded_at_utc: str,
+                    ) -> object:
+                        self.reaped = True
+                        return object()
+
+                    def terminal_outcome(self) -> object:
+                        return SimpleNamespace(to_dict=lambda: dict(outcome))
+
+                    def to_evidence(self) -> dict[str, object]:
+                        return {
+                            "schema_version": (
+                                "kvbench-phase3-process-registry-2.0.0"
+                            ),
+                            "handshake_events": [],
+                            "outcome": dict(outcome),
+                        }
+
+                ready = {
+                    "schema_version": "kvbench-phase3-worker-ready-1.0.0",
+                    "pid": 4242,
+                    "process_start_time_ticks": 123456,
+                    "cuda_imported": False,
+                }
+                process = SimpleNamespace(pid=4242, returncode=None)
+                registry = FakeRegistry()
+                register_spawn_mock = mock.Mock(return_value=registry)
+                stack.enter_context(
+                    mock.patch.object(
+                        phase3_coordinator.subprocess,
+                        "Popen",
+                        return_value=process,
+                    )
+                )
+                stack.enter_context(
+                    mock.patch.object(
+                        phase3_coordinator,
+                        "_pidfd_open",
+                        return_value=(False, None),
+                    )
+                )
+                stack.enter_context(
+                    mock.patch.object(
+                        phase3_coordinator,
+                        "read_process_identity",
+                        return_value=object(),
+                    )
+                )
+                stack.enter_context(
+                    mock.patch.object(
+                        phase3_coordinator.RunOwnedProcessRegistry,
+                        "register_spawn",
+                        register_spawn_mock,
+                    )
+                )
+                stack.enter_context(
+                    mock.patch.object(
+                        phase3_coordinator,
+                        "_wait_for_ready",
+                        return_value=ready,
+                    )
+                )
+                stack.enter_context(
+                    mock.patch.object(
+                        phase3_coordinator,
+                        "_registry_snapshot_verdict",
+                        return_value={"passed": False},
+                    )
+                )
+                stack.enter_context(
+                    mock.patch.object(
+                        phase3_coordinator,
+                        "_terminate_worker",
+                        return_value=-15,
+                    )
+                )
+                stack.enter_context(
+                    mock.patch.object(
+                        phase3_coordinator,
+                        "write_handshake_event",
+                    )
+                )
+            _run_point(
+                bundle=bundle,
+                plan_path=plan_path,
+                point=point,
+                run_id=run_id,
+                git_sha="1" * 40,
+                backend=object(),
+                live_hardware={"gpu_uuid": "GPU-unit"},
+            )
+        return (
+            writes,
+            initial_manifest_mock,
+            register_spawn_mock,
+            base_environment,
+        )
+
+    def test_coordinator_retains_sentinel_and_pre_injection_digest(self) -> None:
+        writes, initial_manifest_mock, _, base_environment = (
+            self._captured_coordinator_run(readiness_observed=False)
+        )
+        environment_sha = sha256_hex(canonical_json_bytes(base_environment))
+        self.assertEqual(
+            initial_manifest_mock.call_args.kwargs["environment_sha256"],
+            environment_sha,
+        )
+        expected_fingerprint = command_fingerprint(
+            _worker_argv(
+                "config/phase3_fixed_plan.json",
+                SimpleNamespace(
+                    point_id="fixed_l-b1-l128-eager-r1",
+                    process_replicate=1,
+                ),
+                "phase3-unit-coordinator",
+            ),
+            working_directory=str(REPOSITORY_ROOT),
+            environment_sha256=environment_sha,
+        )
+        self.assertEqual(
+            writes["environment/worker_environment.json"],
+            {
+                **base_environment,
+                COMMAND_FINGERPRINT_ENV: expected_fingerprint,
+            },
+        )
+        self.assertEqual(
+            writes["environment/process.ready.json"],
+            READY_NOT_OBSERVED_V2,
+        )
+
+    def test_observed_readiness_overwrites_sentinel_and_registry_uses_digest(
+        self,
+    ) -> None:
+        writes, initial_manifest_mock, register_spawn_mock, base_environment = (
+            self._captured_coordinator_run(readiness_observed=True)
+        )
+        environment_sha = sha256_hex(canonical_json_bytes(base_environment))
+        expected_fingerprint = command_fingerprint(
+            _worker_argv(
+                "config/phase3_fixed_plan.json",
+                SimpleNamespace(
+                    point_id="fixed_l-b1-l128-eager-r1",
+                    process_replicate=1,
+                ),
+                "phase3-unit-coordinator",
+            ),
+            working_directory=str(REPOSITORY_ROOT),
+            environment_sha256=environment_sha,
+        )
+        self.assertEqual(
+            initial_manifest_mock.call_args.kwargs["environment_sha256"],
+            environment_sha,
+        )
+        self.assertIsNotNone(register_spawn_mock)
+        assert register_spawn_mock is not None
+        self.assertEqual(
+            register_spawn_mock.call_args.kwargs[
+                "expected_command_fingerprint"
+            ],
+            expected_fingerprint,
+        )
+        self.assertEqual(
+            writes["environment/process.ready.json"],
+            {
+                "schema_version": "kvbench-phase3-worker-ready-1.0.0",
+                "pid": 4242,
+                "process_start_time_ticks": 123456,
+                "cuda_imported": False,
+            },
+        )
+
+    def test_initial_manifest_uses_supplied_environment_digest(self) -> None:
+        plan_path = "configs/plans/phase3_bf16_fixed_l.yaml"
+        bundle = phase3_coordinator.load_phase3_admission_bundle(
+            REPOSITORY_ROOT / plan_path
+        )
+        point = phase3_coordinator.expand_phase3_process_points(bundle.plan)[0]
+        environment_sha = "a" * 64
+        backend = SimpleNamespace(
+            to_dict=lambda: {"schema_version": "unit-backend"},
+            fingerprint=lambda: "b" * 64,
+        )
+        cache = SimpleNamespace(
+            to_dict=lambda: {"schema_version": "unit-cache"},
+        )
+        with mock.patch.object(
+            phase3_coordinator.Phase3RunManifest,
+            "from_dict",
+            side_effect=lambda payload: payload,
+        ):
+            payload = phase3_coordinator._initial_manifest(
+                bundle=bundle,
+                plan_path=plan_path,
+                point=point,
+                run_id="phase3-unit-manifest",
+                created_at="2026-07-23T00:00:00Z",
+                git_sha="1" * 40,
+                environment_sha256=environment_sha,
+                backend=backend,
+                cache=cache,
+            )
+        self.assertEqual(
+            payload["command"]["environment_sha256"],
+            environment_sha,
+        )
+
     def test_sanitized_worker_environment_is_constructible_and_secret_free(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             environment = _worker_environment(Path(directory))
