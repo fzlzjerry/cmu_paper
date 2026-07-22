@@ -640,6 +640,8 @@ class Phase3ManifestTests(unittest.TestCase):
             "allocation_failed",
             "state_drift_detected",
             "gqa_materialization_detected",
+            "gqa_dispatch_unverified",
+            "gqa_nonmaterialization_unproven",
             "graph_replay_failed",
         }
         self.assertTrue(values.issubset({status.value for status in RunStatus}))

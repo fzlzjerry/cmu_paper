@@ -50,6 +50,8 @@ class RunStatus(StrEnum):
     ALLOCATION_FAILED = "allocation_failed"
     STATE_DRIFT_DETECTED = "state_drift_detected"
     GQA_MATERIALIZATION_DETECTED = "gqa_materialization_detected"
+    GQA_DISPATCH_UNVERIFIED = "gqa_dispatch_unverified"
+    GQA_NONMATERIALIZATION_UNPROVEN = "gqa_nonmaterialization_unproven"
     GRAPH_CAPTURE_FAILED = "graph_capture_failed"
     GRAPH_REPLAY_FAILED = "graph_replay_failed"
     PROFILER_FAILED = "profiler_failed"
@@ -70,6 +72,15 @@ class RunStatus(StrEnum):
     @property
     def is_failure(self) -> bool:
         return self.is_terminal and self is not RunStatus.COMPLETED
+
+
+class GQAVerdict(StrEnum):
+    """Evidence verdict for the frozen Phase 3 GQA proof contract."""
+
+    MATERIALIZATION_DETECTED = "gqa_materialization_detected"
+    DISPATCH_UNVERIFIED = "gqa_dispatch_unverified"
+    NONMATERIALIZATION_UNPROVEN = "gqa_nonmaterialization_unproven"
+    NONMATERIALIZATION_VERIFIED = "gqa_nonmaterialization_verified"
 
 
 class RunKind(StrEnum):
