@@ -111,6 +111,7 @@ SENSITIVE_ENV_FRAGMENTS = (
 SENSITIVE_ENV_KEY_EXEMPTIONS = frozenset({"TOKENIZERS_PARALLELISM"})
 HANDSHAKE_DIRECTORY_ENV = "KVBENCH_PHASE3_HANDSHAKE_DIR"
 COMMAND_FINGERPRINT_ENV = "KVBENCH_PHASE3_COMMAND_FINGERPRINT"
+RAW_AUDIT_ROOT_ENV = "KVBENCH_PHASE3_RAW_AUDIT_ROOT"
 READY_NOT_OBSERVED_V2 = {
     "schema_version": "kvbench-phase3-worker-ready-2.0.0",
     "readiness_observed": False,
@@ -260,6 +261,7 @@ def _worker_environment(temp_root: Path) -> dict[str, str]:
         "KVBENCH_PHASE3_AUDIT_READY": str(temp_root / "worker-ready.json"),
         "KVBENCH_PHASE3_AUDIT_RELEASE": str(temp_root / "worker-release"),
         HANDSHAKE_DIRECTORY_ENV: str(temp_root / "worker-handshake"),
+        RAW_AUDIT_ROOT_ENV: str(temp_root / "raw-audits"),
         "KVBENCH_PHASE3_HANDSHAKE_TIMEOUT_SECONDS": str(READY_TIMEOUT_SECONDS),
     }
     if any(
@@ -886,6 +888,8 @@ def _run_point(
         temp_root = Path(raw_temp).resolve(strict=True)
         handshake_directory = temp_root / "worker-handshake"
         handshake_directory.mkdir(mode=0o700)
+        raw_audit_root = temp_root / "raw-audits"
+        raw_audit_root.mkdir(mode=0o700)
         environment = _worker_environment(temp_root)
         environment_sha256 = sha256_hex(canonical_json_bytes(environment))
         worker_argv = _worker_argv(plan_path, point, run_id)
@@ -948,7 +952,8 @@ def _run_point(
         stdout_path = temp_root / "worker.stdout"
         stderr_path = temp_root / "worker.stderr"
         failure_reason: str | None = None
-        audit_passed = False
+        process_audit_passed = False
+        worker_evidence_valid = False
         try:
             before = _process_snapshot()
             process_snapshots["before"] = before
@@ -1088,6 +1093,7 @@ def _run_point(
                 raise Phase3CoordinatorError(
                     "post-reap process audit detected foreign or unverified compute"
                 )
+            process_audit_passed = True
             stdout = stdout_path.read_bytes()
             parsed_result = _parse_canonical_json(
                 stdout,
@@ -1145,7 +1151,7 @@ def _run_point(
                 raise Phase3CoordinatorError(
                     "evidence_flushed digest differs from worker IPC"
                 )
-            audit_passed = True
+            worker_evidence_valid = True
         except BaseException as error:
             failure_reason = f"{type(error).__name__}: {' '.join(str(error).split())}"[:1000]
             if process is not None and process.returncode is None:
@@ -1236,7 +1242,7 @@ def _run_point(
             "validation/process_audit_outcome.json",
             {
                 "schema_version": "kvbench-phase3-process-audit-2.0.0",
-                "passed": audit_passed,
+                "passed": process_audit_passed,
                 "certified_helper": "preflight/process_query.py",
                 "registry_created": registry is not None,
                 "ownership_verdict": ownership_disposition,
@@ -1253,9 +1259,24 @@ def _run_point(
                 "pidfd_supported": pidfd_supported,
                 "pidfd_opened": pidfd_was_opened,
                 "pidfd_closed": pidfd_was_opened,
-                "failure_reason": None if audit_passed else failure_reason,
+                "failure_reason": (
+                    None if process_audit_passed else failure_reason
+                ),
                 "foreign_compute_allowed": False,
                 "unknown_compute_allowed": False,
+            },
+        )
+        run.write_json(
+            "validation/worker_evidence_outcome.json",
+            {
+                "schema_version": (
+                    "kvbench-phase3-worker-evidence-outcome-1.0.0"
+                ),
+                "passed": worker_evidence_valid,
+                "process_audit_passed": process_audit_passed,
+                "failure_reason": (
+                    None if worker_evidence_valid else failure_reason
+                ),
             },
         )
         run.write_json("validation/worker_result.json", result.to_dict())
@@ -1264,9 +1285,14 @@ def _run_point(
             model_identity = evidence.get("model_identity")
             if isinstance(model_identity, Mapping):
                 run.write_json("validation/model_identity.json", model_identity)
-        final_status = result.status if audit_passed else RunStatus.ABORTED
+        run_evidence_accepted = process_audit_passed and worker_evidence_valid
+        final_status = (
+            result.status if run_evidence_accepted else RunStatus.ABORTED
+        )
         final_reason = (
-            result.failure_reason if audit_passed else failure_reason or "process audit failed"
+            result.failure_reason
+            if run_evidence_accepted
+            else failure_reason or "run evidence validation failed"
         )
         final = _terminal_manifest(
             initial,

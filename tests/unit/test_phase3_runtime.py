@@ -29,6 +29,7 @@ from kvbench.runtime.model_loader import (
 )
 from kvbench.runtime.phase3_coordinator import (
     COMMAND_FINGERPRINT_ENV,
+    RAW_AUDIT_ROOT_ENV,
     READY_NOT_OBSERVED_V2,
     SENSITIVE_ENV_FRAGMENTS,
     SENSITIVE_ENV_KEY_EXEMPTIONS,
@@ -605,6 +606,14 @@ class Phase3EvidenceSerializationTests(unittest.TestCase):
             environment = _worker_environment(Path(directory))
 
         self.assertEqual(environment["TOKENIZERS_PARALLELISM"], "false")
+        self.assertEqual(
+            environment[RAW_AUDIT_ROOT_ENV],
+            str(Path(directory) / "raw-audits"),
+        )
+        self.assertNotEqual(
+            environment[RAW_AUDIT_ROOT_ENV],
+            environment["KVBENCH_PHASE3_IPC_PATH"],
+        )
         self.assertNotIn("HF_TOKEN", environment)
         self.assertFalse(
             any(

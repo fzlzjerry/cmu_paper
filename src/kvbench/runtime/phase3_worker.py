@@ -45,6 +45,7 @@ RELEASE_PATH_ENV = "KVBENCH_PHASE3_AUDIT_RELEASE"
 HANDSHAKE_TIMEOUT_ENV = "KVBENCH_PHASE3_HANDSHAKE_TIMEOUT_SECONDS"
 HANDSHAKE_DIR_ENV = "KVBENCH_PHASE3_HANDSHAKE_DIR"
 COMMAND_FINGERPRINT_ENV = "KVBENCH_PHASE3_COMMAND_FINGERPRINT"
+RAW_AUDIT_ROOT_ENV = "KVBENCH_PHASE3_RAW_AUDIT_ROOT"
 HANDSHAKE_TIMEOUT_SECONDS = 120.0
 MAX_REASON_CHARACTERS = 1000
 
@@ -240,19 +241,46 @@ def _await_supervisor_release(
     point_id: str,
     replicate: int,
     run_id: str,
-) -> tuple[Path, Path, Path]:
+) -> tuple[Path, Path, Path, Path]:
     ipc_path = _required_ipc_path(IPC_PATH_ENV)
     ready_path = _required_ipc_path(READY_PATH_ENV)
     release_path = _required_ipc_path(RELEASE_PATH_ENV)
     handshake_directory = _required_ipc_path(HANDSHAKE_DIR_ENV)
+    raw_audit_root = _required_ipc_path(RAW_AUDIT_ROOT_ENV)
     parents = {
         path.parent.resolve(strict=True)
-        for path in (ipc_path, ready_path, release_path, handshake_directory)
+        for path in (
+            ipc_path,
+            ready_path,
+            release_path,
+            handshake_directory,
+            raw_audit_root,
+        )
     }
     if len(parents) != 1 or len(
-        {ipc_path.name, ready_path.name, release_path.name, handshake_directory.name}
-    ) != 4:
+        {
+            ipc_path.name,
+            ready_path.name,
+            release_path.name,
+            handshake_directory.name,
+            raw_audit_root.name,
+        }
+    ) != 5:
         raise WorkerProtocolError("worker IPC paths must be distinct siblings")
+    try:
+        raw_metadata = raw_audit_root.lstat()
+    except OSError as error:
+        raise WorkerProtocolError("worker raw-audit root is absent") from error
+    if (
+        stat.S_ISLNK(raw_metadata.st_mode)
+        or not stat.S_ISDIR(raw_metadata.st_mode)
+        or raw_metadata.st_uid != os.geteuid()
+        or stat.S_IMODE(raw_metadata.st_mode) != 0o700
+        or any(raw_audit_root.iterdir())
+    ):
+        raise WorkerProtocolError(
+            "worker raw-audit root must be empty, private, and process-owned"
+        )
     _initialize_worker_handshake(
         plan_path=plan_path,
         point_id=point_id,
@@ -289,7 +317,7 @@ def _await_supervisor_release(
             raise WorkerProtocolError("worker release path is unsafe")
         if release_path.read_bytes() != b"release\n":
             raise WorkerProtocolError("worker release token is invalid")
-        return ipc_path, ready_path, release_path
+        return ipc_path, ready_path, release_path, raw_audit_root
     raise WorkerProtocolError("worker supervisor release timed out")
 
 
@@ -522,7 +550,7 @@ def execute_worker(
 ) -> Phase3WorkerResult:
     """Execute one point after the supervisor has certified exclusivity."""
 
-    ipc_path, _, _ = _await_supervisor_release(
+    ipc_path, _, _, raw_audit_root = _await_supervisor_release(
         plan_path=plan_path,
         point_id=point_id,
         replicate=replicate,
@@ -545,6 +573,7 @@ def execute_worker(
         "runtime": None,
         "numerical": None,
         "model_identity": None,
+        "raw_audit_root_initialized": raw_audit_root.is_dir(),
     }
     completed_operations = 0
     failed_operations = 0
