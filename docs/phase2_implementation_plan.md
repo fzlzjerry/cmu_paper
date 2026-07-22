@@ -1,6 +1,6 @@
 # Phase 2 implementation plan
 
-- Status: approved for implementation by the operator's Phase 2 instruction
+- Status: implemented and validated; Phase 2 PASS
 - Phase: E01 repository scaffold and schemas only
 - Starting commit: `aba70be8220972c068c6fbeac279d54e34cddbde`
 - Entry tree: clean
@@ -245,3 +245,42 @@ claim or G1 admission follows from this phase.
 3. CLI, artifact lifecycle, command reconstruction, and Makefile interfaces.
 4. Tests and governance updates.
 5. Final Phase 2 report and recorded validation evidence.
+
+## Completion record
+
+Implementation followed the planned `Inspect -> Plan -> Implement -> Test ->
+Record -> Phase Report` sequence. The plan-first commit is
+`f313817cabed42291f7a6f8ebb08bb68fbd30233`; contracts/schemas/templates are
+`e3917c0c044639c17bd4de9d0ad712253bd2beca`; CLI/artifact/Makefile work is
+`140754e8406ba275ebb2bcf8ba2c8ccc672e6d79`; admission hardening is
+`f731b7ba9e56d9231a8b7a721459f932a44de3f4`; and tests/governance are
+`407583154cc860869b335b9c6781a95241510a01`.
+
+The only scaffold addition not listed under the original exact-file section
+is `docs/method_notes/README.md`, a tracked role marker for a directory the
+inventory found empty. No method adapter or speculative implementation was
+added. Acceptance review also added strict lifecycle/completion schemas and
+adversarial link/provenance tests; these strengthen, rather than change, the
+planned artifact semantics.
+
+Final validation evidence:
+
+- `make test`: PASS, including format, lint, annotation resolution, all 11
+  configs, provenance, scope, immutable E00 evidence, package lock, 23 schema
+  tests, and 31 artifact/CLI/governance tests.
+- `make preflight-unit`: PASS, 33 CPU-only E00 unit tests. Formal GPU preflight
+  was not rerun because neither its implementation nor environment changed.
+- `make bootstrap`: PASS and reported `installed: false`.
+- Both E00 checksum ledgers: PASS when checked from their run directories.
+- E00 evidence diff from the Phase 2 entry commit: empty.
+- Quality protocol hashes: unchanged; quality remains LOCKED and no
+  `PERFORMANCE_DATA_FROZEN` marker exists.
+- No Pydantic, YAML parser, formatter, linter, or type-checker package was
+  installed. The repository's dependency-free annotation-resolution check
+  passed; neither Pyright nor mypy is present, so no third-party static type
+  analysis is claimed.
+
+B-009 remains open for durable storage, external attestation, retention, and
+immutable locator publication. B-010 remains open for a digest-pinned
+measurement container and container-parity G0. G1-G5 remain NOT EVALUATED,
+the full scan remains CLOSED, and Phase 3 has not started.
