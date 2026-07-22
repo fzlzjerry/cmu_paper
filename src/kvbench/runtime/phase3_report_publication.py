@@ -128,7 +128,7 @@ def capture_phase3_source_index(
                 "campaign_id": campaign_id,
                 "relative_directory": directory.relative_to(repository).as_posix(),
                 "preregistration_sha256": _file_digest(
-                    directory / "preregistration.json"
+                    directory / "preregistered.json"
                 ),
                 "result_sha256": _file_digest(directory / "result.json"),
                 "completion_sha256": _file_digest(directory / "COMPLETE"),
@@ -240,7 +240,10 @@ def _validate_payloads(
 ) -> dict[str, Any]:
     """Independently rederive source and report bytes for a v2 bundle."""
 
-    from kvbench.runtime.phase3_report import build_phase3_g1_report
+    from kvbench.runtime.phase3_report import (
+        Phase3ReportError,
+        build_phase3_g1_report,
+    )
 
     errors: list[str] = []
     report_sha = ""
@@ -350,7 +353,13 @@ def _validate_payloads(
                 or completion.get("written_last") is not True
             ):
                 errors.append("report completion marker differs")
-    except (OSError, UnicodeError, ValueError, ReportPublicationError) as error:
+    except (
+        OSError,
+        UnicodeError,
+        ValueError,
+        Phase3ReportError,
+        ReportPublicationError,
+    ) as error:
         errors.append(f"report validation failed closed: {type(error).__name__}")
     return {
         "schema_version": "kvbench-phase3-g1-validation-2.0.0",
@@ -370,6 +379,12 @@ def validate_phase3_g1_report_directory_v2(
         directory.parents[2]
         if repository_root is None
         else Path(repository_root).resolve(strict=True)
+    )
+    return _validate_payloads(
+        directory,
+        repository=repository,
+        require_complete=True,
+        require_immutable=True,
     )
 
 
@@ -424,14 +439,6 @@ def validate_failed_report_attempt(path: str | Path) -> dict[str, Any]:
         "valid": not errors,
         "errors": errors,
     }
-    return _validate_payloads(
-        directory,
-        repository=repository,
-        require_complete=True,
-        require_immutable=True,
-    )
-
-
 def _freeze_tree(directory: Path) -> None:
     for path in sorted(directory.rglob("*"), reverse=True):
         path.chmod(0o444 if path.is_file() else 0o555)

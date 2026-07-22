@@ -314,6 +314,21 @@ class ImmutableReportBundleTests(unittest.TestCase):
             with mock.patch(
                 "kvbench.runtime.phase3_report.build_phase3_g1_report",
                 return_value=(blocked_report(), {}, derivation),
+            ), mock.patch(
+                "kvbench.runtime.phase3_report_publication.capture_phase3_source_index",
+                return_value={
+                    "schema_version": "kvbench-phase3-report-source-index-2.0.0",
+                    "fixed_campaign_id": fixed,
+                    "growing_campaign_id": growing,
+                    "run_count": 20,
+                    "runs": [
+                        {"run_id": f"fixture-run-{index}"}
+                        for index in range(20)
+                    ],
+                    "campaigns": [],
+                    "all_checksums_valid": True,
+                    "all_sources_immutable": True,
+                },
             ):
                 result = write_phase3_g1_report(
                     fixed,
