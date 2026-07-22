@@ -111,6 +111,13 @@ SENSITIVE_ENV_FRAGMENTS = (
 SENSITIVE_ENV_KEY_EXEMPTIONS = frozenset({"TOKENIZERS_PARALLELISM"})
 HANDSHAKE_DIRECTORY_ENV = "KVBENCH_PHASE3_HANDSHAKE_DIR"
 COMMAND_FINGERPRINT_ENV = "KVBENCH_PHASE3_COMMAND_FINGERPRINT"
+READY_NOT_OBSERVED_V2 = {
+    "schema_version": "kvbench-phase3-worker-ready-2.0.0",
+    "readiness_observed": False,
+    "pid": None,
+    "process_start_time_ticks": None,
+    "cuda_imported": None,
+}
 
 
 class Phase3CoordinatorError(RuntimeError):
@@ -674,7 +681,7 @@ def _initial_manifest(
     run_id: str,
     created_at: str,
     git_sha: str,
-    environment: Mapping[str, str],
+    environment_sha256: str,
     backend: BF16BackendIdentity,
     cache: BF16CacheIdentity,
 ) -> Phase3RunManifest:
@@ -686,7 +693,7 @@ def _initial_manifest(
         schema_version=Phase3CommandSpec.SCHEMA_VERSION,
         argv=_worker_argv(plan_path, point, run_id),
         working_directory=PHASE3_REPOSITORY_ROOT,
-        environment_sha256=sha256_hex(canonical_json_bytes(dict(environment))),
+        environment_sha256=environment_sha256,
         dry_run=False,
     )
     payload = {
@@ -880,11 +887,12 @@ def _run_point(
         handshake_directory = temp_root / "worker-handshake"
         handshake_directory.mkdir(mode=0o700)
         environment = _worker_environment(temp_root)
+        environment_sha256 = sha256_hex(canonical_json_bytes(environment))
         worker_argv = _worker_argv(plan_path, point, run_id)
         expected_command_fingerprint = command_fingerprint(
             worker_argv,
             working_directory=str(REPOSITORY_ROOT),
-            environment_sha256=sha256_hex(canonical_json_bytes(environment)),
+            environment_sha256=environment_sha256,
         )
         environment[COMMAND_FINGERPRINT_ENV] = expected_command_fingerprint
         cache = _cache_identity(point)
@@ -895,7 +903,7 @@ def _run_point(
             run_id=run_id,
             created_at=created_at,
             git_sha=git_sha,
-            environment=environment,
+            environment_sha256=environment_sha256,
             backend=backend,
             cache=cache,
         )
@@ -925,7 +933,9 @@ def _run_point(
         )
         run.write_json("environment/worker_environment.json", environment)
         run.write_json("environment/live_hardware.json", live_hardware)
-        process_snapshots: dict[str, Any] = {}
+        process_snapshots: dict[str, Any] = {
+            "ready": dict(READY_NOT_OBSERVED_V2),
+        }
         result: Phase3WorkerResult | None = None
         evidence: dict[str, Any] | None = None
         process: subprocess.Popen[bytes] | None = None
