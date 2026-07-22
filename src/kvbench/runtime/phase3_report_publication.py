@@ -293,6 +293,7 @@ def _validate_payloads(
                 repository_root=repository,
                 generated_at_utc=report.generated_at_utc,
                 report_generator_git_sha=generator_sha,
+                recorded_report_git_provenance=provenance,
             )
         )
         if report_payload != expected_report.to_dict():

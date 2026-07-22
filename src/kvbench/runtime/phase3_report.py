@@ -25,6 +25,7 @@ from kvbench.runtime.phase3_campaign import (
     campaign_root,
     validate_phase3_campaign_directory,
 )
+from kvbench.runtime.process_supervision import command_fingerprint
 from kvbench.schema import (
     ClaimEligibility,
     CompletionMarker,
@@ -64,6 +65,25 @@ _CAMPAIGN_ID = re.compile(
 _REPORT_ID = re.compile(
     r"phase3-g1-[0-9]{8}t[0-9]{12}z-[0-9a-f]{8}-[0-9a-f]{6}\Z"
 )
+_PROCESS_SHA256 = re.compile(r"[0-9a-f]{64}\Z")
+_PROCESS_HANDSHAKE_STAGES = (
+    "worker_started",
+    "cuda_context_created",
+    "measurement_started",
+    "measurement_finished",
+    "evidence_flushed",
+    "worker_exiting",
+    "supervisor_reaped",
+)
+_PROCESS_WORKER_HANDSHAKE_STAGES = _PROCESS_HANDSHAKE_STAGES[:-1]
+_PROCESS_READY_NOT_OBSERVED_V2 = {
+    "schema_version": "kvbench-phase3-worker-ready-2.0.0",
+    "readiness_observed": False,
+    "pid": None,
+    "process_start_time_ticks": None,
+    "cuda_imported": None,
+}
+_PROCESS_COMMAND_FINGERPRINT_ENV = "KVBENCH_PHASE3_COMMAND_FINGERPRINT"
 _MAX_JSON_BYTES = 64 * 1024 * 1024
 _FIXED_POINT_IDS = tuple(
     point_id
@@ -206,11 +226,31 @@ def _require_equal(label: str, observed: object, expected: object) -> None:
 
 
 def _manifest_environment_join(run_dir: Path, manifest: Phase3RunManifest) -> None:
-    environment = _strict_json_object(
+    recorded_environment = _strict_json_object(
         run_dir / "environment" / "worker_environment.json"
     )
+    environment = dict(recorded_environment)
+    observed_command_fingerprint = environment.pop(
+        _PROCESS_COMMAND_FINGERPRINT_ENV,
+        None,
+    )
     digest = sha256_hex(canonical_json_bytes(environment))
-    _require_equal("worker environment SHA-256", digest, manifest.command.environment_sha256)
+    _require_equal(
+        "worker environment SHA-256",
+        digest,
+        manifest.command.environment_sha256,
+    )
+    if observed_command_fingerprint is not None:
+        expected_command_fingerprint = command_fingerprint(
+            manifest.command.argv,
+            working_directory=manifest.command.working_directory,
+            environment_sha256=manifest.command.environment_sha256,
+        )
+        _require_equal(
+            "worker command fingerprint environment",
+            observed_command_fingerprint,
+            expected_command_fingerprint,
+        )
 
 
 def _runtime_model_identity(manifest: Phase3RunManifest) -> dict[str, Any]:
@@ -518,6 +558,1629 @@ def _validate_telemetry_evidence(
         raise Phase3ReportError("telemetry sampling interval is not derived")
 
 
+def _process_integer(value: object, *, positive: bool = False) -> bool:
+    return bool(
+        isinstance(value, int)
+        and not isinstance(value, bool)
+        and value >= (1 if positive else 0)
+    )
+
+
+def _process_utc_timestamp(value: object) -> datetime | None:
+    if not isinstance(value, str) or not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if (
+        parsed.tzinfo is None
+        or parsed.utcoffset() != timezone.utc.utcoffset(None)
+    ):
+        return None
+    return parsed
+
+
+def _v2_raw_process_record(
+    value: object,
+    *,
+    category: str,
+    registered_identity: Mapping[str, object],
+) -> dict[str, object]:
+    process = _mapping(value)
+    base_keys = {
+        "gpu_uuid",
+        "pid",
+        "process_start_time_ticks",
+        "process_type",
+        "process_name",
+        "used_gpu_memory_mib",
+    }
+    expected_keys = (
+        base_keys | {"relationship", "supervised_root_identity"}
+        if category == "allowed_compute_processes"
+        else base_keys
+    )
+    expected_types = {
+        "allowed_compute_processes": {"C", "C+G"},
+        "foreign_compute_processes": {"C", "C+G"},
+        "unknown_processes": {"UNKNOWN"},
+        "graphics_processes": {"G"},
+    }[category]
+    if (
+        process is None
+        or set(process) != expected_keys
+        or not isinstance(process.get("gpu_uuid"), str)
+        or re.fullmatch(r"GPU-[A-Za-z0-9-]+\Z", str(process.get("gpu_uuid")))
+        is None
+        or not _process_integer(process.get("pid"), positive=True)
+        or not _process_integer(process.get("process_start_time_ticks"))
+        or process.get("process_type") not in expected_types
+        or not isinstance(process.get("process_name"), str)
+        or not process.get("process_name")
+        or (
+            process.get("used_gpu_memory_mib") is not None
+            and (
+                not _finite_number(process.get("used_gpu_memory_mib"))
+                or float(process["used_gpu_memory_mib"]) < 0.0
+            )
+        )
+    ):
+        raise Phase3ReportError("v2 raw GPU process record is malformed")
+    if category == "allowed_compute_processes" and (
+        process.get("relationship")
+        not in {"supervised_child", "supervised_descendant"}
+        or process.get("supervised_root_identity")
+        != {
+            "pid": registered_identity["pid"],
+            "start_time_ticks": registered_identity["start_time_ticks"],
+        }
+    ):
+        raise Phase3ReportError("v2 supervised process identity differs")
+    return {
+        "gpu_uuid": process["gpu_uuid"],
+        "pid": process["pid"],
+        "process_start_time_ticks": (
+            None
+            if process["process_start_time_ticks"] == 0
+            else process["process_start_time_ticks"]
+        ),
+    }
+
+
+def _v2_raw_process_snapshot(
+    value: object,
+    *,
+    registered_identity: Mapping[str, object],
+) -> tuple[Mapping[str, Any], tuple[dict[str, object], ...]]:
+    snapshot = _mapping(value)
+    if snapshot is None:
+        raise Phase3ReportError("v2 raw process snapshot is not an object")
+    query_exit_code = snapshot.get("query_exit_code")
+    errors = snapshot.get("errors")
+    subcommands = _sequence(snapshot.get("subcommands"))
+    captured_at = _process_utc_timestamp(snapshot.get("captured_at_utc"))
+    expected_subcommands = (
+        (
+            "gpu_index_uuid",
+            [
+                "/usr/bin/nvidia-smi",
+                "--query-gpu=index,uuid",
+                "--format=csv,noheader,nounits",
+            ],
+        ),
+        (
+            "compute_apps",
+            [
+                "/usr/bin/nvidia-smi",
+                "--query-compute-apps=gpu_uuid,pid,process_name,used_gpu_memory",
+                "--format=csv,noheader,nounits",
+            ],
+        ),
+        ("pmon", ["/usr/bin/nvidia-smi", "pmon", "-c", "1"]),
+    )
+    if (
+        set(snapshot)
+        != {
+            "captured_at_utc",
+            "query_exit_code",
+            "graphics_processes",
+            "allowed_compute_processes",
+            "foreign_compute_processes",
+            "unknown_processes",
+            "subcommands",
+            "errors",
+        }
+        or captured_at is None
+        or not isinstance(query_exit_code, int)
+        or isinstance(query_exit_code, bool)
+        or query_exit_code < 0
+        or query_exit_code > 255
+        or not isinstance(errors, list)
+        or any(not isinstance(item, str) or not item for item in errors)
+        or subcommands is None
+        or len(subcommands) not in {0, len(expected_subcommands)}
+    ):
+        raise Phase3ReportError("v2 process query outcome is malformed")
+    if not subcommands:
+        if (
+            query_exit_code != 2
+            or len(errors) != 1
+            or any(
+                snapshot.get(field) != []
+                for field in (
+                    "graphics_processes",
+                    "allowed_compute_processes",
+                    "foreign_compute_processes",
+                    "unknown_processes",
+                )
+            )
+        ):
+            raise Phase3ReportError("v2 empty process query outcome differs")
+    else:
+        exit_codes: list[int] = []
+        for raw_command, (expected_name, expected_argv) in zip(
+            subcommands,
+            expected_subcommands,
+        ):
+            command = _mapping(raw_command)
+            exit_code = None if command is None else command.get("exit_code")
+            if (
+                command is None
+                or set(command)
+                != {"name", "argv", "exit_code", "stdout", "stderr"}
+                or command.get("name") != expected_name
+                or command.get("argv") != expected_argv
+                or not isinstance(exit_code, int)
+                or isinstance(exit_code, bool)
+                or exit_code < 0
+                or exit_code > 255
+                or not isinstance(command.get("stdout"), str)
+                or not isinstance(command.get("stderr"), str)
+            ):
+                raise Phase3ReportError("v2 process query subcommand differs")
+            exit_codes.append(exit_code)
+        nonzero_codes = [code for code in exit_codes if code != 0]
+        if not errors:
+            expected_query_exit_code = 0
+        elif nonzero_codes:
+            expected_query_exit_code = nonzero_codes[0]
+        else:
+            expected_query_exit_code = 2
+        if query_exit_code != expected_query_exit_code:
+            raise Phase3ReportError(
+                "v2 aggregate process query exit code differs"
+            )
+
+    observations: list[dict[str, object]] = []
+    seen: set[tuple[object, object, object]] = set()
+    for category in (
+        "allowed_compute_processes",
+        "foreign_compute_processes",
+        "unknown_processes",
+    ):
+        records = snapshot.get(category)
+        if not isinstance(records, list):
+            raise Phase3ReportError("v2 compute process list is malformed")
+        for record in records:
+            observation = _v2_raw_process_record(
+                record,
+                category=category,
+                registered_identity=registered_identity,
+            )
+            key = (
+                observation["gpu_uuid"],
+                observation["pid"],
+                observation["process_start_time_ticks"],
+            )
+            if key in seen:
+                raise Phase3ReportError("v2 process snapshot repeats an identity")
+            seen.add(key)
+            observations.append(observation)
+
+    graphics = snapshot.get("graphics_processes")
+    if not isinstance(graphics, list):
+        raise Phase3ReportError("v2 graphics process list is malformed")
+    for record in graphics:
+        _v2_raw_process_record(
+            record,
+            category="graphics_processes",
+            registered_identity=registered_identity,
+        )
+    return snapshot, tuple(observations)
+
+
+def _v2_expected_registry_verdict(
+    observations: Sequence[Mapping[str, object]],
+    *,
+    registered_identity: Mapping[str, object],
+    allow_missing_start_time: bool,
+) -> dict[str, object]:
+    owned: list[dict[str, object]] = []
+    foreign: list[dict[str, object]] = []
+    pid_reuse: list[dict[str, object]] = []
+    unverified: list[dict[str, object]] = []
+    registered_pid = registered_identity["pid"]
+    registered_start = registered_identity["start_time_ticks"]
+    registered_gpu = registered_identity["gpu_uuid"]
+    for observation in observations:
+        retained = dict(observation)
+        pid = observation.get("pid")
+        start_time = observation.get("process_start_time_ticks")
+        gpu_uuid = observation.get("gpu_uuid")
+        if pid == registered_pid and start_time is not None and start_time != registered_start:
+            pid_reuse.append(retained)
+        elif (
+            pid == registered_pid
+            and gpu_uuid == registered_gpu
+            and start_time == registered_start
+        ):
+            owned.append(retained)
+        elif (
+            pid == registered_pid
+            and gpu_uuid == registered_gpu
+            and start_time is None
+            and allow_missing_start_time
+        ):
+            owned.append(retained)
+        elif pid == registered_pid and gpu_uuid == registered_gpu and start_time is None:
+            unverified.append(retained)
+        else:
+            foreign.append(retained)
+    if pid_reuse:
+        disposition = "pid_reuse_detected"
+    elif foreign:
+        disposition = "foreign_process_detected"
+    elif unverified:
+        disposition = "unverified_registered_pid"
+    elif owned:
+        disposition = "owned_only"
+    else:
+        disposition = "clean"
+    return {
+        "disposition": disposition,
+        "hard_failure": disposition not in {"clean", "owned_only"},
+        "owned": owned,
+        "foreign": foreign,
+        "pid_reuse": pid_reuse,
+        "unverified": unverified,
+    }
+
+
+def _v2_registry_snapshot_verdict(
+    raw_snapshot: object,
+    verdict_value: object,
+    *,
+    registered_identity: Mapping[str, object],
+    terminal_resolution_allowed: bool,
+    proc_disappeared_after_registration: bool,
+) -> Mapping[str, Any]:
+    snapshot, observations = _v2_raw_process_snapshot(
+        raw_snapshot,
+        registered_identity=registered_identity,
+    )
+    allow_missing = bool(
+        terminal_resolution_allowed and proc_disappeared_after_registration
+    )
+    expected_registry = _v2_expected_registry_verdict(
+        observations,
+        registered_identity=registered_identity,
+        allow_missing_start_time=allow_missing,
+    )
+    errors = snapshot["errors"]
+    registered_pid = registered_identity["pid"]
+    temporal_errors_owned = bool(
+        errors
+        and terminal_resolution_allowed
+        and snapshot["query_exit_code"] == 2
+        and expected_registry["disposition"] == "owned_only"
+        and all(
+            (
+                "has no pmon process type" in error
+                and f"PID {registered_pid}" in error
+            )
+            or f"cannot read /proc/{registered_pid}/stat" in error
+            for error in errors
+        )
+    )
+    clean_query = snapshot["query_exit_code"] == 0 and errors == []
+    expected = {
+        "passed": bool(
+            expected_registry["hard_failure"] is False
+            and (clean_query or temporal_errors_owned)
+        ),
+        "terminal_registered_process_resolution": temporal_errors_owned,
+        "query_evidence_hard_failure": bool(
+            not clean_query and not temporal_errors_owned
+        ),
+        "registry_verdict": expected_registry,
+        "raw_query_exit_code": snapshot["query_exit_code"],
+        "raw_errors": errors,
+    }
+    verdict = _mapping(verdict_value)
+    if verdict is None or dict(verdict) != expected:
+        raise Phase3ReportError("v2 process registry verdict differs from raw evidence")
+    return verdict
+
+
+def _validate_v2_handshake(
+    *,
+    manifest: Phase3RunManifest,
+    registry: Mapping[str, Any],
+    handshake: Mapping[str, Any],
+    worker_evidence: Mapping[str, Any],
+) -> tuple[Mapping[str, Any], str]:
+    identity = _mapping(registry.get("identity"))
+    events = _sequence(registry.get("handshake_events"))
+    outcome = _mapping(registry.get("outcome"))
+    if identity is None or events is None or outcome is None:
+        raise Phase3ReportError("v2 process registry lifecycle is incomplete")
+    spawned_at = _process_utc_timestamp(identity.get("spawned_at_utc"))
+    expected_command_fingerprint = command_fingerprint(
+        manifest.command.argv,
+        working_directory=manifest.command.working_directory,
+        environment_sha256=manifest.command.environment_sha256,
+    )
+    if (
+        set(handshake)
+        != {
+            "schema_version",
+            "run_id",
+            "events",
+            "terminal_outcome",
+            "evidence_flushed_required_for_owned_completion",
+        }
+        or handshake.get("schema_version")
+        != "kvbench-phase3-worker-handshake-2.0.0"
+        or handshake.get("run_id") != manifest.run_id
+        or handshake.get("events") != list(events)
+        or handshake.get("terminal_outcome") != dict(outcome)
+        or handshake.get("evidence_flushed_required_for_owned_completion") is not True
+        or len(events) != len(_PROCESS_HANDSHAKE_STAGES)
+        or spawned_at is None
+        or identity.get("expected_command_fingerprint")
+        != expected_command_fingerprint
+    ):
+        raise Phase3ReportError("v2 worker handshake envelope differs")
+
+    previous_timestamp: datetime | None = None
+    evidence_sha256: str | None = None
+    for sequence, (raw_event, expected_stage) in enumerate(
+        zip(events, _PROCESS_HANDSHAKE_STAGES),
+        start=1,
+    ):
+        event = _mapping(raw_event)
+        timestamp = (
+            None if event is None else _process_utc_timestamp(event.get("recorded_at_utc"))
+        )
+        expected_digest = event.get("evidence_sha256") if event is not None else None
+        if (
+            event is None
+            or set(event)
+            != {
+                "schema_version",
+                "sequence",
+                "stage",
+                "recorded_at_utc",
+                "run_id",
+                "gpu_uuid",
+                "pid",
+                "process_start_time_ticks",
+                "parent_pid",
+                "command_fingerprint",
+                "evidence_sha256",
+            }
+            or event.get("schema_version")
+            != "kvbench-phase3-worker-handshake-event-1.0.0"
+            or event.get("sequence") != sequence
+            or event.get("stage") != expected_stage
+            or timestamp is None
+            or event.get("run_id") != identity.get("run_id")
+            or event.get("gpu_uuid") != identity.get("gpu_uuid")
+            or event.get("pid") != identity.get("pid")
+            or event.get("process_start_time_ticks")
+            != identity.get("start_time_ticks")
+            or event.get("parent_pid") != identity.get("parent_pid")
+            or event.get("command_fingerprint")
+            != identity.get("expected_command_fingerprint")
+            or (
+                expected_stage == "evidence_flushed"
+                and (
+                    not isinstance(expected_digest, str)
+                    or _PROCESS_SHA256.fullmatch(expected_digest) is None
+                )
+            )
+            or expected_stage != "evidence_flushed"
+            and expected_digest is not None
+            or previous_timestamp is not None
+            and timestamp < previous_timestamp
+            or previous_timestamp is None
+            and timestamp < spawned_at
+        ):
+            raise Phase3ReportError("v2 worker handshake event differs")
+        previous_timestamp = timestamp
+        if expected_stage == "evidence_flushed":
+            evidence_sha256 = str(expected_digest)
+
+    expected_outcome = {
+        "disposition": "owned_completed",
+        "reason": "registered worker completed the ordered handshake",
+        "returncode": 0,
+        "observed_stages": list(_PROCESS_HANDSHAKE_STAGES),
+        "missing_worker_stages": [],
+        "evidence_flushed": True,
+        "worker_exiting_observed": True,
+        "full_handshake_observed": True,
+        "exclusivity_passed": True,
+    }
+    if dict(outcome) != expected_outcome or evidence_sha256 is None:
+        raise Phase3ReportError("v2 worker ownership completion differs")
+    canonical_evidence_sha256 = sha256_hex(
+        canonical_json_bytes(worker_evidence) + b"\n"
+    )
+    if evidence_sha256 != canonical_evidence_sha256:
+        raise Phase3ReportError("v2 worker evidence digest linkage differs")
+    return identity, evidence_sha256
+
+
+def _validate_process_evidence_v2_pass(
+    run_dir: Path,
+    manifest: Phase3RunManifest,
+    process_audit: Mapping[str, Any],
+    ready: Mapping[str, Any],
+    worker_result: Phase3WorkerResult,
+) -> None:
+    del worker_result
+    expected_command_fingerprint = command_fingerprint(
+        manifest.command.argv,
+        working_directory=manifest.command.working_directory,
+        environment_sha256=manifest.command.environment_sha256,
+    )
+    expected_audit_keys = {
+        "schema_version",
+        "passed",
+        "certified_helper",
+        "registry_created",
+        "ownership_verdict",
+        "exclusivity_passed",
+        "evidence_flushed",
+        "worker_exiting_observed",
+        "pid_start_time_protected",
+        "pidfd_supported",
+        "pidfd_opened",
+        "pidfd_closed",
+        "failure_reason",
+        "foreign_compute_allowed",
+        "unknown_compute_allowed",
+    }
+    if (
+        set(process_audit) != expected_audit_keys
+        or process_audit.get("schema_version")
+        != "kvbench-phase3-process-audit-2.0.0"
+        or process_audit.get("passed") is not True
+        or process_audit.get("certified_helper") != "preflight/process_query.py"
+        or process_audit.get("registry_created") is not True
+        or process_audit.get("ownership_verdict") != "owned_completed"
+        or process_audit.get("exclusivity_passed") is not True
+        or process_audit.get("evidence_flushed") is not True
+        or process_audit.get("worker_exiting_observed") is not True
+        or process_audit.get("pid_start_time_protected") is not True
+        or not isinstance(process_audit.get("pidfd_supported"), bool)
+        or not isinstance(process_audit.get("pidfd_opened"), bool)
+        or not isinstance(process_audit.get("pidfd_closed"), bool)
+        or process_audit.get("pidfd_closed") != process_audit.get("pidfd_opened")
+        or process_audit.get("failure_reason") is not None
+        or process_audit.get("foreign_compute_allowed") is not False
+        or process_audit.get("unknown_compute_allowed") is not False
+    ):
+        raise Phase3ReportError("v2 process audit outcome is not an exact pass")
+    if (
+        set(ready)
+        != {
+            "schema_version",
+            "pid",
+            "process_start_time_ticks",
+            "cuda_imported",
+        }
+        or ready.get("schema_version")
+        != "kvbench-phase3-worker-ready-1.0.0"
+        or not _process_integer(ready.get("pid"), positive=True)
+        or not _process_integer(ready.get("process_start_time_ticks"))
+        or ready.get("cuda_imported") is not False
+    ):
+        raise Phase3ReportError("v2 worker readiness identity is invalid")
+
+    registry = _strict_json_object(
+        run_dir / "environment" / "process.registry.json"
+    )
+    handshake = _strict_json_object(
+        run_dir / "environment" / "process.handshake.json"
+    )
+    worker_evidence = _strict_json_object(
+        run_dir / "raw" / "worker_evidence.json"
+    )
+    identity = _mapping(registry.get("identity"))
+    handle = _mapping(registry.get("handle"))
+    outcome = _mapping(registry.get("outcome"))
+    expected_registry_keys = {
+        "schema_version",
+        "identity",
+        "handle",
+        "handshake_events",
+        "exit_observed_without_reaping",
+        "supervisor_reaped",
+        "proc_disappeared_after_registration",
+        "device_snapshot_count",
+        "registered_compute_observed",
+        "outcome",
+        "pidfd_closed_by_supervisor",
+        "process_handle_reaped_by_supervisor",
+    }
+    expected_identity_keys = {
+        "pid",
+        "start_time_ticks",
+        "parent_pid",
+        "run_id",
+        "gpu_uuid",
+        "spawned_at_utc",
+        "expected_command_fingerprint",
+    }
+    expected_handle_keys = {
+        "process_handle_kind",
+        "process_handle_retained",
+        "pidfd_supported",
+        "pidfd_opened",
+        "pidfd",
+    }
+    if (
+        set(registry) != expected_registry_keys
+        or registry.get("schema_version")
+        != "kvbench-phase3-process-registry-2.0.0"
+        or identity is None
+        or set(identity) != expected_identity_keys
+        or identity.get("pid") != ready.get("pid")
+        or identity.get("start_time_ticks")
+        != ready.get("process_start_time_ticks")
+        or not _process_integer(identity.get("parent_pid"), positive=True)
+        or identity.get("run_id") != manifest.run_id
+        or identity.get("gpu_uuid") != manifest.gpu_uuid
+        or _process_utc_timestamp(identity.get("spawned_at_utc")) is None
+        or identity.get("expected_command_fingerprint")
+        != expected_command_fingerprint
+        or handle is None
+        or set(handle) != expected_handle_keys
+        or not isinstance(handle.get("process_handle_kind"), str)
+        or not handle.get("process_handle_kind")
+        or handle.get("process_handle_retained") is not True
+        or not isinstance(handle.get("pidfd_supported"), bool)
+        or not isinstance(handle.get("pidfd_opened"), bool)
+        or (
+            handle.get("pidfd_opened") is True
+            and not _process_integer(handle.get("pidfd"))
+        )
+        or (
+            handle.get("pidfd_opened") is False
+            and handle.get("pidfd") is not None
+        )
+        or registry.get("exit_observed_without_reaping") is not True
+        or registry.get("supervisor_reaped") is not True
+        or not isinstance(
+            registry.get("proc_disappeared_after_registration"), bool
+        )
+        or not _process_integer(registry.get("device_snapshot_count"))
+        or not isinstance(registry.get("registered_compute_observed"), bool)
+        or outcome is None
+        or registry.get("pidfd_closed_by_supervisor")
+        is not handle.get("pidfd_opened")
+        or registry.get("process_handle_reaped_by_supervisor") is not True
+        or process_audit.get("pidfd_supported")
+        is not handle.get("pidfd_supported")
+        or process_audit.get("pidfd_opened") is not handle.get("pidfd_opened")
+    ):
+        raise Phase3ReportError("v2 process registry identity or handle differs")
+
+    _validate_v2_handshake(
+        manifest=manifest,
+        registry=registry,
+        handshake=handshake,
+        worker_evidence=worker_evidence,
+    )
+    before = _strict_json_object(run_dir / "environment" / "process.before.json")
+    release = _strict_json_object(
+        run_dir / "environment" / "process.release_audit.json"
+    )
+    during = _strict_json_object(run_dir / "environment" / "process.during.json")
+    after = _strict_json_object(run_dir / "environment" / "process.after.json")
+    release_verdict = _strict_json_object(
+        run_dir / "environment" / "process.release_registry_verdict.json"
+    )
+    after_verdict = _strict_json_object(
+        run_dir / "environment" / "process.after_registry_verdict.json"
+    )
+
+    before_snapshot, before_observations = _v2_raw_process_snapshot(
+        before,
+        registered_identity=identity,
+    )
+    if (
+        before_snapshot.get("query_exit_code") != 0
+        or before_snapshot.get("errors") != []
+        or before_observations
+    ):
+        raise Phase3ReportError("v2 pre-spawn process snapshot is not clean")
+    release_join = _v2_registry_snapshot_verdict(
+        release,
+        release_verdict,
+        registered_identity=identity,
+        terminal_resolution_allowed=False,
+        proc_disappeared_after_registration=bool(
+            registry["proc_disappeared_after_registration"]
+        ),
+    )
+    expected_monitor_keys = {
+        "schema_version",
+        "sampling_target_seconds",
+        "samples",
+        "sample_registry_verdicts",
+        "saw_registered_compute",
+        "fast_exit_before_first_telemetry_poll",
+        "monitoring_stopped_before_worker_exit",
+    }
+    samples = _sequence(during.get("samples"))
+    sample_verdicts = _sequence(during.get("sample_registry_verdicts"))
+    fast_exit = during.get("fast_exit_before_first_telemetry_poll")
+    if (
+        set(during) != expected_monitor_keys
+        or during.get("schema_version")
+        != "kvbench-phase3-process-monitor-2.0.0"
+        or during.get("sampling_target_seconds") != 2.0
+        or samples is None
+        or sample_verdicts is None
+        or len(samples) != len(sample_verdicts)
+        or not isinstance(during.get("saw_registered_compute"), bool)
+        or not isinstance(fast_exit, bool)
+        or during.get("monitoring_stopped_before_worker_exit") is not False
+        or fast_exit != (len(samples) == 0)
+        or (
+            fast_exit
+            and during.get("saw_registered_compute") is not False
+        )
+        or (
+            not fast_exit
+            and (
+                not samples
+                or during.get("saw_registered_compute") is not True
+            )
+        )
+    ):
+        raise Phase3ReportError("v2 continuous process monitor differs")
+
+    joined_sample_verdicts: list[Mapping[str, Any]] = []
+    for index, (sample, verdict) in enumerate(
+        zip(samples, sample_verdicts)
+    ):
+        joined_sample_verdicts.append(
+            _v2_registry_snapshot_verdict(
+                sample,
+                verdict,
+                registered_identity=identity,
+                terminal_resolution_allowed=index == len(samples) - 1,
+                proc_disappeared_after_registration=bool(
+                    registry["proc_disappeared_after_registration"]
+                ),
+            )
+        )
+    after_join = _v2_registry_snapshot_verdict(
+        after,
+        after_verdict,
+        registered_identity=identity,
+        terminal_resolution_allowed=True,
+        proc_disappeared_after_registration=bool(
+            registry["proc_disappeared_after_registration"]
+        ),
+    )
+    all_joins = [release_join, *joined_sample_verdicts, after_join]
+    observed_registered_compute = any(
+        bool(_mapping(verdict.get("registry_verdict")).get("owned"))
+        for verdict in all_joins
+        if _mapping(verdict.get("registry_verdict")) is not None
+    )
+    during_registered_compute = any(
+        bool(_mapping(verdict.get("registry_verdict")).get("owned"))
+        for verdict in joined_sample_verdicts
+        if _mapping(verdict.get("registry_verdict")) is not None
+    )
+    if (
+        any(verdict.get("passed") is not True for verdict in all_joins)
+        or during.get("saw_registered_compute") is not during_registered_compute
+        or registry.get("registered_compute_observed")
+        is not observed_registered_compute
+        or registry.get("device_snapshot_count") != len(samples) + 2
+    ):
+        raise Phase3ReportError("v2 process audit and monitor linkage differs")
+
+
+def _v2_optional_json_object(path: Path) -> dict[str, Any] | None:
+    if not path.exists() and not path.is_symlink():
+        return None
+    return _strict_json_object(path)
+
+
+def _v2_failure_readiness_observed(ready: Mapping[str, Any]) -> bool:
+    if dict(ready) == _PROCESS_READY_NOT_OBSERVED_V2:
+        return False
+    if (
+        set(ready)
+        != {
+            "schema_version",
+            "pid",
+            "process_start_time_ticks",
+            "cuda_imported",
+        }
+        or ready.get("schema_version")
+        != "kvbench-phase3-worker-ready-1.0.0"
+        or not _process_integer(ready.get("pid"), positive=True)
+        or not _process_integer(ready.get("process_start_time_ticks"))
+        or ready.get("cuda_imported") is not False
+    ):
+        raise Phase3ReportError("v2 failed-run readiness evidence is invalid")
+    return True
+
+
+def _validate_v2_failure_audit_join(
+    manifest: Phase3RunManifest,
+    process_audit: Mapping[str, Any],
+    worker_result: Phase3WorkerResult,
+) -> bool:
+    expected_keys = {
+        "schema_version",
+        "passed",
+        "certified_helper",
+        "registry_created",
+        "ownership_verdict",
+        "exclusivity_passed",
+        "evidence_flushed",
+        "worker_exiting_observed",
+        "pid_start_time_protected",
+        "pidfd_supported",
+        "pidfd_opened",
+        "pidfd_closed",
+        "failure_reason",
+        "foreign_compute_allowed",
+        "unknown_compute_allowed",
+    }
+    boolean_fields = (
+        "registry_created",
+        "exclusivity_passed",
+        "evidence_flushed",
+        "worker_exiting_observed",
+        "pid_start_time_protected",
+        "pidfd_supported",
+        "pidfd_opened",
+        "pidfd_closed",
+    )
+    failure_reason = process_audit.get("failure_reason")
+    if (
+        set(process_audit) != expected_keys
+        or process_audit.get("schema_version")
+        != "kvbench-phase3-process-audit-2.0.0"
+        or process_audit.get("passed") is not False
+        or process_audit.get("certified_helper")
+        != "preflight/process_query.py"
+        or any(not isinstance(process_audit.get(field), bool) for field in boolean_fields)
+        or (
+            process_audit.get("ownership_verdict") is not None
+            and process_audit.get("ownership_verdict")
+            not in {
+                "owned_worker_failure",
+                "foreign_process_detected",
+                "pid_reuse_detected",
+                "unverified_process_detected",
+            }
+        )
+        or process_audit.get("pidfd_opened") is True
+        and process_audit.get("pidfd_supported") is not True
+        or process_audit.get("pidfd_closed")
+        is not process_audit.get("pidfd_opened")
+        or not isinstance(failure_reason, str)
+        or not failure_reason
+        or len(failure_reason) > 1000
+        or " ".join(failure_reason.split()) != failure_reason
+        or process_audit.get("foreign_compute_allowed") is not False
+        or process_audit.get("unknown_compute_allowed") is not False
+        or manifest.status is not RunStatus.ABORTED
+        or worker_result.status is not RunStatus.ABORTED
+        or manifest.failure_reason != failure_reason
+        or worker_result.failure_reason != failure_reason
+    ):
+        raise Phase3ReportError(
+            "v2 process audit failure is not exactly joined to an aborted run"
+        )
+    return bool(process_audit["registry_created"])
+
+
+def _v2_validate_failure_after_artifact(
+    run_dir: Path,
+    *,
+    registered_identity: Mapping[str, object],
+) -> Mapping[str, Any] | None:
+    after = _v2_optional_json_object(
+        run_dir / "environment" / "process.after.json"
+    )
+    after_error = _v2_optional_json_object(
+        run_dir / "environment" / "process.after_error.json"
+    )
+    if (after is None) == (after_error is None):
+        raise Phase3ReportError(
+            "v2 failed run must retain exactly one post-worker process outcome"
+        )
+    if after_error is not None:
+        if (
+            set(after_error) != {"type", "message"}
+            or not isinstance(after_error.get("type"), str)
+            or not after_error.get("type")
+            or after_error.get("message")
+            != "post-worker process snapshot failed"
+        ):
+            raise Phase3ReportError("v2 post-worker process error differs")
+        return None
+    assert after is not None
+    _v2_raw_process_snapshot(
+        after,
+        registered_identity=registered_identity,
+    )
+    return after
+
+
+def _validate_v2_registry_not_created_failure(
+    run_dir: Path,
+    manifest: Phase3RunManifest,
+    process_audit: Mapping[str, Any],
+    ready: Mapping[str, Any],
+) -> None:
+    if dict(ready) != _PROCESS_READY_NOT_OBSERVED_V2:
+        raise Phase3ReportError(
+            "v2 unregistered failure lacks the not-observed readiness sentinel"
+        )
+    registry = _strict_json_object(
+        run_dir / "environment" / "process.registry.json"
+    )
+    expected_registry = {
+        "schema_version": "kvbench-phase3-process-registry-2.0.0",
+        "registry_created": False,
+        "run_id": manifest.run_id,
+        "pidfd_supported": process_audit["pidfd_supported"],
+        "pidfd_closed_by_supervisor": process_audit["pidfd_opened"],
+    }
+    handshake = _strict_json_object(
+        run_dir / "environment" / "process.handshake.json"
+    )
+    expected_handshake = {
+        "schema_version": "kvbench-phase3-worker-handshake-2.0.0",
+        "run_id": manifest.run_id,
+        "events": [],
+        "terminal_outcome": None,
+        "evidence_flushed_required_for_owned_completion": True,
+    }
+    if (
+        registry != expected_registry
+        or handshake != expected_handshake
+        or process_audit.get("ownership_verdict") is not None
+        or process_audit.get("exclusivity_passed") is not False
+        or process_audit.get("evidence_flushed") is not False
+        or process_audit.get("worker_exiting_observed") is not False
+        or process_audit.get("pid_start_time_protected") is not False
+    ):
+        raise Phase3ReportError("v2 unregistered process failure evidence differs")
+    forbidden = (
+        "process.release_audit.json",
+        "process.release_registry_verdict.json",
+        "process.during.json",
+        "process.after_registry_verdict.json",
+    )
+    if any(
+        _v2_optional_json_object(run_dir / "environment" / name) is not None
+        for name in forbidden
+    ) or _v2_optional_json_object(run_dir / "raw" / "worker_evidence.json") is not None:
+        raise Phase3ReportError(
+            "v2 unregistered failure retains impossible worker artifacts"
+        )
+    placeholder_identity = {
+        "pid": 0,
+        "start_time_ticks": 0,
+        "gpu_uuid": manifest.gpu_uuid,
+    }
+    before = _v2_optional_json_object(
+        run_dir / "environment" / "process.before.json"
+    )
+    if before is not None:
+        before_snapshot, _ = _v2_raw_process_snapshot(
+            before,
+            registered_identity=placeholder_identity,
+        )
+        if before_snapshot.get("allowed_compute_processes") != []:
+            raise Phase3ReportError(
+                "v2 unregistered pre-spawn evidence claims a supervised process"
+            )
+    after = _v2_validate_failure_after_artifact(
+        run_dir,
+        registered_identity=placeholder_identity,
+    )
+    if after is not None and after.get("allowed_compute_processes") != []:
+        raise Phase3ReportError(
+            "v2 unregistered post-worker evidence claims a supervised process"
+        )
+
+
+def _v2_registered_failure_registry(
+    registry: Mapping[str, Any],
+    *,
+    manifest: Phase3RunManifest,
+    process_audit: Mapping[str, Any],
+    ready: Mapping[str, Any],
+    readiness_observed: bool,
+) -> tuple[Mapping[str, Any], Mapping[str, Any]]:
+    expected_registry_keys = {
+        "schema_version",
+        "identity",
+        "handle",
+        "handshake_events",
+        "exit_observed_without_reaping",
+        "supervisor_reaped",
+        "proc_disappeared_after_registration",
+        "device_snapshot_count",
+        "registered_compute_observed",
+        "outcome",
+        "pidfd_closed_by_supervisor",
+        "process_handle_reaped_by_supervisor",
+    }
+    expected_identity_keys = {
+        "pid",
+        "start_time_ticks",
+        "parent_pid",
+        "run_id",
+        "gpu_uuid",
+        "spawned_at_utc",
+        "expected_command_fingerprint",
+    }
+    expected_handle_keys = {
+        "process_handle_kind",
+        "process_handle_retained",
+        "pidfd_supported",
+        "pidfd_opened",
+        "pidfd",
+    }
+    identity = _mapping(registry.get("identity"))
+    handle = _mapping(registry.get("handle"))
+    outcome = _mapping(registry.get("outcome"))
+    expected_command_fingerprint = command_fingerprint(
+        manifest.command.argv,
+        working_directory=manifest.command.working_directory,
+        environment_sha256=manifest.command.environment_sha256,
+    )
+    if (
+        set(registry) != expected_registry_keys
+        or registry.get("schema_version")
+        != "kvbench-phase3-process-registry-2.0.0"
+        or identity is None
+        or set(identity) != expected_identity_keys
+        or not _process_integer(identity.get("pid"), positive=True)
+        or not _process_integer(identity.get("start_time_ticks"))
+        or not _process_integer(identity.get("parent_pid"), positive=True)
+        or identity.get("run_id") != manifest.run_id
+        or identity.get("gpu_uuid") != manifest.gpu_uuid
+        or _process_utc_timestamp(identity.get("spawned_at_utc")) is None
+        or identity.get("expected_command_fingerprint")
+        != expected_command_fingerprint
+        or handle is None
+        or set(handle) != expected_handle_keys
+        or not isinstance(handle.get("process_handle_kind"), str)
+        or not handle.get("process_handle_kind")
+        or handle.get("process_handle_retained") is not True
+        or not isinstance(handle.get("pidfd_supported"), bool)
+        or not isinstance(handle.get("pidfd_opened"), bool)
+        or handle.get("pidfd_opened") is True
+        and handle.get("pidfd_supported") is not True
+        or handle.get("pidfd_opened") is True
+        and not _process_integer(handle.get("pidfd"))
+        or handle.get("pidfd_opened") is False
+        and handle.get("pidfd") is not None
+        or registry.get("exit_observed_without_reaping") is not True
+        or registry.get("supervisor_reaped") is not True
+        or not isinstance(
+            registry.get("proc_disappeared_after_registration"), bool
+        )
+        or not _process_integer(registry.get("device_snapshot_count"))
+        or not isinstance(registry.get("registered_compute_observed"), bool)
+        or outcome is None
+        or registry.get("pidfd_closed_by_supervisor")
+        is not handle.get("pidfd_opened")
+        or registry.get("process_handle_reaped_by_supervisor") is not True
+        or process_audit.get("registry_created") is not True
+        or process_audit.get("pid_start_time_protected") is not True
+        or process_audit.get("pidfd_supported")
+        is not handle.get("pidfd_supported")
+        or process_audit.get("pidfd_opened") is not handle.get("pidfd_opened")
+    ):
+        raise Phase3ReportError("v2 failed process registry identity differs")
+    if readiness_observed and (
+        ready.get("pid") != identity.get("pid")
+        or ready.get("process_start_time_ticks")
+        != identity.get("start_time_ticks")
+    ):
+        raise Phase3ReportError(
+            "v2 failed-run readiness and registry identities differ"
+        )
+    return identity, outcome
+
+
+def _validate_v2_failure_handshake(
+    *,
+    manifest: Phase3RunManifest,
+    registry: Mapping[str, Any],
+    handshake: Mapping[str, Any],
+    identity: Mapping[str, Any],
+    outcome: Mapping[str, Any],
+    readiness_observed: bool,
+) -> None:
+    events = _sequence(registry.get("handshake_events"))
+    if events is None or not events:
+        raise Phase3ReportError("v2 registered failure lacks a terminal handshake")
+    event_stages = [
+        _mapping(event).get("stage") if _mapping(event) is not None else None
+        for event in events
+    ]
+    worker_event_count = len(events) - 1
+    expected_stages = [
+        *_PROCESS_WORKER_HANDSHAKE_STAGES[:worker_event_count],
+        "supervisor_reaped",
+    ]
+    expected_command_fingerprint = command_fingerprint(
+        manifest.command.argv,
+        working_directory=manifest.command.working_directory,
+        environment_sha256=manifest.command.environment_sha256,
+    )
+    spawned_at = _process_utc_timestamp(identity.get("spawned_at_utc"))
+    if (
+        worker_event_count < 0
+        or worker_event_count > len(_PROCESS_WORKER_HANDSHAKE_STAGES)
+        or event_stages != expected_stages
+        or spawned_at is None
+        or identity.get("expected_command_fingerprint")
+        != expected_command_fingerprint
+        or set(handshake)
+        != {
+            "schema_version",
+            "run_id",
+            "events",
+            "terminal_outcome",
+            "evidence_flushed_required_for_owned_completion",
+        }
+        or handshake.get("schema_version")
+        != "kvbench-phase3-worker-handshake-2.0.0"
+        or handshake.get("run_id") != manifest.run_id
+        or handshake.get("events") != list(events)
+        or handshake.get("terminal_outcome") != dict(outcome)
+        or handshake.get("evidence_flushed_required_for_owned_completion") is not True
+        or readiness_observed
+        and "worker_started" not in event_stages
+    ):
+        raise Phase3ReportError("v2 failed worker handshake envelope differs")
+
+    previous_timestamp: datetime | None = None
+    for raw_event, expected_stage in zip(events, expected_stages):
+        event = _mapping(raw_event)
+        timestamp = (
+            None
+            if event is None
+            else _process_utc_timestamp(event.get("recorded_at_utc"))
+        )
+        expected_digest = event.get("evidence_sha256") if event is not None else None
+        expected_sequence = _PROCESS_HANDSHAKE_STAGES.index(expected_stage) + 1
+        if (
+            event is None
+            or set(event)
+            != {
+                "schema_version",
+                "sequence",
+                "stage",
+                "recorded_at_utc",
+                "run_id",
+                "gpu_uuid",
+                "pid",
+                "process_start_time_ticks",
+                "parent_pid",
+                "command_fingerprint",
+                "evidence_sha256",
+            }
+            or event.get("schema_version")
+            != "kvbench-phase3-worker-handshake-event-1.0.0"
+            or event.get("sequence") != expected_sequence
+            or event.get("stage") != expected_stage
+            or timestamp is None
+            or timestamp < spawned_at
+            or previous_timestamp is not None
+            and timestamp < previous_timestamp
+            or event.get("run_id") != identity.get("run_id")
+            or event.get("gpu_uuid") != identity.get("gpu_uuid")
+            or event.get("pid") != identity.get("pid")
+            or event.get("process_start_time_ticks")
+            != identity.get("start_time_ticks")
+            or event.get("parent_pid") != identity.get("parent_pid")
+            or event.get("command_fingerprint")
+            != expected_command_fingerprint
+            or expected_stage == "evidence_flushed"
+            and (
+                not isinstance(expected_digest, str)
+                or _PROCESS_SHA256.fullmatch(expected_digest) is None
+            )
+            or expected_stage != "evidence_flushed"
+            and expected_digest is not None
+        ):
+            raise Phase3ReportError("v2 failed worker handshake event differs")
+        previous_timestamp = timestamp
+
+    expected_outcome_keys = {
+        "disposition",
+        "reason",
+        "returncode",
+        "observed_stages",
+        "missing_worker_stages",
+        "evidence_flushed",
+        "worker_exiting_observed",
+        "full_handshake_observed",
+        "exclusivity_passed",
+    }
+    disposition = outcome.get("disposition")
+    returncode = outcome.get("returncode")
+    evidence_flushed = "evidence_flushed" in event_stages
+    worker_exiting = "worker_exiting" in event_stages
+    full_handshake = worker_event_count == len(_PROCESS_WORKER_HANDSHAKE_STAGES)
+    missing_stages = list(
+        _PROCESS_WORKER_HANDSHAKE_STAGES[worker_event_count:]
+    )
+    hard_dispositions = {
+        "foreign_process_detected",
+        "pid_reuse_detected",
+        "unverified_process_detected",
+    }
+    if (
+        set(outcome) != expected_outcome_keys
+        or disposition not in {"owned_worker_failure", *hard_dispositions}
+        or not isinstance(returncode, int)
+        or isinstance(returncode, bool)
+        or outcome.get("observed_stages") != expected_stages
+        or outcome.get("missing_worker_stages") != missing_stages
+        or outcome.get("evidence_flushed") is not evidence_flushed
+        or outcome.get("worker_exiting_observed") is not worker_exiting
+        or outcome.get("full_handshake_observed") is not full_handshake
+        or not isinstance(outcome.get("reason"), str)
+        or not outcome.get("reason")
+    ):
+        raise Phase3ReportError("v2 failed worker ownership outcome differs")
+    if disposition == "owned_worker_failure":
+        expected_reason = (
+            "registered worker exited before evidence_flushed"
+            if not evidence_flushed
+            else f"registered worker exited with return code {returncode}"
+        )
+        if (
+            returncode == 0
+            and evidence_flushed
+            or outcome.get("reason") != expected_reason
+            or outcome.get("exclusivity_passed") is not True
+        ):
+            raise Phase3ReportError("v2 owned worker failure outcome differs")
+    elif outcome.get("exclusivity_passed") is not False:
+        raise Phase3ReportError("v2 hard process failure passed exclusivity")
+
+
+def _v2_hard_failure_from_verdict(
+    verdict: Mapping[str, Any],
+) -> tuple[int, str, str] | None:
+    registry_verdict = _mapping(verdict.get("registry_verdict"))
+    if registry_verdict is None:
+        raise Phase3ReportError("v2 failed registry verdict is malformed")
+    disposition = registry_verdict.get("disposition")
+    candidate: tuple[int, str, str] | None = None
+    if disposition == "pid_reuse_detected":
+        candidate = (
+            3,
+            "pid_reuse_detected",
+            "device snapshot observed registered PID with a new start time",
+        )
+    elif disposition == "foreign_process_detected":
+        candidate = (
+            2,
+            "foreign_process_detected",
+            "device snapshot contains an unregistered process",
+        )
+    elif disposition == "unverified_registered_pid":
+        candidate = (
+            1,
+            "unverified_process_detected",
+            "device snapshot PID lacks a retained identity basis",
+        )
+    if verdict.get("query_evidence_hard_failure") is True and (
+        candidate is None or candidate[0] < 1
+    ):
+        candidate = (
+            1,
+            "unverified_process_detected",
+            "GPU process query failed outside exact terminal worker resolution",
+        )
+    return candidate
+
+
+def _v2_validate_failure_monitor(
+    during: Mapping[str, Any],
+    *,
+    registered_identity: Mapping[str, object],
+    proc_disappeared_after_registration: bool,
+) -> tuple[list[Mapping[str, Any]], str]:
+    common_keys = {
+        "schema_version",
+        "sampling_target_seconds",
+        "samples",
+        "sample_registry_verdicts",
+    }
+    completed_keys = {
+        *common_keys,
+        "saw_registered_compute",
+        "fast_exit_before_first_telemetry_poll",
+        "monitoring_stopped_before_worker_exit",
+    }
+    samples = _sequence(during.get("samples"))
+    verdicts = _sequence(during.get("sample_registry_verdicts"))
+    if (
+        frozenset(during) not in {frozenset(common_keys), frozenset(completed_keys)}
+        or during.get("schema_version")
+        != "kvbench-phase3-process-monitor-2.0.0"
+        or during.get("sampling_target_seconds") != 2.0
+        or samples is None
+        or verdicts is None
+        or len(samples) != len(verdicts)
+    ):
+        raise Phase3ReportError("v2 failed process monitor envelope differs")
+    joined: list[Mapping[str, Any]] = []
+    for index, (sample, verdict) in enumerate(zip(samples, verdicts)):
+        joined.append(
+            _v2_registry_snapshot_verdict(
+                sample,
+                verdict,
+                registered_identity=registered_identity,
+                terminal_resolution_allowed=index == len(samples) - 1,
+                proc_disappeared_after_registration=(
+                    proc_disappeared_after_registration
+                ),
+            )
+        )
+    if set(during) == common_keys:
+        if (
+            not joined
+            or any(item.get("passed") is not True for item in joined[:-1])
+            or joined[-1].get("passed") is not False
+        ):
+            raise Phase3ReportError(
+                "v2 truncated process monitor does not end at its first failure"
+            )
+        return joined, "failed"
+
+    fast_exit = during.get("fast_exit_before_first_telemetry_poll")
+    observed_compute = any(
+        bool(_mapping(item.get("registry_verdict")).get("owned"))
+        for item in joined
+        if _mapping(item.get("registry_verdict")) is not None
+    )
+    if (
+        any(item.get("passed") is not True for item in joined)
+        or not isinstance(during.get("saw_registered_compute"), bool)
+        or not isinstance(fast_exit, bool)
+        or fast_exit != (len(joined) == 0)
+        or during.get("saw_registered_compute") is not observed_compute
+        or during.get("monitoring_stopped_before_worker_exit") is not False
+    ):
+        raise Phase3ReportError("v2 completed failed-run process monitor differs")
+    return joined, "completed"
+
+
+def _v2_validate_registered_failure_process_artifacts(
+    run_dir: Path,
+    *,
+    identity: Mapping[str, Any],
+    registry: Mapping[str, Any],
+    readiness_observed: bool,
+) -> tuple[tuple[int, str, str] | None, str | None]:
+    before = _strict_json_object(
+        run_dir / "environment" / "process.before.json"
+    )
+    before_snapshot, before_observations = _v2_raw_process_snapshot(
+        before,
+        registered_identity=identity,
+    )
+    if (
+        before_snapshot.get("query_exit_code") != 0
+        or before_snapshot.get("errors") != []
+        or before_observations
+    ):
+        raise Phase3ReportError("v2 registered failure has dirty pre-spawn evidence")
+
+    release = _v2_optional_json_object(
+        run_dir / "environment" / "process.release_audit.json"
+    )
+    release_verdict = _v2_optional_json_object(
+        run_dir / "environment" / "process.release_registry_verdict.json"
+    )
+    during = _v2_optional_json_object(
+        run_dir / "environment" / "process.during.json"
+    )
+    after_verdict = _v2_optional_json_object(
+        run_dir / "environment" / "process.after_registry_verdict.json"
+    )
+    after = _v2_validate_failure_after_artifact(
+        run_dir,
+        registered_identity=identity,
+    )
+    if not readiness_observed and any(
+        item is not None
+        for item in (release, release_verdict, during, after_verdict)
+    ):
+        raise Phase3ReportError(
+            "v2 not-ready worker has post-readiness process artifacts"
+        )
+    if release_verdict is not None and release is None:
+        raise Phase3ReportError("v2 release verdict lacks its raw snapshot")
+    if release is not None and release_verdict is None:
+        _v2_raw_process_snapshot(release, registered_identity=identity)
+
+    proc_disappeared = bool(
+        registry["proc_disappeared_after_registration"]
+    )
+    joined: list[Mapping[str, Any]] = []
+    release_join: Mapping[str, Any] | None = None
+    if release is not None and release_verdict is not None:
+        release_join = _v2_registry_snapshot_verdict(
+            release,
+            release_verdict,
+            registered_identity=identity,
+            terminal_resolution_allowed=False,
+            proc_disappeared_after_registration=proc_disappeared,
+        )
+        joined.append(release_join)
+
+    monitor_kind: str | None = None
+    monitor_joins: list[Mapping[str, Any]] = []
+    if during is not None:
+        if release_join is None or release_join.get("passed") is not True:
+            raise Phase3ReportError(
+                "v2 process monitoring started without a passed release audit"
+            )
+        monitor_joins, monitor_kind = _v2_validate_failure_monitor(
+            during,
+            registered_identity=identity,
+            proc_disappeared_after_registration=proc_disappeared,
+        )
+        joined.extend(monitor_joins)
+
+    after_join: Mapping[str, Any] | None = None
+    if after_verdict is not None:
+        if (
+            after is None
+            or release_join is None
+            or release_join.get("passed") is not True
+            or monitor_kind != "completed"
+        ):
+            raise Phase3ReportError(
+                "v2 post-reap verdict lacks the completed monitoring prefix"
+            )
+        after_join = _v2_registry_snapshot_verdict(
+            after,
+            after_verdict,
+            registered_identity=identity,
+            terminal_resolution_allowed=True,
+            proc_disappeared_after_registration=proc_disappeared,
+        )
+        joined.append(after_join)
+
+    failure_location: str | None = None
+    failed_joins: list[Mapping[str, Any]] = []
+    if release_join is not None and release_join.get("passed") is False:
+        failure_location = "release"
+        failed_joins.append(release_join)
+        if during is not None or after_verdict is not None:
+            raise Phase3ReportError(
+                "v2 process artifacts continue after a failed release audit"
+            )
+    if monitor_kind == "failed":
+        if failure_location is not None or after_verdict is not None:
+            raise Phase3ReportError(
+                "v2 process artifacts continue after a failed monitor sample"
+            )
+        failure_location = "during"
+        failed_joins.append(monitor_joins[-1])
+    if after_join is not None and after_join.get("passed") is False:
+        if failure_location is not None:
+            raise Phase3ReportError("v2 process evidence contains two failures")
+        failure_location = "after"
+        failed_joins.append(after_join)
+    if any(
+        item.get("passed") is not True and item not in failed_joins
+        for item in joined
+    ):
+        raise Phase3ReportError("v2 process verdict sequence is inconsistent")
+
+    hard_failure: tuple[int, str, str] | None = None
+    for verdict in joined:
+        candidate = _v2_hard_failure_from_verdict(verdict)
+        if candidate is not None and (
+            hard_failure is None or candidate[0] > hard_failure[0]
+        ):
+            hard_failure = candidate
+    observed_compute = any(
+        bool(_mapping(item.get("registry_verdict")).get("owned"))
+        for item in joined
+        if _mapping(item.get("registry_verdict")) is not None
+    )
+    missing_start_time_owned = False
+    for item in joined:
+        registry_verdict = _mapping(item.get("registry_verdict"))
+        owned = (
+            None
+            if registry_verdict is None
+            else _sequence(registry_verdict.get("owned"))
+        )
+        if owned is not None and any(
+            _mapping(observation) is not None
+            and _mapping(observation).get("process_start_time_ticks") is None
+            for observation in owned
+        ):
+            missing_start_time_owned = True
+            break
+    if (
+        registry.get("device_snapshot_count") != len(joined)
+        or registry.get("registered_compute_observed") is not observed_compute
+        or registry.get("proc_disappeared_after_registration")
+        is not missing_start_time_owned
+    ):
+        raise Phase3ReportError(
+            "v2 failed process registry counters differ from raw evidence"
+        )
+    return hard_failure, failure_location
+
+
+def _validate_process_evidence_v2_failure(
+    run_dir: Path,
+    manifest: Phase3RunManifest,
+    process_audit: Mapping[str, Any],
+    ready: Mapping[str, Any],
+    worker_result: Phase3WorkerResult,
+) -> None:
+    registry_created = _validate_v2_failure_audit_join(
+        manifest,
+        process_audit,
+        worker_result,
+    )
+    readiness_observed = _v2_failure_readiness_observed(ready)
+    if not registry_created:
+        _validate_v2_registry_not_created_failure(
+            run_dir,
+            manifest,
+            process_audit,
+            ready,
+        )
+        return
+
+    registry = _strict_json_object(
+        run_dir / "environment" / "process.registry.json"
+    )
+    handshake = _strict_json_object(
+        run_dir / "environment" / "process.handshake.json"
+    )
+    if _v2_optional_json_object(
+        run_dir / "raw" / "worker_evidence.json"
+    ) is not None:
+        raise Phase3ReportError(
+            "v2 process-supervision failure cannot retain parsed worker evidence"
+        )
+    identity, outcome = _v2_registered_failure_registry(
+        registry,
+        manifest=manifest,
+        process_audit=process_audit,
+        ready=ready,
+        readiness_observed=readiness_observed,
+    )
+    _validate_v2_failure_handshake(
+        manifest=manifest,
+        registry=registry,
+        handshake=handshake,
+        identity=identity,
+        outcome=outcome,
+        readiness_observed=readiness_observed,
+    )
+    if (
+        process_audit.get("ownership_verdict")
+        != outcome.get("disposition")
+        or process_audit.get("exclusivity_passed")
+        is not outcome.get("exclusivity_passed")
+        or process_audit.get("evidence_flushed")
+        is not outcome.get("evidence_flushed")
+        or process_audit.get("worker_exiting_observed")
+        is not outcome.get("worker_exiting_observed")
+    ):
+        raise Phase3ReportError(
+            "v2 failed process audit and ownership outcome differ"
+        )
+
+    hard_failure, failure_location = (
+        _v2_validate_registered_failure_process_artifacts(
+            run_dir,
+            identity=identity,
+            registry=registry,
+            readiness_observed=readiness_observed,
+        )
+    )
+    disposition = outcome.get("disposition")
+    if disposition == "owned_worker_failure":
+        if hard_failure is not None or failure_location is not None:
+            raise Phase3ReportError(
+                "v2 owned worker failure contains hard process evidence"
+            )
+        return
+
+    if (
+        hard_failure is None
+        or failure_location is None
+        or outcome.get("disposition") != hard_failure[1]
+        or outcome.get("reason") != hard_failure[2]
+    ):
+        raise Phase3ReportError(
+            "v2 hard ownership outcome is not derived from raw process evidence"
+        )
+    expected_failure_reasons = {
+        "release": "Phase3CoordinatorError: worker release audit failed closed",
+        "during": (
+            "Phase3CoordinatorError: worker process audit detected foreign "
+            "or unverified compute"
+        ),
+        "after": (
+            "Phase3CoordinatorError: post-reap process audit detected foreign "
+            "or unverified compute"
+        ),
+    }
+    if (
+        process_audit.get("failure_reason")
+        != expected_failure_reasons[failure_location]
+    ):
+        raise Phase3ReportError(
+            "v2 hard process failure reason differs from its evidence stage"
+        )
+
+
+def _validate_process_evidence_v2(
+    run_dir: Path,
+    manifest: Phase3RunManifest,
+    process_audit: Mapping[str, Any],
+    ready: Mapping[str, Any],
+    worker_result: Phase3WorkerResult,
+) -> None:
+    if process_audit.get("passed") is False:
+        _validate_process_evidence_v2_failure(
+            run_dir,
+            manifest,
+            process_audit,
+            ready,
+            worker_result,
+        )
+        return
+    _validate_process_evidence_v2_pass(
+        run_dir,
+        manifest,
+        process_audit,
+        ready,
+        worker_result,
+    )
+
+
 def _join_setup_and_process_evidence(
     run_dir: Path,
     manifest: Phase3RunManifest,
@@ -559,6 +2222,15 @@ def _join_setup_and_process_evidence(
         "blocker_b010": "OPEN",
     }
     _require_equal("live hardware", live_hardware, expected_hardware)
+
+    if (
+        process_audit.get("schema_version")
+        == "kvbench-phase3-process-audit-2.0.0"
+    ):
+        _validate_process_evidence_v2(
+            run_dir, manifest, process_audit, ready, worker_result
+        )
+        return
     expected_process_audit = {
         "schema_version": "kvbench-phase3-process-audit-1.0.0",
         "certified_helper": "preflight/process_query.py",
@@ -1782,6 +3454,58 @@ def _report_generator_provenance(
     }
 
 
+def _recorded_report_generator_provenance(
+    repository: Path,
+    source_execution_git_sha: str,
+    recorded: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Validate immutable v1 provenance without comparing current implementation blobs."""
+
+    expected_keys = {
+        "schema_version",
+        "source_execution_git_sha",
+        "report_generator_git_sha",
+        "execution_to_generator_changed_paths",
+        "source_execution_is_ancestor",
+        "reporting_only_descendant",
+    }
+    generator_git_sha = recorded.get("report_generator_git_sha")
+    changed = _sequence(recorded.get("execution_to_generator_changed_paths"))
+    if (
+        set(recorded) != expected_keys
+        or recorded.get("schema_version")
+        != "kvbench-phase3-report-git-provenance-1.0.0"
+        or recorded.get("source_execution_git_sha") != source_execution_git_sha
+        or not isinstance(generator_git_sha, str)
+        or re.fullmatch(r"[0-9a-f]{40}", generator_git_sha) is None
+        or changed is None
+        or any(not isinstance(path, str) or not path for path in changed)
+        or tuple(changed) != tuple(sorted(set(changed)))
+        or any(path not in _REPORT_GENERATOR_CHANGE_PATHS for path in changed)
+        or recorded.get("source_execution_is_ancestor") is not True
+        or recorded.get("reporting_only_descendant") is not True
+    ):
+        raise Phase3ReportError("recorded report-generator provenance is malformed")
+    source_ancestor = _git_command(
+        repository,
+        ["merge-base", "--is-ancestor", source_execution_git_sha, generator_git_sha],
+    )
+    if source_ancestor.returncode != 0:
+        raise Phase3ReportError(
+            "recorded report generator does not descend from execution"
+        )
+    observed_changed = _git_changed_paths(
+        repository,
+        source_execution_git_sha,
+        generator_git_sha,
+    )
+    if observed_changed != tuple(changed):
+        raise Phase3ReportError(
+            "recorded execution-to-generator Git diff differs"
+        )
+    return dict(recorded)
+
+
 def _criterion(
     name: str,
     runs_by_point: Mapping[str, ValidatedPhase3Run],
@@ -1970,6 +3694,7 @@ def derive_phase3_g1_report(
     repository_root: str | Path = REPOSITORY_ROOT,
     generated_at_utc: str | None = None,
     report_generator_git_sha: str | None = None,
+    recorded_report_git_provenance: Mapping[str, Any] | None = None,
 ) -> tuple[Phase3G1AdmissionReport, dict[str, dict[str, Any]], dict[str, Any]]:
     """Derive G1 solely from validated immutable run evidence."""
 
@@ -1981,11 +3706,26 @@ def derive_phase3_g1_report(
     git_sha = runs[0].manifest.git_sha
     if any(run.manifest.git_sha != git_sha for run in runs):
         raise Phase3ReportError("report input mixes Git SHAs")
-    report_git_provenance = _report_generator_provenance(
-        repository,
-        git_sha,
-        report_generator_git_sha,
-    )
+    if recorded_report_git_provenance is None:
+        report_git_provenance = _report_generator_provenance(
+            repository,
+            git_sha,
+            report_generator_git_sha,
+        )
+    else:
+        report_git_provenance = _recorded_report_generator_provenance(
+            repository,
+            git_sha,
+            recorded_report_git_provenance,
+        )
+        if (
+            report_generator_git_sha is not None
+            and report_git_provenance["report_generator_git_sha"]
+            != report_generator_git_sha
+        ):
+            raise Phase3ReportError(
+                "requested and recorded report generators differ"
+            )
     if any(
         (repository / relative).exists()
         or (repository / relative).is_symlink()
@@ -2100,6 +3840,7 @@ def build_phase3_g1_report(
     repository_root: str | Path = REPOSITORY_ROOT,
     generated_at_utc: str | None = None,
     report_generator_git_sha: str | None = None,
+    recorded_report_git_provenance: Mapping[str, Any] | None = None,
 ) -> tuple[Phase3G1AdmissionReport, dict[str, dict[str, Any]], dict[str, Any]]:
     """Load two explicit campaigns and derive their one admissible G1 report."""
 
@@ -2119,6 +3860,7 @@ def build_phase3_g1_report(
         repository_root=repository,
         generated_at_utc=generated_at_utc,
         report_generator_git_sha=report_generator_git_sha,
+        recorded_report_git_provenance=recorded_report_git_provenance,
     )
     derivation["campaign_preregistration"] = [
         {
@@ -2259,6 +4001,7 @@ def validate_phase3_g1_report_directory(
                 repository_root=directory.parents[2],
                 generated_at_utc=report.generated_at_utc,
                 report_generator_git_sha=recorded_generator_git_sha,
+                recorded_report_git_provenance=report_git_provenance,
             )
         )
         if expected_report.to_dict() != report_payload:

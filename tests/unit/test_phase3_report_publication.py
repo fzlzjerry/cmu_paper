@@ -87,7 +87,7 @@ class ReportPublicationLifecycleTests(unittest.TestCase):
                 with mock.patch(
                     "kvbench.runtime.phase3_report.build_phase3_g1_report",
                     return_value=(blocked_report(), {}, _mock_derivation()),
-                ), mock.patch(
+                ) as report_builder, mock.patch(
                     "kvbench.runtime.phase3_report_publication.capture_phase3_source_index",
                     return_value=_mock_source_index(),
                 ):
@@ -105,6 +105,13 @@ class ReportPublicationLifecycleTests(unittest.TestCase):
                         repository_root=REPOSITORY_ROOT,
                     )
                 self.assertTrue(validation["valid"])
+                self.assertTrue(
+                    any(
+                        call.kwargs.get("recorded_report_git_provenance")
+                        == _mock_derivation()["report_git_provenance"]
+                        for call in report_builder.call_args_list
+                    )
+                )
                 self.assertEqual(write_order[-1], "COMPLETE")
                 self.assertEqual(write_order.count("COMPLETE"), 1)
                 completion = json.loads((final / "COMPLETE").read_text())
