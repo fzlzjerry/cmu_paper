@@ -1,0 +1,20 @@
+{
+  "audit_errors": [],
+  "checkpoint_verified": true,
+  "command_id": "torch_probe",
+  "premature_release_detected": false,
+  "process_group_drained": true,
+  "protocol": "e00-process-audit-v1",
+  "ready_identity": {
+    "pid": 269315,
+    "process_start_time_ticks": 8370907
+  },
+  "release_published_by_collector": true,
+  "supervised_root_identity": {
+    "comm": "python",
+    "pid": 269315,
+    "ppid": 269220,
+    "start_time_ticks": 8370907
+  },
+  "timed_out": false
+}

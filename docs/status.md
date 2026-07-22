@@ -5,13 +5,16 @@ Authoritative contract: CODEX_WORKFLOW.md plus AGENTS.md
 
 ## Current state
 
-- Current phase: Phase 1 / E00 in progress
+- Current phase: Phase 1 / E00 blocked after formal G0 FAIL
 - Phase 0 status: PASS
-- Next action: review and commit the E00 implementation, then run formal G0
-- Active admission gate: G0 not started
+- Next action: provision the matching CUDA 13.0 `nvdisasm`, extend the exact
+  system/tool lock, commit that environment definition, and rerun E00 under a
+  new run ID
+- Active admission gate: G0 FAIL
 - Benchmark implementation changes: none
-- CUDA builds or executions: development-only E00 certification checks passed;
-  formal evidence not yet run
+- CUDA builds or executions: the formal E00 extension binary was produced and
+  the CUDA identity probe completed; certification runtime and sanitizers were
+  not admitted because SASS inspection failed
 - Benchmark or profiler data produced: none
 - Scientific performance claims: none
 
@@ -19,8 +22,11 @@ Authoritative contract: CODEX_WORKFLOW.md plus AGENTS.md
 
 The initial non-Git workspace contained three operator-provided inputs but no
 implementation. The reviewed Phase 0 records are committed on branch main at
-9569d938d9023a3e71d98f12234efa1897004533. B-001 is resolved. No remote is
-configured.
+9569d938d9023a3e71d98f12234efa1897004533. The E00 collector and certification
+tests are committed at 980eff7b6f5904c4828aa79d684c01a8dc45320d. Formal run
+`e00-20260722T041628.190813Z-980eff7b6f59-0dd71f2d` finalized as immutable FAIL
+evidence after `cuobjdump --dump-sass` could not find `nvdisasm`. B-001 is
+resolved; B-002 remains active. No remote is configured.
 
 At Phase 0 start, the only top-level inputs were AGENTS.md,
 CODEX_WORKFLOW.md, and Archive.zip. No implementation, model config, CUDA
@@ -66,7 +72,7 @@ repository.
 | Phase/gate | Status | Evidence |
 |---|---|---|
 | Phase 0 repository/input audit | PASS | literature manifests; method notes; source lock; decision, risks, blockers, tasks |
-| G0 hardware certification | NOT STARTED | E00 is next |
+| G0 hardware certification | FAIL | `docs/evidence/e00/e00-20260722T041628.190813Z-980eff7b6f59-0dd71f2d/` |
 | G1 BF16 baseline | NOT EVALUATED | requires G0 and E01-E04 |
 | G2-TQ | NOT EVALUATED | requires E05-E06 |
 | G2-KIVI | NOT EVALUATED | requires E07-E08 |
@@ -89,9 +95,10 @@ repository.
 
 ## Next action
 
-Review and commit the E00 collector, then invoke `make preflight` from that clean
-implementation SHA. Record native SASS, forced PTX/JIT, numerical, CUDA Graph,
-allocation, process-isolation, and all four Compute Sanitizer results; stop if
-G0 fails. E01 must implement the general append-only artifact policy, pin the
-measurement container, and pass container-parity G0 before E02 or any method
-CUDA or timing work begins.
+Provision a CUDA 13.0-matched `nvdisasm` (expected package
+`cuda-nvdisasm-13-0`), add its exact package identity, executable path, hash,
+and version to the reviewed system/tool lock, commit, and invoke `make
+preflight` under a new run ID. Preserve the failed run unchanged. E01 and all
+non-E00 CUDA or timing work remain closed until host G0 passes; E01 must then
+implement the general append-only artifact policy, pin the measurement
+container, and pass container-parity G0 before E02.

@@ -6,7 +6,7 @@ authoritative local task index until issues are created elsewhere.
 
 | ID | Scope | Depends on | Required evidence / gate | Status |
 |---|---|---|---|---|
-| E00 | Hardware preflight | Phase 0 PASS | hardware manifest; native extension; PTX/JIT; Compute Sanitizer; G0 | in progress |
+| E00 | Hardware preflight | Phase 0 PASS | hardware manifest; native extension; PTX/JIT; Compute Sanitizer; G0 | blocked: formal G0 FAIL; missing `nvdisasm` |
 | E01 | Repository scaffold and schemas | G0 | strict schemas; append-only writer; durable artifact policy; digest-pinned container; parity preflight | pending |
 | E02 | BF16 static-cache baseline | E01 and container-parity G0 | reference numerical match; static allocation; GQA audit | pending |
 | E03 | Fixed-L benchmark | E02 | fixed-L and growing-context runners; timing-boundary tests | pending |

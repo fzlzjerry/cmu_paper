@@ -1,0 +1,3737 @@
+{
+  "code": {
+    "contract_files": [
+      {
+        "path": "Makefile",
+        "sha256": "8f9af58c47993c2e82efa6dec1b630344ff6a9836a8f1c676e9334598693a838"
+      },
+      {
+        "path": "scripts/preflight.sh",
+        "sha256": "7e9587640d9614d04589361baa1fb37d5973354383c870f1ce76c3a3538ba469"
+      },
+      {
+        "path": "preflight/run_preflight.py",
+        "sha256": "7354278480fa0242d939ffb4f9d2bd06c4c2026a37515c7e61a17b7cb3890888"
+      },
+      {
+        "path": "preflight/process_query.py",
+        "sha256": "6136ab58579260ff7cbf913b890084cb0d9284ce3e28237aa2fff7835ca24312"
+      },
+      {
+        "path": "preflight/python_probe.py",
+        "sha256": "121b602db127c5c46f4214ba473b4ae8814bc1fd0090e42ed49c52136a612ce0"
+      },
+      {
+        "path": "preflight/python_integrity_probe.py",
+        "sha256": "9907a1a84f932361fcb34c1e23695f6fd6782683c6d13744a60e3dfccb8d14a3"
+      },
+      {
+        "path": "preflight/audit_checkpoint.py",
+        "sha256": "a7029349263385fdd765873790612f94925d9cd7329cc7fb0eab6a1a6b4aa990"
+      },
+      {
+        "path": "preflight/__init__.py",
+        "sha256": "5b57712241b24877981b02f0f94b4f1c661755a26b34f71514a25c6f72364574"
+      },
+      {
+        "path": "preflight/e00_cuda/build.py",
+        "sha256": "eab2d8a327e382bffb74cf6a26cc384902c4e9471c52da74d6aa4175059fe780"
+      },
+      {
+        "path": "preflight/e00_cuda/binding.cpp",
+        "sha256": "201cb17f64e5230650e0f121aa55025f789a6d015852ed10478c9b6189b0d249"
+      },
+      {
+        "path": "preflight/e00_cuda/xor_kernel.cu",
+        "sha256": "3573815608bab76bfb0076569eccfca56e18efc5839ac08f2882e4dc42a36534"
+      },
+      {
+        "path": "preflight/e00_cuda/xor_kernel.h",
+        "sha256": "d03f97355cf877bc37369d8e81ee48eef0132f31995bf6ceb3a3c0799803a4fd"
+      },
+      {
+        "path": "tests/cuda/e00_runtime_probe.py",
+        "sha256": "48b5c7dd3dc8efc5480a32940b9ea75fa0624b63f6c061c1f5c3ad2799793db6"
+      },
+      {
+        "path": "tests/cuda/e00_sanitizer_probe.py",
+        "sha256": "af51b36f49488a4944133186e5fb838c814698c40f38a343dc620dd2fb9f82eb"
+      },
+      {
+        "path": "tests/golden/test_e00_numerical.py",
+        "sha256": "e7bd3dea405cd2db7fb3f3c10e5b1fae47a43c8c4fca02f5b1d0fa79f19cd207"
+      },
+      {
+        "path": "tests/graph_capture/test_e00_graph.py",
+        "sha256": "85a61167c0b756a2ad83a894c860a4a9785b257ab0f18f279f69216fe2026b71"
+      },
+      {
+        "path": "tests/allocation/test_e00_allocation.py",
+        "sha256": "28c179576ad3bd69ed2e8773b245d0905f402ff22debf93aad9d376e811efd8a"
+      },
+      {
+        "path": "AGENTS.md",
+        "sha256": "c441b16d1dec155b4ea6578f49df60bc60a684554782890bc6af691b3d4c57b8"
+      },
+      {
+        "path": "CODEX_WORKFLOW.md",
+        "sha256": "2d4705151fa56c986ac8b7ca9c61f5a0ef502fda9884ec81ff38a02252815d54"
+      },
+      {
+        "path": "docs/decisions/0002-e00-native-host-evidence.md",
+        "sha256": "3ae20aa80b25cfc89596312cb1635c9e7d15fa463255bbe209ce0b005fea2df8"
+      },
+      {
+        "path": "docs/decisions/0003-e00-certification-protocol.md",
+        "sha256": "46f0969b42b049654db97725aa9c10b2ebcdb9e4ce5f8f961c1ea4597707c3e1"
+      },
+      {
+        "path": "docs/decisions/0004-e00-failure-evidence-and-memcheck.md",
+        "sha256": "eb7518ca37a7a9f380a4f6af76c8fa1535b0739e91afab49d4a28e5dc86b5c6c"
+      },
+      {
+        "path": "preflight/e00_manifest.schema.json",
+        "sha256": "c2be4bb520b47035c53e37d05225056a94cec6f7bc0d7d917728391a6526ddcb"
+      },
+      {
+        "path": "preflight/requirements-e00.txt",
+        "sha256": "aafe68e54cb316d6bb673dbc42087b2f971ac94668973cc3f8cc555d8a0dbb29"
+      },
+      {
+        "path": "preflight/system-packages.lock.json",
+        "sha256": "3f9f9af5a18e1dbfaaa5202ddea4ff631109de455fbff865559ff150c2fc8a6a"
+      }
+    ],
+    "git_dirty": false,
+    "git_sha": "980eff7b6f5904c4828aa79d684c01a8dc45320d",
+    "worktree_clean_before_run_directory_creation": true
+  },
+  "evidence": {
+    "checksum_ledger": {
+      "algorithm": "sha256",
+      "covers_all_payload_files": true,
+      "exclusions": [
+        "checksums.sha256",
+        "COMPLETE"
+      ],
+      "path": "checksums.sha256"
+    },
+    "checksum_verification": {
+      "command_ids": [],
+      "evidence_file_ids": [
+        "file_0da60aa4245eb96dc029",
+        "file_b4241d87d38f412ce779",
+        "file_5e5757e8cf769f1eeca6",
+        "file_33dbfa4e2daa9cdf5081",
+        "file_8d3e9020e7b28f6ef3e9",
+        "file_f10cbbc9e8aabaacdfdf",
+        "file_6a4bf07c9e11b009411b",
+        "file_3696057372eccac5ff39",
+        "file_11bd4ee7f79855085ebf",
+        "file_887ed275334817680543",
+        "file_15c94fe450ceaf563787",
+        "file_b6df340ec3bfbde9b7be",
+        "file_52ff66f47b6e6649050e",
+        "file_2e2cf4f0825ceca00691",
+        "file_d9c12c5af7524aac3633",
+        "file_bd76ccb3ef59082abc91",
+        "file_4edb68ab6579aa5b4079",
+        "file_4ffd57769f5d68104b76",
+        "file_84910af9e3e202660c48",
+        "file_9b3e80012928edede839",
+        "file_03bfdfbaaf371fb50c03",
+        "file_b434b9e3d5d740a5ce85",
+        "file_e5c5e907b815666c4970",
+        "file_880887cb247cda1616f7",
+        "file_0a0deec93f8e4b36cda4",
+        "file_eb36ebb3d28d91cfdaa1",
+        "file_4281ae56014140a6293f",
+        "file_a51a882ced51ccbc8248",
+        "file_5902909e2cafdbe8bbbd",
+        "file_d3dd278ede335b2a89f5",
+        "file_2f01cfc989a06e33d289",
+        "file_902f56b859d188929434",
+        "file_f88bb772a2a559fd5ace",
+        "file_56dc7ca7b2dcd242f989",
+        "file_e549a5849516a7ba18c6",
+        "file_b74285d058da2554ca2b",
+        "file_bce703e69cf068c92819",
+        "file_b372622406bd73e85a19",
+        "file_e826b0f2586e008c2707",
+        "file_302cdc1b68d77f412706",
+        "file_a8ffcdee05052c817eba",
+        "file_74204c67e5d34e864b05",
+        "file_54743c09d549532a6da2",
+        "file_95b8e582ad7d567f36f2",
+        "file_232b30a3e913cda988a9",
+        "file_add70ccb26458d5b13c1",
+        "file_eb6d9a137fd00352a2e1",
+        "file_491137928dcd2783738a",
+        "file_29479b25a27d744483b9",
+        "file_35b0ce0fee20f9f40df9",
+        "file_08d612c047c3f9c05bf1",
+        "file_ecf4cb6c155a147d0e02",
+        "file_eecb94ae9968f3a4f7df",
+        "file_a68942bfd01cb38e9cb7",
+        "file_28269ad31aa2ea94dc2e",
+        "file_13a17349ff922d1a9b96",
+        "file_679fc0b2c4993d683576",
+        "file_79e1ec83c350f898932f",
+        "file_a944b3e51b52f5d9d71e",
+        "file_fbfeddf6eeb62419b38b",
+        "file_eca83c1a90245f5a12f9",
+        "file_48b2ce67785c62ade758",
+        "file_949db40f2800a4f61e56",
+        "file_225577ecdeb00ee34195",
+        "file_eb6fd49152dcf1b1d502",
+        "file_a7d96fb0e0a1f65f3d52",
+        "file_7f2413ed4b2563c45524",
+        "file_acec40943a3f9c25d95f",
+        "file_3a629567726190df07de",
+        "file_f9458e354665acc068fe",
+        "file_e4b2072189be30a42ee5",
+        "file_d2ad64faed1891897298",
+        "file_22c831e3de287399fa0d",
+        "file_e1b0f7627e9ff4a2f89a",
+        "file_b3edef07c9a530ab8c75",
+        "file_a30ce12e8db1bca2bebb",
+        "file_5fcf1490ed7df5e224f2",
+        "file_9c51e3b7e268912388bf",
+        "file_4f446767438a5414dd71",
+        "file_8a0cb96f243450ac0d3a",
+        "file_6414d3241bc1ea1b63d2",
+        "file_89e8fcdfcc31b251b99f",
+        "file_723ad2835ec9d6e0d667",
+        "file_a463d3be1634c65a4f81",
+        "file_d48610b7d18ad6eddad3",
+        "file_8c8d3340d0083ff65d93",
+        "file_36cf0a65e3ff6e6758b2",
+        "file_85b9bd7263995768112e",
+        "file_62faa0cc0b5b5322de06",
+        "file_66a6e116cb4e901111e6",
+        "file_079d493495b34d84c0a2",
+        "file_38a5c4a65a50ed9d6d02",
+        "file_125df1a5b4daedc483ca",
+        "file_94d97ddaf05d25031247",
+        "file_c0cb6125e37990fe5a6f",
+        "file_0a7ea478de8141c72bd6",
+        "file_dbe0a8541aaf42f26733",
+        "file_52c54f7a250792a8aaf5",
+        "file_af90e5327d8ae0818878",
+        "file_35a2c2d80e51561dad6d"
+      ],
+      "reason": null,
+      "status": "PASS"
+    },
+    "commands": [
+      {
+        "argv": [
+          "/usr/bin/git",
+          "rev-parse",
+          "HEAD"
+        ],
+        "cwd": "/home/rockrock/cmu_paper",
+        "duration_seconds": 0.0011975060042459518,
+        "exit_code": 0,
+        "expected_exit_codes": [
+          0
+        ],
+        "finished_at_utc": "2026-07-22T04:16:27.994321Z",
+        "id": "git_head",
+        "matched_expectation": true,
+        "purpose": "Record the committed implementation SHA before evidence creation",
+        "relevant_environment": {
+          "CC": "/usr/bin/gcc",
+          "CUDA_HOME": "/usr/local/cuda-13.0",
+          "CXX": "/usr/bin/c++",
+          "GIT_CONFIG_GLOBAL": "/dev/null",
+          "GIT_CONFIG_NOSYSTEM": "1",
+          "LANG": "C",
+          "LC_ALL": "C",
+          "PATH": "/usr/local/cuda-13.0/bin:/usr/bin:/bin",
+          "PYTHONHASHSEED": "0",
+          "PYTHONNOUSERSITE": "1",
+          "PYTHONOPTIMIZE": "0",
+          "TZ": "UTC"
+        },
+        "started_at_utc": "2026-07-22T04:16:27.993122Z",
+        "stderr": {
+          "path": "commands/git_head.stderr.txt",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "size_bytes": 0
+        },
+        "stdout": {
+          "path": "commands/git_head.stdout.txt",
+          "sha256": "a2015b9e22a3311caf7c1cc66ee863790af7d58d9b0da4667e42f2633c0add36",
+          "size_bytes": 41
+        }
+      },
+      {
+        "argv": [
+          "/usr/bin/git",
+          "status",
+          "--porcelain=v1",
+          "--untracked-files=all"
+        ],
+        "cwd": "/home/rockrock/cmu_paper",
+        "duration_seconds": 0.0017002780077746138,
+        "exit_code": 0,
+        "expected_exit_codes": [
+          0
+        ],
+        "finished_at_utc": "2026-07-22T04:16:27.996027Z",
+        "id": "git_status_clean",
+        "matched_expectation": true,
+        "purpose": "Prove the worktree was clean before evidence-directory creation",
+        "relevant_environment": {
+          "CC": "/usr/bin/gcc",
+          "CUDA_HOME": "/usr/local/cuda-13.0",
+          "CXX": "/usr/bin/c++",
+          "GIT_CONFIG_GLOBAL": "/dev/null",
+          "GIT_CONFIG_NOSYSTEM": "1",
+          "LANG": "C",
+          "LC_ALL": "C",
+          "PATH": "/usr/local/cuda-13.0/bin:/usr/bin:/bin",
+          "PYTHONHASHSEED": "0",
+          "PYTHONNOUSERSITE": "1",
+          "PYTHONOPTIMIZE": "0",
+          "TZ": "UTC"
+        },
+        "started_at_utc": "2026-07-22T04:16:27.994331Z",
+        "stderr": {
+          "path": "commands/git_status_clean.stderr.txt",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "size_bytes": 0
+        },
+        "stdout": {
+          "path": "commands/git_status_clean.stdout.txt",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "size_bytes": 0
+        }
+      },
+      {
+        "argv": [
+          "/usr/bin/git",
+          "ls-files",
+          "--stage",
+          "-z",
+          "--",
+          "Makefile",
+          "scripts/preflight.sh",
+          "preflight/run_preflight.py",
+          "preflight/process_query.py",
+          "preflight/python_probe.py",
+          "preflight/python_integrity_probe.py",
+          "preflight/audit_checkpoint.py",
+          "preflight/__init__.py",
+          "preflight/e00_cuda/build.py",
+          "preflight/e00_cuda/binding.cpp",
+          "preflight/e00_cuda/xor_kernel.cu",
+          "preflight/e00_cuda/xor_kernel.h",
+          "tests/cuda/e00_runtime_probe.py",
+          "tests/cuda/e00_sanitizer_probe.py",
+          "tests/golden/test_e00_numerical.py",
+          "tests/graph_capture/test_e00_graph.py",
+          "tests/allocation/test_e00_allocation.py",
+          "AGENTS.md",
+          "CODEX_WORKFLOW.md",
+          "docs/decisions/0002-e00-native-host-evidence.md",
+          "docs/decisions/0003-e00-certification-protocol.md",
+          "docs/decisions/0004-e00-failure-evidence-and-memcheck.md",
+          "preflight/e00_manifest.schema.json",
+          "preflight/requirements-e00.txt",
+          "preflight/system-packages.lock.json"
+        ],
+        "cwd": "/home/rockrock/cmu_paper",
+        "duration_seconds": 0.0010623000125633553,
+        "exit_code": 0,
+        "expected_exit_codes": [
+          0
+        ],
+        "finished_at_utc": "2026-07-22T04:16:27.997098Z",
+        "id": "git_contract_index",
+        "matched_expectation": true,
+        "purpose": "Record committed index object IDs for all executed contract files",
+        "relevant_environment": {
+          "CC": "/usr/bin/gcc",
+          "CUDA_HOME": "/usr/local/cuda-13.0",
+          "CXX": "/usr/bin/c++",
+          "GIT_CONFIG_GLOBAL": "/dev/null",
+          "GIT_CONFIG_NOSYSTEM": "1",
+          "LANG": "C",
+          "LC_ALL": "C",
+          "PATH": "/usr/local/cuda-13.0/bin:/usr/bin:/bin",
+          "PYTHONHASHSEED": "0",
+          "PYTHONNOUSERSITE": "1",
+          "PYTHONOPTIMIZE": "0",
+          "TZ": "UTC"
+        },
+        "started_at_utc": "2026-07-22T04:16:27.996040Z",
+        "stderr": {
+          "path": "commands/git_contract_index.stderr.txt",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "size_bytes": 0
+        },
+        "stdout": {
+          "path": "commands/git_contract_index.stdout.txt",
+          "sha256": "b8a79d19c79a5102db0604b1f04e7af7a16da6ccd988349eac7b64539d57d04f",
+          "size_bytes": 2036
+        }
+      },
+      {
+        "argv": [
+          "/usr/bin/git",
+          "ls-files",
+          "-v",
+          "-z",
+          "--",
+          "Makefile",
+          "scripts/preflight.sh",
+          "preflight/run_preflight.py",
+          "preflight/process_query.py",
+          "preflight/python_probe.py",
+          "preflight/python_integrity_probe.py",
+          "preflight/audit_checkpoint.py",
+          "preflight/__init__.py",
+          "preflight/e00_cuda/build.py",
+          "preflight/e00_cuda/binding.cpp",
+          "preflight/e00_cuda/xor_kernel.cu",
+          "preflight/e00_cuda/xor_kernel.h",
+          "tests/cuda/e00_runtime_probe.py",
+          "tests/cuda/e00_sanitizer_probe.py",
+          "tests/golden/test_e00_numerical.py",
+          "tests/graph_capture/test_e00_graph.py",
+          "tests/allocation/test_e00_allocation.py",
+          "AGENTS.md",
+          "CODEX_WORKFLOW.md",
+          "docs/decisions/0002-e00-native-host-evidence.md",
+          "docs/decisions/0003-e00-certification-protocol.md",
+          "docs/decisions/0004-e00-failure-evidence-and-memcheck.md",
+          "preflight/e00_manifest.schema.json",
+          "preflight/requirements-e00.txt",
+          "preflight/system-packages.lock.json"
+        ],
+        "cwd": "/home/rockrock/cmu_paper",
+        "duration_seconds": 0.001171446987427771,
+        "exit_code": 0,
+        "expected_exit_codes": [
+          0
+        ],
+        "finished_at_utc": "2026-07-22T04:16:27.998277Z",
+        "id": "git_contract_flags",
+        "matched_expectation": true,
+        "purpose": "Reject assume-unchanged or skip-worktree contract files",
+        "relevant_environment": {
+          "CC": "/usr/bin/gcc",
+          "CUDA_HOME": "/usr/local/cuda-13.0",
+          "CXX": "/usr/bin/c++",
+          "GIT_CONFIG_GLOBAL": "/dev/null",
+          "GIT_CONFIG_NOSYSTEM": "1",
+          "LANG": "C",
+          "LC_ALL": "C",
+          "PATH": "/usr/local/cuda-13.0/bin:/usr/bin:/bin",
+          "PYTHONHASHSEED": "0",
+          "PYTHONNOUSERSITE": "1",
+          "PYTHONOPTIMIZE": "0",
+          "TZ": "UTC"
+        },
+        "started_at_utc": "2026-07-22T04:16:27.997110Z",
+        "stderr": {
+          "path": "commands/git_contract_flags.stderr.txt",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "size_bytes": 0
+        },
+        "stdout": {
+          "path": "commands/git_contract_flags.stdout.txt",
+          "sha256": "745ce350b663aa41e2c4ac8194efa11dc83da5e3aeeccca35c2ec4a398a20832",
+          "size_bytes": 836
+        }
+      },
+      {
+        "argv": [
+          "/home/rockrock/cmu_paper/.venv/bin/python",
+          "/home/rockrock/cmu_paper/preflight/process_query.py"
+        ],
+        "cwd": "/home/rockrock/cmu_paper",
+        "duration_seconds": 0.1912968950055074,
+        "exit_code": 0,
+        "expected_exit_codes": [
+          0
+        ],
+        "finished_at_utc": "2026-07-22T04:16:28.190788Z",
+        "id": "process_initial_before_directory",
+        "matched_expectation": true,
+        "purpose": "Check GPU process isolation before evidence-directory creation",
+        "relevant_environment": {
+          "CC": "/usr/bin/gcc",
+          "CUDA_HOME": "/usr/local/cuda-13.0",
+          "CXX": "/usr/bin/c++",
+          "GIT_CONFIG_GLOBAL": "/dev/null",
+          "GIT_CONFIG_NOSYSTEM": "1",
+          "LANG": "C",
+          "LC_ALL": "C",
+          "PATH": "/usr/local/cuda-13.0/bin:/usr/bin:/bin",
+          "PYTHONHASHSEED": "0",
+          "PYTHONNOUSERSITE": "1",
+          "PYTHONOPTIMIZE": "0",
+          "TZ": "UTC"
+        },
+        "started_at_utc": "2026-07-22T04:16:27.999499Z",
+        "stderr": {
+          "path": "commands/process_initial_before_directory.stderr.txt",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "size_bytes": 0
+        },
+        "stdout": {
+          "path": "commands/process_initial_before_directory.stdout.txt",
+          "sha256": "afd7aeac4ce0011fadc9156add7fecfef2826323edb6ebfe84d96087de910967",
+          "size_bytes": 1361
+        }
+      },
+      {
+        "argv": [
+          "/usr/bin/nvidia-smi",
+          "-L"
+        ],
+        "cwd": "/home/rockrock/cmu_paper",
+        "duration_seconds": 0.030262154003139585,
+        "exit_code": 0,
+        "expected_exit_codes": [
+          0
+        ],
+        "finished_at_utc": "2026-07-22T04:16:28.241264Z",
+        "id": "nvidia_smi_list",
+        "matched_expectation": true,
+        "purpose": "Record NVIDIA GPU list",
+        "relevant_environment": {
+          "CC": "/usr/bin/gcc",
+          "CUDA_HOME": "/usr/local/cuda-13.0",
+          "CXX": "/usr/bin/c++",
+          "GIT_CONFIG_GLOBAL": "/dev/null",
+          "GIT_CONFIG_NOSYSTEM": "1",
+          "LANG": "C",
+          "LC_ALL": "C",
+          "PATH": "/usr/local/cuda-13.0/bin:/usr/bin:/bin",
+          "PYTHONHASHSEED": "0",
+          "PYTHONNOUSERSITE": "1",
+          "PYTHONOPTIMIZE": "0",
+          "TZ": "UTC"
+        },
+        "started_at_utc": "2026-07-22T04:16:28.211002Z",
+        "stderr": {
+          "path": "commands/nvidia_smi_list.stderr.txt",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "size_bytes": 0
+        },
+        "stdout": {
+          "path": "commands/nvidia_smi_list.stdout.txt",
+          "sha256": "e68f30e407649a12ce7974dbed14431df243dc3dc8ce1a631814bac12d1f132e",
+          "size_bytes": 106
+        }
+      },
+      {
+        "argv": [
+          "/usr/bin/nvidia-smi",
+          "-q"
+        ],
+        "cwd": "/home/rockrock/cmu_paper",
+        "duration_seconds": 0.2528391490050126,
+        "exit_code": 0,
+        "expected_exit_codes": [
+          0
+        ],
+        "finished_at_utc": "2026-07-22T04:16:28.495982Z",
+        "id": "nvidia_smi_query_full",
+        "matched_expectation": true,
+        "purpose": "Record full NVIDIA hardware and driver inventory",
+        "relevant_environment": {
+          "CC": "/usr/bin/gcc",
+          "CUDA_HOME": "/usr/local/cuda-13.0",
+          "CXX": "/usr/bin/c++",
+          "GIT_CONFIG_GLOBAL": "/dev/null",
+          "GIT_CONFIG_NOSYSTEM": "1",
+          "LANG": "C",
+          "LC_ALL": "C",
+          "PATH": "/usr/local/cuda-13.0/bin:/usr/bin:/bin",
+          "PYTHONHASHSEED": "0",
+          "PYTHONNOUSERSITE": "1",
+          "PYTHONOPTIMIZE": "0",
+          "TZ": "UTC"
+        },
+        "started_at_utc": "2026-07-22T04:16:28.243152Z",
+        "stderr": {
+          "path": "commands/nvidia_smi_query_full.stderr.txt",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "size_bytes": 0
+        },
+        "stdout": {
+          "path": "commands/nvidia_smi_query_full.stdout.txt",
+          "sha256": "50f2fc800477d2ac5b946401c5b4c1c4a31a4af1ffcd13fe79700b960dfe33cb",
+          "size_bytes": 14971
+        }
+      },
+      {
+        "argv": [
+          "/usr/bin/nvidia-smi"
+        ],
+        "cwd": "/home/rockrock/cmu_paper",
+        "duration_seconds": 0.07702727700234391,
+        "exit_code": 0,
+        "expected_exit_codes": [
+          0
+        ],
+        "finished_at_utc": "2026-07-22T04:16:28.575734Z",
+        "id": "nvidia_smi_table",
+        "matched_expectation": true,
+        "purpose": "Record driver-supported CUDA version and current process table",
+        "relevant_environment": {
+          "CC": "/usr/bin/gcc",
+          "CUDA_HOME": "/usr/local/cuda-13.0",
+          "CXX": "/usr/bin/c++",
+          "GIT_CONFIG_GLOBAL": "/dev/null",
+          "GIT_CONFIG_NOSYSTEM": "1",
+          "LANG": "C",
+          "LC_ALL": "C",
+          "PATH": "/usr/local/cuda-13.0/bin:/usr/bin:/bin",
+          "PYTHONHASHSEED": "0",
+          "PYTHONNOUSERSITE": "1",
+          "PYTHONOPTIMIZE": "0",
+          "TZ": "UTC"
+        },
+        "started_at_utc": "2026-07-22T04:16:28.498706Z",
+        "stderr": {
+          "path": "commands/nvidia_smi_table.stderr.txt",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "size_bytes": 0
+        },
+        "stdout": {
+          "path": "commands/nvidia_smi_table.stdout.txt",
+          "sha256": "1ef28ec19b446290ccd802f4ab6fa3cfd55c2e4b8546e6e2b7ea83a137827424",
+          "size_bytes": 1781
+        }
+      },
+      {
+        "argv": [
+          "/usr/bin/nvidia-smi",
+          "--query-gpu=index,name,uuid,pci.bus_id,pci.device_id,compute_cap,memory.total,ecc.mode.current,ecc.mode.pending,power.draw,power.limit,power.default_limit,power.min_limit,power.max_limit,clocks.current.sm,clocks.current.memory,clocks.max.sm,clocks.max.memory,temperature.gpu,vbios_version,persistence_mode,compute_mode,mig.mode.current,display_active,pstate,driver_version",
+          "--format=csv,noheader,nounits"
+        ],
+        "cwd": "/home/rockrock/cmu_paper",
+        "duration_seconds": 0.0766544309881283,
+        "exit_code": 0,
+        "expected_exit_codes": [
+          0
+        ],
+        "finished_at_utc": "2026-07-22T04:16:28.654231Z",
+        "id": "nvidia_smi_gpu_csv",
+        "matched_expectation": true,
+        "purpose": "Record parseable GPU identity, memory, power, clocks, thermals, and firmware",
+        "relevant_environment": {
+          "CC": "/usr/bin/gcc",
+          "CUDA_HOME": "/usr/local/cuda-13.0",
+          "CXX": "/usr/bin/c++",
+          "GIT_CONFIG_GLOBAL": "/dev/null",
+          "GIT_CONFIG_NOSYSTEM": "1",
+          "LANG": "C",
+          "LC_ALL": "C",
+          "PATH": "/usr/local/cuda-13.0/bin:/usr/bin:/bin",
+          "PYTHONHASHSEED": "0",
+          "PYTHONNOUSERSITE": "1",
+          "PYTHONOPTIMIZE": "0",
+          "TZ": "UTC"
+        },
+        "started_at_utc": "2026-07-22T04:16:28.577579Z",
+        "stderr": {
+          "path": "commands/nvidia_smi_gpu_csv.stderr.txt",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "size_bytes": 0
+        },
+        "stdout": {
+          "path": "commands/nvidia_smi_gpu_csv.stdout.txt",
+          "sha256": "4d272e2bbbbd6c75ff66b32effd3b9bffc6d748f5ce649c8e1c21455910d6bcd",
+          "size_bytes": 289
+        }
+      },
+      {
+        "argv": [
+          "/usr/bin/lscpu",
+          "--json"
+        ],
+        "cwd": "/home/rockrock/cmu_paper",
+        "duration_seconds": 0.0059588449948932976,
+        "exit_code": 0,
+        "expected_exit_codes": [
+          0
+        ],
+        "finished_at_utc": "2026-07-22T04:16:28.662163Z",
+        "id": "host_lscpu",
+        "matched_expectation": true,
+        "purpose": "Record CPU topology",
+        "relevant_environment": {
+          "CC": "/usr/bin/gcc",
+          "CUDA_HOME": "/usr/local/cuda-13.0",
+          "CXX": "/usr/bin/c++",
+          "GIT_CONFIG_GLOBAL": "/dev/null",
+          "GIT_CONFIG_NOSYSTEM": "1",
+          "LANG": "C",
+          "LC_ALL": "C",
+          "PATH": "/usr/local/cuda-13.0/bin:/usr/bin:/bin",
+          "PYTHONHASHSEED": "0",
+          "PYTHONNOUSERSITE": "1",
+          "PYTHONOPTIMIZE": "0",
+          "TZ": "UTC"
+        },
+        "started_at_utc": "2026-07-22T04:16:28.656198Z",
+        "stderr": {
+          "path": "commands/host_lscpu.stderr.txt",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "size_bytes": 0
+        },
+        "stdout": {
+          "path": "commands/host_lscpu.stdout.txt",
+          "sha256": "508d89e7715d89e4f77ced06ec13fdf7b3e3470d0f54336cf1181ea7d9cfdcd2",
+          "size_bytes": 5300
+        }
+      },
+      {
+        "argv": [
+          "/usr/bin/cat",
+          "/proc/meminfo"
+        ],
+        "cwd": "/home/rockrock/cmu_paper",
+        "duration_seconds": 0.0016510139976162463,
+        "exit_code": 0,
+        "expected_exit_codes": [
+          0
+        ],
+        "finished_at_utc": "2026-07-22T04:16:28.665505Z",
+        "id": "host_meminfo",
+        "matched_expectation": true,
+        "purpose": "Record host memory",
+        "relevant_environment": {
+          "CC": "/usr/bin/gcc",
+          "CUDA_HOME": "/usr/local/cuda-13.0",
+          "CXX": "/usr/bin/c++",
+          "GIT_CONFIG_GLOBAL": "/dev/null",
+          "GIT_CONFIG_NOSYSTEM": "1",
+          "LANG": "C",
+          "LC_ALL": "C",
+          "PATH": "/usr/local/cuda-13.0/bin:/usr/bin:/bin",
+          "PYTHONHASHSEED": "0",
+          "PYTHONNOUSERSITE": "1",
+          "PYTHONOPTIMIZE": "0",
+          "TZ": "UTC"
+        },
+        "started_at_utc": "2026-07-22T04:16:28.663855Z",
+        "stderr": {
+          "path": "commands/host_meminfo.stderr.txt",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "size_bytes": 0
+        },
+        "stdout": {
+          "path": "commands/host_meminfo.stdout.txt",
+          "sha256": "38ac590fb8f1ad67628b7c3707017ba748d1e796faee5edd1cb90b7895f27142",
+          "size_bytes": 1618
+        }
+      },
+      {
+        "argv": [
+          "/usr/bin/cat",
+          "/etc/os-release"
+        ],
+        "cwd": "/home/rockrock/cmu_paper",
+        "duration_seconds": 0.0016893059946596622,
+        "exit_code": 0,
+        "expected_exit_codes": [
+          0
+        ],
+        "finished_at_utc": "2026-07-22T04:16:28.668854Z",
+        "id": "host_os_release",
+        "matched_expectation": true,
+        "purpose": "Record host OS release",
+        "relevant_environment": {
+          "CC": "/usr/bin/gcc",
+          "CUDA_HOME": "/usr/local/cuda-13.0",
+          "CXX": "/usr/bin/c++",
+          "GIT_CONFIG_GLOBAL": "/dev/null",
+          "GIT_CONFIG_NOSYSTEM": "1",
+          "LANG": "C",
+          "LC_ALL": "C",
+          "PATH": "/usr/local/cuda-13.0/bin:/usr/bin:/bin",
+          "PYTHONHASHSEED": "0",
+          "PYTHONNOUSERSITE": "1",
+          "PYTHONOPTIMIZE": "0",
+          "TZ": "UTC"
+        },
+        "started_at_utc": "2026-07-22T04:16:28.667166Z",
+        "stderr": {
+          "path": "commands/host_os_release.stderr.txt",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "size_bytes": 0
+        },
+        "stdout": {
+          "path": "commands/host_os_release.stdout.txt",
+          "sha256": "01af466feb100306498c86aa6bad1815e33036019aa34d4362c20f374ea5c829",
+          "size_bytes": 400
+        }
+      },
+      {
+        "argv": [
+          "/usr/bin/uname",
+          "-r"
+        ],
+        "cwd": "/home/rockrock/cmu_paper",
+        "duration_seconds": 0.0016124109970405698,
+        "exit_code": 0,
+        "expected_exit_codes": [
+          0
+        ],
+        "finished_at_utc": "2026-07-22T04:16:28.672113Z",
+        "id": "host_kernel_release",
+        "matched_expectation": true,
+        "purpose": "Record host kernel release",
+        "relevant_environment": {
+          "CC": "/usr/bin/gcc",
+          "CUDA_HOME": "/usr/local/cuda-13.0",
+          "CXX": "/usr/bin/c++",
+          "GIT_CONFIG_GLOBAL": "/dev/null",
+          "GIT_CONFIG_NOSYSTEM": "1",
+          "LANG": "C",
+          "LC_ALL": "C",
+          "PATH": "/usr/local/cuda-13.0/bin:/usr/bin:/bin",
+          "PYTHONHASHSEED": "0",
+          "PYTHONNOUSERSITE": "1",
+          "PYTHONOPTIMIZE": "0",
+          "TZ": "UTC"
+        },
+        "started_at_utc": "2026-07-22T04:16:28.670502Z",
+        "stderr": {
+          "path": "commands/host_kernel_release.stderr.txt",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "size_bytes": 0
+        },
+        "stdout": {
+          "path": "commands/host_kernel_release.stdout.txt",
+          "sha256": "3f3acce40dc80be8d1c0746ec7d7b7d6988d29215b5b0d2cba9125c98ffaec34",
+          "size_bytes": 17
+        }
+      },
+      {
+        "argv": [
+          "/usr/bin/uname",
+          "-v"
+        ],
+        "cwd": "/home/rockrock/cmu_paper",
+        "duration_seconds": 0.0016544700047234073,
+        "exit_code": 0,
+        "expected_exit_codes": [
+          0
+        ],
+        "finished_at_utc": "2026-07-22T04:16:28.675435Z",
+        "id": "host_kernel_version",
+        "matched_expectation": true,
+        "purpose": "Record host kernel version",
+        "relevant_environment": {
+          "CC": "/usr/bin/gcc",
+          "CUDA_HOME": "/usr/local/cuda-13.0",
+          "CXX": "/usr/bin/c++",
+          "GIT_CONFIG_GLOBAL": "/dev/null",
+          "GIT_CONFIG_NOSYSTEM": "1",
+          "LANG": "C",
+          "LC_ALL": "C",
+          "PATH": "/usr/local/cuda-13.0/bin:/usr/bin:/bin",
+          "PYTHONHASHSEED": "0",
+          "PYTHONNOUSERSITE": "1",
+          "PYTHONOPTIMIZE": "0",
+          "TZ": "UTC"
+        },
+        "started_at_utc": "2026-07-22T04:16:28.673780Z",
+        "stderr": {
+          "path": "commands/host_kernel_version.stderr.txt",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "size_bytes": 0
+        },
+        "stdout": {
+          "path": "commands/host_kernel_version.stdout.txt",
+          "sha256": "f7a2eb8cd8e13b2d02c7deb3259f0e2081d4698f56b59d0bb0348c71ceb0f33a",
+          "size_bytes": 65
+        }
+      },
+      {
+        "argv": [
+          "/usr/bin/uname",
+          "-m"
+        ],
+        "cwd": "/home/rockrock/cmu_paper",
+        "duration_seconds": 0.0016326890035998076,
+        "exit_code": 0,
+        "expected_exit_codes": [
+          0
+        ],
+        "finished_at_utc": "2026-07-22T04:16:28.678725Z",
+        "id": "host_machine",
+        "matched_expectation": true,
+        "purpose": "Record host machine architecture",
+        "relevant_environment": {
+          "CC": "/usr/bin/gcc",
+          "CUDA_HOME": "/usr/local/cuda-13.0",
+          "CXX": "/usr/bin/c++",
+          "GIT_CONFIG_GLOBAL": "/dev/null",
+          "GIT_CONFIG_NOSYSTEM": "1",
+          "LANG": "C",
+          "LC_ALL": "C",
+          "PATH": "/usr/local/cuda-13.0/bin:/usr/bin:/bin",
+          "PYTHONHASHSEED": "0",
+          "PYTHONNOUSERSITE": "1",
+          "PYTHONOPTIMIZE": "0",
+          "TZ": "UTC"
+        },
+        "started_at_utc": "2026-07-22T04:16:28.677092Z",
+        "stderr": {
+          "path": "commands/host_machine.stderr.txt",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "size_bytes": 0
+        },
+        "stdout": {
+          "path": "commands/host_machine.stdout.txt",
+          "sha256": "aaf631698ae5160ceb04a97681a14887fdcab47cd6e0f163c87485b3b1340b62",
+          "size_bytes": 7
+        }
+      },
+      {
+        "argv": [
+          "/usr/bin/hostname"
+        ],
+        "cwd": "/home/rockrock/cmu_paper",
+        "duration_seconds": 0.000620324004557915,
+        "exit_code": 0,
+        "expected_exit_codes": [
+          0
+        ],
+        "finished_at_utc": "2026-07-22T04:16:28.681003Z",
+        "id": "host_hostname",
+        "matched_expectation": true,
+        "purpose": "Record host name",
+        "relevant_environment": {
+          "CC": "/usr/bin/gcc",
+          "CUDA_HOME": "/usr/local/cuda-13.0",
+          "CXX": "/usr/bin/c++",
+          "GIT_CONFIG_GLOBAL": "/dev/null",
+          "GIT_CONFIG_NOSYSTEM": "1",
+          "LANG": "C",
+          "LC_ALL": "C",
+          "PATH": "/usr/local/cuda-13.0/bin:/usr/bin:/bin",
+          "PYTHONHASHSEED": "0",
+          "PYTHONNOUSERSITE": "1",
+          "PYTHONOPTIMIZE": "0",
+          "TZ": "UTC"
+        },
+        "started_at_utc": "2026-07-22T04:16:28.680384Z",
+        "stderr": {
+          "path": "commands/host_hostname.stderr.txt",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "size_bytes": 0
+        },
+        "stdout": {
+          "path": "commands/host_hostname.stdout.txt",
+          "sha256": "924c749fe65bf9cac77ad6f9ba29055f7c9877ab6d96ba68f1b096beaea1f04e",
+          "size_bytes": 9
+        }
+      },
+      {
+        "argv": [
+          "/usr/bin/cat",
+          "/proc/1/cgroup"
+        ],
+        "cwd": "/home/rockrock/cmu_paper",
+        "duration_seconds": 0.0016493409930262715,
+        "exit_code": 0,
+        "expected_exit_codes": [
+          0
+        ],
+        "finished_at_utc": "2026-07-22T04:16:28.684304Z",
+        "id": "host_cgroup",
+        "matched_expectation": true,
+        "purpose": "Record PID 1 cgroup for environment classification",
+        "relevant_environment": {
+          "CC": "/usr/bin/gcc",
+          "CUDA_HOME": "/usr/local/cuda-13.0",
+          "CXX": "/usr/bin/c++",
+          "GIT_CONFIG_GLOBAL": "/dev/null",
+          "GIT_CONFIG_NOSYSTEM": "1",
+          "LANG": "C",
+          "LC_ALL": "C",
+          "PATH": "/usr/local/cuda-13.0/bin:/usr/bin:/bin",
+          "PYTHONHASHSEED": "0",
+          "PYTHONNOUSERSITE": "1",
+          "PYTHONOPTIMIZE": "0",
+          "TZ": "UTC"
+        },
+        "started_at_utc": "2026-07-22T04:16:28.682657Z",
+        "stderr": {
+          "path": "commands/host_cgroup.stderr.txt",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "size_bytes": 0
+        },
+        "stdout": {
+          "path": "commands/host_cgroup.stdout.txt",
+          "sha256": "778ccdf3058cfbe3d54f8973730b4abb4e0fa0aee3fbc3f53138c757812bc461",
+          "size_bytes": 15
+        }
+      },
+      {
+        "argv": [
+          "/usr/bin/systemd-detect-virt",
+          "--container"
+        ],
+        "cwd": "/home/rockrock/cmu_paper",
+        "duration_seconds": 0.0028022530023008585,
+        "exit_code": 1,
+        "expected_exit_codes": [
+          1
+        ],
+        "finished_at_utc": "2026-07-22T04:16:28.688762Z",
+        "id": "host_container_detection",
+        "matched_expectation": true,
+        "purpose": "Detect container virtualization without fabricating a digest",
+        "relevant_environment": {
+          "CC": "/usr/bin/gcc",
+          "CUDA_HOME": "/usr/local/cuda-13.0",
+          "CXX": "/usr/bin/c++",
+          "GIT_CONFIG_GLOBAL": "/dev/null",
+          "GIT_CONFIG_NOSYSTEM": "1",
+          "LANG": "C",
+          "LC_ALL": "C",
+          "PATH": "/usr/local/cuda-13.0/bin:/usr/bin:/bin",
+          "PYTHONHASHSEED": "0",
+          "PYTHONNOUSERSITE": "1",
+          "PYTHONOPTIMIZE": "0",
+          "TZ": "UTC"
+        },
+        "started_at_utc": "2026-07-22T04:16:28.685960Z",
+        "stderr": {
+          "path": "commands/host_container_detection.stderr.txt",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "size_bytes": 0
+        },
+        "stdout": {
+          "path": "commands/host_container_detection.stdout.txt",
+          "sha256": "fcf33dfbe13c2354bf0e1b063f9fb422747a46cee00b7420bceff2b81457b345",
+          "size_bytes": 5
+        }
+      },
+      {
+        "argv": [
+          "/usr/bin/cat",
+          "/proc/self/cgroup"
+        ],
+        "cwd": "/home/rockrock/cmu_paper",
+        "duration_seconds": 0.0016490109992446378,
+        "exit_code": 0,
+        "expected_exit_codes": [
+          0
+        ],
+        "finished_at_utc": "2026-07-22T04:16:28.692079Z",
+        "id": "host_self_cgroup",
+        "matched_expectation": true,
+        "purpose": "Record collector cgroup for environment classification",
+        "relevant_environment": {
+          "CC": "/usr/bin/gcc",
+          "CUDA_HOME": "/usr/local/cuda-13.0",
+          "CXX": "/usr/bin/c++",
+          "GIT_CONFIG_GLOBAL": "/dev/null",
+          "GIT_CONFIG_NOSYSTEM": "1",
+          "LANG": "C",
+          "LC_ALL": "C",
+          "PATH": "/usr/local/cuda-13.0/bin:/usr/bin:/bin",
+          "PYTHONHASHSEED": "0",
+          "PYTHONNOUSERSITE": "1",
+          "PYTHONOPTIMIZE": "0",
+          "TZ": "UTC"
+        },
+        "started_at_utc": "2026-07-22T04:16:28.690428Z",
+        "stderr": {
+          "path": "commands/host_self_cgroup.stderr.txt",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "size_bytes": 0
+        },
+        "stdout": {
+          "path": "commands/host_self_cgroup.stdout.txt",
+          "sha256": "805e8cefd9e17fd0fd13620673dba09df279435d93c87a5af31a5bfe60801f31",
+          "size_bytes": 49
+        }
+      },
+      {
+        "argv": [
+          "/usr/local/cuda-13.0/bin/nvcc",
+          "--version"
+        ],
+        "cwd": "/home/rockrock/cmu_paper",
+        "duration_seconds": 0.0014178529963828623,
+        "exit_code": 0,
+        "expected_exit_codes": [
+          0
+        ],
+        "finished_at_utc": "2026-07-22T04:16:28.695166Z",
+        "id": "nvcc_version",
+        "matched_expectation": true,
+        "purpose": "Record CUDA compiler version",
+        "relevant_environment": {
+          "CC": "/usr/bin/gcc",
+          "CUDA_HOME": "/usr/local/cuda-13.0",
+          "CXX": "/usr/bin/c++",
+          "GIT_CONFIG_GLOBAL": "/dev/null",
+          "GIT_CONFIG_NOSYSTEM": "1",
+          "LANG": "C",
+          "LC_ALL": "C",
+          "PATH": "/usr/local/cuda-13.0/bin:/usr/bin:/bin",
+          "PYTHONHASHSEED": "0",
+          "PYTHONNOUSERSITE": "1",
+          "PYTHONOPTIMIZE": "0",
+          "TZ": "UTC"
+        },
+        "started_at_utc": "2026-07-22T04:16:28.693748Z",
+        "stderr": {
+          "path": "commands/nvcc_version.stderr.txt",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "size_bytes": 0
+        },
+        "stdout": {
+          "path": "commands/nvcc_version.stdout.txt",
+          "sha256": "fc7ce0c80d28ed925fd490dc4e3915ce620fcf115f965189688c6f049243aad5",
+          "size_bytes": 211
+        }
+      },
+      {
+        "argv": [
+          "/usr/local/cuda-13.0/compute-sanitizer/compute-sanitizer",
+          "--version"
+        ],
+        "cwd": "/home/rockrock/cmu_paper",
+        "duration_seconds": 0.002237994995084591,
+        "exit_code": 0,
+        "expected_exit_codes": [
+          0
+        ],
+        "finished_at_utc": "2026-07-22T04:16:28.699082Z",
+        "id": "compute_sanitizer_version",
+        "matched_expectation": true,
+        "purpose": "Record Compute Sanitizer version",
+        "relevant_environment": {
+          "CC": "/usr/bin/gcc",
+          "CUDA_HOME": "/usr/local/cuda-13.0",
+          "CXX": "/usr/bin/c++",
+          "GIT_CONFIG_GLOBAL": "/dev/null",
+          "GIT_CONFIG_NOSYSTEM": "1",
+          "LANG": "C",
+          "LC_ALL": "C",
+          "PATH": "/usr/local/cuda-13.0/bin:/usr/bin:/bin",
+          "PYTHONHASHSEED": "0",
+          "PYTHONNOUSERSITE": "1",
+          "PYTHONOPTIMIZE": "0",
+          "TZ": "UTC"
+        },
+        "started_at_utc": "2026-07-22T04:16:28.696844Z",
+        "stderr": {
+          "path": "commands/compute_sanitizer_version.stderr.txt",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "size_bytes": 0
+        },
+        "stdout": {
+          "path": "commands/compute_sanitizer_version.stdout.txt",
+          "sha256": "958b7c9c5c577e9382369664b0c1704b4dccef3b6d3b9835b0f6d6f1cb280e0d",
+          "size_bytes": 125
+        }
+      },
+      {
+        "argv": [
+          "/usr/local/cuda-13.0/bin/cuobjdump",
+          "--version"
+        ],
+        "cwd": "/home/rockrock/cmu_paper",
+        "duration_seconds": 0.0013495839957613498,
+        "exit_code": 0,
+        "expected_exit_codes": [
+          0
+        ],
+        "finished_at_utc": "2026-07-22T04:16:28.702128Z",
+        "id": "cuobjdump_version",
+        "matched_expectation": true,
+        "purpose": "Record CUDA binary inspection version",
+        "relevant_environment": {
+          "CC": "/usr/bin/gcc",
+          "CUDA_HOME": "/usr/local/cuda-13.0",
+          "CXX": "/usr/bin/c++",
+          "GIT_CONFIG_GLOBAL": "/dev/null",
+          "GIT_CONFIG_NOSYSTEM": "1",
+          "LANG": "C",
+          "LC_ALL": "C",
+          "PATH": "/usr/local/cuda-13.0/bin:/usr/bin:/bin",
+          "PYTHONHASHSEED": "0",
+          "PYTHONNOUSERSITE": "1",
+          "PYTHONOPTIMIZE": "0",
+          "TZ": "UTC"
+        },
+        "started_at_utc": "2026-07-22T04:16:28.700779Z",
+        "stderr": {
+          "path": "commands/cuobjdump_version.stderr.txt",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "size_bytes": 0
+        },
+        "stdout": {
+          "path": "commands/cuobjdump_version.stdout.txt",
+          "sha256": "82d560b00ef375b13afc20378df2005748e05a6315c3649a5734a6df978b847d",
+          "size_bytes": 219
+        }
+      },
+      {
+        "argv": [
+          "/usr/local/bin/ncu",
+          "--version"
+        ],
+        "cwd": "/home/rockrock/cmu_paper",
+        "duration_seconds": 0.007812975003616884,
+        "exit_code": 0,
+        "expected_exit_codes": [
+          0
+        ],
+        "finished_at_utc": "2026-07-22T04:16:28.711636Z",
+        "id": "ncu_version",
+        "matched_expectation": true,
+        "purpose": "Record Nsight Compute version",
+        "relevant_environment": {
+          "CC": "/usr/bin/gcc",
+          "CUDA_HOME": "/usr/local/cuda-13.0",
+          "CXX": "/usr/bin/c++",
+          "GIT_CONFIG_GLOBAL": "/dev/null",
+          "GIT_CONFIG_NOSYSTEM": "1",
+          "LANG": "C",
+          "LC_ALL": "C",
+          "PATH": "/usr/local/cuda-13.0/bin:/usr/bin:/bin",
+          "PYTHONHASHSEED": "0",
+          "PYTHONNOUSERSITE": "1",
+          "PYTHONOPTIMIZE": "0",
+          "TZ": "UTC"
+        },
+        "started_at_utc": "2026-07-22T04:16:28.703824Z",
+        "stderr": {
+          "path": "commands/ncu_version.stderr.txt",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "size_bytes": 0
+        },
+        "stdout": {
+          "path": "commands/ncu_version.stdout.txt",
+          "sha256": "99b61b4937aa4d473ccb4ef2395d69d5f3de64908a7d65d96bc8f9b73f72476a",
+          "size_bytes": 144
+        }
+      },
+      {
+        "argv": [
+          "/usr/local/bin/nsys",
+          "--version"
+        ],
+        "cwd": "/home/rockrock/cmu_paper",
+        "duration_seconds": 0.057550571000319906,
+        "exit_code": 0,
+        "expected_exit_codes": [
+          0
+        ],
+        "finished_at_utc": "2026-07-22T04:16:28.770847Z",
+        "id": "nsys_version",
+        "matched_expectation": true,
+        "purpose": "Record Nsight Systems version",
+        "relevant_environment": {
+          "CC": "/usr/bin/gcc",
+          "CUDA_HOME": "/usr/local/cuda-13.0",
+          "CXX": "/usr/bin/c++",
+          "GIT_CONFIG_GLOBAL": "/dev/null",
+          "GIT_CONFIG_NOSYSTEM": "1",
+          "LANG": "C",
+          "LC_ALL": "C",
+          "PATH": "/usr/local/cuda-13.0/bin:/usr/bin:/bin",
+          "PYTHONHASHSEED": "0",
+          "PYTHONNOUSERSITE": "1",
+          "PYTHONOPTIMIZE": "0",
+          "TZ": "UTC"
+        },
+        "started_at_utc": "2026-07-22T04:16:28.713302Z",
+        "stderr": {
+          "path": "commands/nsys_version.stderr.txt",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "size_bytes": 0
+        },
+        "stdout": {
+          "path": "commands/nsys_version.stdout.txt",
+          "sha256": "a46fa502265be93cac6aed0834d2a9b32f7868381bf53cd56a3e1526894d85b2",
+          "size_bytes": 58
+        }
+      },
+      {
+        "argv": [
+          "/usr/bin/c++",
+          "--version"
+        ],
+        "cwd": "/home/rockrock/cmu_paper",
+        "duration_seconds": 0.0009683029929874465,
+        "exit_code": 0,
+        "expected_exit_codes": [
+          0
+        ],
+        "finished_at_utc": "2026-07-22T04:16:28.773774Z",
+        "id": "cxx_version",
+        "matched_expectation": true,
+        "purpose": "Record host C++ compiler version",
+        "relevant_environment": {
+          "CC": "/usr/bin/gcc",
+          "CUDA_HOME": "/usr/local/cuda-13.0",
+          "CXX": "/usr/bin/c++",
+          "GIT_CONFIG_GLOBAL": "/dev/null",
+          "GIT_CONFIG_NOSYSTEM": "1",
+          "LANG": "C",
+          "LC_ALL": "C",
+          "PATH": "/usr/local/cuda-13.0/bin:/usr/bin:/bin",
+          "PYTHONHASHSEED": "0",
+          "PYTHONNOUSERSITE": "1",
+          "PYTHONOPTIMIZE": "0",
+          "TZ": "UTC"
+        },
+        "started_at_utc": "2026-07-22T04:16:28.772803Z",
+        "stderr": {
+          "path": "commands/cxx_version.stderr.txt",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "size_bytes": 0
+        },
+        "stdout": {
+          "path": "commands/cxx_version.stdout.txt",
+          "sha256": "88b7c4b67564a146863224148116065fee418539f0a408f3636a68f3bde51805",
+          "size_bytes": 246
+        }
+      },
+      {
+        "argv": [
+          "/usr/bin/ninja",
+          "--version"
+        ],
+        "cwd": "/home/rockrock/cmu_paper",
+        "duration_seconds": 0.0014939469983801246,
+        "exit_code": 0,
+        "expected_exit_codes": [
+          0
+        ],
+        "finished_at_utc": "2026-07-22T04:16:28.776936Z",
+        "id": "ninja_version",
+        "matched_expectation": true,
+        "purpose": "Record Ninja version",
+        "relevant_environment": {
+          "CC": "/usr/bin/gcc",
+          "CUDA_HOME": "/usr/local/cuda-13.0",
+          "CXX": "/usr/bin/c++",
+          "GIT_CONFIG_GLOBAL": "/dev/null",
+          "GIT_CONFIG_NOSYSTEM": "1",
+          "LANG": "C",
+          "LC_ALL": "C",
+          "PATH": "/usr/local/cuda-13.0/bin:/usr/bin:/bin",
+          "PYTHONHASHSEED": "0",
+          "PYTHONNOUSERSITE": "1",
+          "PYTHONOPTIMIZE": "0",
+          "TZ": "UTC"
+        },
+        "started_at_utc": "2026-07-22T04:16:28.775442Z",
+        "stderr": {
+          "path": "commands/ninja_version.stderr.txt",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "size_bytes": 0
+        },
+        "stdout": {
+          "path": "commands/ninja_version.stdout.txt",
+          "sha256": "4f9416d650bd28343244b868dfebdb11e70d7b32423536cb87b8c31fde62f993",
+          "size_bytes": 7
+        }
+      },
+      {
+        "argv": [
+          "/home/rockrock/cmu_paper/.venv/bin/python",
+          "--version"
+        ],
+        "cwd": "/home/rockrock/cmu_paper",
+        "duration_seconds": 0.0009694340114947408,
+        "exit_code": 0,
+        "expected_exit_codes": [
+          0
+        ],
+        "finished_at_utc": "2026-07-22T04:16:28.779577Z",
+        "id": "python_version",
+        "matched_expectation": true,
+        "purpose": "Record project Python version",
+        "relevant_environment": {
+          "CC": "/usr/bin/gcc",
+          "CUDA_HOME": "/usr/local/cuda-13.0",
+          "CXX": "/usr/bin/c++",
+          "GIT_CONFIG_GLOBAL": "/dev/null",
+          "GIT_CONFIG_NOSYSTEM": "1",
+          "LANG": "C",
+          "LC_ALL": "C",
+          "PATH": "/usr/local/cuda-13.0/bin:/usr/bin:/bin",
+          "PYTHONHASHSEED": "0",
+          "PYTHONNOUSERSITE": "1",
+          "PYTHONOPTIMIZE": "0",
+          "TZ": "UTC"
+        },
+        "started_at_utc": "2026-07-22T04:16:28.778607Z",
+        "stderr": {
+          "path": "commands/python_version.stderr.txt",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "size_bytes": 0
+        },
+        "stdout": {
+          "path": "commands/python_version.stdout.txt",
+          "sha256": "5b3e43dc38ca01e3f5a7854ba50d4330864b0c1e0f646650b2c78cf072acc366",
+          "size_bytes": 14
+        }
+      },
+      {
+        "argv": [
+          "/usr/bin/dpkg-query",
+          "-W",
+          "-f=${Package}\t${Version}\t${Architecture}\n",
+          "bash",
+          "binutils",
+          "coreutils",
+          "build-essential",
+          "cuda-cccl-13-0",
+          "cuda-crt-13-0",
+          "cuda-cudart-13-0",
+          "cuda-cudart-dev-13-0",
+          "cuda-culibos-dev-13-0",
+          "cuda-cuobjdump-13-0",
+          "cuda-driver-dev-13-0",
+          "cuda-nvcc-13-0",
+          "cuda-sanitizer-13-0",
+          "dash",
+          "g++",
+          "g++-13",
+          "gcc",
+          "gcc-13",
+          "dpkg",
+          "git",
+          "hostname",
+          "libc6-dev",
+          "libpython3.12-dev",
+          "libstdc++-13-dev",
+          "ninja-build",
+          "nsight-compute-2026.2.1",
+          "nsight-systems-2026.1.3",
+          "nvidia-utils-595",
+          "python3.12",
+          "python3.12-dev",
+          "python3.12-minimal",
+          "python3.12-venv",
+          "systemd",
+          "util-linux"
+        ],
+        "cwd": "/home/rockrock/cmu_paper",
+        "duration_seconds": 0.014779265999095514,
+        "exit_code": 0,
+        "expected_exit_codes": [
+          0
+        ],
+        "finished_at_utc": "2026-07-22T04:16:28.796020Z",
+        "id": "dpkg_locked_versions",
+        "matched_expectation": true,
+        "purpose": "Verify exact system package versions",
+        "relevant_environment": {
+          "CC": "/usr/bin/gcc",
+          "CUDA_HOME": "/usr/local/cuda-13.0",
+          "CXX": "/usr/bin/c++",
+          "GIT_CONFIG_GLOBAL": "/dev/null",
+          "GIT_CONFIG_NOSYSTEM": "1",
+          "LANG": "C",
+          "LC_ALL": "C",
+          "PATH": "/usr/local/cuda-13.0/bin:/usr/bin:/bin",
+          "PYTHONHASHSEED": "0",
+          "PYTHONNOUSERSITE": "1",
+          "PYTHONOPTIMIZE": "0",
+          "TZ": "UTC"
+        },
+        "started_at_utc": "2026-07-22T04:16:28.781243Z",
+        "stderr": {
+          "path": "commands/dpkg_locked_versions.stderr.txt",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "size_bytes": 0
+        },
+        "stdout": {
+          "path": "commands/dpkg_locked_versions.stdout.txt",
+          "sha256": "4d99e3d14fb546d7ccde192ad22144112a7d1f4924f803c9c24bd2786c2d7633",
+          "size_bytes": 1208
+        }
+      },
+      {
+        "argv": [
+          "/usr/bin/dpkg",
+          "--print-architecture"
+        ],
+        "cwd": "/home/rockrock/cmu_paper",
+        "duration_seconds": 0.001050446997396648,
+        "exit_code": 0,
+        "expected_exit_codes": [
+          0
+        ],
+        "finished_at_utc": "2026-07-22T04:16:28.798879Z",
+        "id": "dpkg_architecture",
+        "matched_expectation": true,
+        "purpose": "Verify the native dpkg architecture",
+        "relevant_environment": {
+          "CC": "/usr/bin/gcc",
+          "CUDA_HOME": "/usr/local/cuda-13.0",
+          "CXX": "/usr/bin/c++",
+          "GIT_CONFIG_GLOBAL": "/dev/null",
+          "GIT_CONFIG_NOSYSTEM": "1",
+          "LANG": "C",
+          "LC_ALL": "C",
+          "PATH": "/usr/local/cuda-13.0/bin:/usr/bin:/bin",
+          "PYTHONHASHSEED": "0",
+          "PYTHONNOUSERSITE": "1",
+          "PYTHONOPTIMIZE": "0",
+          "TZ": "UTC"
+        },
+        "started_at_utc": "2026-07-22T04:16:28.797829Z",
+        "stderr": {
+          "path": "commands/dpkg_architecture.stderr.txt",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "size_bytes": 0
+        },
+        "stdout": {
+          "path": "commands/dpkg_architecture.stdout.txt",
+          "sha256": "d54d20eadbec9c9cc5ac6e0e371abc96d64a0d724d1cf45297fab6098026a69d",
+          "size_bytes": 6
+        }
+      },
+      {
+        "argv": [
+          "/usr/bin/dpkg",
+          "--verify-format=rpm",
+          "--verify",
+          "bash",
+          "binutils",
+          "coreutils",
+          "build-essential",
+          "cuda-cccl-13-0",
+          "cuda-crt-13-0",
+          "cuda-cudart-13-0",
+          "cuda-cudart-dev-13-0",
+          "cuda-culibos-dev-13-0",
+          "cuda-cuobjdump-13-0",
+          "cuda-driver-dev-13-0",
+          "cuda-nvcc-13-0",
+          "cuda-sanitizer-13-0",
+          "dash",
+          "g++",
+          "g++-13",
+          "gcc",
+          "gcc-13",
+          "dpkg",
+          "git",
+          "hostname",
+          "libc6-dev",
+          "libpython3.12-dev",
+          "libstdc++-13-dev",
+          "ninja-build",
+          "nsight-compute-2026.2.1",
+          "nsight-systems-2026.1.3",
+          "nvidia-utils-595",
+          "python3.12",
+          "python3.12-dev",
+          "python3.12-minimal",
+          "python3.12-venv",
+          "systemd",
+          "util-linux"
+        ],
+        "cwd": "/home/rockrock/cmu_paper",
+        "duration_seconds": 3.467453992998344,
+        "exit_code": 0,
+        "expected_exit_codes": [
+          0
+        ],
+        "finished_at_utc": "2026-07-22T04:16:32.267996Z",
+        "id": "dpkg_verify_locked_files",
+        "matched_expectation": true,
+        "purpose": "Verify package-managed toolchain and transitive executable files",
+        "relevant_environment": {
+          "CC": "/usr/bin/gcc",
+          "CUDA_HOME": "/usr/local/cuda-13.0",
+          "CXX": "/usr/bin/c++",
+          "GIT_CONFIG_GLOBAL": "/dev/null",
+          "GIT_CONFIG_NOSYSTEM": "1",
+          "LANG": "C",
+          "LC_ALL": "C",
+          "PATH": "/usr/local/cuda-13.0/bin:/usr/bin:/bin",
+          "PYTHONHASHSEED": "0",
+          "PYTHONNOUSERSITE": "1",
+          "PYTHONOPTIMIZE": "0",
+          "TZ": "UTC"
+        },
+        "started_at_utc": "2026-07-22T04:16:28.800555Z",
+        "stderr": {
+          "path": "commands/dpkg_verify_locked_files.stderr.txt",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "size_bytes": 0
+        },
+        "stdout": {
+          "path": "commands/dpkg_verify_locked_files.stdout.txt",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "size_bytes": 0
+        }
+      },
+      {
+        "argv": [
+          "/home/rockrock/cmu_paper/.venv/bin/python",
+          "-m",
+          "pip",
+          "check"
+        ],
+        "cwd": "/home/rockrock/cmu_paper",
+        "duration_seconds": 0.377605785994092,
+        "exit_code": 0,
+        "expected_exit_codes": [
+          0
+        ],
+        "finished_at_utc": "2026-07-22T04:16:32.648560Z",
+        "id": "pip_check",
+        "matched_expectation": true,
+        "purpose": "Verify installed Python dependency consistency",
+        "relevant_environment": {
+          "CC": "/usr/bin/gcc",
+          "CUDA_HOME": "/usr/local/cuda-13.0",
+          "CXX": "/usr/bin/c++",
+          "GIT_CONFIG_GLOBAL": "/dev/null",
+          "GIT_CONFIG_NOSYSTEM": "1",
+          "LANG": "C",
+          "LC_ALL": "C",
+          "PATH": "/usr/local/cuda-13.0/bin:/usr/bin:/bin",
+          "PYTHONHASHSEED": "0",
+          "PYTHONNOUSERSITE": "1",
+          "PYTHONOPTIMIZE": "0",
+          "TZ": "UTC"
+        },
+        "started_at_utc": "2026-07-22T04:16:32.270960Z",
+        "stderr": {
+          "path": "commands/pip_check.stderr.txt",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "size_bytes": 0
+        },
+        "stdout": {
+          "path": "commands/pip_check.stdout.txt",
+          "sha256": "9261363b733079a641c2e4cc9bc46ffa1d8336945a87f807b6cf68847dbc9b09",
+          "size_bytes": 30
+        }
+      },
+      {
+        "argv": [
+          "/home/rockrock/cmu_paper/.venv/bin/python",
+          "-m",
+          "pip",
+          "list",
+          "--format=json"
+        ],
+        "cwd": "/home/rockrock/cmu_paper",
+        "duration_seconds": 0.2411559590109391,
+        "exit_code": 0,
+        "expected_exit_codes": [
+          0
+        ],
+        "finished_at_utc": "2026-07-22T04:16:32.892383Z",
+        "id": "pip_list",
+        "matched_expectation": true,
+        "purpose": "Record installed Python dependency versions",
+        "relevant_environment": {
+          "CC": "/usr/bin/gcc",
+          "CUDA_HOME": "/usr/local/cuda-13.0",
+          "CXX": "/usr/bin/c++",
+          "GIT_CONFIG_GLOBAL": "/dev/null",
+          "GIT_CONFIG_NOSYSTEM": "1",
+          "LANG": "C",
+          "LC_ALL": "C",
+          "PATH": "/usr/local/cuda-13.0/bin:/usr/bin:/bin",
+          "PYTHONHASHSEED": "0",
+          "PYTHONNOUSERSITE": "1",
+          "PYTHONOPTIMIZE": "0",
+          "TZ": "UTC"
+        },
+        "started_at_utc": "2026-07-22T04:16:32.651235Z",
+        "stderr": {
+          "path": "commands/pip_list.stderr.txt",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "size_bytes": 0
+        },
+        "stdout": {
+          "path": "commands/pip_list.stdout.txt",
+          "sha256": "21ebe354dfc174025d33012ff0f31045a83f48e77c9075c33d994755d5eb0e09",
+          "size_bytes": 1674
+        }
+      },
+      {
+        "argv": [
+          "/home/rockrock/cmu_paper/.venv/bin/python",
+          "/home/rockrock/cmu_paper/preflight/python_integrity_probe.py"
+        ],
+        "cwd": "/home/rockrock/cmu_paper",
+        "duration_seconds": 7.178937834003591,
+        "exit_code": 0,
+        "expected_exit_codes": [
+          0
+        ],
+        "finished_at_utc": "2026-07-22T04:16:40.073911Z",
+        "id": "python_record_integrity",
+        "matched_expectation": true,
+        "purpose": "Verify installed wheel RECORD hashes and file ownership",
+        "relevant_environment": {
+          "CC": "/usr/bin/gcc",
+          "CUDA_HOME": "/usr/local/cuda-13.0",
+          "CXX": "/usr/bin/c++",
+          "GIT_CONFIG_GLOBAL": "/dev/null",
+          "GIT_CONFIG_NOSYSTEM": "1",
+          "LANG": "C",
+          "LC_ALL": "C",
+          "PATH": "/usr/local/cuda-13.0/bin:/usr/bin:/bin",
+          "PYTHONHASHSEED": "0",
+          "PYTHONNOUSERSITE": "1",
+          "PYTHONOPTIMIZE": "0",
+          "TZ": "UTC"
+        },
+        "started_at_utc": "2026-07-22T04:16:32.894982Z",
+        "stderr": {
+          "path": "commands/python_record_integrity.stderr.txt",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "size_bytes": 0
+        },
+        "stdout": {
+          "path": "commands/python_record_integrity.stdout.txt",
+          "sha256": "c7adfc9b66a615469fab77817757c040535dcd8d88fe0580d588c74625ebe302",
+          "size_bytes": 316
+        }
+      },
+      {
+        "argv": [
+          "/home/rockrock/cmu_paper/.venv/bin/python",
+          "/home/rockrock/cmu_paper/preflight/process_query.py"
+        ],
+        "cwd": "/home/rockrock/cmu_paper",
+        "duration_seconds": 0.19316796801285818,
+        "exit_code": 0,
+        "expected_exit_codes": [
+          0
+        ],
+        "finished_at_utc": "2026-07-22T04:16:40.352962Z",
+        "id": "process_torch_probe_before",
+        "matched_expectation": true,
+        "purpose": "GPU process isolation snapshot before torch_probe",
+        "relevant_environment": {
+          "CC": "/usr/bin/gcc",
+          "CUDA_HOME": "/usr/local/cuda-13.0",
+          "CXX": "/usr/bin/c++",
+          "GIT_CONFIG_GLOBAL": "/dev/null",
+          "GIT_CONFIG_NOSYSTEM": "1",
+          "LANG": "C",
+          "LC_ALL": "C",
+          "PATH": "/usr/local/cuda-13.0/bin:/usr/bin:/bin",
+          "PYTHONHASHSEED": "0",
+          "PYTHONNOUSERSITE": "1",
+          "PYTHONOPTIMIZE": "0",
+          "TZ": "UTC"
+        },
+        "started_at_utc": "2026-07-22T04:16:40.159800Z",
+        "stderr": {
+          "path": "commands/process_torch_probe_before.stderr.txt",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "size_bytes": 0
+        },
+        "stdout": {
+          "path": "commands/process_torch_probe_before.stdout.txt",
+          "sha256": "07b6a9006375f7be2bcdeb1937c3be60669c6af73c0763e3506ad393c2b59514",
+          "size_bytes": 1361
+        }
+      },
+      {
+        "argv": [
+          "/home/rockrock/cmu_paper/.venv/bin/python",
+          "/home/rockrock/cmu_paper/preflight/python_probe.py",
+          "--audit-ready-file",
+          "/home/rockrock/cmu_paper/docs/evidence/e00/.e00-20260722T041628.190813Z-980eff7b6f59-0dd71f2d.tmp/audit/torch_probe.ready.json",
+          "--audit-release-file",
+          "/home/rockrock/cmu_paper/docs/evidence/e00/.e00-20260722T041628.190813Z-980eff7b6f59-0dd71f2d.tmp/audit/torch_probe.release",
+          "--audit-timeout-seconds",
+          "120.0"
+        ],
+        "cwd": "/home/rockrock/cmu_paper",
+        "duration_seconds": 1.6108411080058431,
+        "exit_code": 0,
+        "expected_exit_codes": [
+          0
+        ],
+        "finished_at_utc": "2026-07-22T04:16:41.966611Z",
+        "id": "torch_probe",
+        "matched_expectation": true,
+        "purpose": "Verify PyTorch CUDA availability, selected GPU identity, and capability",
+        "relevant_environment": {
+          "CC": "/usr/bin/gcc",
+          "CUDA_DEVICE_ORDER": "PCI_BUS_ID",
+          "CUDA_HOME": "/usr/local/cuda-13.0",
+          "CUDA_VISIBLE_DEVICES": "GPU-75bd273e-6b20-0d22-1b0b-5fbb6fb0025b",
+          "CXX": "/usr/bin/c++",
+          "GIT_CONFIG_GLOBAL": "/dev/null",
+          "GIT_CONFIG_NOSYSTEM": "1",
+          "LANG": "C",
+          "LC_ALL": "C",
+          "PATH": "/usr/local/cuda-13.0/bin:/usr/bin:/bin",
+          "PYTHONHASHSEED": "0",
+          "PYTHONNOUSERSITE": "1",
+          "PYTHONOPTIMIZE": "0",
+          "TZ": "UTC"
+        },
+        "started_at_utc": "2026-07-22T04:16:40.355776Z",
+        "stderr": {
+          "path": "commands/torch_probe.stderr.txt",
+          "sha256": "fc7e2075df9685303d960b644405247a92ec4b23f2433ddbe94963a7e7bf2b8a",
+          "size_bytes": 306
+        },
+        "stdout": {
+          "path": "commands/torch_probe.stdout.txt",
+          "sha256": "cca39a79f067b19723ca203fb5140c35f2dcb9517cbce4bd4863b1ef1d8cfc90",
+          "size_bytes": 737
+        }
+      },
+      {
+        "argv": [
+          "/home/rockrock/cmu_paper/.venv/bin/python",
+          "/home/rockrock/cmu_paper/preflight/process_query.py",
+          "--supervised-root-pid",
+          "269315",
+          "--supervised-root-start-ticks",
+          "8370907"
+        ],
+        "cwd": "/home/rockrock/cmu_paper",
+        "duration_seconds": 0.13671829200757202,
+        "exit_code": 0,
+        "expected_exit_codes": [
+          0
+        ],
+        "finished_at_utc": "2026-07-22T04:16:41.645277Z",
+        "id": "process_torch_probe_during",
+        "matched_expectation": true,
+        "purpose": "GPU process isolation snapshot during torch_probe",
+        "relevant_environment": {
+          "CC": "/usr/bin/gcc",
+          "CUDA_HOME": "/usr/local/cuda-13.0",
+          "CXX": "/usr/bin/c++",
+          "GIT_CONFIG_GLOBAL": "/dev/null",
+          "GIT_CONFIG_NOSYSTEM": "1",
+          "LANG": "C",
+          "LC_ALL": "C",
+          "PATH": "/usr/local/cuda-13.0/bin:/usr/bin:/bin",
+          "PYTHONHASHSEED": "0",
+          "PYTHONNOUSERSITE": "1",
+          "PYTHONOPTIMIZE": "0",
+          "TZ": "UTC"
+        },
+        "started_at_utc": "2026-07-22T04:16:41.508560Z",
+        "stderr": {
+          "path": "commands/process_torch_probe_during.stderr.txt",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "size_bytes": 0
+        },
+        "stdout": {
+          "path": "commands/process_torch_probe_during.stdout.txt",
+          "sha256": "99518ac7ae8d7a88fc3f65408065610bbf03ab56055a22dbe32a498928ef7171",
+          "size_bytes": 1854
+        }
+      },
+      {
+        "argv": [
+          "/home/rockrock/cmu_paper/.venv/bin/python",
+          "/home/rockrock/cmu_paper/preflight/process_query.py"
+        ],
+        "cwd": "/home/rockrock/cmu_paper",
+        "duration_seconds": 0.13913873200363014,
+        "exit_code": 0,
+        "expected_exit_codes": [
+          0
+        ],
+        "finished_at_utc": "2026-07-22T04:16:42.105904Z",
+        "id": "process_torch_probe_after",
+        "matched_expectation": true,
+        "purpose": "GPU process isolation snapshot after torch_probe",
+        "relevant_environment": {
+          "CC": "/usr/bin/gcc",
+          "CUDA_HOME": "/usr/local/cuda-13.0",
+          "CXX": "/usr/bin/c++",
+          "GIT_CONFIG_GLOBAL": "/dev/null",
+          "GIT_CONFIG_NOSYSTEM": "1",
+          "LANG": "C",
+          "LC_ALL": "C",
+          "PATH": "/usr/local/cuda-13.0/bin:/usr/bin:/bin",
+          "PYTHONHASHSEED": "0",
+          "PYTHONNOUSERSITE": "1",
+          "PYTHONOPTIMIZE": "0",
+          "TZ": "UTC"
+        },
+        "started_at_utc": "2026-07-22T04:16:41.966772Z",
+        "stderr": {
+          "path": "commands/process_torch_probe_after.stderr.txt",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "size_bytes": 0
+        },
+        "stdout": {
+          "path": "commands/process_torch_probe_after.stdout.txt",
+          "sha256": "06510e224b94aa967e3161a9d8f63d17935849a07ada560ca9effab4d42d3952",
+          "size_bytes": 1361
+        }
+      },
+      {
+        "argv": [
+          "/home/rockrock/cmu_paper/.venv/bin/python",
+          "/home/rockrock/cmu_paper/preflight/e00_cuda/build.py",
+          "--build-directory",
+          "/home/rockrock/cmu_paper/docs/evidence/e00/.e00-20260722T041628.190813Z-980eff7b6f59-0dd71f2d.tmp/extension/build",
+          "--json-output",
+          "/home/rockrock/cmu_paper/docs/evidence/e00/.e00-20260722T041628.190813Z-980eff7b6f59-0dd71f2d.tmp/extension/build_metadata.json",
+          "--verbose"
+        ],
+        "cwd": "/home/rockrock/cmu_paper",
+        "duration_seconds": 15.841698805001215,
+        "exit_code": 0,
+        "expected_exit_codes": [
+          0
+        ],
+        "finished_at_utc": "2026-07-22T04:16:57.952213Z",
+        "id": "extension_build",
+        "matched_expectation": true,
+        "purpose": "Compile the certification extension with exact native SASS and PTX targets",
+        "relevant_environment": {
+          "CC": "/usr/bin/gcc",
+          "CUDA_DEVICE_ORDER": "PCI_BUS_ID",
+          "CUDA_HOME": "/usr/local/cuda-13.0",
+          "CUDA_VISIBLE_DEVICES": "GPU-75bd273e-6b20-0d22-1b0b-5fbb6fb0025b",
+          "CXX": "/usr/bin/c++",
+          "E00_DETECTED_ARCH": "12.0",
+          "GIT_CONFIG_GLOBAL": "/dev/null",
+          "GIT_CONFIG_NOSYSTEM": "1",
+          "LANG": "C",
+          "LC_ALL": "C",
+          "MAX_JOBS": "4",
+          "PATH": "/usr/local/cuda-13.0/bin:/usr/bin:/bin",
+          "PYTHONHASHSEED": "0",
+          "PYTHONNOUSERSITE": "1",
+          "PYTHONOPTIMIZE": "0",
+          "TORCH_EXTENSIONS_DIR": "/home/rockrock/cmu_paper/docs/evidence/e00/.e00-20260722T041628.190813Z-980eff7b6f59-0dd71f2d.tmp/extension/build",
+          "TZ": "UTC"
+        },
+        "started_at_utc": "2026-07-22T04:16:42.110527Z",
+        "stderr": {
+          "path": "commands/extension_build.stderr.txt",
+          "sha256": "fc7e2075df9685303d960b644405247a92ec4b23f2433ddbe94963a7e7bf2b8a",
+          "size_bytes": 306
+        },
+        "stdout": {
+          "path": "commands/extension_build.stdout.txt",
+          "sha256": "a925fb91a5142435cd60cae4ad7a43847cb490a89275185b48ba1910dd740cd9",
+          "size_bytes": 2511
+        }
+      },
+      {
+        "argv": [
+          "/usr/local/cuda-13.0/bin/cuobjdump",
+          "--list-elf",
+          "/home/rockrock/cmu_paper/docs/evidence/e00/.e00-20260722T041628.190813Z-980eff7b6f59-0dd71f2d.tmp/extension/build/e00_cuda_cert.so"
+        ],
+        "cwd": "/home/rockrock/cmu_paper",
+        "duration_seconds": 0.0016899780021049082,
+        "exit_code": 0,
+        "expected_exit_codes": [
+          0
+        ],
+        "finished_at_utc": "2026-07-22T04:16:57.957905Z",
+        "id": "cuobjdump_list_elf",
+        "matched_expectation": true,
+        "purpose": "Inspect extension binary with cuobjdump --list-elf",
+        "relevant_environment": {
+          "CC": "/usr/bin/gcc",
+          "CUDA_HOME": "/usr/local/cuda-13.0",
+          "CXX": "/usr/bin/c++",
+          "GIT_CONFIG_GLOBAL": "/dev/null",
+          "GIT_CONFIG_NOSYSTEM": "1",
+          "LANG": "C",
+          "LC_ALL": "C",
+          "PATH": "/usr/local/cuda-13.0/bin:/usr/bin:/bin",
+          "PYTHONHASHSEED": "0",
+          "PYTHONNOUSERSITE": "1",
+          "PYTHONOPTIMIZE": "0",
+          "TZ": "UTC"
+        },
+        "started_at_utc": "2026-07-22T04:16:57.956213Z",
+        "stderr": {
+          "path": "commands/cuobjdump_list_elf.stderr.txt",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "size_bytes": 0
+        },
+        "stdout": {
+          "path": "commands/cuobjdump_list_elf.stdout.txt",
+          "sha256": "744f9c8a0771d25760aa342004862ebf932beb688299f24a030f163eadeae4b7",
+          "size_bytes": 39
+        }
+      },
+      {
+        "argv": [
+          "/usr/local/cuda-13.0/bin/cuobjdump",
+          "--list-ptx",
+          "/home/rockrock/cmu_paper/docs/evidence/e00/.e00-20260722T041628.190813Z-980eff7b6f59-0dd71f2d.tmp/extension/build/e00_cuda_cert.so"
+        ],
+        "cwd": "/home/rockrock/cmu_paper",
+        "duration_seconds": 0.0013310189970070496,
+        "exit_code": 0,
+        "expected_exit_codes": [
+          0
+        ],
+        "finished_at_utc": "2026-07-22T04:16:57.960889Z",
+        "id": "cuobjdump_list_ptx",
+        "matched_expectation": true,
+        "purpose": "Inspect extension binary with cuobjdump --list-ptx",
+        "relevant_environment": {
+          "CC": "/usr/bin/gcc",
+          "CUDA_HOME": "/usr/local/cuda-13.0",
+          "CXX": "/usr/bin/c++",
+          "GIT_CONFIG_GLOBAL": "/dev/null",
+          "GIT_CONFIG_NOSYSTEM": "1",
+          "LANG": "C",
+          "LC_ALL": "C",
+          "PATH": "/usr/local/cuda-13.0/bin:/usr/bin:/bin",
+          "PYTHONHASHSEED": "0",
+          "PYTHONNOUSERSITE": "1",
+          "PYTHONOPTIMIZE": "0",
+          "TZ": "UTC"
+        },
+        "started_at_utc": "2026-07-22T04:16:57.959557Z",
+        "stderr": {
+          "path": "commands/cuobjdump_list_ptx.stderr.txt",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "size_bytes": 0
+        },
+        "stdout": {
+          "path": "commands/cuobjdump_list_ptx.stdout.txt",
+          "sha256": "74e4dbd876cc8644d87b4caa98edf66f9afa4ee44c33bf91ea6f3a4cb437f73f",
+          "size_bytes": 37
+        }
+      },
+      {
+        "argv": [
+          "/usr/local/cuda-13.0/bin/cuobjdump",
+          "--dump-sass",
+          "/home/rockrock/cmu_paper/docs/evidence/e00/.e00-20260722T041628.190813Z-980eff7b6f59-0dd71f2d.tmp/extension/build/e00_cuda_cert.so"
+        ],
+        "cwd": "/home/rockrock/cmu_paper",
+        "duration_seconds": 0.0015643100050510839,
+        "exit_code": 1,
+        "expected_exit_codes": [
+          0
+        ],
+        "finished_at_utc": "2026-07-22T04:16:57.964094Z",
+        "id": "cuobjdump_dump_sass",
+        "matched_expectation": false,
+        "purpose": "Inspect extension binary with cuobjdump --dump-sass",
+        "relevant_environment": {
+          "CC": "/usr/bin/gcc",
+          "CUDA_HOME": "/usr/local/cuda-13.0",
+          "CXX": "/usr/bin/c++",
+          "GIT_CONFIG_GLOBAL": "/dev/null",
+          "GIT_CONFIG_NOSYSTEM": "1",
+          "LANG": "C",
+          "LC_ALL": "C",
+          "PATH": "/usr/local/cuda-13.0/bin:/usr/bin:/bin",
+          "PYTHONHASHSEED": "0",
+          "PYTHONNOUSERSITE": "1",
+          "PYTHONOPTIMIZE": "0",
+          "TZ": "UTC"
+        },
+        "started_at_utc": "2026-07-22T04:16:57.962530Z",
+        "stderr": {
+          "path": "commands/cuobjdump_dump_sass.stderr.txt",
+          "sha256": "c3ffc8e44cffbea7f01f92c26cf57308de8e179d203878a037151b4b55c859fa",
+          "size_bytes": 134
+        },
+        "stdout": {
+          "path": "commands/cuobjdump_dump_sass.stdout.txt",
+          "sha256": "f47fc1ca2e4228254988464c4bdf6530a7c47b81d14b914974f2056add7db6a2",
+          "size_bytes": 417
+        }
+      },
+      {
+        "argv": [
+          "/usr/local/cuda-13.0/bin/cuobjdump",
+          "--dump-ptx",
+          "/home/rockrock/cmu_paper/docs/evidence/e00/.e00-20260722T041628.190813Z-980eff7b6f59-0dd71f2d.tmp/extension/build/e00_cuda_cert.so"
+        ],
+        "cwd": "/home/rockrock/cmu_paper",
+        "duration_seconds": 0.0013382320030359551,
+        "exit_code": 0,
+        "expected_exit_codes": [
+          0
+        ],
+        "finished_at_utc": "2026-07-22T04:16:57.967150Z",
+        "id": "cuobjdump_dump_ptx",
+        "matched_expectation": true,
+        "purpose": "Inspect extension binary with cuobjdump --dump-ptx",
+        "relevant_environment": {
+          "CC": "/usr/bin/gcc",
+          "CUDA_HOME": "/usr/local/cuda-13.0",
+          "CXX": "/usr/bin/c++",
+          "GIT_CONFIG_GLOBAL": "/dev/null",
+          "GIT_CONFIG_NOSYSTEM": "1",
+          "LANG": "C",
+          "LC_ALL": "C",
+          "PATH": "/usr/local/cuda-13.0/bin:/usr/bin:/bin",
+          "PYTHONHASHSEED": "0",
+          "PYTHONNOUSERSITE": "1",
+          "PYTHONOPTIMIZE": "0",
+          "TZ": "UTC"
+        },
+        "started_at_utc": "2026-07-22T04:16:57.965813Z",
+        "stderr": {
+          "path": "commands/cuobjdump_dump_ptx.stderr.txt",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "size_bytes": 0
+        },
+        "stdout": {
+          "path": "commands/cuobjdump_dump_ptx.stdout.txt",
+          "sha256": "dea69660d1ffd13e61bceb652512f63a89863a878b1922717255963dddc3d845",
+          "size_bytes": 3548
+        }
+      }
+    ],
+    "completion_marker": {
+      "contains_ledger_sha256": true,
+      "path": "COMPLETE",
+      "written_last": true
+    },
+    "files": [
+      {
+        "id": "file_0da60aa4245eb96dc029",
+        "path": "audit/torch_probe.outcome.json",
+        "role": "supporting_evidence",
+        "sha256": "b3e03096afc0db59b7098e83c3220704bfaa6282d966fed0b0af65175a57d2d9",
+        "size_bytes": 477
+      },
+      {
+        "id": "file_b4241d87d38f412ce779",
+        "path": "audit/torch_probe.ready.json",
+        "role": "supporting_evidence",
+        "sha256": "29520110a5e5cb52676153ab7c19a8e42a7239851eaa67f07fb401c61d8286b2",
+        "size_bytes": 117
+      },
+      {
+        "id": "file_5e5757e8cf769f1eeca6",
+        "path": "audit/torch_probe.release",
+        "role": "supporting_evidence",
+        "sha256": "3933e3274b63dc01fd286d6d939a626867c83a4603fc4347e0f8b8856f1b98fd",
+        "size_bytes": 8
+      },
+      {
+        "id": "file_33dbfa4e2daa9cdf5081",
+        "path": "commands/compute_sanitizer_version.stderr.txt",
+        "role": "command_output",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "size_bytes": 0
+      },
+      {
+        "id": "file_8d3e9020e7b28f6ef3e9",
+        "path": "commands/compute_sanitizer_version.stdout.txt",
+        "role": "command_output",
+        "sha256": "958b7c9c5c577e9382369664b0c1704b4dccef3b6d3b9835b0f6d6f1cb280e0d",
+        "size_bytes": 125
+      },
+      {
+        "id": "file_f10cbbc9e8aabaacdfdf",
+        "path": "commands/cuobjdump_dump_ptx.stderr.txt",
+        "role": "command_output",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "size_bytes": 0
+      },
+      {
+        "id": "file_6a4bf07c9e11b009411b",
+        "path": "commands/cuobjdump_dump_ptx.stdout.txt",
+        "role": "command_output",
+        "sha256": "dea69660d1ffd13e61bceb652512f63a89863a878b1922717255963dddc3d845",
+        "size_bytes": 3548
+      },
+      {
+        "id": "file_3696057372eccac5ff39",
+        "path": "commands/cuobjdump_dump_sass.stderr.txt",
+        "role": "command_output",
+        "sha256": "c3ffc8e44cffbea7f01f92c26cf57308de8e179d203878a037151b4b55c859fa",
+        "size_bytes": 134
+      },
+      {
+        "id": "file_11bd4ee7f79855085ebf",
+        "path": "commands/cuobjdump_dump_sass.stdout.txt",
+        "role": "command_output",
+        "sha256": "f47fc1ca2e4228254988464c4bdf6530a7c47b81d14b914974f2056add7db6a2",
+        "size_bytes": 417
+      },
+      {
+        "id": "file_887ed275334817680543",
+        "path": "commands/cuobjdump_list_elf.stderr.txt",
+        "role": "command_output",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "size_bytes": 0
+      },
+      {
+        "id": "file_15c94fe450ceaf563787",
+        "path": "commands/cuobjdump_list_elf.stdout.txt",
+        "role": "command_output",
+        "sha256": "744f9c8a0771d25760aa342004862ebf932beb688299f24a030f163eadeae4b7",
+        "size_bytes": 39
+      },
+      {
+        "id": "file_b6df340ec3bfbde9b7be",
+        "path": "commands/cuobjdump_list_ptx.stderr.txt",
+        "role": "command_output",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "size_bytes": 0
+      },
+      {
+        "id": "file_52ff66f47b6e6649050e",
+        "path": "commands/cuobjdump_list_ptx.stdout.txt",
+        "role": "command_output",
+        "sha256": "74e4dbd876cc8644d87b4caa98edf66f9afa4ee44c33bf91ea6f3a4cb437f73f",
+        "size_bytes": 37
+      },
+      {
+        "id": "file_2e2cf4f0825ceca00691",
+        "path": "commands/cuobjdump_version.stderr.txt",
+        "role": "command_output",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "size_bytes": 0
+      },
+      {
+        "id": "file_d9c12c5af7524aac3633",
+        "path": "commands/cuobjdump_version.stdout.txt",
+        "role": "command_output",
+        "sha256": "82d560b00ef375b13afc20378df2005748e05a6315c3649a5734a6df978b847d",
+        "size_bytes": 219
+      },
+      {
+        "id": "file_bd76ccb3ef59082abc91",
+        "path": "commands/cxx_version.stderr.txt",
+        "role": "command_output",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "size_bytes": 0
+      },
+      {
+        "id": "file_4edb68ab6579aa5b4079",
+        "path": "commands/cxx_version.stdout.txt",
+        "role": "command_output",
+        "sha256": "88b7c4b67564a146863224148116065fee418539f0a408f3636a68f3bde51805",
+        "size_bytes": 246
+      },
+      {
+        "id": "file_4ffd57769f5d68104b76",
+        "path": "commands/dpkg_architecture.stderr.txt",
+        "role": "command_output",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "size_bytes": 0
+      },
+      {
+        "id": "file_84910af9e3e202660c48",
+        "path": "commands/dpkg_architecture.stdout.txt",
+        "role": "command_output",
+        "sha256": "d54d20eadbec9c9cc5ac6e0e371abc96d64a0d724d1cf45297fab6098026a69d",
+        "size_bytes": 6
+      },
+      {
+        "id": "file_9b3e80012928edede839",
+        "path": "commands/dpkg_locked_versions.stderr.txt",
+        "role": "command_output",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "size_bytes": 0
+      },
+      {
+        "id": "file_03bfdfbaaf371fb50c03",
+        "path": "commands/dpkg_locked_versions.stdout.txt",
+        "role": "command_output",
+        "sha256": "4d99e3d14fb546d7ccde192ad22144112a7d1f4924f803c9c24bd2786c2d7633",
+        "size_bytes": 1208
+      },
+      {
+        "id": "file_b434b9e3d5d740a5ce85",
+        "path": "commands/dpkg_verify_locked_files.stderr.txt",
+        "role": "command_output",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "size_bytes": 0
+      },
+      {
+        "id": "file_e5c5e907b815666c4970",
+        "path": "commands/dpkg_verify_locked_files.stdout.txt",
+        "role": "command_output",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "size_bytes": 0
+      },
+      {
+        "id": "file_880887cb247cda1616f7",
+        "path": "commands/extension_build.stderr.txt",
+        "role": "command_output",
+        "sha256": "fc7e2075df9685303d960b644405247a92ec4b23f2433ddbe94963a7e7bf2b8a",
+        "size_bytes": 306
+      },
+      {
+        "id": "file_0a0deec93f8e4b36cda4",
+        "path": "commands/extension_build.stdout.txt",
+        "role": "command_output",
+        "sha256": "a925fb91a5142435cd60cae4ad7a43847cb490a89275185b48ba1910dd740cd9",
+        "size_bytes": 2511
+      },
+      {
+        "id": "file_eb36ebb3d28d91cfdaa1",
+        "path": "commands/git_contract_flags.stderr.txt",
+        "role": "command_output",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "size_bytes": 0
+      },
+      {
+        "id": "file_4281ae56014140a6293f",
+        "path": "commands/git_contract_flags.stdout.txt",
+        "role": "command_output",
+        "sha256": "745ce350b663aa41e2c4ac8194efa11dc83da5e3aeeccca35c2ec4a398a20832",
+        "size_bytes": 836
+      },
+      {
+        "id": "file_a51a882ced51ccbc8248",
+        "path": "commands/git_contract_index.stderr.txt",
+        "role": "command_output",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "size_bytes": 0
+      },
+      {
+        "id": "file_5902909e2cafdbe8bbbd",
+        "path": "commands/git_contract_index.stdout.txt",
+        "role": "command_output",
+        "sha256": "b8a79d19c79a5102db0604b1f04e7af7a16da6ccd988349eac7b64539d57d04f",
+        "size_bytes": 2036
+      },
+      {
+        "id": "file_d3dd278ede335b2a89f5",
+        "path": "commands/git_head.stderr.txt",
+        "role": "command_output",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "size_bytes": 0
+      },
+      {
+        "id": "file_2f01cfc989a06e33d289",
+        "path": "commands/git_head.stdout.txt",
+        "role": "command_output",
+        "sha256": "a2015b9e22a3311caf7c1cc66ee863790af7d58d9b0da4667e42f2633c0add36",
+        "size_bytes": 41
+      },
+      {
+        "id": "file_902f56b859d188929434",
+        "path": "commands/git_status_clean.stderr.txt",
+        "role": "command_output",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "size_bytes": 0
+      },
+      {
+        "id": "file_f88bb772a2a559fd5ace",
+        "path": "commands/git_status_clean.stdout.txt",
+        "role": "command_output",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "size_bytes": 0
+      },
+      {
+        "id": "file_56dc7ca7b2dcd242f989",
+        "path": "commands/host_cgroup.stderr.txt",
+        "role": "command_output",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "size_bytes": 0
+      },
+      {
+        "id": "file_e549a5849516a7ba18c6",
+        "path": "commands/host_cgroup.stdout.txt",
+        "role": "command_output",
+        "sha256": "778ccdf3058cfbe3d54f8973730b4abb4e0fa0aee3fbc3f53138c757812bc461",
+        "size_bytes": 15
+      },
+      {
+        "id": "file_b74285d058da2554ca2b",
+        "path": "commands/host_container_detection.stderr.txt",
+        "role": "command_output",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "size_bytes": 0
+      },
+      {
+        "id": "file_bce703e69cf068c92819",
+        "path": "commands/host_container_detection.stdout.txt",
+        "role": "command_output",
+        "sha256": "fcf33dfbe13c2354bf0e1b063f9fb422747a46cee00b7420bceff2b81457b345",
+        "size_bytes": 5
+      },
+      {
+        "id": "file_b372622406bd73e85a19",
+        "path": "commands/host_hostname.stderr.txt",
+        "role": "command_output",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "size_bytes": 0
+      },
+      {
+        "id": "file_e826b0f2586e008c2707",
+        "path": "commands/host_hostname.stdout.txt",
+        "role": "command_output",
+        "sha256": "924c749fe65bf9cac77ad6f9ba29055f7c9877ab6d96ba68f1b096beaea1f04e",
+        "size_bytes": 9
+      },
+      {
+        "id": "file_302cdc1b68d77f412706",
+        "path": "commands/host_kernel_release.stderr.txt",
+        "role": "command_output",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "size_bytes": 0
+      },
+      {
+        "id": "file_a8ffcdee05052c817eba",
+        "path": "commands/host_kernel_release.stdout.txt",
+        "role": "command_output",
+        "sha256": "3f3acce40dc80be8d1c0746ec7d7b7d6988d29215b5b0d2cba9125c98ffaec34",
+        "size_bytes": 17
+      },
+      {
+        "id": "file_74204c67e5d34e864b05",
+        "path": "commands/host_kernel_version.stderr.txt",
+        "role": "command_output",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "size_bytes": 0
+      },
+      {
+        "id": "file_54743c09d549532a6da2",
+        "path": "commands/host_kernel_version.stdout.txt",
+        "role": "command_output",
+        "sha256": "f7a2eb8cd8e13b2d02c7deb3259f0e2081d4698f56b59d0bb0348c71ceb0f33a",
+        "size_bytes": 65
+      },
+      {
+        "id": "file_95b8e582ad7d567f36f2",
+        "path": "commands/host_lscpu.stderr.txt",
+        "role": "command_output",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "size_bytes": 0
+      },
+      {
+        "id": "file_232b30a3e913cda988a9",
+        "path": "commands/host_lscpu.stdout.txt",
+        "role": "command_output",
+        "sha256": "508d89e7715d89e4f77ced06ec13fdf7b3e3470d0f54336cf1181ea7d9cfdcd2",
+        "size_bytes": 5300
+      },
+      {
+        "id": "file_add70ccb26458d5b13c1",
+        "path": "commands/host_machine.stderr.txt",
+        "role": "command_output",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "size_bytes": 0
+      },
+      {
+        "id": "file_eb6d9a137fd00352a2e1",
+        "path": "commands/host_machine.stdout.txt",
+        "role": "command_output",
+        "sha256": "aaf631698ae5160ceb04a97681a14887fdcab47cd6e0f163c87485b3b1340b62",
+        "size_bytes": 7
+      },
+      {
+        "id": "file_491137928dcd2783738a",
+        "path": "commands/host_meminfo.stderr.txt",
+        "role": "command_output",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "size_bytes": 0
+      },
+      {
+        "id": "file_29479b25a27d744483b9",
+        "path": "commands/host_meminfo.stdout.txt",
+        "role": "command_output",
+        "sha256": "38ac590fb8f1ad67628b7c3707017ba748d1e796faee5edd1cb90b7895f27142",
+        "size_bytes": 1618
+      },
+      {
+        "id": "file_35b0ce0fee20f9f40df9",
+        "path": "commands/host_os_release.stderr.txt",
+        "role": "command_output",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "size_bytes": 0
+      },
+      {
+        "id": "file_08d612c047c3f9c05bf1",
+        "path": "commands/host_os_release.stdout.txt",
+        "role": "command_output",
+        "sha256": "01af466feb100306498c86aa6bad1815e33036019aa34d4362c20f374ea5c829",
+        "size_bytes": 400
+      },
+      {
+        "id": "file_ecf4cb6c155a147d0e02",
+        "path": "commands/host_self_cgroup.stderr.txt",
+        "role": "command_output",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "size_bytes": 0
+      },
+      {
+        "id": "file_eecb94ae9968f3a4f7df",
+        "path": "commands/host_self_cgroup.stdout.txt",
+        "role": "command_output",
+        "sha256": "805e8cefd9e17fd0fd13620673dba09df279435d93c87a5af31a5bfe60801f31",
+        "size_bytes": 49
+      },
+      {
+        "id": "file_a68942bfd01cb38e9cb7",
+        "path": "commands/ncu_version.stderr.txt",
+        "role": "command_output",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "size_bytes": 0
+      },
+      {
+        "id": "file_28269ad31aa2ea94dc2e",
+        "path": "commands/ncu_version.stdout.txt",
+        "role": "command_output",
+        "sha256": "99b61b4937aa4d473ccb4ef2395d69d5f3de64908a7d65d96bc8f9b73f72476a",
+        "size_bytes": 144
+      },
+      {
+        "id": "file_13a17349ff922d1a9b96",
+        "path": "commands/ninja_version.stderr.txt",
+        "role": "command_output",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "size_bytes": 0
+      },
+      {
+        "id": "file_679fc0b2c4993d683576",
+        "path": "commands/ninja_version.stdout.txt",
+        "role": "command_output",
+        "sha256": "4f9416d650bd28343244b868dfebdb11e70d7b32423536cb87b8c31fde62f993",
+        "size_bytes": 7
+      },
+      {
+        "id": "file_79e1ec83c350f898932f",
+        "path": "commands/nsys_version.stderr.txt",
+        "role": "command_output",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "size_bytes": 0
+      },
+      {
+        "id": "file_a944b3e51b52f5d9d71e",
+        "path": "commands/nsys_version.stdout.txt",
+        "role": "command_output",
+        "sha256": "a46fa502265be93cac6aed0834d2a9b32f7868381bf53cd56a3e1526894d85b2",
+        "size_bytes": 58
+      },
+      {
+        "id": "file_fbfeddf6eeb62419b38b",
+        "path": "commands/nvcc_version.stderr.txt",
+        "role": "command_output",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "size_bytes": 0
+      },
+      {
+        "id": "file_eca83c1a90245f5a12f9",
+        "path": "commands/nvcc_version.stdout.txt",
+        "role": "command_output",
+        "sha256": "fc7ce0c80d28ed925fd490dc4e3915ce620fcf115f965189688c6f049243aad5",
+        "size_bytes": 211
+      },
+      {
+        "id": "file_48b2ce67785c62ade758",
+        "path": "commands/nvidia_smi_gpu_csv.stderr.txt",
+        "role": "command_output",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "size_bytes": 0
+      },
+      {
+        "id": "file_949db40f2800a4f61e56",
+        "path": "commands/nvidia_smi_gpu_csv.stdout.txt",
+        "role": "command_output",
+        "sha256": "4d272e2bbbbd6c75ff66b32effd3b9bffc6d748f5ce649c8e1c21455910d6bcd",
+        "size_bytes": 289
+      },
+      {
+        "id": "file_225577ecdeb00ee34195",
+        "path": "commands/nvidia_smi_list.stderr.txt",
+        "role": "command_output",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "size_bytes": 0
+      },
+      {
+        "id": "file_eb6fd49152dcf1b1d502",
+        "path": "commands/nvidia_smi_list.stdout.txt",
+        "role": "command_output",
+        "sha256": "e68f30e407649a12ce7974dbed14431df243dc3dc8ce1a631814bac12d1f132e",
+        "size_bytes": 106
+      },
+      {
+        "id": "file_a7d96fb0e0a1f65f3d52",
+        "path": "commands/nvidia_smi_query_full.stderr.txt",
+        "role": "command_output",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "size_bytes": 0
+      },
+      {
+        "id": "file_7f2413ed4b2563c45524",
+        "path": "commands/nvidia_smi_query_full.stdout.txt",
+        "role": "command_output",
+        "sha256": "50f2fc800477d2ac5b946401c5b4c1c4a31a4af1ffcd13fe79700b960dfe33cb",
+        "size_bytes": 14971
+      },
+      {
+        "id": "file_acec40943a3f9c25d95f",
+        "path": "commands/nvidia_smi_table.stderr.txt",
+        "role": "command_output",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "size_bytes": 0
+      },
+      {
+        "id": "file_3a629567726190df07de",
+        "path": "commands/nvidia_smi_table.stdout.txt",
+        "role": "command_output",
+        "sha256": "1ef28ec19b446290ccd802f4ab6fa3cfd55c2e4b8546e6e2b7ea83a137827424",
+        "size_bytes": 1781
+      },
+      {
+        "id": "file_f9458e354665acc068fe",
+        "path": "commands/pip_check.stderr.txt",
+        "role": "command_output",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "size_bytes": 0
+      },
+      {
+        "id": "file_e4b2072189be30a42ee5",
+        "path": "commands/pip_check.stdout.txt",
+        "role": "command_output",
+        "sha256": "9261363b733079a641c2e4cc9bc46ffa1d8336945a87f807b6cf68847dbc9b09",
+        "size_bytes": 30
+      },
+      {
+        "id": "file_d2ad64faed1891897298",
+        "path": "commands/pip_list.stderr.txt",
+        "role": "command_output",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "size_bytes": 0
+      },
+      {
+        "id": "file_22c831e3de287399fa0d",
+        "path": "commands/pip_list.stdout.txt",
+        "role": "command_output",
+        "sha256": "21ebe354dfc174025d33012ff0f31045a83f48e77c9075c33d994755d5eb0e09",
+        "size_bytes": 1674
+      },
+      {
+        "id": "file_e1b0f7627e9ff4a2f89a",
+        "path": "commands/process_initial_before_directory.stderr.txt",
+        "role": "command_output",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "size_bytes": 0
+      },
+      {
+        "id": "file_b3edef07c9a530ab8c75",
+        "path": "commands/process_initial_before_directory.stdout.txt",
+        "role": "command_output",
+        "sha256": "afd7aeac4ce0011fadc9156add7fecfef2826323edb6ebfe84d96087de910967",
+        "size_bytes": 1361
+      },
+      {
+        "id": "file_a30ce12e8db1bca2bebb",
+        "path": "commands/process_torch_probe_after.stderr.txt",
+        "role": "command_output",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "size_bytes": 0
+      },
+      {
+        "id": "file_5fcf1490ed7df5e224f2",
+        "path": "commands/process_torch_probe_after.stdout.txt",
+        "role": "command_output",
+        "sha256": "06510e224b94aa967e3161a9d8f63d17935849a07ada560ca9effab4d42d3952",
+        "size_bytes": 1361
+      },
+      {
+        "id": "file_9c51e3b7e268912388bf",
+        "path": "commands/process_torch_probe_before.stderr.txt",
+        "role": "command_output",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "size_bytes": 0
+      },
+      {
+        "id": "file_4f446767438a5414dd71",
+        "path": "commands/process_torch_probe_before.stdout.txt",
+        "role": "command_output",
+        "sha256": "07b6a9006375f7be2bcdeb1937c3be60669c6af73c0763e3506ad393c2b59514",
+        "size_bytes": 1361
+      },
+      {
+        "id": "file_8a0cb96f243450ac0d3a",
+        "path": "commands/process_torch_probe_during.stderr.txt",
+        "role": "command_output",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "size_bytes": 0
+      },
+      {
+        "id": "file_6414d3241bc1ea1b63d2",
+        "path": "commands/process_torch_probe_during.stdout.txt",
+        "role": "command_output",
+        "sha256": "99518ac7ae8d7a88fc3f65408065610bbf03ab56055a22dbe32a498928ef7171",
+        "size_bytes": 1854
+      },
+      {
+        "id": "file_89e8fcdfcc31b251b99f",
+        "path": "commands/python_record_integrity.stderr.txt",
+        "role": "command_output",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "size_bytes": 0
+      },
+      {
+        "id": "file_723ad2835ec9d6e0d667",
+        "path": "commands/python_record_integrity.stdout.txt",
+        "role": "command_output",
+        "sha256": "c7adfc9b66a615469fab77817757c040535dcd8d88fe0580d588c74625ebe302",
+        "size_bytes": 316
+      },
+      {
+        "id": "file_a463d3be1634c65a4f81",
+        "path": "commands/python_version.stderr.txt",
+        "role": "command_output",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "size_bytes": 0
+      },
+      {
+        "id": "file_d48610b7d18ad6eddad3",
+        "path": "commands/python_version.stdout.txt",
+        "role": "command_output",
+        "sha256": "5b3e43dc38ca01e3f5a7854ba50d4330864b0c1e0f646650b2c78cf072acc366",
+        "size_bytes": 14
+      },
+      {
+        "id": "file_8c8d3340d0083ff65d93",
+        "path": "commands/torch_probe.stderr.txt",
+        "role": "command_output",
+        "sha256": "fc7e2075df9685303d960b644405247a92ec4b23f2433ddbe94963a7e7bf2b8a",
+        "size_bytes": 306
+      },
+      {
+        "id": "file_36cf0a65e3ff6e6758b2",
+        "path": "commands/torch_probe.stdout.txt",
+        "role": "command_output",
+        "sha256": "cca39a79f067b19723ca203fb5140c35f2dcb9517cbce4bd4863b1ef1d8cfc90",
+        "size_bytes": 737
+      },
+      {
+        "id": "file_85b9bd7263995768112e",
+        "path": "extension/build/.ninja_deps",
+        "role": "supporting_evidence",
+        "sha256": "c7505eba333e9f698561ca2a156d07a281217e9d81f1d6313a9627207f4db5c7",
+        "size_bytes": 22492
+      },
+      {
+        "id": "file_62faa0cc0b5b5322de06",
+        "path": "extension/build/.ninja_log",
+        "role": "supporting_evidence",
+        "sha256": "dc72e1d93e978eac7bd88d75756c21d8dd3fda7862f8f23e45ef476e7928f408",
+        "size_bytes": 198
+      },
+      {
+        "id": "file_66a6e116cb4e901111e6",
+        "path": "extension/build/binding.o",
+        "role": "build_intermediate",
+        "sha256": "ee6a6b4daad80b29cf3c7c1e118f48e6cac0cb7b49971faf30f1fd2dc1d87234",
+        "size_bytes": 443944
+      },
+      {
+        "id": "file_079d493495b34d84c0a2",
+        "path": "extension/build/build.ninja",
+        "role": "build_intermediate",
+        "sha256": "a98b1a5cc5d3eb794a1b1a46f201c2d284a09b81e6db823925fef6d109211849",
+        "size_bytes": 1946
+      },
+      {
+        "id": "file_38a5c4a65a50ed9d6d02",
+        "path": "extension/build/e00_cuda_cert.so",
+        "role": "extension_binary",
+        "sha256": "385dbe0422b84ab802e8d0d33e012f1bb21c66561c1671e01098a4781fb628bd",
+        "size_bytes": 284208
+      },
+      {
+        "id": "file_125df1a5b4daedc483ca",
+        "path": "extension/build/xor_kernel.cuda.o",
+        "role": "build_intermediate",
+        "sha256": "9fde8e83787b43aa50356278f1abb92780af0d03bac6ec94c3bbfab8d9e70584",
+        "size_bytes": 24080
+      },
+      {
+        "id": "file_94d97ddaf05d25031247",
+        "path": "extension/build_metadata.json",
+        "role": "build_metadata",
+        "sha256": "d186803d9b6f0ad06be649c524ef2ea95b53448bacbc37e3fb334c7b28b0df25",
+        "size_bytes": 1098
+      },
+      {
+        "id": "file_c0cb6125e37990fe5a6f",
+        "path": "validation/dependency_locks.json",
+        "role": "validation_record",
+        "sha256": "9b28e4ba576aef0f1b33f2b830e0c946c2bf4a34a55492204095b928ff565512",
+        "size_bytes": 23257
+      },
+      {
+        "id": "file_0a7ea478de8141c72bd6",
+        "path": "validation/extension_source_scan.json",
+        "role": "validation_record",
+        "sha256": "9c25a30fe062b12b40da38db58ed4507a68ceb8dda46cdf759952506232fa69f",
+        "size_bytes": 501
+      },
+      {
+        "id": "file_dbe0a8541aaf42f26733",
+        "path": "validation/input_environment.json",
+        "role": "validation_record",
+        "sha256": "00a496d5210e8480226fcc3bef9d3908f47455c72a62c072b47bad4bf7dc97f1",
+        "size_bytes": 943
+      },
+      {
+        "id": "file_52c54f7a250792a8aaf5",
+        "path": "validation/manifest_schema.json",
+        "role": "validation_record",
+        "sha256": "1f26d57a0849ee28df734982a6c9e839aa85ac1a584a99e6030fa9a35681354e",
+        "size_bytes": 181
+      },
+      {
+        "id": "file_af90e5327d8ae0818878",
+        "path": "validation/native_host_detection.json",
+        "role": "validation_record",
+        "sha256": "b68b799176bb44a5972c4cd046db4ea418e0f9a4d7461e3bbaf105493c7b99f6",
+        "size_bytes": 224
+      },
+      {
+        "id": "file_35a2c2d80e51561dad6d",
+        "path": "validation/source_git_integrity.json",
+        "role": "validation_record",
+        "sha256": "f52cf74c263f942deb2a499d7ae52a177f701f5cf99f22df8586e0099deb25d5",
+        "size_bytes": 9723
+      }
+    ],
+    "storage": {
+      "append_only": true,
+      "atomic_final_rename": true,
+      "exclusive_temporary_sibling": true,
+      "no_overwrite_final_rename": true,
+      "root": "docs/evidence/e00",
+      "run_directory": "docs/evidence/e00/e00-20260722T041628.190813Z-980eff7b6f59-0dd71f2d"
+    }
+  },
+  "execution_environment": {
+    "container": {
+      "digest_status": "not_applicable_native_host",
+      "image_digest": null,
+      "image_reference": null,
+      "runtime": null
+    },
+    "container_parity_required_before_e02": true,
+    "kind": "native_host",
+    "performance_claim_eligible": false,
+    "performance_ineligibility_reasons": [
+      "native_host_without_container_digest",
+      "hardware_certification_not_benchmark_timing"
+    ],
+    "verification_evidence_file_id": "file_af90e5327d8ae0818878",
+    "verification_status": "PASS"
+  },
+  "extension": {
+    "architecture": {
+      "compiled_ptx_targets": [],
+      "compiled_sass_targets": [],
+      "compute_capability": {
+        "major": 12,
+        "minor": 0,
+        "text": "12.0"
+      },
+      "derived_from": "nvidia_smi_and_torch_cuda_capability_agreement",
+      "equivalent_torch_cuda_arch_list": "12.0+PTX"
+    },
+    "binary": {
+      "available": true,
+      "path": "extension/build/e00_cuda_cert.so",
+      "sha256": "385dbe0422b84ab802e8d0d33e012f1bb21c66561c1671e01098a4781fb628bd",
+      "size_bytes": 284208
+    },
+    "binary_inspection": {
+      "command_ids": [
+        "cuobjdump_list_elf",
+        "cuobjdump_list_ptx",
+        "cuobjdump_dump_sass",
+        "cuobjdump_dump_ptx"
+      ],
+      "evidence_file_ids": [
+        "file_15c94fe450ceaf563787",
+        "file_887ed275334817680543",
+        "file_52ff66f47b6e6649050e",
+        "file_b6df340ec3bfbde9b7be",
+        "file_11bd4ee7f79855085ebf",
+        "file_3696057372eccac5ff39",
+        "file_6a4bf07c9e11b009411b",
+        "file_f10cbbc9e8aabaacdfdf"
+      ],
+      "ptx_target_present": true,
+      "reason": "required SASS/PTX binary evidence missing",
+      "sass_target_present": true,
+      "status": "FAIL"
+    },
+    "build": {
+      "command_ids": [
+        "extension_build"
+      ],
+      "evidence_file_ids": [
+        "file_0a0deec93f8e4b36cda4",
+        "file_880887cb247cda1616f7",
+        "file_94d97ddaf05d25031247"
+      ],
+      "reason": "extension build or binary inspection did not pass",
+      "status": "FAIL"
+    },
+    "build_metadata": {
+      "path": "extension/build_metadata.json",
+      "sha256": "d186803d9b6f0ad06be649c524ef2ea95b53448bacbc37e3fb334c7b28b0df25",
+      "size_bytes": 1098
+    },
+    "compute_sanitizer": {
+      "command_ids": [],
+      "error_count": null,
+      "evidence_file_ids": [],
+      "leak_check_full": null,
+      "reason": "one or more required Compute Sanitizer tools did not pass cleanly",
+      "status": "NOT_RUN",
+      "tools_run": []
+    },
+    "cuda_graph_capture_replay": {
+      "capture_succeeded": null,
+      "command_ids": [],
+      "evidence_file_ids": [],
+      "output_matches_golden": null,
+      "reason": "CUDA Graph capture/replay command did not pass",
+      "replay_count": null,
+      "status": "NOT_RUN"
+    },
+    "cuobjdump_command_ids": [
+      "cuobjdump_list_elf",
+      "cuobjdump_list_ptx",
+      "cuobjdump_dump_sass",
+      "cuobjdump_dump_ptx"
+    ],
+    "forced_ptx_jit": {
+      "command_ids": [],
+      "cuda_force_ptx_jit": null,
+      "evidence_file_ids": [],
+      "fresh_cuda_cache": null,
+      "reason": "forced-PTX fresh process did not pass",
+      "separate_process": null,
+      "status": "NOT_RUN"
+    },
+    "kernel_image_error_detected": null,
+    "memory_allocation": {
+      "allocated_delta_bytes": null,
+      "command_ids": [],
+      "evidence_file_ids": [],
+      "output_pointer_stable": null,
+      "preallocated_input_output": null,
+      "reason": "post-warmup allocation counters were not certified stable",
+      "reserved_delta_bytes": null,
+      "status": "NOT_RUN"
+    },
+    "name": "e00_cuda_certification",
+    "native_execution": {
+      "command_ids": [],
+      "cuda_disable_ptx_jit": null,
+      "evidence_file_ids": [],
+      "reason": "native process with PTX JIT disabled did not pass",
+      "separate_process": null,
+      "status": "NOT_RUN"
+    },
+    "no_kernel_image_error": {
+      "command_ids": [],
+      "error_found": null,
+      "evidence_file_ids": [],
+      "reason": "runtime was not executed",
+      "status": "NOT_RUN"
+    },
+    "numerical_golden": {
+      "atol": null,
+      "case_count": null,
+      "command_ids": [],
+      "dtype": "int32",
+      "evidence_file_ids": [],
+      "max_abs_error": null,
+      "max_rel_error": null,
+      "reason": "exact int32 golden command did not pass",
+      "rtol": null,
+      "status": "NOT_RUN"
+    },
+    "sources": [
+      {
+        "path": "preflight/e00_cuda/binding.cpp",
+        "sha256": "201cb17f64e5230650e0f121aa55025f789a6d015852ed10478c9b6189b0d249"
+      },
+      {
+        "path": "preflight/e00_cuda/xor_kernel.cu",
+        "sha256": "3573815608bab76bfb0076569eccfca56e18efc5839ac08f2882e4dc42a36534"
+      },
+      {
+        "path": "preflight/e00_cuda/xor_kernel.h",
+        "sha256": "d03f97355cf877bc37369d8e81ee48eef0132f31995bf6ceb3a3c0799803a4fd"
+      }
+    ]
+  },
+  "gate": {
+    "aggregate_status": "FAIL",
+    "checks": [
+      {
+        "command_ids": [
+          "git_head",
+          "git_status_clean",
+          "git_contract_index",
+          "git_contract_flags"
+        ],
+        "evidence_file_ids": [
+          "file_2f01cfc989a06e33d289",
+          "file_d3dd278ede335b2a89f5",
+          "file_f88bb772a2a559fd5ace",
+          "file_902f56b859d188929434",
+          "file_5902909e2cafdbe8bbbd",
+          "file_a51a882ced51ccbc8248",
+          "file_4281ae56014140a6293f",
+          "file_eb36ebb3d28d91cfdaa1",
+          "file_35a2c2d80e51561dad6d"
+        ],
+        "name": "committed_clean_code",
+        "reason": null,
+        "status": "PASS"
+      },
+      {
+        "command_ids": [
+          "host_container_detection",
+          "host_cgroup",
+          "host_self_cgroup"
+        ],
+        "evidence_file_ids": [
+          "file_bce703e69cf068c92819",
+          "file_b74285d058da2554ca2b",
+          "file_e549a5849516a7ba18c6",
+          "file_56dc7ca7b2dcd242f989",
+          "file_eecb94ae9968f3a4f7df",
+          "file_ecf4cb6c155a147d0e02",
+          "file_af90e5327d8ae0818878"
+        ],
+        "name": "native_host_environment_verified",
+        "reason": null,
+        "status": "PASS"
+      },
+      {
+        "command_ids": [
+          "nvidia_smi_gpu_csv"
+        ],
+        "evidence_file_ids": [
+          "file_949db40f2800a4f61e56",
+          "file_48b2ce67785c62ade758"
+        ],
+        "name": "single_uuid_selected_gpu",
+        "reason": null,
+        "status": "PASS"
+      },
+      {
+        "command_ids": [
+          "nvidia_smi_gpu_csv"
+        ],
+        "evidence_file_ids": [
+          "file_949db40f2800a4f61e56",
+          "file_48b2ce67785c62ade758"
+        ],
+        "name": "target_sku_match",
+        "reason": null,
+        "status": "PASS"
+      },
+      {
+        "command_ids": [
+          "host_lscpu",
+          "host_meminfo",
+          "host_os_release",
+          "host_kernel_release",
+          "host_kernel_version",
+          "host_machine",
+          "host_hostname",
+          "nvidia_smi_list",
+          "nvidia_smi_query_full",
+          "nvidia_smi_gpu_csv"
+        ],
+        "evidence_file_ids": [
+          "file_232b30a3e913cda988a9",
+          "file_95b8e582ad7d567f36f2",
+          "file_29479b25a27d744483b9",
+          "file_491137928dcd2783738a",
+          "file_08d612c047c3f9c05bf1",
+          "file_35b0ce0fee20f9f40df9",
+          "file_a8ffcdee05052c817eba",
+          "file_302cdc1b68d77f412706",
+          "file_54743c09d549532a6da2",
+          "file_74204c67e5d34e864b05",
+          "file_eb6d9a137fd00352a2e1",
+          "file_add70ccb26458d5b13c1",
+          "file_e826b0f2586e008c2707",
+          "file_b372622406bd73e85a19",
+          "file_eb6fd49152dcf1b1d502",
+          "file_225577ecdeb00ee34195",
+          "file_7f2413ed4b2563c45524",
+          "file_a7d96fb0e0a1f65f3d52",
+          "file_949db40f2800a4f61e56",
+          "file_48b2ce67785c62ade758"
+        ],
+        "name": "hardware_identity_complete",
+        "reason": null,
+        "status": "PASS"
+      },
+      {
+        "command_ids": [
+          "nvidia_smi_query_full",
+          "nvidia_smi_gpu_csv"
+        ],
+        "evidence_file_ids": [
+          "file_7f2413ed4b2563c45524",
+          "file_a7d96fb0e0a1f65f3d52",
+          "file_949db40f2800a4f61e56",
+          "file_48b2ce67785c62ade758"
+        ],
+        "name": "power_clock_state_complete",
+        "reason": null,
+        "status": "PASS"
+      },
+      {
+        "command_ids": [
+          "nvcc_version",
+          "compute_sanitizer_version",
+          "cuobjdump_version",
+          "ncu_version",
+          "nsys_version",
+          "cxx_version",
+          "ninja_version",
+          "python_version",
+          "dpkg_locked_versions",
+          "dpkg_architecture",
+          "dpkg_verify_locked_files",
+          "pip_check",
+          "pip_list",
+          "python_record_integrity"
+        ],
+        "evidence_file_ids": [
+          "file_eca83c1a90245f5a12f9",
+          "file_fbfeddf6eeb62419b38b",
+          "file_8d3e9020e7b28f6ef3e9",
+          "file_33dbfa4e2daa9cdf5081",
+          "file_d9c12c5af7524aac3633",
+          "file_2e2cf4f0825ceca00691",
+          "file_28269ad31aa2ea94dc2e",
+          "file_a68942bfd01cb38e9cb7",
+          "file_a944b3e51b52f5d9d71e",
+          "file_79e1ec83c350f898932f",
+          "file_4edb68ab6579aa5b4079",
+          "file_bd76ccb3ef59082abc91",
+          "file_679fc0b2c4993d683576",
+          "file_13a17349ff922d1a9b96",
+          "file_d48610b7d18ad6eddad3",
+          "file_a463d3be1634c65a4f81",
+          "file_03bfdfbaaf371fb50c03",
+          "file_9b3e80012928edede839",
+          "file_84910af9e3e202660c48",
+          "file_4ffd57769f5d68104b76",
+          "file_e5c5e907b815666c4970",
+          "file_b434b9e3d5d740a5ce85",
+          "file_e4b2072189be30a42ee5",
+          "file_f9458e354665acc068fe",
+          "file_22c831e3de287399fa0d",
+          "file_d2ad64faed1891897298",
+          "file_723ad2835ec9d6e0d667",
+          "file_89e8fcdfcc31b251b99f",
+          "file_c0cb6125e37990fe5a6f"
+        ],
+        "name": "required_toolchain_complete",
+        "reason": null,
+        "status": "PASS"
+      },
+      {
+        "command_ids": [
+          "torch_probe"
+        ],
+        "evidence_file_ids": [
+          "file_36cf0a65e3ff6e6758b2",
+          "file_8c8d3340d0083ff65d93"
+        ],
+        "name": "torch_cuda_available",
+        "reason": null,
+        "status": "PASS"
+      },
+      {
+        "command_ids": [
+          "nvidia_smi_gpu_csv",
+          "torch_probe"
+        ],
+        "evidence_file_ids": [
+          "file_949db40f2800a4f61e56",
+          "file_48b2ce67785c62ade758",
+          "file_36cf0a65e3ff6e6758b2",
+          "file_8c8d3340d0083ff65d93"
+        ],
+        "name": "capability_identity_match",
+        "reason": null,
+        "status": "PASS"
+      },
+      {
+        "command_ids": [
+          "extension_build",
+          "cuobjdump_list_elf",
+          "cuobjdump_list_ptx",
+          "cuobjdump_dump_sass",
+          "cuobjdump_dump_ptx"
+        ],
+        "evidence_file_ids": [
+          "file_0a0deec93f8e4b36cda4",
+          "file_880887cb247cda1616f7",
+          "file_15c94fe450ceaf563787",
+          "file_887ed275334817680543",
+          "file_52ff66f47b6e6649050e",
+          "file_b6df340ec3bfbde9b7be",
+          "file_11bd4ee7f79855085ebf",
+          "file_3696057372eccac5ff39",
+          "file_6a4bf07c9e11b009411b",
+          "file_f10cbbc9e8aabaacdfdf",
+          "file_0a7ea478de8141c72bd6",
+          "file_94d97ddaf05d25031247"
+        ],
+        "name": "extension_build",
+        "reason": "extension build, source audit, or SASS/PTX inspection did not pass",
+        "status": "FAIL"
+      },
+      {
+        "command_ids": [],
+        "evidence_file_ids": [],
+        "name": "native_sass_execution",
+        "reason": "native, numerical, Graph, or allocation certification did not pass",
+        "status": "NOT_RUN"
+      },
+      {
+        "command_ids": [],
+        "evidence_file_ids": [],
+        "name": "forced_ptx_jit_execution",
+        "reason": "forced PTX/JIT execution did not pass",
+        "status": "NOT_RUN"
+      },
+      {
+        "command_ids": [],
+        "evidence_file_ids": [],
+        "name": "compute_sanitizer_clean",
+        "reason": "memcheck/initcheck/racecheck/synccheck did not all report zero errors",
+        "status": "NOT_RUN"
+      },
+      {
+        "command_ids": [],
+        "evidence_file_ids": [],
+        "name": "no_kernel_image_error",
+        "reason": "runtime was not executed",
+        "status": "NOT_RUN"
+      },
+      {
+        "command_ids": [
+          "process_initial_before_directory",
+          "process_torch_probe_before",
+          "process_torch_probe_during",
+          "process_torch_probe_after"
+        ],
+        "evidence_file_ids": [
+          "file_b3edef07c9a530ab8c75",
+          "file_e1b0f7627e9ff4a2f89a",
+          "file_4f446767438a5414dd71",
+          "file_9c51e3b7e268912388bf",
+          "file_6414d3241bc1ea1b63d2",
+          "file_8a0cb96f243450ac0d3a",
+          "file_5fcf1490ed7df5e224f2",
+          "file_a30ce12e8db1bca2bebb",
+          "file_0da60aa4245eb96dc029"
+        ],
+        "name": "no_foreign_compute_process",
+        "reason": null,
+        "status": "PASS"
+      },
+      {
+        "command_ids": [],
+        "evidence_file_ids": [
+          "file_52c54f7a250792a8aaf5"
+        ],
+        "name": "manifest_schema_valid",
+        "reason": null,
+        "status": "PASS"
+      },
+      {
+        "command_ids": [],
+        "evidence_file_ids": [
+          "file_0da60aa4245eb96dc029",
+          "file_b4241d87d38f412ce779",
+          "file_5e5757e8cf769f1eeca6",
+          "file_33dbfa4e2daa9cdf5081",
+          "file_8d3e9020e7b28f6ef3e9",
+          "file_f10cbbc9e8aabaacdfdf",
+          "file_6a4bf07c9e11b009411b",
+          "file_3696057372eccac5ff39",
+          "file_11bd4ee7f79855085ebf",
+          "file_887ed275334817680543",
+          "file_15c94fe450ceaf563787",
+          "file_b6df340ec3bfbde9b7be",
+          "file_52ff66f47b6e6649050e",
+          "file_2e2cf4f0825ceca00691",
+          "file_d9c12c5af7524aac3633",
+          "file_bd76ccb3ef59082abc91",
+          "file_4edb68ab6579aa5b4079",
+          "file_4ffd57769f5d68104b76",
+          "file_84910af9e3e202660c48",
+          "file_9b3e80012928edede839",
+          "file_03bfdfbaaf371fb50c03",
+          "file_b434b9e3d5d740a5ce85",
+          "file_e5c5e907b815666c4970",
+          "file_880887cb247cda1616f7",
+          "file_0a0deec93f8e4b36cda4",
+          "file_eb36ebb3d28d91cfdaa1",
+          "file_4281ae56014140a6293f",
+          "file_a51a882ced51ccbc8248",
+          "file_5902909e2cafdbe8bbbd",
+          "file_d3dd278ede335b2a89f5",
+          "file_2f01cfc989a06e33d289",
+          "file_902f56b859d188929434",
+          "file_f88bb772a2a559fd5ace",
+          "file_56dc7ca7b2dcd242f989",
+          "file_e549a5849516a7ba18c6",
+          "file_b74285d058da2554ca2b",
+          "file_bce703e69cf068c92819",
+          "file_b372622406bd73e85a19",
+          "file_e826b0f2586e008c2707",
+          "file_302cdc1b68d77f412706",
+          "file_a8ffcdee05052c817eba",
+          "file_74204c67e5d34e864b05",
+          "file_54743c09d549532a6da2",
+          "file_95b8e582ad7d567f36f2",
+          "file_232b30a3e913cda988a9",
+          "file_add70ccb26458d5b13c1",
+          "file_eb6d9a137fd00352a2e1",
+          "file_491137928dcd2783738a",
+          "file_29479b25a27d744483b9",
+          "file_35b0ce0fee20f9f40df9",
+          "file_08d612c047c3f9c05bf1",
+          "file_ecf4cb6c155a147d0e02",
+          "file_eecb94ae9968f3a4f7df",
+          "file_a68942bfd01cb38e9cb7",
+          "file_28269ad31aa2ea94dc2e",
+          "file_13a17349ff922d1a9b96",
+          "file_679fc0b2c4993d683576",
+          "file_79e1ec83c350f898932f",
+          "file_a944b3e51b52f5d9d71e",
+          "file_fbfeddf6eeb62419b38b",
+          "file_eca83c1a90245f5a12f9",
+          "file_48b2ce67785c62ade758",
+          "file_949db40f2800a4f61e56",
+          "file_225577ecdeb00ee34195",
+          "file_eb6fd49152dcf1b1d502",
+          "file_a7d96fb0e0a1f65f3d52",
+          "file_7f2413ed4b2563c45524",
+          "file_acec40943a3f9c25d95f",
+          "file_3a629567726190df07de",
+          "file_f9458e354665acc068fe",
+          "file_e4b2072189be30a42ee5",
+          "file_d2ad64faed1891897298",
+          "file_22c831e3de287399fa0d",
+          "file_e1b0f7627e9ff4a2f89a",
+          "file_b3edef07c9a530ab8c75",
+          "file_a30ce12e8db1bca2bebb",
+          "file_5fcf1490ed7df5e224f2",
+          "file_9c51e3b7e268912388bf",
+          "file_4f446767438a5414dd71",
+          "file_8a0cb96f243450ac0d3a",
+          "file_6414d3241bc1ea1b63d2",
+          "file_89e8fcdfcc31b251b99f",
+          "file_723ad2835ec9d6e0d667",
+          "file_a463d3be1634c65a4f81",
+          "file_d48610b7d18ad6eddad3",
+          "file_8c8d3340d0083ff65d93",
+          "file_36cf0a65e3ff6e6758b2",
+          "file_85b9bd7263995768112e",
+          "file_62faa0cc0b5b5322de06",
+          "file_66a6e116cb4e901111e6",
+          "file_079d493495b34d84c0a2",
+          "file_38a5c4a65a50ed9d6d02",
+          "file_125df1a5b4daedc483ca",
+          "file_94d97ddaf05d25031247",
+          "file_c0cb6125e37990fe5a6f",
+          "file_0a7ea478de8141c72bd6",
+          "file_dbe0a8541aaf42f26733",
+          "file_52c54f7a250792a8aaf5",
+          "file_af90e5327d8ae0818878",
+          "file_35a2c2d80e51561dad6d"
+        ],
+        "name": "evidence_checksums_valid",
+        "reason": null,
+        "status": "PASS"
+      }
+    ],
+    "name": "G0"
+  },
+  "gpu": {
+    "captured_at_utc": "2026-07-22T04:16:28.654231Z",
+    "clocks": {
+      "memory_current_mhz": 405.0,
+      "memory_max_mhz": 14001.0,
+      "sm_current_mhz": 180.0,
+      "sm_max_mhz": 3090.0
+    },
+    "collection_error": null,
+    "collection_status": "PASS",
+    "compute_capability": {
+      "major": 12,
+      "minor": 0,
+      "text": "12.0"
+    },
+    "display_mode": "disabled",
+    "ecc_mode": "disabled",
+    "full_name": "NVIDIA RTX PRO 6000 Blackwell Workstation Edition",
+    "pci_bus_id": "00000000:05:00.0",
+    "pci_device_id": "0x2BB110DE",
+    "performance_state": "P8",
+    "persistence_mode": "enabled",
+    "power": {
+      "default_limit_w": 600.0,
+      "draw_w": 6.41,
+      "limit_w": 600.0,
+      "max_limit_w": 600.0,
+      "min_limit_w": 150.0
+    },
+    "temperature_c": 40.0,
+    "uuid": "GPU-75bd273e-6b20-0d22-1b0b-5fbb6fb0025b",
+    "vbios_version": "98.02.81.00.07",
+    "vram_total_bytes": 102641958912
+  },
+  "gpu_selection": {
+    "collection_error": null,
+    "collection_status": "PASS",
+    "cuda_visible_devices": "GPU-75bd273e-6b20-0d22-1b0b-5fbb6fb0025b",
+    "selected_gpu_uuid": "GPU-75bd273e-6b20-0d22-1b0b-5fbb6fb0025b",
+    "selected_logical_index": 0,
+    "selection_is_unique": true,
+    "selection_method": "gpu_uuid",
+    "visible_device_count": 1
+  },
+  "host": {
+    "collection_error": null,
+    "collection_status": "PASS",
+    "cpu_model": "AMD Ryzen 7 5800 8-Core Processor",
+    "hostname": "rockrock",
+    "kernel_release": "7.0.0-28-generic",
+    "kernel_version": "#28~24.04.1-Ubuntu SMP PREEMPT_DYNAMIC Wed Jul  1 15:50:57 UTC 2",
+    "logical_cpu_count": 16,
+    "machine_arch": "x86_64",
+    "memory_total_bytes": 134960816128,
+    "os_name": "Ubuntu",
+    "os_version": "24.04",
+    "physical_core_count": 8
+  },
+  "process_audit": {
+    "collector_identity": {
+      "pid": 269220,
+      "start_time_ticks": 8369665
+    },
+    "foreign_or_unknown_process_count": 0,
+    "graphics_process_count": 2,
+    "policy": {
+      "executable_name_whitelist_used": false,
+      "foreign_compute_allowed": false,
+      "graphics_only_allowed": true,
+      "supervised_identity_basis": "pid_and_process_start_time",
+      "unknown_process_type_fails_closed": true
+    },
+    "query_failure_count": 0,
+    "snapshots": [
+      {
+        "allowed_compute_processes": [],
+        "captured_at_utc": "2026-07-22T04:16:28.035295Z",
+        "command_id": "process_initial_before_directory",
+        "foreign_compute_processes": [],
+        "graphics_processes": [
+          {
+            "gpu_uuid": "GPU-75bd273e-6b20-0d22-1b0b-5fbb6fb0025b",
+            "pid": 1404,
+            "process_name": "Xorg",
+            "process_start_time_ticks": 962,
+            "process_type": "G",
+            "used_gpu_memory_mib": null
+          },
+          {
+            "gpu_uuid": "GPU-75bd273e-6b20-0d22-1b0b-5fbb6fb0025b",
+            "pid": 1515,
+            "process_name": "gnome-shell",
+            "process_start_time_ticks": 1138,
+            "process_type": "G",
+            "used_gpu_memory_mib": null
+          }
+        ],
+        "phase": "before",
+        "query_argv": [
+          "/home/rockrock/cmu_paper/.venv/bin/python",
+          "/home/rockrock/cmu_paper/preflight/process_query.py"
+        ],
+        "query_exit_code": 0,
+        "raw_stderr": {
+          "path": "commands/process_initial_before_directory.stderr.txt",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "size_bytes": 0
+        },
+        "raw_stdout": {
+          "path": "commands/process_initial_before_directory.stdout.txt",
+          "sha256": "afd7aeac4ce0011fadc9156add7fecfef2826323edb6ebfe84d96087de910967",
+          "size_bytes": 1361
+        },
+        "unknown_processes": []
+      },
+      {
+        "allowed_compute_processes": [],
+        "captured_at_utc": "2026-07-22T04:16:40.194769Z",
+        "command_id": "process_torch_probe_before",
+        "foreign_compute_processes": [],
+        "graphics_processes": [
+          {
+            "gpu_uuid": "GPU-75bd273e-6b20-0d22-1b0b-5fbb6fb0025b",
+            "pid": 1404,
+            "process_name": "Xorg",
+            "process_start_time_ticks": 962,
+            "process_type": "G",
+            "used_gpu_memory_mib": null
+          },
+          {
+            "gpu_uuid": "GPU-75bd273e-6b20-0d22-1b0b-5fbb6fb0025b",
+            "pid": 1515,
+            "process_name": "gnome-shell",
+            "process_start_time_ticks": 1138,
+            "process_type": "G",
+            "used_gpu_memory_mib": null
+          }
+        ],
+        "phase": "before",
+        "query_argv": [
+          "/home/rockrock/cmu_paper/.venv/bin/python",
+          "/home/rockrock/cmu_paper/preflight/process_query.py"
+        ],
+        "query_exit_code": 0,
+        "raw_stderr": {
+          "path": "commands/process_torch_probe_before.stderr.txt",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "size_bytes": 0
+        },
+        "raw_stdout": {
+          "path": "commands/process_torch_probe_before.stdout.txt",
+          "sha256": "07b6a9006375f7be2bcdeb1937c3be60669c6af73c0763e3506ad393c2b59514",
+          "size_bytes": 1361
+        },
+        "unknown_processes": []
+      },
+      {
+        "allowed_compute_processes": [
+          {
+            "gpu_uuid": "GPU-75bd273e-6b20-0d22-1b0b-5fbb6fb0025b",
+            "pid": 269315,
+            "process_name": "/home/rockrock/cmu_paper/.venv/bin/python",
+            "process_start_time_ticks": 8370907,
+            "process_type": "C",
+            "relationship": "supervised_child",
+            "supervised_root_identity": {
+              "pid": 269315,
+              "start_time_ticks": 8370907
+            },
+            "used_gpu_memory_mib": 550
+          }
+        ],
+        "captured_at_utc": "2026-07-22T04:16:41.543935Z",
+        "command_id": "process_torch_probe_during",
+        "foreign_compute_processes": [],
+        "graphics_processes": [
+          {
+            "gpu_uuid": "GPU-75bd273e-6b20-0d22-1b0b-5fbb6fb0025b",
+            "pid": 1404,
+            "process_name": "Xorg",
+            "process_start_time_ticks": 962,
+            "process_type": "G",
+            "used_gpu_memory_mib": null
+          },
+          {
+            "gpu_uuid": "GPU-75bd273e-6b20-0d22-1b0b-5fbb6fb0025b",
+            "pid": 1515,
+            "process_name": "gnome-shell",
+            "process_start_time_ticks": 1138,
+            "process_type": "G",
+            "used_gpu_memory_mib": null
+          }
+        ],
+        "phase": "during",
+        "query_argv": [
+          "/home/rockrock/cmu_paper/.venv/bin/python",
+          "/home/rockrock/cmu_paper/preflight/process_query.py",
+          "--supervised-root-pid",
+          "269315",
+          "--supervised-root-start-ticks",
+          "8370907"
+        ],
+        "query_exit_code": 0,
+        "raw_stderr": {
+          "path": "commands/process_torch_probe_during.stderr.txt",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "size_bytes": 0
+        },
+        "raw_stdout": {
+          "path": "commands/process_torch_probe_during.stdout.txt",
+          "sha256": "99518ac7ae8d7a88fc3f65408065610bbf03ab56055a22dbe32a498928ef7171",
+          "size_bytes": 1854
+        },
+        "unknown_processes": []
+      },
+      {
+        "allowed_compute_processes": [],
+        "captured_at_utc": "2026-07-22T04:16:42.002754Z",
+        "command_id": "process_torch_probe_after",
+        "foreign_compute_processes": [],
+        "graphics_processes": [
+          {
+            "gpu_uuid": "GPU-75bd273e-6b20-0d22-1b0b-5fbb6fb0025b",
+            "pid": 1404,
+            "process_name": "Xorg",
+            "process_start_time_ticks": 962,
+            "process_type": "G",
+            "used_gpu_memory_mib": null
+          },
+          {
+            "gpu_uuid": "GPU-75bd273e-6b20-0d22-1b0b-5fbb6fb0025b",
+            "pid": 1515,
+            "process_name": "gnome-shell",
+            "process_start_time_ticks": 1138,
+            "process_type": "G",
+            "used_gpu_memory_mib": null
+          }
+        ],
+        "phase": "after",
+        "query_argv": [
+          "/home/rockrock/cmu_paper/.venv/bin/python",
+          "/home/rockrock/cmu_paper/preflight/process_query.py"
+        ],
+        "query_exit_code": 0,
+        "raw_stderr": {
+          "path": "commands/process_torch_probe_after.stderr.txt",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "size_bytes": 0
+        },
+        "raw_stdout": {
+          "path": "commands/process_torch_probe_after.stdout.txt",
+          "sha256": "06510e224b94aa967e3161a9d8f63d17935849a07ada560ca9effab4d42d3952",
+          "size_bytes": 1361
+        },
+        "unknown_processes": []
+      }
+    ],
+    "supervised_compute_process_count": 1
+  },
+  "run": {
+    "benchmark_timing_collected": false,
+    "completed": true,
+    "failure_classes": [
+      "build_failed",
+      "runtime_failed",
+      "sanitizer_failed"
+    ],
+    "failure_reasons": [
+      "extension build, source audit, or SASS/PTX inspection did not pass",
+      "native, numerical, Graph, or allocation certification did not pass",
+      "forced PTX/JIT execution did not pass",
+      "memcheck/initcheck/racecheck/synccheck did not all report zero errors",
+      "runtime was not executed"
+    ],
+    "finished_at_utc": "2026-07-22T04:16:57.971888Z",
+    "gate": "G0",
+    "id": "e00-20260722T041628.190813Z-980eff7b6f59-0dd71f2d",
+    "kind": "hardware_preflight",
+    "phase": "E00",
+    "started_at_utc": "2026-07-22T04:16:28.190809Z",
+    "status": "FAIL"
+  },
+  "schema_version": "e00-manifest-1.0.0",
+  "software": {
+    "collection_error": null,
+    "collection_status": "PASS",
+    "compute_sanitizer": {
+      "installed": true,
+      "observation_error": null,
+      "version": "2025.3.1.0"
+    },
+    "cuda_toolkit": {
+      "cuda_home": "/usr/local/cuda-13.0",
+      "installed": true,
+      "nvcc_path": "/usr/local/cuda-13.0/bin/nvcc",
+      "observation_error": null,
+      "version": "13.0.88"
+    },
+    "ncu": {
+      "installed": true,
+      "observation_error": null,
+      "version": "2026.2.1.0"
+    },
+    "nsys": {
+      "installed": true,
+      "observation_error": null,
+      "version": "2026.1.3.425-261338342291v0"
+    },
+    "nvidia_driver": {
+      "driver_supported_cuda_version": "13.2",
+      "version": "595.71.05"
+    },
+    "python": {
+      "installed": true,
+      "observation_error": null,
+      "version": "3.12.3"
+    },
+    "torch": {
+      "compiled_cuda_version": "13.0",
+      "installed": true,
+      "observation_error": null,
+      "version": "2.12.1+cu130"
+    },
+    "triton": {
+      "installed": true,
+      "observation_error": null,
+      "version": "3.7.1"
+    },
+    "vllm": {
+      "installed": false,
+      "observation_error": "vllm not installed",
+      "version": null
+    }
+  },
+  "torch_probe": {
+    "capability_matches_manifest": true,
+    "collection_error": null,
+    "collection_status": "PASS",
+    "cuda_available": true,
+    "device_count": 1,
+    "python_executable": "/home/rockrock/cmu_paper/.venv/bin/python",
+    "python_executable_matches_lock": true,
+    "python_optimization_level": 0,
+    "selected_device_capability": {
+      "major": 12,
+      "minor": 0,
+      "text": "12.0"
+    },
+    "selected_device_name": "NVIDIA RTX PRO 6000 Blackwell Workstation Edition",
+    "selected_device_total_memory_bytes": 101970345984,
+    "selected_device_uuid": "GPU-75bd273e-6b20-0d22-1b0b-5fbb6fb0025b",
+    "selected_logical_index": 0,
+    "selected_uuid_matches_manifest": true
+  }
+}

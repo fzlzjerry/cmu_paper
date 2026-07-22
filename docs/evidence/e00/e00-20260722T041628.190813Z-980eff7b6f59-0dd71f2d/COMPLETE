@@ -1,0 +1,9 @@
+{
+  "checksum_ledger_path": "checksums.sha256",
+  "checksum_ledger_sha256": "8716fc317747e7e9b5c06017cb8e5339df610c5a89d0d7fbee82ad07fbc68b52",
+  "finished_at_utc": "2026-07-22T04:16:57.971888Z",
+  "manifest_sha256": "0720734d29c90f609e51cf4c5e4f0b1fadce220e23e146e566f860bb962c0035",
+  "run_id": "e00-20260722T041628.190813Z-980eff7b6f59-0dd71f2d",
+  "status": "FAIL",
+  "written_last": true
+}

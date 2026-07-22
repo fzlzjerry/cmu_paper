@@ -1,0 +1,668 @@
+{
+  "dpkg_locked_package_count": 34,
+  "dpkg_verify_clean": true,
+  "errors": [],
+  "package_observations": [
+    {
+      "expected_architecture": "amd64",
+      "expected_version": "5.2.21-2ubuntu4",
+      "matches": true,
+      "name": "bash",
+      "observed_architecture": "amd64",
+      "observed_version": "5.2.21-2ubuntu4"
+    },
+    {
+      "expected_architecture": "amd64",
+      "expected_version": "2.42-4ubuntu2.10",
+      "matches": true,
+      "name": "binutils",
+      "observed_architecture": "amd64",
+      "observed_version": "2.42-4ubuntu2.10"
+    },
+    {
+      "expected_architecture": "amd64",
+      "expected_version": "9.4-3ubuntu6.2",
+      "matches": true,
+      "name": "coreutils",
+      "observed_architecture": "amd64",
+      "observed_version": "9.4-3ubuntu6.2"
+    },
+    {
+      "expected_architecture": "amd64",
+      "expected_version": "12.10ubuntu1",
+      "matches": true,
+      "name": "build-essential",
+      "observed_architecture": "amd64",
+      "observed_version": "12.10ubuntu1"
+    },
+    {
+      "expected_architecture": "amd64",
+      "expected_version": "13.0.85-1",
+      "matches": true,
+      "name": "cuda-cccl-13-0",
+      "observed_architecture": "amd64",
+      "observed_version": "13.0.85-1"
+    },
+    {
+      "expected_architecture": "amd64",
+      "expected_version": "13.0.88-1",
+      "matches": true,
+      "name": "cuda-crt-13-0",
+      "observed_architecture": "amd64",
+      "observed_version": "13.0.88-1"
+    },
+    {
+      "expected_architecture": "amd64",
+      "expected_version": "13.0.96-1",
+      "matches": true,
+      "name": "cuda-cudart-13-0",
+      "observed_architecture": "amd64",
+      "observed_version": "13.0.96-1"
+    },
+    {
+      "expected_architecture": "amd64",
+      "expected_version": "13.0.96-1",
+      "matches": true,
+      "name": "cuda-cudart-dev-13-0",
+      "observed_architecture": "amd64",
+      "observed_version": "13.0.96-1"
+    },
+    {
+      "expected_architecture": "amd64",
+      "expected_version": "13.0.85-1",
+      "matches": true,
+      "name": "cuda-culibos-dev-13-0",
+      "observed_architecture": "amd64",
+      "observed_version": "13.0.85-1"
+    },
+    {
+      "expected_architecture": "amd64",
+      "expected_version": "13.0.85-1",
+      "matches": true,
+      "name": "cuda-cuobjdump-13-0",
+      "observed_architecture": "amd64",
+      "observed_version": "13.0.85-1"
+    },
+    {
+      "expected_architecture": "amd64",
+      "expected_version": "13.0.96-1",
+      "matches": true,
+      "name": "cuda-driver-dev-13-0",
+      "observed_architecture": "amd64",
+      "observed_version": "13.0.96-1"
+    },
+    {
+      "expected_architecture": "amd64",
+      "expected_version": "13.0.88-1",
+      "matches": true,
+      "name": "cuda-nvcc-13-0",
+      "observed_architecture": "amd64",
+      "observed_version": "13.0.88-1"
+    },
+    {
+      "expected_architecture": "amd64",
+      "expected_version": "13.0.85-1",
+      "matches": true,
+      "name": "cuda-sanitizer-13-0",
+      "observed_architecture": "amd64",
+      "observed_version": "13.0.85-1"
+    },
+    {
+      "expected_architecture": "amd64",
+      "expected_version": "0.5.12-6ubuntu5",
+      "matches": true,
+      "name": "dash",
+      "observed_architecture": "amd64",
+      "observed_version": "0.5.12-6ubuntu5"
+    },
+    {
+      "expected_architecture": "amd64",
+      "expected_version": "4:13.2.0-7ubuntu1",
+      "matches": true,
+      "name": "g++",
+      "observed_architecture": "amd64",
+      "observed_version": "4:13.2.0-7ubuntu1"
+    },
+    {
+      "expected_architecture": "amd64",
+      "expected_version": "13.3.0-6ubuntu2~24.04.1",
+      "matches": true,
+      "name": "g++-13",
+      "observed_architecture": "amd64",
+      "observed_version": "13.3.0-6ubuntu2~24.04.1"
+    },
+    {
+      "expected_architecture": "amd64",
+      "expected_version": "4:13.2.0-7ubuntu1",
+      "matches": true,
+      "name": "gcc",
+      "observed_architecture": "amd64",
+      "observed_version": "4:13.2.0-7ubuntu1"
+    },
+    {
+      "expected_architecture": "amd64",
+      "expected_version": "13.3.0-6ubuntu2~24.04.1",
+      "matches": true,
+      "name": "gcc-13",
+      "observed_architecture": "amd64",
+      "observed_version": "13.3.0-6ubuntu2~24.04.1"
+    },
+    {
+      "expected_architecture": "amd64",
+      "expected_version": "1.22.6ubuntu6.6",
+      "matches": true,
+      "name": "dpkg",
+      "observed_architecture": "amd64",
+      "observed_version": "1.22.6ubuntu6.6"
+    },
+    {
+      "expected_architecture": "amd64",
+      "expected_version": "1:2.43.0-1ubuntu7.3",
+      "matches": true,
+      "name": "git",
+      "observed_architecture": "amd64",
+      "observed_version": "1:2.43.0-1ubuntu7.3"
+    },
+    {
+      "expected_architecture": "amd64",
+      "expected_version": "3.23+nmu2ubuntu2",
+      "matches": true,
+      "name": "hostname",
+      "observed_architecture": "amd64",
+      "observed_version": "3.23+nmu2ubuntu2"
+    },
+    {
+      "expected_architecture": "amd64",
+      "expected_version": "2.39-0ubuntu8.7",
+      "matches": true,
+      "name": "libc6-dev",
+      "observed_architecture": "amd64",
+      "observed_version": "2.39-0ubuntu8.7"
+    },
+    {
+      "expected_architecture": "amd64",
+      "expected_version": "3.12.3-1ubuntu0.15",
+      "matches": true,
+      "name": "libpython3.12-dev",
+      "observed_architecture": "amd64",
+      "observed_version": "3.12.3-1ubuntu0.15"
+    },
+    {
+      "expected_architecture": "amd64",
+      "expected_version": "13.3.0-6ubuntu2~24.04.1",
+      "matches": true,
+      "name": "libstdc++-13-dev",
+      "observed_architecture": "amd64",
+      "observed_version": "13.3.0-6ubuntu2~24.04.1"
+    },
+    {
+      "expected_architecture": "amd64",
+      "expected_version": "1.11.1-2",
+      "matches": true,
+      "name": "ninja-build",
+      "observed_architecture": "amd64",
+      "observed_version": "1.11.1-2"
+    },
+    {
+      "expected_architecture": "amd64",
+      "expected_version": "2026.2.1.5-1",
+      "matches": true,
+      "name": "nsight-compute-2026.2.1",
+      "observed_architecture": "amd64",
+      "observed_version": "2026.2.1.5-1"
+    },
+    {
+      "expected_architecture": "amd64",
+      "expected_version": "2026.1.3.425-261338342291v0",
+      "matches": true,
+      "name": "nsight-systems-2026.1.3",
+      "observed_architecture": "amd64",
+      "observed_version": "2026.1.3.425-261338342291v0"
+    },
+    {
+      "expected_architecture": "amd64",
+      "expected_version": "595.71.05-0ubuntu0.24.04.1",
+      "matches": true,
+      "name": "nvidia-utils-595",
+      "observed_architecture": "amd64",
+      "observed_version": "595.71.05-0ubuntu0.24.04.1"
+    },
+    {
+      "expected_architecture": "amd64",
+      "expected_version": "3.12.3-1ubuntu0.15",
+      "matches": true,
+      "name": "python3.12",
+      "observed_architecture": "amd64",
+      "observed_version": "3.12.3-1ubuntu0.15"
+    },
+    {
+      "expected_architecture": "amd64",
+      "expected_version": "3.12.3-1ubuntu0.15",
+      "matches": true,
+      "name": "python3.12-dev",
+      "observed_architecture": "amd64",
+      "observed_version": "3.12.3-1ubuntu0.15"
+    },
+    {
+      "expected_architecture": "amd64",
+      "expected_version": "3.12.3-1ubuntu0.15",
+      "matches": true,
+      "name": "python3.12-minimal",
+      "observed_architecture": "amd64",
+      "observed_version": "3.12.3-1ubuntu0.15"
+    },
+    {
+      "expected_architecture": "amd64",
+      "expected_version": "3.12.3-1ubuntu0.15",
+      "matches": true,
+      "name": "python3.12-venv",
+      "observed_architecture": "amd64",
+      "observed_version": "3.12.3-1ubuntu0.15"
+    },
+    {
+      "expected_architecture": "amd64",
+      "expected_version": "255.4-1ubuntu8.16",
+      "matches": true,
+      "name": "systemd",
+      "observed_architecture": "amd64",
+      "observed_version": "255.4-1ubuntu8.16"
+    },
+    {
+      "expected_architecture": "amd64",
+      "expected_version": "2.39.3-9ubuntu6.5",
+      "matches": true,
+      "name": "util-linux",
+      "observed_architecture": "amd64",
+      "observed_version": "2.39.3-9ubuntu6.5"
+    }
+  ],
+  "platform_validation": {
+    "comparisons": {
+      "container_digest_status": {
+        "expected": "not_applicable_native_host",
+        "matches": true,
+        "observed": "not_applicable_native_host"
+      },
+      "cuda_home": {
+        "expected": "/usr/local/cuda-13.0",
+        "matches": true,
+        "observed": "/usr/local/cuda-13.0"
+      },
+      "distribution": {
+        "expected": "ubuntu",
+        "matches": true,
+        "observed": "ubuntu"
+      },
+      "distribution_version": {
+        "expected": "24.04",
+        "matches": true,
+        "observed": "24.04"
+      },
+      "dpkg_architecture": {
+        "expected": "amd64",
+        "matches": true,
+        "observed": "amd64"
+      },
+      "execution_environment_kind": {
+        "expected": "native_host",
+        "matches": true,
+        "observed": "native_host"
+      },
+      "machine": {
+        "expected": "x86_64",
+        "matches": true,
+        "observed": "x86_64"
+      },
+      "performance_claim_eligible": {
+        "expected": false,
+        "matches": true,
+        "observed": false
+      },
+      "python_abi": {
+        "expected": "cp312",
+        "matches": true,
+        "observed": "cp312"
+      },
+      "python_environment": {
+        "expected": ".venv",
+        "matches": true,
+        "observed": ".venv"
+      },
+      "python_requirements_lock": {
+        "expected": "preflight/requirements-e00.txt",
+        "matches": true,
+        "observed": "preflight/requirements-e00.txt"
+      }
+    },
+    "errors": [],
+    "status": "PASS"
+  },
+  "python_installed_package_count": 35,
+  "python_locked_package_count": 35,
+  "python_record_integrity": {
+    "distribution_count": 35,
+    "errors": [],
+    "hashed_entry_count": 16438,
+    "permitted_unhashed_entry_count": 5666,
+    "python_prefix": "/home/rockrock/cmu_paper/.venv",
+    "record_entry_count": 22104,
+    "relevant_file_count": 5680,
+    "site_roots": [
+      "/home/rockrock/cmu_paper/.venv/lib/python3.12/site-packages"
+    ],
+    "status": "PASS"
+  },
+  "requirements_lock_sha256": "aafe68e54cb316d6bb673dbc42087b2f971ac94668973cc3f8cc555d8a0dbb29",
+  "status": "PASS",
+  "tool_hash_count": 25,
+  "tool_hash_observations": [
+    {
+      "expected_invocation_path": "/usr/bin/bash",
+      "expected_resolved_path": "/usr/bin/bash",
+      "expected_sha256": "bc5945feb8bd26203ebfafea5ce1878bb2e32cb8fb50ab7ae395cfb1e1aaaef1",
+      "hash_matches": true,
+      "name": "bash",
+      "observed_resolved_path": "/usr/bin/bash",
+      "observed_sha256": "bc5945feb8bd26203ebfafea5ce1878bb2e32cb8fb50ab7ae395cfb1e1aaaef1",
+      "path_matches": true
+    },
+    {
+      "expected_invocation_path": "/usr/bin/cat",
+      "expected_resolved_path": "/usr/bin/cat",
+      "expected_sha256": "a63158e6e5bce20616425f5d61e5bd7374bb5bccf15bbb93ae2e40238248f179",
+      "hash_matches": true,
+      "name": "cat",
+      "observed_resolved_path": "/usr/bin/cat",
+      "observed_sha256": "a63158e6e5bce20616425f5d61e5bd7374bb5bccf15bbb93ae2e40238248f179",
+      "path_matches": true
+    },
+    {
+      "expected_invocation_path": "/usr/bin/gcc",
+      "expected_resolved_path": "/usr/bin/x86_64-linux-gnu-gcc-13",
+      "expected_sha256": "1b99826121ae6682a634e5efe09bd3e3df58ce58e0b28f849114ab5b89139c26",
+      "hash_matches": true,
+      "name": "cc",
+      "observed_resolved_path": "/usr/bin/x86_64-linux-gnu-gcc-13",
+      "observed_sha256": "1b99826121ae6682a634e5efe09bd3e3df58ce58e0b28f849114ab5b89139c26",
+      "path_matches": true
+    },
+    {
+      "expected_invocation_path": "/usr/local/cuda-13.0/compute-sanitizer/compute-sanitizer",
+      "expected_resolved_path": "/usr/local/cuda-13.0/compute-sanitizer/compute-sanitizer",
+      "expected_sha256": "3a75361c1b93f05c5247323b36300dc974dca967ae4344e0659df568724e4335",
+      "hash_matches": true,
+      "name": "compute-sanitizer-real",
+      "observed_resolved_path": "/usr/local/cuda-13.0/compute-sanitizer/compute-sanitizer",
+      "observed_sha256": "3a75361c1b93f05c5247323b36300dc974dca967ae4344e0659df568724e4335",
+      "path_matches": true
+    },
+    {
+      "expected_invocation_path": "/usr/bin/dpkg",
+      "expected_resolved_path": "/usr/bin/dpkg",
+      "expected_sha256": "567180a568ad6af680314fdcb4d963246985e682b28a9e8fafed8b09abbd50af",
+      "hash_matches": true,
+      "name": "dpkg",
+      "observed_resolved_path": "/usr/bin/dpkg",
+      "observed_sha256": "567180a568ad6af680314fdcb4d963246985e682b28a9e8fafed8b09abbd50af",
+      "path_matches": true
+    },
+    {
+      "expected_invocation_path": "/usr/bin/dpkg-query",
+      "expected_resolved_path": "/usr/bin/dpkg-query",
+      "expected_sha256": "cc2a19017c37132e4ad46c1fbddea6472262d0a62a0b8585c383706c20005ea1",
+      "hash_matches": true,
+      "name": "dpkg-query",
+      "observed_resolved_path": "/usr/bin/dpkg-query",
+      "observed_sha256": "cc2a19017c37132e4ad46c1fbddea6472262d0a62a0b8585c383706c20005ea1",
+      "path_matches": true
+    },
+    {
+      "expected_invocation_path": "/usr/bin/env",
+      "expected_resolved_path": "/usr/bin/env",
+      "expected_sha256": "0aefff8f912fb75716c5d4de3b6acde93edbe8fa280fc8ee895c1226d3e373ef",
+      "hash_matches": true,
+      "name": "env",
+      "observed_resolved_path": "/usr/bin/env",
+      "observed_sha256": "0aefff8f912fb75716c5d4de3b6acde93edbe8fa280fc8ee895c1226d3e373ef",
+      "path_matches": true
+    },
+    {
+      "expected_invocation_path": "/usr/bin/git",
+      "expected_resolved_path": "/usr/bin/git",
+      "expected_sha256": "2a8c18fbf43da9f692d75474c72bea9dfd796c260b0f3dfe456376abc3bbd668",
+      "hash_matches": true,
+      "name": "git",
+      "observed_resolved_path": "/usr/bin/git",
+      "observed_sha256": "2a8c18fbf43da9f692d75474c72bea9dfd796c260b0f3dfe456376abc3bbd668",
+      "path_matches": true
+    },
+    {
+      "expected_invocation_path": "/usr/bin/hostname",
+      "expected_resolved_path": "/usr/bin/hostname",
+      "expected_sha256": "071fec20458397874e6121589d5210e7eed22a1b1afe16c2b9970b8a8233cc5b",
+      "hash_matches": true,
+      "name": "hostname",
+      "observed_resolved_path": "/usr/bin/hostname",
+      "observed_sha256": "071fec20458397874e6121589d5210e7eed22a1b1afe16c2b9970b8a8233cc5b",
+      "path_matches": true
+    },
+    {
+      "expected_invocation_path": "/usr/bin/lscpu",
+      "expected_resolved_path": "/usr/bin/lscpu",
+      "expected_sha256": "31c24c0492f23fb6737746de6526caf28153ce9b2d252dc99e3ba3729456e734",
+      "hash_matches": true,
+      "name": "lscpu",
+      "observed_resolved_path": "/usr/bin/lscpu",
+      "observed_sha256": "31c24c0492f23fb6737746de6526caf28153ce9b2d252dc99e3ba3729456e734",
+      "path_matches": true
+    },
+    {
+      "expected_invocation_path": "/usr/bin/readlink",
+      "expected_resolved_path": "/usr/bin/readlink",
+      "expected_sha256": "645a5f1f1f2aa9639a1fa1ac0a0b7e9377a2b963baf62d3952a3ce02715e1bf7",
+      "hash_matches": true,
+      "name": "readlink",
+      "observed_resolved_path": "/usr/bin/readlink",
+      "observed_sha256": "645a5f1f1f2aa9639a1fa1ac0a0b7e9377a2b963baf62d3952a3ce02715e1bf7",
+      "path_matches": true
+    },
+    {
+      "expected_invocation_path": "/usr/bin/sha256sum",
+      "expected_resolved_path": "/usr/bin/sha256sum",
+      "expected_sha256": "9992e1f1feb6f0f396bc8d6691ebc1adbfc269fd628bce84eda1d4ba5c3995c7",
+      "hash_matches": true,
+      "name": "sha256sum",
+      "observed_resolved_path": "/usr/bin/sha256sum",
+      "observed_sha256": "9992e1f1feb6f0f396bc8d6691ebc1adbfc269fd628bce84eda1d4ba5c3995c7",
+      "path_matches": true
+    },
+    {
+      "expected_invocation_path": "/bin/sh",
+      "expected_resolved_path": "/usr/bin/dash",
+      "expected_sha256": "86d31f6fb799e91fa21bad341484564510ca287703a16e9e46c53338776f4f42",
+      "hash_matches": true,
+      "name": "sh",
+      "observed_resolved_path": "/usr/bin/dash",
+      "observed_sha256": "86d31f6fb799e91fa21bad341484564510ca287703a16e9e46c53338776f4f42",
+      "path_matches": true
+    },
+    {
+      "expected_invocation_path": "/usr/bin/systemd-detect-virt",
+      "expected_resolved_path": "/usr/bin/systemd-detect-virt",
+      "expected_sha256": "6164c9cee9192d71cbec070155ac7be896883bd07c92d082228eb50dba02bfb5",
+      "hash_matches": true,
+      "name": "systemd-detect-virt",
+      "observed_resolved_path": "/usr/bin/systemd-detect-virt",
+      "observed_sha256": "6164c9cee9192d71cbec070155ac7be896883bd07c92d082228eb50dba02bfb5",
+      "path_matches": true
+    },
+    {
+      "expected_invocation_path": "/usr/bin/uname",
+      "expected_resolved_path": "/usr/bin/uname",
+      "expected_sha256": "8fd593fd9e1902eb67cfeba15642719b0ef6c44ba97febceac819e7e5c442abb",
+      "hash_matches": true,
+      "name": "uname",
+      "observed_resolved_path": "/usr/bin/uname",
+      "observed_sha256": "8fd593fd9e1902eb67cfeba15642719b0ef6c44ba97febceac819e7e5c442abb",
+      "path_matches": true
+    },
+    {
+      "expected_invocation_path": "/usr/local/cuda-13.0/bin/compute-sanitizer",
+      "expected_resolved_path": "/usr/local/cuda-13.0/bin/compute-sanitizer",
+      "expected_sha256": "5cba659e1cd603aa2370e103425f184368e6ed405da90ce85743c4399c324dbc",
+      "hash_matches": true,
+      "name": "compute-sanitizer",
+      "observed_resolved_path": "/usr/local/cuda-13.0/bin/compute-sanitizer",
+      "observed_sha256": "5cba659e1cd603aa2370e103425f184368e6ed405da90ce85743c4399c324dbc",
+      "path_matches": true
+    },
+    {
+      "expected_invocation_path": "/usr/local/cuda-13.0/bin/cuobjdump",
+      "expected_resolved_path": "/usr/local/cuda-13.0/bin/cuobjdump",
+      "expected_sha256": "1763b5367167e73939c853f6c71bdec7be0ea4a1cfb6625e4c81d7c7a1f801ae",
+      "hash_matches": true,
+      "name": "cuobjdump",
+      "observed_resolved_path": "/usr/local/cuda-13.0/bin/cuobjdump",
+      "observed_sha256": "1763b5367167e73939c853f6c71bdec7be0ea4a1cfb6625e4c81d7c7a1f801ae",
+      "path_matches": true
+    },
+    {
+      "expected_invocation_path": "/usr/bin/c++",
+      "expected_resolved_path": "/usr/bin/x86_64-linux-gnu-g++-13",
+      "expected_sha256": "1353e9bdd29a7295c7226bf6c63abccce056d8cac31f112e5cdbecc3f28c2769",
+      "hash_matches": true,
+      "name": "c++",
+      "observed_resolved_path": "/usr/bin/x86_64-linux-gnu-g++-13",
+      "observed_sha256": "1353e9bdd29a7295c7226bf6c63abccce056d8cac31f112e5cdbecc3f28c2769",
+      "path_matches": true
+    },
+    {
+      "expected_invocation_path": "/usr/bin/ld",
+      "expected_resolved_path": "/usr/bin/x86_64-linux-gnu-ld.bfd",
+      "expected_sha256": "e9ceb054c12207970f2726dfc07e9a66b411602748628baf27399f02a9bbb31b",
+      "hash_matches": true,
+      "name": "ld",
+      "observed_resolved_path": "/usr/bin/x86_64-linux-gnu-ld.bfd",
+      "observed_sha256": "e9ceb054c12207970f2726dfc07e9a66b411602748628baf27399f02a9bbb31b",
+      "path_matches": true
+    },
+    {
+      "expected_invocation_path": "/usr/local/bin/ncu",
+      "expected_resolved_path": "/opt/nvidia/nsight-compute/2026.2.1/ncu",
+      "expected_sha256": "a44ff2c735c4dcf66c78f3f430155805d6a0b1f74f26331f98ecec03bfbf3f1a",
+      "hash_matches": true,
+      "name": "ncu",
+      "observed_resolved_path": "/opt/nvidia/nsight-compute/2026.2.1/ncu",
+      "observed_sha256": "a44ff2c735c4dcf66c78f3f430155805d6a0b1f74f26331f98ecec03bfbf3f1a",
+      "path_matches": true
+    },
+    {
+      "expected_invocation_path": "/usr/bin/ninja",
+      "expected_resolved_path": "/usr/bin/ninja",
+      "expected_sha256": "5965527e09fe2b3787772aa4f711d6a36b393e7f2fcaa744a7a96c5a4ddf59cb",
+      "hash_matches": true,
+      "name": "ninja",
+      "observed_resolved_path": "/usr/bin/ninja",
+      "observed_sha256": "5965527e09fe2b3787772aa4f711d6a36b393e7f2fcaa744a7a96c5a4ddf59cb",
+      "path_matches": true
+    },
+    {
+      "expected_invocation_path": "/usr/local/bin/nsys",
+      "expected_resolved_path": "/opt/nvidia/nsight-systems/2026.1.3/target-linux-x64/nsys",
+      "expected_sha256": "56fff02a719034c0fbdcf121a61b079cf36b890eb6a9bcdbf69d03c5dbdee7e7",
+      "hash_matches": true,
+      "name": "nsys",
+      "observed_resolved_path": "/opt/nvidia/nsight-systems/2026.1.3/target-linux-x64/nsys",
+      "observed_sha256": "56fff02a719034c0fbdcf121a61b079cf36b890eb6a9bcdbf69d03c5dbdee7e7",
+      "path_matches": true
+    },
+    {
+      "expected_invocation_path": "/usr/local/cuda-13.0/bin/nvcc",
+      "expected_resolved_path": "/usr/local/cuda-13.0/bin/nvcc",
+      "expected_sha256": "b8e2347d9d7fcadf8812a27324d515de99d033d3e48611811ece7e66d7895f8a",
+      "hash_matches": true,
+      "name": "nvcc",
+      "observed_resolved_path": "/usr/local/cuda-13.0/bin/nvcc",
+      "observed_sha256": "b8e2347d9d7fcadf8812a27324d515de99d033d3e48611811ece7e66d7895f8a",
+      "path_matches": true
+    },
+    {
+      "expected_invocation_path": "/usr/bin/nvidia-smi",
+      "expected_resolved_path": "/usr/bin/nvidia-smi",
+      "expected_sha256": "7896b7cdd9cb84b1e0fbc4baf91dfa3039b44ab6641cd08d7cc1dd23f81d6deb",
+      "hash_matches": true,
+      "name": "nvidia-smi",
+      "observed_resolved_path": "/usr/bin/nvidia-smi",
+      "observed_sha256": "7896b7cdd9cb84b1e0fbc4baf91dfa3039b44ab6641cd08d7cc1dd23f81d6deb",
+      "path_matches": true
+    },
+    {
+      "expected_invocation_path": "/usr/bin/python3.12",
+      "expected_resolved_path": "/usr/bin/python3.12",
+      "expected_sha256": "1643dacd9feaedc58f3cc581e4d22577dfe25c09b10282936186ccf0f2e61118",
+      "hash_matches": true,
+      "name": "python",
+      "observed_resolved_path": "/usr/bin/python3.12",
+      "observed_sha256": "1643dacd9feaedc58f3cc581e4d22577dfe25c09b10282936186ccf0f2e61118",
+      "path_matches": true
+    }
+  ],
+  "tool_version_observations": [
+    {
+      "command_id": "nvcc_version",
+      "expected_version": "13.0.88",
+      "matches": true,
+      "observed_version": "13.0.88",
+      "tool_name": "nvcc"
+    },
+    {
+      "command_id": "compute_sanitizer_version",
+      "expected_version": "2025.3.1.0",
+      "matches": true,
+      "observed_version": "2025.3.1.0",
+      "tool_name": "compute-sanitizer-real"
+    },
+    {
+      "command_id": "cuobjdump_version",
+      "expected_version": "13.0.85",
+      "matches": true,
+      "observed_version": "13.0.85",
+      "tool_name": "cuobjdump"
+    },
+    {
+      "command_id": "ncu_version",
+      "expected_version": "2026.2.1.0",
+      "matches": true,
+      "observed_version": "2026.2.1.0",
+      "tool_name": "ncu"
+    },
+    {
+      "command_id": "nsys_version",
+      "expected_version": "2026.1.3.425-261338342291v0",
+      "matches": true,
+      "observed_version": "2026.1.3.425-261338342291v0",
+      "tool_name": "nsys"
+    },
+    {
+      "command_id": "cxx_version",
+      "expected_version": "13.3.0",
+      "matches": true,
+      "observed_version": "13.3.0",
+      "tool_name": "c++"
+    },
+    {
+      "command_id": "ninja_version",
+      "expected_version": "1.11.1",
+      "matches": true,
+      "observed_version": "1.11.1",
+      "tool_name": "ninja"
+    },
+    {
+      "command_id": "python_version",
+      "expected_version": "3.12.3",
+      "matches": true,
+      "observed_version": "3.12.3",
+      "tool_name": "python"
+    }
+  ]
+}

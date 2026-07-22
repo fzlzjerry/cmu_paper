@@ -1,0 +1,18 @@
+{
+  "forbidden_hits": {},
+  "sources": [
+    {
+      "path": "preflight/e00_cuda/binding.cpp",
+      "sha256": "201cb17f64e5230650e0f121aa55025f789a6d015852ed10478c9b6189b0d249"
+    },
+    {
+      "path": "preflight/e00_cuda/xor_kernel.cu",
+      "sha256": "3573815608bab76bfb0076569eccfca56e18efc5839ac08f2882e4dc42a36534"
+    },
+    {
+      "path": "preflight/e00_cuda/xor_kernel.h",
+      "sha256": "d03f97355cf877bc37369d8e81ee48eef0132f31995bf6ceb3a3c0799803a4fd"
+    }
+  ],
+  "status": "PASS"
+}

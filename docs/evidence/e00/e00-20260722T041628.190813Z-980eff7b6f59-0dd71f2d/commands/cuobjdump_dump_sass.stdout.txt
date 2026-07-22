@@ -1,0 +1,20 @@
+
+Fatbin ptx code:
+================
+arch = sm_120
+code version = [9,0]
+host = linux
+compile_size = 64bit
+compressed
+identifier = /home/rockrock/cmu_paper/preflight/e00_cuda/xor_kernel.cu
+ptxasOptions =  --generate-line-info 
+
+Fatbin elf code:
+================
+arch = sm_120
+code version = [1,8]
+host = linux
+compile_size = 64bit
+identifier = /home/rockrock/cmu_paper/preflight/e00_cuda/xor_kernel.cu
+
+	code for sm_120

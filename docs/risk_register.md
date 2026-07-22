@@ -1,10 +1,10 @@
 # Risk register
 
-Last updated: 2026-07-22 after Phase 0 source and input audit.
+Last updated: 2026-07-22 after the formal E00 G0 failure.
 
 | ID | Risk and evidence | Potential impact | Required mitigation / gate | Status |
 |---|---|---|---|---|
-| R-001 | RTX PRO 6000 Blackwell, driver, toolkit, PyTorch, Triton, vLLM, NCU, and NSYS compatibility are untested. | Build failure, PTX fallback, invalid counters, or wrong code path. | E00 records full hardware/toolchain state and passes native, forced-PTX, and Compute Sanitizer checks before implementation. | open |
+| R-001 | Formal E00 run `e00-20260722T041628.190813Z-980eff7b6f59-0dd71f2d` materialized a toolchain gap: the extension built and cubin/PTX targets were listed, but SASS dumping failed because `nvdisasm` is absent. Runtime and sanitizer compatibility remain untested. | Build/inspection failure, unavailable native/PTX proof, invalid counters, or wrong code path. | B-002 requires a matching CUDA 13.0 `nvdisasm`, exact package/tool locking, and a new full E00 run before implementation proceeds. | materialized; G0 failed |
 | R-002 | CUDA Graph support differs by method; KIVI/KVQuant references are dynamic, while vLLM TurboQuant only declares uniform-batch support. | Capture failure or unfair graph/eager comparison. | E04 and each G2 require capture/replay, output, pointer, and allocation evidence; unsupported methods remain eager-only. | open |
 | R-003 | KIVI pinned source contains repeat_kv/expand-reshape paths; KVQuant GQA support is unestablished. | Physical KV replication and inflated traffic/memory. | GQA execution-path audit plus synthetic MHA control; reject materialization in Measurement Lane. | open |
 | R-004 | vLLM TurboQuant has a continuation-prefill fallback that fully dequantizes cached K/V; other references may reconstruct large tensors. | False compression/speed conclusions and OOM. | Fixed-L trace must prove the fallback absent; G3 rejects any full-prefix BF16 temporary. | open |

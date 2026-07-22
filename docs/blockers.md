@@ -11,7 +11,7 @@ None has been resolved by a silent fallback.
 | ID | Blocking condition | Blocks | Evidence / next action | Status |
 |---|---|---|---|---|
 | B-001 | No Git commit or code SHA existed after Phase 0. | E00 durable gate evidence and every later run | Resolved by reviewed root commit 9569d938d9023a3e71d98f12234efa1897004533. | resolved 2026-07-22 |
-| B-002 | Current hardware and CUDA toolchain are uncertified. | E01 and all non-E00 CUDA work | Run E00 and require G0 native, forced-PTX, sanitizer, SKU, clock, and process-isolation evidence. | expected next-phase work |
+| B-002 | Formal G0 failed: the extension binary contains the expected cubin/PTX targets, but `cuobjdump --dump-sass` cannot find `nvdisasm`; native/forced-PTX runtime and sanitizers were therefore not admitted. | E01 and all non-E00 CUDA or timing work | Preserve `docs/evidence/e00/e00-20260722T041628.190813Z-980eff7b6f59-0dd71f2d/`; provision matching CUDA 13.0 `nvdisasm`, lock its exact package/tool identity, commit, and rerun E00 under a new run ID. | active; formal G0 FAIL 2026-07-22 |
 | B-003 | TurboQuant paper has no identified author-owned code repository; vLLM v0.25.1 is only a pinned candidate. | E05 golden fixtures | Establish reference authority/equivalence and record a decision if upstream semantics differ. | open |
 | B-004 | Primary model ID, immutable revision, config hash, geometry, and context limit are unset. | E02 and method fixtures | Select only after G0, verify all method geometry, and record a model-selection decision. | open |
 | B-005 | KVQuant calibration dataset/revision, preprocessing, seed, cap, and artifact do not exist. | E09-E11 | Freeze and checksum them in Phase 9; no calibration during scans. | open |

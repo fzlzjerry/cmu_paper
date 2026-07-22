@@ -1,0 +1,282 @@
+{
+  "errors": [],
+  "files": [
+    {
+      "git_flag": "H",
+      "index_matches_local_bytes": true,
+      "index_mode": "100644",
+      "index_object_id": "7f3e56f38274d7eedcf43cb5a94eab91e7c198a4",
+      "index_stage": "0",
+      "local_mode": "100644",
+      "local_object_id": "7f3e56f38274d7eedcf43cb5a94eab91e7c198a4",
+      "ordinary_tracked_flag": true,
+      "path": "AGENTS.md"
+    },
+    {
+      "git_flag": "H",
+      "index_matches_local_bytes": true,
+      "index_mode": "100644",
+      "index_object_id": "4720429674a732464c0d7e6821d38e9fa3215b0b",
+      "index_stage": "0",
+      "local_mode": "100644",
+      "local_object_id": "4720429674a732464c0d7e6821d38e9fa3215b0b",
+      "ordinary_tracked_flag": true,
+      "path": "CODEX_WORKFLOW.md"
+    },
+    {
+      "git_flag": "H",
+      "index_matches_local_bytes": true,
+      "index_mode": "100644",
+      "index_object_id": "b8eec3fcaa3a7eb20604d14957bc85cf47c94ed8",
+      "index_stage": "0",
+      "local_mode": "100644",
+      "local_object_id": "b8eec3fcaa3a7eb20604d14957bc85cf47c94ed8",
+      "ordinary_tracked_flag": true,
+      "path": "Makefile"
+    },
+    {
+      "git_flag": "H",
+      "index_matches_local_bytes": true,
+      "index_mode": "100644",
+      "index_object_id": "fdc6dfa01ecf9fae83d7237f503edc85f2a6c387",
+      "index_stage": "0",
+      "local_mode": "100644",
+      "local_object_id": "fdc6dfa01ecf9fae83d7237f503edc85f2a6c387",
+      "ordinary_tracked_flag": true,
+      "path": "docs/decisions/0002-e00-native-host-evidence.md"
+    },
+    {
+      "git_flag": "H",
+      "index_matches_local_bytes": true,
+      "index_mode": "100644",
+      "index_object_id": "11bf6456480e5034856e1c511f2bcfd116fe7ec9",
+      "index_stage": "0",
+      "local_mode": "100644",
+      "local_object_id": "11bf6456480e5034856e1c511f2bcfd116fe7ec9",
+      "ordinary_tracked_flag": true,
+      "path": "docs/decisions/0003-e00-certification-protocol.md"
+    },
+    {
+      "git_flag": "H",
+      "index_matches_local_bytes": true,
+      "index_mode": "100644",
+      "index_object_id": "49a9af6c5c5718b3a92e8ff5dee2c91e0bf2a5de",
+      "index_stage": "0",
+      "local_mode": "100644",
+      "local_object_id": "49a9af6c5c5718b3a92e8ff5dee2c91e0bf2a5de",
+      "ordinary_tracked_flag": true,
+      "path": "docs/decisions/0004-e00-failure-evidence-and-memcheck.md"
+    },
+    {
+      "git_flag": "H",
+      "index_matches_local_bytes": true,
+      "index_mode": "100644",
+      "index_object_id": "1bda05a1fc4151e29eb7128fb45760fd61fde507",
+      "index_stage": "0",
+      "local_mode": "100644",
+      "local_object_id": "1bda05a1fc4151e29eb7128fb45760fd61fde507",
+      "ordinary_tracked_flag": true,
+      "path": "preflight/__init__.py"
+    },
+    {
+      "git_flag": "H",
+      "index_matches_local_bytes": true,
+      "index_mode": "100644",
+      "index_object_id": "66fafa207b5031fc2b80f15921e1527ea47f1f18",
+      "index_stage": "0",
+      "local_mode": "100644",
+      "local_object_id": "66fafa207b5031fc2b80f15921e1527ea47f1f18",
+      "ordinary_tracked_flag": true,
+      "path": "preflight/audit_checkpoint.py"
+    },
+    {
+      "git_flag": "H",
+      "index_matches_local_bytes": true,
+      "index_mode": "100644",
+      "index_object_id": "f285a8120a32f0c71d9563d2a19600d727aac888",
+      "index_stage": "0",
+      "local_mode": "100644",
+      "local_object_id": "f285a8120a32f0c71d9563d2a19600d727aac888",
+      "ordinary_tracked_flag": true,
+      "path": "preflight/e00_cuda/binding.cpp"
+    },
+    {
+      "git_flag": "H",
+      "index_matches_local_bytes": true,
+      "index_mode": "100644",
+      "index_object_id": "a8b5091bcf26f27d055ae458b8569834cb192757",
+      "index_stage": "0",
+      "local_mode": "100644",
+      "local_object_id": "a8b5091bcf26f27d055ae458b8569834cb192757",
+      "ordinary_tracked_flag": true,
+      "path": "preflight/e00_cuda/build.py"
+    },
+    {
+      "git_flag": "H",
+      "index_matches_local_bytes": true,
+      "index_mode": "100644",
+      "index_object_id": "563d06787ec52ddc7f7f0b14ed4ad7473cce95ee",
+      "index_stage": "0",
+      "local_mode": "100644",
+      "local_object_id": "563d06787ec52ddc7f7f0b14ed4ad7473cce95ee",
+      "ordinary_tracked_flag": true,
+      "path": "preflight/e00_cuda/xor_kernel.cu"
+    },
+    {
+      "git_flag": "H",
+      "index_matches_local_bytes": true,
+      "index_mode": "100644",
+      "index_object_id": "faa2a03bbaabd63cd538295e237aff780fed5119",
+      "index_stage": "0",
+      "local_mode": "100644",
+      "local_object_id": "faa2a03bbaabd63cd538295e237aff780fed5119",
+      "ordinary_tracked_flag": true,
+      "path": "preflight/e00_cuda/xor_kernel.h"
+    },
+    {
+      "git_flag": "H",
+      "index_matches_local_bytes": true,
+      "index_mode": "100644",
+      "index_object_id": "f61e24aeaa1b70a0bb3c57f94cce47f082abbd35",
+      "index_stage": "0",
+      "local_mode": "100644",
+      "local_object_id": "f61e24aeaa1b70a0bb3c57f94cce47f082abbd35",
+      "ordinary_tracked_flag": true,
+      "path": "preflight/e00_manifest.schema.json"
+    },
+    {
+      "git_flag": "H",
+      "index_matches_local_bytes": true,
+      "index_mode": "100644",
+      "index_object_id": "3cc9298cad2e97d0ae26ea60237fe5cba196f237",
+      "index_stage": "0",
+      "local_mode": "100644",
+      "local_object_id": "3cc9298cad2e97d0ae26ea60237fe5cba196f237",
+      "ordinary_tracked_flag": true,
+      "path": "preflight/process_query.py"
+    },
+    {
+      "git_flag": "H",
+      "index_matches_local_bytes": true,
+      "index_mode": "100644",
+      "index_object_id": "40d47146cbbef7421f174a490f802dbf31a48e08",
+      "index_stage": "0",
+      "local_mode": "100644",
+      "local_object_id": "40d47146cbbef7421f174a490f802dbf31a48e08",
+      "ordinary_tracked_flag": true,
+      "path": "preflight/python_integrity_probe.py"
+    },
+    {
+      "git_flag": "H",
+      "index_matches_local_bytes": true,
+      "index_mode": "100644",
+      "index_object_id": "0025d1c52b2d3960e2ff06af17f494155c050e74",
+      "index_stage": "0",
+      "local_mode": "100644",
+      "local_object_id": "0025d1c52b2d3960e2ff06af17f494155c050e74",
+      "ordinary_tracked_flag": true,
+      "path": "preflight/python_probe.py"
+    },
+    {
+      "git_flag": "H",
+      "index_matches_local_bytes": true,
+      "index_mode": "100644",
+      "index_object_id": "7029fc9802b608b78d5be1fb9f19316d38d88949",
+      "index_stage": "0",
+      "local_mode": "100644",
+      "local_object_id": "7029fc9802b608b78d5be1fb9f19316d38d88949",
+      "ordinary_tracked_flag": true,
+      "path": "preflight/requirements-e00.txt"
+    },
+    {
+      "git_flag": "H",
+      "index_matches_local_bytes": true,
+      "index_mode": "100644",
+      "index_object_id": "63bec71b99d3ac1df4e3a89c7aff986f00d780d8",
+      "index_stage": "0",
+      "local_mode": "100644",
+      "local_object_id": "63bec71b99d3ac1df4e3a89c7aff986f00d780d8",
+      "ordinary_tracked_flag": true,
+      "path": "preflight/run_preflight.py"
+    },
+    {
+      "git_flag": "H",
+      "index_matches_local_bytes": true,
+      "index_mode": "100644",
+      "index_object_id": "f5128a4b1465a194a03320a40c9d63d8208eaa9d",
+      "index_stage": "0",
+      "local_mode": "100644",
+      "local_object_id": "f5128a4b1465a194a03320a40c9d63d8208eaa9d",
+      "ordinary_tracked_flag": true,
+      "path": "preflight/system-packages.lock.json"
+    },
+    {
+      "git_flag": "H",
+      "index_matches_local_bytes": true,
+      "index_mode": "100755",
+      "index_object_id": "a43a6b15c99be0be5acf664bba16fe34ea52fe1b",
+      "index_stage": "0",
+      "local_mode": "100755",
+      "local_object_id": "a43a6b15c99be0be5acf664bba16fe34ea52fe1b",
+      "ordinary_tracked_flag": true,
+      "path": "scripts/preflight.sh"
+    },
+    {
+      "git_flag": "H",
+      "index_matches_local_bytes": true,
+      "index_mode": "100644",
+      "index_object_id": "3149fe414e95157e7f67a7aecf0852a6f6480b5f",
+      "index_stage": "0",
+      "local_mode": "100644",
+      "local_object_id": "3149fe414e95157e7f67a7aecf0852a6f6480b5f",
+      "ordinary_tracked_flag": true,
+      "path": "tests/allocation/test_e00_allocation.py"
+    },
+    {
+      "git_flag": "H",
+      "index_matches_local_bytes": true,
+      "index_mode": "100644",
+      "index_object_id": "b30360a67212b27b88843a976d96d437a8f1d14a",
+      "index_stage": "0",
+      "local_mode": "100644",
+      "local_object_id": "b30360a67212b27b88843a976d96d437a8f1d14a",
+      "ordinary_tracked_flag": true,
+      "path": "tests/cuda/e00_runtime_probe.py"
+    },
+    {
+      "git_flag": "H",
+      "index_matches_local_bytes": true,
+      "index_mode": "100644",
+      "index_object_id": "01614d304be5b66bdfb745ee986fe202d636a961",
+      "index_stage": "0",
+      "local_mode": "100644",
+      "local_object_id": "01614d304be5b66bdfb745ee986fe202d636a961",
+      "ordinary_tracked_flag": true,
+      "path": "tests/cuda/e00_sanitizer_probe.py"
+    },
+    {
+      "git_flag": "H",
+      "index_matches_local_bytes": true,
+      "index_mode": "100644",
+      "index_object_id": "da9ed103ea46807ab3e4b23cc842a6f548210412",
+      "index_stage": "0",
+      "local_mode": "100644",
+      "local_object_id": "da9ed103ea46807ab3e4b23cc842a6f548210412",
+      "ordinary_tracked_flag": true,
+      "path": "tests/golden/test_e00_numerical.py"
+    },
+    {
+      "git_flag": "H",
+      "index_matches_local_bytes": true,
+      "index_mode": "100644",
+      "index_object_id": "358a026d74d5de5a0def3449a19b9a15a5c0e413",
+      "index_stage": "0",
+      "local_mode": "100644",
+      "local_object_id": "358a026d74d5de5a0def3449a19b9a15a5c0e413",
+      "ordinary_tracked_flag": true,
+      "path": "tests/graph_capture/test_e00_graph.py"
+    }
+  ],
+  "git_object_format": "sha1",
+  "status": "PASS"
+}
