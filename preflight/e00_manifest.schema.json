@@ -1,0 +1,4492 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:cmu-paper:preflight:e00-manifest:1.0.0",
+  "title": "E00 native-host hardware preflight manifest",
+  "description": "Strict, self-contained schema for the non-performance Phase 1 / Gate G0 certification defined by CODEX_WORKFLOW.md and Decisions 0002-0004.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "run",
+    "code",
+    "execution_environment",
+    "host",
+    "gpu_selection",
+    "gpu",
+    "software",
+    "torch_probe",
+    "process_audit",
+    "extension",
+    "evidence",
+    "gate"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "e00-manifest-1.0.0"
+    },
+    "run": {
+      "$ref": "#/$defs/run"
+    },
+    "code": {
+      "$ref": "#/$defs/code"
+    },
+    "execution_environment": {
+      "$ref": "#/$defs/executionEnvironment"
+    },
+    "host": {
+      "$ref": "#/$defs/host"
+    },
+    "gpu_selection": {
+      "$ref": "#/$defs/gpuSelection"
+    },
+    "gpu": {
+      "$ref": "#/$defs/gpu"
+    },
+    "software": {
+      "$ref": "#/$defs/software"
+    },
+    "torch_probe": {
+      "$ref": "#/$defs/torchProbe"
+    },
+    "process_audit": {
+      "$ref": "#/$defs/processAuditProducer"
+    },
+    "extension": {
+      "$ref": "#/$defs/extension"
+    },
+    "evidence": {
+      "$ref": "#/$defs/evidence"
+    },
+    "gate": {
+      "$ref": "#/$defs/gate"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "gate": {
+            "properties": {
+              "aggregate_status": {
+                "const": "PASS"
+              }
+            },
+            "required": [
+              "aggregate_status"
+            ]
+          }
+        },
+        "required": [
+          "gate"
+        ]
+      },
+      "then": {
+        "properties": {
+          "run": {
+            "properties": {
+              "status": {
+                "const": "PASS"
+              }
+            }
+          },
+          "execution_environment": {
+            "properties": {
+              "kind": {
+                "const": "native_host"
+              },
+              "verification_status": {
+                "const": "PASS"
+              }
+            }
+          },
+          "host": {
+            "properties": {
+              "collection_status": {
+                "const": "PASS"
+              }
+            }
+          },
+          "gpu_selection": {
+            "properties": {
+              "collection_status": {
+                "const": "PASS"
+              },
+              "selection_is_unique": {
+                "const": true
+              }
+            }
+          },
+          "gpu": {
+            "properties": {
+              "collection_status": {
+                "const": "PASS"
+              }
+            }
+          },
+          "software": {
+            "properties": {
+              "collection_status": {
+                "const": "PASS"
+              }
+            }
+          },
+          "torch_probe": {
+            "properties": {
+              "collection_status": {
+                "const": "PASS"
+              },
+              "cuda_available": {
+                "const": true
+              },
+              "device_count": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "selected_uuid_matches_manifest": {
+                "const": true
+              },
+              "capability_matches_manifest": {
+                "const": true
+              }
+            }
+          },
+          "process_audit": {
+            "properties": {
+              "query_failure_count": {
+                "const": 0
+              },
+              "foreign_or_unknown_process_count": {
+                "const": 0
+              },
+              "snapshots": {
+                "minItems": 3,
+                "items": {
+                  "properties": {
+                    "query_exit_code": {
+                      "const": 0
+                    },
+                    "foreign_compute_processes": {
+                      "maxItems": 0
+                    },
+                    "unknown_processes": {
+                      "maxItems": 0
+                    }
+                  }
+                },
+                "allOf": [
+                  {
+                    "contains": {
+                      "properties": {
+                        "phase": {
+                          "const": "during"
+                        }
+                      },
+                      "required": [
+                        "phase"
+                      ]
+                    },
+                    "minContains": 1
+                  },
+                  {
+                    "contains": {
+                      "properties": {
+                        "phase": {
+                          "const": "after"
+                        }
+                      },
+                      "required": [
+                        "phase"
+                      ]
+                    },
+                    "minContains": 1
+                  }
+                ]
+              }
+            }
+          },
+          "extension": {
+            "properties": {
+              "binary": {
+                "properties": {
+                  "available": {
+                    "const": true
+                  }
+                }
+              },
+              "build": {
+                "properties": {
+                  "status": {
+                    "const": "PASS"
+                  }
+                }
+              },
+              "binary_inspection": {
+                "properties": {
+                  "status": {
+                    "const": "PASS"
+                  },
+                  "sass_target_present": {
+                    "const": true
+                  },
+                  "ptx_target_present": {
+                    "const": true
+                  }
+                }
+              },
+              "numerical_golden": {
+                "properties": {
+                  "status": {
+                    "const": "PASS"
+                  }
+                }
+              },
+              "native_execution": {
+                "properties": {
+                  "status": {
+                    "const": "PASS"
+                  }
+                }
+              },
+              "forced_ptx_jit": {
+                "properties": {
+                  "status": {
+                    "const": "PASS"
+                  }
+                }
+              },
+              "compute_sanitizer": {
+                "properties": {
+                  "status": {
+                    "const": "PASS"
+                  },
+                  "error_count": {
+                    "const": 0
+                  }
+                }
+              },
+              "cuda_graph_capture_replay": {
+                "properties": {
+                  "status": {
+                    "const": "PASS"
+                  }
+                }
+              },
+              "memory_allocation": {
+                "properties": {
+                  "status": {
+                    "const": "PASS"
+                  },
+                  "allocated_delta_bytes": {
+                    "const": 0
+                  },
+                  "reserved_delta_bytes": {
+                    "const": 0
+                  },
+                  "output_pointer_stable": {
+                    "const": true
+                  }
+                }
+              },
+              "no_kernel_image_error": {
+                "properties": {
+                  "status": {
+                    "const": "PASS"
+                  },
+                  "error_found": {
+                    "const": false
+                  }
+                }
+              },
+              "kernel_image_error_detected": {
+                "const": false
+              }
+            }
+          },
+          "evidence": {
+            "properties": {
+              "commands": {
+                "items": {
+                  "properties": {
+                    "matched_expectation": {
+                      "const": true
+                    }
+                  }
+                }
+              },
+              "checksum_verification": {
+                "properties": {
+                  "status": {
+                    "const": "PASS"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "run": {
+            "properties": {
+              "status": {
+                "const": "FAIL"
+              }
+            }
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "timestampUtc": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,9})?Z$"
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "gitSha": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "nonEmptyString": {
+      "type": "string",
+      "minLength": 1
+    },
+    "nullableString": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "nullableNonnegativeInteger": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 0
+    },
+    "nullableNonnegativeNumber": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "minimum": 0
+    },
+    "relativeArtifactPath": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?!/)[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)*$",
+      "not": {
+        "pattern": "(?:^|/)\\.\\.(?:/|$)"
+      }
+    },
+    "resultStatus": {
+      "enum": [
+        "PASS",
+        "FAIL",
+        "NOT_RUN"
+      ]
+    },
+    "collectionStatus": {
+      "enum": [
+        "PASS",
+        "FAIL"
+      ]
+    },
+    "run": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "phase",
+        "gate",
+        "kind",
+        "status",
+        "started_at_utc",
+        "finished_at_utc",
+        "completed",
+        "benchmark_timing_collected",
+        "failure_reasons",
+        "failure_classes"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^e00-[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+        },
+        "phase": {
+          "const": "E00"
+        },
+        "gate": {
+          "const": "G0"
+        },
+        "kind": {
+          "const": "hardware_preflight"
+        },
+        "status": {
+          "enum": [
+            "PASS",
+            "FAIL"
+          ]
+        },
+        "started_at_utc": {
+          "$ref": "#/$defs/timestampUtc"
+        },
+        "finished_at_utc": {
+          "$ref": "#/$defs/timestampUtc"
+        },
+        "completed": {
+          "const": true
+        },
+        "benchmark_timing_collected": {
+          "const": false
+        },
+        "failure_reasons": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/nonEmptyString"
+          },
+          "uniqueItems": true
+        },
+        "failure_classes": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "environment_unverified",
+              "hardware_inventory_failed",
+              "toolchain_failed",
+              "cuda_capability_mismatch",
+              "build_failed",
+              "runtime_failed",
+              "numerical_failed",
+              "graph_capture_failed",
+              "allocation_failed",
+              "sanitizer_failed",
+              "process_isolation_failed",
+              "manifest_validation_failed",
+              "evidence_integrity_failed"
+            ]
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "PASS"
+              }
+            },
+            "required": [
+              "status"
+            ]
+          },
+          "then": {
+            "properties": {
+              "failure_reasons": {
+                "maxItems": 0
+              },
+              "failure_classes": {
+                "maxItems": 0
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "failure_reasons": {
+                "minItems": 1
+              },
+              "failure_classes": {
+                "minItems": 1
+              }
+            }
+          }
+        }
+      ]
+    },
+    "code": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "git_sha",
+        "git_dirty",
+        "worktree_clean_before_run_directory_creation",
+        "contract_files"
+      ],
+      "properties": {
+        "git_sha": {
+          "$ref": "#/$defs/gitSha"
+        },
+        "git_dirty": {
+          "const": false
+        },
+        "worktree_clean_before_run_directory_creation": {
+          "const": true
+        },
+        "contract_files": {
+          "type": "array",
+          "minItems": 3,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/sourceArtifact"
+          },
+          "allOf": [
+            {
+              "contains": {
+                "properties": {
+                  "path": {
+                    "const": "CODEX_WORKFLOW.md"
+                  }
+                },
+                "required": [
+                  "path"
+                ]
+              },
+              "minContains": 1,
+              "maxContains": 1
+            },
+            {
+              "contains": {
+                "properties": {
+                  "path": {
+                    "const": "AGENTS.md"
+                  }
+                },
+                "required": [
+                  "path"
+                ]
+              },
+              "minContains": 1,
+              "maxContains": 1
+            },
+            {
+              "contains": {
+                "properties": {
+                  "path": {
+                    "const": "docs/decisions/0002-e00-native-host-evidence.md"
+                  }
+                },
+                "required": [
+                  "path"
+                ]
+              },
+              "minContains": 1,
+              "maxContains": 1
+            },
+            {
+              "contains": {
+                "properties": {
+                  "path": {
+                    "const": "docs/decisions/0003-e00-certification-protocol.md"
+                  }
+                },
+                "required": [
+                  "path"
+                ]
+              },
+              "minContains": 1,
+              "maxContains": 1
+            },
+            {
+              "contains": {
+                "properties": {
+                  "path": {
+                    "const": "docs/decisions/0004-e00-failure-evidence-and-memcheck.md"
+                  }
+                },
+                "required": [
+                  "path"
+                ]
+              },
+              "minContains": 1,
+              "maxContains": 1
+            }
+          ]
+        }
+      }
+    },
+    "executionEnvironment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "verification_status",
+        "verification_evidence_file_id",
+        "performance_claim_eligible",
+        "performance_ineligibility_reasons",
+        "container",
+        "container_parity_required_before_e02"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "native_host",
+            "unverified"
+          ]
+        },
+        "verification_status": {
+          "enum": [
+            "PASS",
+            "FAIL"
+          ]
+        },
+        "verification_evidence_file_id": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "performance_claim_eligible": {
+          "const": false
+        },
+        "performance_ineligibility_reasons": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/nonEmptyString"
+          }
+        },
+        "container": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "runtime",
+            "image_reference",
+            "image_digest",
+            "digest_status"
+          ],
+          "properties": {
+            "runtime": {
+              "type": "null"
+            },
+            "image_reference": {
+              "type": "null"
+            },
+            "image_digest": {
+              "type": "null"
+            },
+            "digest_status": {
+              "enum": [
+                "not_applicable_native_host",
+                "unavailable_unverified_environment"
+              ]
+            }
+          }
+        },
+        "container_parity_required_before_e02": {
+          "const": true
+        }
+      },
+      "oneOf": [
+        {
+          "properties": {
+            "kind": {
+              "const": "native_host"
+            },
+            "verification_status": {
+              "const": "PASS"
+            },
+            "performance_ineligibility_reasons": {
+              "contains": {
+                "const": "native_host_without_container_digest"
+              }
+            },
+            "container": {
+              "properties": {
+                "digest_status": {
+                  "const": "not_applicable_native_host"
+                }
+              }
+            }
+          }
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "unverified"
+            },
+            "verification_status": {
+              "const": "FAIL"
+            },
+            "performance_ineligibility_reasons": {
+              "contains": {
+                "const": "execution_environment_not_verified"
+              }
+            },
+            "container": {
+              "properties": {
+                "digest_status": {
+                  "const": "unavailable_unverified_environment"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "host": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "collection_status",
+        "collection_error",
+        "hostname",
+        "os_name",
+        "os_version",
+        "kernel_release",
+        "kernel_version",
+        "machine_arch",
+        "cpu_model",
+        "physical_core_count",
+        "logical_cpu_count",
+        "memory_total_bytes"
+      ],
+      "properties": {
+        "collection_status": {
+          "$ref": "#/$defs/collectionStatus"
+        },
+        "collection_error": {
+          "$ref": "#/$defs/nullableString"
+        },
+        "hostname": {
+          "$ref": "#/$defs/nullableString"
+        },
+        "os_name": {
+          "$ref": "#/$defs/nullableString"
+        },
+        "os_version": {
+          "$ref": "#/$defs/nullableString"
+        },
+        "kernel_release": {
+          "$ref": "#/$defs/nullableString"
+        },
+        "kernel_version": {
+          "$ref": "#/$defs/nullableString"
+        },
+        "machine_arch": {
+          "$ref": "#/$defs/nullableString"
+        },
+        "cpu_model": {
+          "$ref": "#/$defs/nullableString"
+        },
+        "physical_core_count": {
+          "$ref": "#/$defs/nullableNonnegativeInteger"
+        },
+        "logical_cpu_count": {
+          "$ref": "#/$defs/nullableNonnegativeInteger"
+        },
+        "memory_total_bytes": {
+          "$ref": "#/$defs/nullableNonnegativeInteger"
+        }
+      },
+      "allOf": [
+        {
+          "$ref": "#/$defs/collectionOutcomeRule"
+        },
+        {
+          "if": {
+            "properties": {
+              "collection_status": {
+                "const": "PASS"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "hostname": {
+                "$ref": "#/$defs/nonEmptyString"
+              },
+              "os_name": {
+                "$ref": "#/$defs/nonEmptyString"
+              },
+              "os_version": {
+                "$ref": "#/$defs/nonEmptyString"
+              },
+              "kernel_release": {
+                "$ref": "#/$defs/nonEmptyString"
+              },
+              "kernel_version": {
+                "$ref": "#/$defs/nonEmptyString"
+              },
+              "machine_arch": {
+                "$ref": "#/$defs/nonEmptyString"
+              },
+              "cpu_model": {
+                "$ref": "#/$defs/nonEmptyString"
+              },
+              "physical_core_count": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "logical_cpu_count": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "memory_total_bytes": {
+                "type": "integer",
+                "minimum": 1
+              }
+            }
+          }
+        }
+      ]
+    },
+    "collectionOutcomeRule": {
+      "if": {
+        "properties": {
+          "collection_status": {
+            "const": "PASS"
+          }
+        },
+        "required": [
+          "collection_status"
+        ]
+      },
+      "then": {
+        "properties": {
+          "collection_error": {
+            "type": "null"
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "collection_error": {
+            "$ref": "#/$defs/nonEmptyString"
+          }
+        }
+      }
+    },
+    "gpuSelection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "collection_status",
+        "collection_error",
+        "selection_method",
+        "cuda_visible_devices",
+        "visible_device_count",
+        "selected_logical_index",
+        "selected_gpu_uuid",
+        "selection_is_unique"
+      ],
+      "properties": {
+        "collection_status": {
+          "$ref": "#/$defs/collectionStatus"
+        },
+        "collection_error": {
+          "$ref": "#/$defs/nullableString"
+        },
+        "selection_method": {
+          "const": "gpu_uuid"
+        },
+        "cuda_visible_devices": {
+          "$ref": "#/$defs/nullableString"
+        },
+        "visible_device_count": {
+          "$ref": "#/$defs/nullableNonnegativeInteger"
+        },
+        "selected_logical_index": {
+          "$ref": "#/$defs/nullableNonnegativeInteger"
+        },
+        "selected_gpu_uuid": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/gpuUuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "selection_is_unique": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "$ref": "#/$defs/collectionOutcomeRule"
+        },
+        {
+          "if": {
+            "properties": {
+              "collection_status": {
+                "const": "PASS"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "cuda_visible_devices": {
+                "$ref": "#/$defs/nonEmptyString"
+              },
+              "visible_device_count": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "selected_logical_index": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "selected_gpu_uuid": {
+                "$ref": "#/$defs/gpuUuid"
+              },
+              "selection_is_unique": {
+                "type": "boolean"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "gpuUuid": {
+      "type": "string",
+      "pattern": "^GPU-[0-9A-Fa-f-]+$"
+    },
+    "computeCapability": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "major",
+        "minor",
+        "text"
+      ],
+      "properties": {
+        "major": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "minor": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "text": {
+          "type": "string",
+          "pattern": "^[0-9]+\\.[0-9]+$"
+        }
+      }
+    },
+    "nullableComputeCapability": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/computeCapability"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "gpu": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "collection_status",
+        "collection_error",
+        "captured_at_utc",
+        "full_name",
+        "uuid",
+        "pci_device_id",
+        "pci_bus_id",
+        "compute_capability",
+        "vram_total_bytes",
+        "ecc_mode",
+        "persistence_mode",
+        "display_mode",
+        "performance_state",
+        "power",
+        "clocks",
+        "temperature_c",
+        "vbios_version"
+      ],
+      "properties": {
+        "collection_status": {
+          "$ref": "#/$defs/collectionStatus"
+        },
+        "collection_error": {
+          "$ref": "#/$defs/nullableString"
+        },
+        "captured_at_utc": {
+          "$ref": "#/$defs/timestampUtc"
+        },
+        "full_name": {
+          "$ref": "#/$defs/nullableString"
+        },
+        "uuid": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/gpuUuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "pci_device_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^0x[0-9A-Fa-f]{8}$"
+        },
+        "pci_bus_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^(?:[0-9A-Fa-f]{8}:)?[0-9A-Fa-f]{2}:[0-9A-Fa-f]{2}\\.[0-7]$"
+        },
+        "compute_capability": {
+          "$ref": "#/$defs/nullableComputeCapability"
+        },
+        "vram_total_bytes": {
+          "$ref": "#/$defs/nullableNonnegativeInteger"
+        },
+        "ecc_mode": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "enabled",
+            "disabled",
+            "not_supported",
+            "unknown",
+            null
+          ]
+        },
+        "persistence_mode": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "enabled",
+            "disabled",
+            "unknown",
+            null
+          ]
+        },
+        "display_mode": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "enabled",
+            "disabled",
+            "unknown",
+            null
+          ]
+        },
+        "performance_state": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^P[0-9]{1,2}$"
+        },
+        "power": {
+          "$ref": "#/$defs/gpuPower"
+        },
+        "clocks": {
+          "$ref": "#/$defs/gpuClocks"
+        },
+        "temperature_c": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": -100,
+          "maximum": 200
+        },
+        "vbios_version": {
+          "$ref": "#/$defs/nullableString"
+        }
+      },
+      "allOf": [
+        {
+          "$ref": "#/$defs/collectionOutcomeRule"
+        },
+        {
+          "if": {
+            "properties": {
+              "collection_status": {
+                "const": "PASS"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "full_name": {
+                "$ref": "#/$defs/nonEmptyString"
+              },
+              "uuid": {
+                "$ref": "#/$defs/gpuUuid"
+              },
+              "pci_device_id": {
+                "type": "string",
+                "pattern": "^0x[0-9A-Fa-f]{8}$"
+              },
+              "pci_bus_id": {
+                "type": "string",
+                "pattern": "^(?:[0-9A-Fa-f]{8}:)?[0-9A-Fa-f]{2}:[0-9A-Fa-f]{2}\\.[0-7]$"
+              },
+              "compute_capability": {
+                "$ref": "#/$defs/computeCapability"
+              },
+              "vram_total_bytes": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "ecc_mode": {
+                "enum": [
+                  "enabled",
+                  "disabled",
+                  "not_supported"
+                ]
+              },
+              "persistence_mode": {
+                "enum": [
+                  "enabled",
+                  "disabled"
+                ]
+              },
+              "display_mode": {
+                "enum": [
+                  "enabled",
+                  "disabled"
+                ]
+              },
+              "performance_state": {
+                "type": "string",
+                "pattern": "^P[0-9]{1,2}$"
+              },
+              "power": {
+                "$ref": "#/$defs/gpuPowerComplete"
+              },
+              "clocks": {
+                "$ref": "#/$defs/gpuClocksComplete"
+              },
+              "temperature_c": {
+                "type": "number",
+                "minimum": -100,
+                "maximum": 200
+              },
+              "vbios_version": {
+                "$ref": "#/$defs/nonEmptyString"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "gpuPower": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "draw_w",
+        "limit_w",
+        "default_limit_w",
+        "min_limit_w",
+        "max_limit_w"
+      ],
+      "properties": {
+        "draw_w": {
+          "$ref": "#/$defs/nullableNonnegativeNumber"
+        },
+        "limit_w": {
+          "$ref": "#/$defs/nullableNonnegativeNumber"
+        },
+        "default_limit_w": {
+          "$ref": "#/$defs/nullableNonnegativeNumber"
+        },
+        "min_limit_w": {
+          "$ref": "#/$defs/nullableNonnegativeNumber"
+        },
+        "max_limit_w": {
+          "$ref": "#/$defs/nullableNonnegativeNumber"
+        }
+      }
+    },
+    "gpuPowerComplete": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "draw_w",
+        "limit_w",
+        "default_limit_w",
+        "min_limit_w",
+        "max_limit_w"
+      ],
+      "properties": {
+        "draw_w": {
+          "type": "number",
+          "minimum": 0
+        },
+        "limit_w": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "default_limit_w": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "min_limit_w": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "max_limit_w": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        }
+      }
+    },
+    "gpuClocks": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sm_current_mhz",
+        "memory_current_mhz",
+        "sm_max_mhz",
+        "memory_max_mhz"
+      ],
+      "properties": {
+        "sm_current_mhz": {
+          "$ref": "#/$defs/nullableNonnegativeNumber"
+        },
+        "memory_current_mhz": {
+          "$ref": "#/$defs/nullableNonnegativeNumber"
+        },
+        "sm_max_mhz": {
+          "$ref": "#/$defs/nullableNonnegativeNumber"
+        },
+        "memory_max_mhz": {
+          "$ref": "#/$defs/nullableNonnegativeNumber"
+        }
+      }
+    },
+    "gpuClocksComplete": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sm_current_mhz",
+        "memory_current_mhz",
+        "sm_max_mhz",
+        "memory_max_mhz"
+      ],
+      "properties": {
+        "sm_current_mhz": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "memory_current_mhz": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "sm_max_mhz": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "memory_max_mhz": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        }
+      }
+    },
+    "packageObservation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "installed",
+        "version",
+        "observation_error"
+      ],
+      "properties": {
+        "installed": {
+          "type": "boolean"
+        },
+        "version": {
+          "$ref": "#/$defs/nullableString"
+        },
+        "observation_error": {
+          "$ref": "#/$defs/nullableString"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "installed": {
+                "const": false
+              }
+            },
+            "required": [
+              "installed"
+            ]
+          },
+          "then": {
+            "properties": {
+              "version": {
+                "type": "null"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "cudaToolkitObservation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "installed",
+        "version",
+        "cuda_home",
+        "nvcc_path",
+        "observation_error"
+      ],
+      "properties": {
+        "installed": {
+          "type": "boolean"
+        },
+        "version": {
+          "$ref": "#/$defs/nullableString"
+        },
+        "cuda_home": {
+          "$ref": "#/$defs/nullableString"
+        },
+        "nvcc_path": {
+          "$ref": "#/$defs/nullableString"
+        },
+        "observation_error": {
+          "$ref": "#/$defs/nullableString"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "installed": {
+                "const": false
+              }
+            },
+            "required": [
+              "installed"
+            ]
+          },
+          "then": {
+            "properties": {
+              "version": {
+                "type": "null"
+              },
+              "cuda_home": {
+                "type": "null"
+              },
+              "nvcc_path": {
+                "type": "null"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "driverObservation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "version",
+        "driver_supported_cuda_version"
+      ],
+      "properties": {
+        "version": {
+          "$ref": "#/$defs/nullableString"
+        },
+        "driver_supported_cuda_version": {
+          "$ref": "#/$defs/nullableString"
+        }
+      }
+    },
+    "torchObservation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "installed",
+        "version",
+        "compiled_cuda_version",
+        "observation_error"
+      ],
+      "properties": {
+        "installed": {
+          "type": "boolean"
+        },
+        "version": {
+          "$ref": "#/$defs/nullableString"
+        },
+        "compiled_cuda_version": {
+          "$ref": "#/$defs/nullableString"
+        },
+        "observation_error": {
+          "$ref": "#/$defs/nullableString"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "installed": {
+                "const": false
+              }
+            },
+            "required": [
+              "installed"
+            ]
+          },
+          "then": {
+            "properties": {
+              "version": {
+                "type": "null"
+              },
+              "compiled_cuda_version": {
+                "type": "null"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "software": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "collection_status",
+        "collection_error",
+        "nvidia_driver",
+        "cuda_toolkit",
+        "ncu",
+        "nsys",
+        "compute_sanitizer",
+        "python",
+        "torch",
+        "triton",
+        "vllm"
+      ],
+      "properties": {
+        "collection_status": {
+          "$ref": "#/$defs/collectionStatus"
+        },
+        "collection_error": {
+          "$ref": "#/$defs/nullableString"
+        },
+        "nvidia_driver": {
+          "$ref": "#/$defs/driverObservation"
+        },
+        "cuda_toolkit": {
+          "$ref": "#/$defs/cudaToolkitObservation"
+        },
+        "ncu": {
+          "$ref": "#/$defs/packageObservation"
+        },
+        "nsys": {
+          "$ref": "#/$defs/packageObservation"
+        },
+        "compute_sanitizer": {
+          "$ref": "#/$defs/packageObservation"
+        },
+        "python": {
+          "$ref": "#/$defs/packageObservation"
+        },
+        "torch": {
+          "$ref": "#/$defs/torchObservation"
+        },
+        "triton": {
+          "$ref": "#/$defs/packageObservation"
+        },
+        "vllm": {
+          "$ref": "#/$defs/packageObservation"
+        }
+      },
+      "allOf": [
+        {
+          "$ref": "#/$defs/collectionOutcomeRule"
+        },
+        {
+          "if": {
+            "properties": {
+              "collection_status": {
+                "const": "PASS"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "nvidia_driver": {
+                "properties": {
+                  "version": {
+                    "$ref": "#/$defs/nonEmptyString"
+                  },
+                  "driver_supported_cuda_version": {
+                    "$ref": "#/$defs/nonEmptyString"
+                  }
+                }
+              },
+              "cuda_toolkit": {
+                "properties": {
+                  "installed": {
+                    "const": true
+                  },
+                  "version": {
+                    "$ref": "#/$defs/nonEmptyString"
+                  },
+                  "cuda_home": {
+                    "$ref": "#/$defs/nonEmptyString"
+                  },
+                  "nvcc_path": {
+                    "$ref": "#/$defs/nonEmptyString"
+                  },
+                  "observation_error": {
+                    "type": "null"
+                  }
+                }
+              },
+              "ncu": {
+                "properties": {
+                  "installed": {
+                    "const": true
+                  },
+                  "version": {
+                    "$ref": "#/$defs/nonEmptyString"
+                  },
+                  "observation_error": {
+                    "type": "null"
+                  }
+                }
+              },
+              "nsys": {
+                "properties": {
+                  "installed": {
+                    "const": true
+                  },
+                  "version": {
+                    "$ref": "#/$defs/nonEmptyString"
+                  },
+                  "observation_error": {
+                    "type": "null"
+                  }
+                }
+              },
+              "compute_sanitizer": {
+                "properties": {
+                  "installed": {
+                    "const": true
+                  },
+                  "version": {
+                    "$ref": "#/$defs/nonEmptyString"
+                  },
+                  "observation_error": {
+                    "type": "null"
+                  }
+                }
+              },
+              "python": {
+                "properties": {
+                  "installed": {
+                    "const": true
+                  },
+                  "version": {
+                    "$ref": "#/$defs/nonEmptyString"
+                  },
+                  "observation_error": {
+                    "type": "null"
+                  }
+                }
+              },
+              "torch": {
+                "properties": {
+                  "installed": {
+                    "const": true
+                  },
+                  "version": {
+                    "$ref": "#/$defs/nonEmptyString"
+                  },
+                  "compiled_cuda_version": {
+                    "$ref": "#/$defs/nonEmptyString"
+                  },
+                  "observation_error": {
+                    "type": "null"
+                  }
+                }
+              },
+              "triton": {
+                "properties": {
+                  "installed": {
+                    "const": true
+                  },
+                  "version": {
+                    "$ref": "#/$defs/nonEmptyString"
+                  },
+                  "observation_error": {
+                    "type": "null"
+                  }
+                }
+              },
+              "vllm": {
+                "if": {
+                  "properties": {
+                    "installed": {
+                      "const": true
+                    }
+                  },
+                  "required": [
+                    "installed"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "version": {
+                      "$ref": "#/$defs/nonEmptyString"
+                    },
+                    "observation_error": {
+                      "type": "null"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "torchProbe": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "collection_status",
+        "collection_error",
+        "cuda_available",
+        "device_count",
+        "selected_logical_index",
+        "selected_device_name",
+        "python_optimization_level",
+        "python_executable",
+        "python_executable_matches_lock",
+        "selected_device_uuid",
+        "selected_device_capability",
+        "selected_device_total_memory_bytes",
+        "selected_uuid_matches_manifest",
+        "capability_matches_manifest"
+      ],
+      "properties": {
+        "collection_status": {
+          "$ref": "#/$defs/collectionStatus"
+        },
+        "collection_error": {
+          "$ref": "#/$defs/nullableString"
+        },
+        "cuda_available": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "device_count": {
+          "$ref": "#/$defs/nullableNonnegativeInteger"
+        },
+        "selected_logical_index": {
+          "$ref": "#/$defs/nullableNonnegativeInteger"
+        },
+        "selected_device_name": {
+          "$ref": "#/$defs/nullableString"
+        },
+        "python_optimization_level": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "python_executable": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "pattern": "^/"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "python_executable_matches_lock": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "selected_device_uuid": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/gpuUuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "selected_device_capability": {
+          "$ref": "#/$defs/nullableComputeCapability"
+        },
+        "selected_device_total_memory_bytes": {
+          "$ref": "#/$defs/nullableNonnegativeInteger"
+        },
+        "selected_uuid_matches_manifest": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "capability_matches_manifest": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "$ref": "#/$defs/collectionOutcomeRule"
+        },
+        {
+          "if": {
+            "properties": {
+              "collection_status": {
+                "const": "PASS"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "cuda_available": {
+                "type": "boolean"
+              },
+              "device_count": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "python_optimization_level": {
+                "const": 0
+              },
+              "python_executable": {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "^/"
+              },
+              "python_executable_matches_lock": {
+                "const": true
+              },
+              "selected_uuid_matches_manifest": {
+                "type": "boolean"
+              },
+              "capability_matches_manifest": {
+                "type": "boolean"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "cuda_available": {
+                "const": true
+              }
+            },
+            "required": [
+              "cuda_available"
+            ]
+          },
+          "then": {
+            "properties": {
+              "device_count": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "selected_logical_index": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "selected_device_name": {
+                "$ref": "#/$defs/nonEmptyString"
+              },
+              "selected_device_uuid": {
+                "$ref": "#/$defs/gpuUuid"
+              },
+              "selected_device_capability": {
+                "$ref": "#/$defs/computeCapability"
+              },
+              "selected_device_total_memory_bytes": {
+                "type": "integer",
+                "minimum": 1
+              }
+            }
+          }
+        }
+      ]
+    },
+    "processIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "pid",
+        "start_time_ticks"
+      ],
+      "properties": {
+        "pid": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "start_time_ticks": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "gpuProcess": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "gpu_uuid",
+        "pid",
+        "process_start_time_ticks",
+        "process_type",
+        "process_name",
+        "used_gpu_memory_mib",
+        "classification",
+        "allowed",
+        "supervised_root_identity"
+      ],
+      "properties": {
+        "gpu_uuid": {
+          "$ref": "#/$defs/gpuUuid"
+        },
+        "pid": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "process_start_time_ticks": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "process_type": {
+          "enum": [
+            "G",
+            "C",
+            "C+G",
+            "UNKNOWN"
+          ]
+        },
+        "process_name": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "used_gpu_memory_mib": {
+          "$ref": "#/$defs/nullableNonnegativeNumber"
+        },
+        "classification": {
+          "enum": [
+            "graphics_only",
+            "supervised_child",
+            "supervised_descendant",
+            "foreign_compute",
+            "unknown"
+          ]
+        },
+        "allowed": {
+          "type": "boolean"
+        },
+        "supervised_root_identity": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/processIdentity"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "process_type": {
+                "const": "G"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "classification": {
+                "const": "graphics_only"
+              },
+              "allowed": {
+                "const": true
+              },
+              "supervised_root_identity": {
+                "type": "null"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "process_type": {
+                "enum": [
+                  "C",
+                  "C+G"
+                ]
+              },
+              "classification": {
+                "enum": [
+                  "supervised_child",
+                  "supervised_descendant"
+                ]
+              }
+            },
+            "required": [
+              "process_type",
+              "classification"
+            ]
+          },
+          "then": {
+            "properties": {
+              "allowed": {
+                "const": true
+              },
+              "supervised_root_identity": {
+                "$ref": "#/$defs/processIdentity"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "classification": {
+                "const": "foreign_compute"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "process_type": {
+                "enum": [
+                  "C",
+                  "C+G"
+                ]
+              },
+              "allowed": {
+                "const": false
+              },
+              "supervised_root_identity": {
+                "type": "null"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "process_type": {
+                "const": "UNKNOWN"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "classification": {
+                "const": "unknown"
+              },
+              "allowed": {
+                "const": false
+              },
+              "supervised_root_identity": {
+                "type": "null"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "processSnapshot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "phase",
+        "label",
+        "captured_at_utc",
+        "query_command_id",
+        "query_status",
+        "query_error",
+        "processes"
+      ],
+      "properties": {
+        "phase": {
+          "enum": [
+            "before",
+            "during",
+            "after"
+          ]
+        },
+        "label": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "captured_at_utc": {
+          "$ref": "#/$defs/timestampUtc"
+        },
+        "query_command_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+        },
+        "query_status": {
+          "enum": [
+            "PASS",
+            "FAIL"
+          ]
+        },
+        "query_error": {
+          "$ref": "#/$defs/nullableString"
+        },
+        "processes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/gpuProcess"
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "query_status": {
+                "const": "PASS"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "query_error": {
+                "type": "null"
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "query_error": {
+                "$ref": "#/$defs/nonEmptyString"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "processAudit": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "policy",
+        "query_failure_count",
+        "graphics_process_count",
+        "supervised_compute_process_count",
+        "foreign_or_unknown_process_count",
+        "snapshots"
+      ],
+      "properties": {
+        "policy": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "graphics_only_allowed",
+            "foreign_compute_allowed",
+            "supervised_identity_basis",
+            "executable_name_whitelist_used",
+            "unknown_process_type_fails_closed"
+          ],
+          "properties": {
+            "graphics_only_allowed": {
+              "const": true
+            },
+            "foreign_compute_allowed": {
+              "const": false
+            },
+            "supervised_identity_basis": {
+              "const": "pid_and_process_start_time"
+            },
+            "executable_name_whitelist_used": {
+              "const": false
+            },
+            "unknown_process_type_fails_closed": {
+              "const": true
+            }
+          }
+        },
+        "query_failure_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "graphics_process_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "supervised_compute_process_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "foreign_or_unknown_process_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "snapshots": {
+          "type": "array",
+          "minItems": 3,
+          "items": {
+            "$ref": "#/$defs/processSnapshot"
+          },
+          "allOf": [
+            {
+              "contains": {
+                "properties": {
+                  "phase": {
+                    "const": "before"
+                  }
+                },
+                "required": [
+                  "phase"
+                ]
+              },
+              "minContains": 1
+            },
+            {
+              "contains": {
+                "properties": {
+                  "phase": {
+                    "const": "during"
+                  }
+                },
+                "required": [
+                  "phase"
+                ]
+              },
+              "minContains": 1
+            },
+            {
+              "contains": {
+                "properties": {
+                  "phase": {
+                    "const": "after"
+                  }
+                },
+                "required": [
+                  "phase"
+                ]
+              },
+              "minContains": 1
+            }
+          ]
+        }
+      }
+    },
+    "observedGpuProcessProducer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "gpu_uuid",
+        "pid",
+        "process_start_time_ticks",
+        "process_type",
+        "process_name",
+        "used_gpu_memory_mib"
+      ],
+      "properties": {
+        "gpu_uuid": {
+          "$ref": "#/$defs/gpuUuid"
+        },
+        "pid": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "process_start_time_ticks": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "process_type": {
+          "enum": [
+            "G",
+            "C",
+            "C+G",
+            "UNKNOWN"
+          ]
+        },
+        "process_name": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "used_gpu_memory_mib": {
+          "$ref": "#/$defs/nullableNonnegativeNumber"
+        }
+      }
+    },
+    "supervisedGpuProcessProducer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "gpu_uuid",
+        "pid",
+        "process_start_time_ticks",
+        "process_type",
+        "process_name",
+        "used_gpu_memory_mib",
+        "relationship",
+        "supervised_root_identity"
+      ],
+      "properties": {
+        "gpu_uuid": {
+          "$ref": "#/$defs/gpuUuid"
+        },
+        "pid": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "process_start_time_ticks": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "process_type": {
+          "enum": [
+            "C",
+            "C+G"
+          ]
+        },
+        "process_name": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "used_gpu_memory_mib": {
+          "$ref": "#/$defs/nullableNonnegativeNumber"
+        },
+        "relationship": {
+          "enum": [
+            "supervised_child",
+            "supervised_descendant"
+          ]
+        },
+        "supervised_root_identity": {
+          "$ref": "#/$defs/processIdentity"
+        }
+      }
+    },
+    "processSnapshotProducer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "phase",
+        "command_id",
+        "captured_at_utc",
+        "query_argv",
+        "query_exit_code",
+        "raw_stdout",
+        "raw_stderr",
+        "graphics_processes",
+        "allowed_compute_processes",
+        "foreign_compute_processes",
+        "unknown_processes"
+      ],
+      "properties": {
+        "phase": {
+          "enum": [
+            "before",
+            "during",
+            "after"
+          ]
+        },
+        "command_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+        },
+        "captured_at_utc": {
+          "$ref": "#/$defs/timestampUtc"
+        },
+        "query_argv": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string"
+          }
+        },
+        "query_exit_code": {
+          "type": "integer"
+        },
+        "raw_stdout": {
+          "$ref": "#/$defs/commandOutput"
+        },
+        "raw_stderr": {
+          "$ref": "#/$defs/commandOutput"
+        },
+        "graphics_processes": {
+          "type": "array",
+          "items": {
+            "allOf": [
+              {
+                "$ref": "#/$defs/observedGpuProcessProducer"
+              },
+              {
+                "properties": {
+                  "process_type": {
+                    "const": "G"
+                  }
+                }
+              }
+            ]
+          }
+        },
+        "allowed_compute_processes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/supervisedGpuProcessProducer"
+          }
+        },
+        "foreign_compute_processes": {
+          "type": "array",
+          "items": {
+            "allOf": [
+              {
+                "$ref": "#/$defs/observedGpuProcessProducer"
+              },
+              {
+                "properties": {
+                  "process_type": {
+                    "enum": [
+                      "C",
+                      "C+G"
+                    ]
+                  }
+                }
+              }
+            ]
+          }
+        },
+        "unknown_processes": {
+          "type": "array",
+          "items": {
+            "allOf": [
+              {
+                "$ref": "#/$defs/observedGpuProcessProducer"
+              },
+              {
+                "properties": {
+                  "process_type": {
+                    "const": "UNKNOWN"
+                  }
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    "processAuditProducer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "policy",
+        "collector_identity",
+        "query_failure_count",
+        "graphics_process_count",
+        "supervised_compute_process_count",
+        "foreign_or_unknown_process_count",
+        "snapshots"
+      ],
+      "properties": {
+        "policy": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "graphics_only_allowed",
+            "foreign_compute_allowed",
+            "supervised_identity_basis",
+            "executable_name_whitelist_used",
+            "unknown_process_type_fails_closed"
+          ],
+          "properties": {
+            "graphics_only_allowed": {
+              "const": true
+            },
+            "foreign_compute_allowed": {
+              "const": false
+            },
+            "supervised_identity_basis": {
+              "const": "pid_and_process_start_time"
+            },
+            "executable_name_whitelist_used": {
+              "const": false
+            },
+            "unknown_process_type_fails_closed": {
+              "const": true
+            }
+          }
+        },
+        "collector_identity": {
+          "$ref": "#/$defs/processIdentity"
+        },
+        "query_failure_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "graphics_process_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "supervised_compute_process_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "foreign_or_unknown_process_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "snapshots": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/processSnapshotProducer"
+          },
+          "allOf": [
+            {
+              "contains": {
+                "properties": {
+                  "phase": {
+                    "const": "before"
+                  }
+                },
+                "required": [
+                  "phase"
+                ]
+              },
+              "minContains": 1
+            }
+          ]
+        }
+      }
+    },
+    "sourceArtifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "sha256"
+      ],
+      "properties": {
+        "path": {
+          "$ref": "#/$defs/relativeArtifactPath"
+        },
+        "sha256": {
+          "$ref": "#/$defs/sha256"
+        }
+      }
+    },
+    "binaryArtifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "available",
+        "path",
+        "sha256",
+        "size_bytes"
+      ],
+      "properties": {
+        "available": {
+          "type": "boolean"
+        },
+        "path": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/relativeArtifactPath"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "sha256": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/sha256"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "size_bytes": {
+          "$ref": "#/$defs/nullableNonnegativeInteger"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "available": {
+                "const": true
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "path": {
+                "$ref": "#/$defs/relativeArtifactPath"
+              },
+              "sha256": {
+                "$ref": "#/$defs/sha256"
+              },
+              "size_bytes": {
+                "type": "integer",
+                "minimum": 1
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "path": {
+                "type": "null"
+              },
+              "sha256": {
+                "type": "null"
+              },
+              "size_bytes": {
+                "type": "null"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "resultEnvelope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "reason",
+        "command_ids",
+        "evidence_file_ids"
+      ],
+      "properties": {
+        "status": {
+          "$ref": "#/$defs/resultStatus"
+        },
+        "reason": {
+          "$ref": "#/$defs/nullableString"
+        },
+        "command_ids": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/nonEmptyString"
+          },
+          "uniqueItems": true
+        },
+        "evidence_file_ids": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/nonEmptyString"
+          },
+          "uniqueItems": true
+        }
+      },
+      "allOf": [
+        {
+          "$ref": "#/$defs/resultOutcomeRule"
+        }
+      ]
+    },
+    "resultOutcomeRule": {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "PASS"
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "then": {
+        "properties": {
+          "reason": {
+            "type": "null"
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "reason": {
+            "$ref": "#/$defs/nonEmptyString"
+          }
+        }
+      }
+    },
+    "numericalGoldenResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "reason",
+        "command_ids",
+        "evidence_file_ids",
+        "dtype",
+        "case_count",
+        "atol",
+        "rtol",
+        "max_abs_error",
+        "max_rel_error"
+      ],
+      "properties": {
+        "status": {
+          "$ref": "#/$defs/resultStatus"
+        },
+        "reason": {
+          "$ref": "#/$defs/nullableString"
+        },
+        "command_ids": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/nonEmptyString"
+          },
+          "uniqueItems": true
+        },
+        "evidence_file_ids": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/nonEmptyString"
+          },
+          "uniqueItems": true
+        },
+        "dtype": {
+          "const": "int32"
+        },
+        "case_count": {
+          "$ref": "#/$defs/nullableNonnegativeInteger"
+        },
+        "atol": {
+          "$ref": "#/$defs/nullableNonnegativeNumber"
+        },
+        "rtol": {
+          "$ref": "#/$defs/nullableNonnegativeNumber"
+        },
+        "max_abs_error": {
+          "$ref": "#/$defs/nullableNonnegativeNumber"
+        },
+        "max_rel_error": {
+          "$ref": "#/$defs/nullableNonnegativeNumber"
+        }
+      },
+      "allOf": [
+        {
+          "$ref": "#/$defs/resultOutcomeRule"
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "PASS"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "case_count": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "atol": {
+                "type": "number",
+                "minimum": 0
+              },
+              "rtol": {
+                "type": "number",
+                "minimum": 0
+              },
+              "max_abs_error": {
+                "type": "number",
+                "minimum": 0
+              },
+              "max_rel_error": {
+                "type": "number",
+                "minimum": 0
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "NOT_RUN"
+              }
+            },
+            "required": [
+              "status"
+            ]
+          },
+          "then": {
+            "properties": {
+              "case_count": {
+                "type": "null"
+              },
+              "atol": {
+                "type": "null"
+              },
+              "rtol": {
+                "type": "null"
+              },
+              "max_abs_error": {
+                "type": "null"
+              },
+              "max_rel_error": {
+                "type": "null"
+              },
+              "command_ids": {
+                "maxItems": 0
+              },
+              "evidence_file_ids": {
+                "maxItems": 0
+              }
+            }
+          }
+        }
+      ]
+    },
+    "nativeExecutionResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "reason",
+        "command_ids",
+        "evidence_file_ids",
+        "separate_process",
+        "cuda_disable_ptx_jit"
+      ],
+      "properties": {
+        "status": {
+          "$ref": "#/$defs/resultStatus"
+        },
+        "reason": {
+          "$ref": "#/$defs/nullableString"
+        },
+        "command_ids": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/nonEmptyString"
+          },
+          "uniqueItems": true
+        },
+        "evidence_file_ids": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/nonEmptyString"
+          },
+          "uniqueItems": true
+        },
+        "separate_process": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "cuda_disable_ptx_jit": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "$ref": "#/$defs/resultOutcomeRule"
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "NOT_RUN"
+              }
+            },
+            "required": [
+              "status"
+            ]
+          },
+          "then": {
+            "properties": {
+              "separate_process": {
+                "type": "null"
+              },
+              "cuda_disable_ptx_jit": {
+                "type": "null"
+              },
+              "command_ids": {
+                "maxItems": 0
+              },
+              "evidence_file_ids": {
+                "maxItems": 0
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "separate_process": {
+                "const": true
+              },
+              "cuda_disable_ptx_jit": {
+                "const": true
+              },
+              "command_ids": {
+                "minItems": 1
+              }
+            }
+          }
+        }
+      ]
+    },
+    "forcedPtxResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "reason",
+        "command_ids",
+        "evidence_file_ids",
+        "separate_process",
+        "cuda_force_ptx_jit",
+        "fresh_cuda_cache"
+      ],
+      "properties": {
+        "status": {
+          "$ref": "#/$defs/resultStatus"
+        },
+        "reason": {
+          "$ref": "#/$defs/nullableString"
+        },
+        "command_ids": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/nonEmptyString"
+          },
+          "uniqueItems": true
+        },
+        "evidence_file_ids": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/nonEmptyString"
+          },
+          "uniqueItems": true
+        },
+        "separate_process": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "cuda_force_ptx_jit": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "fresh_cuda_cache": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "$ref": "#/$defs/resultOutcomeRule"
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "NOT_RUN"
+              }
+            },
+            "required": [
+              "status"
+            ]
+          },
+          "then": {
+            "properties": {
+              "separate_process": {
+                "type": "null"
+              },
+              "cuda_force_ptx_jit": {
+                "type": "null"
+              },
+              "fresh_cuda_cache": {
+                "type": "null"
+              },
+              "command_ids": {
+                "maxItems": 0
+              },
+              "evidence_file_ids": {
+                "maxItems": 0
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "separate_process": {
+                "const": true
+              },
+              "cuda_force_ptx_jit": {
+                "const": true
+              },
+              "fresh_cuda_cache": {
+                "const": true
+              },
+              "command_ids": {
+                "minItems": 1
+              }
+            }
+          }
+        }
+      ]
+    },
+    "sanitizerResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "reason",
+        "command_ids",
+        "evidence_file_ids",
+        "tools_run",
+        "leak_check_full",
+        "error_count"
+      ],
+      "properties": {
+        "status": {
+          "$ref": "#/$defs/resultStatus"
+        },
+        "reason": {
+          "$ref": "#/$defs/nullableString"
+        },
+        "command_ids": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/nonEmptyString"
+          },
+          "uniqueItems": true
+        },
+        "evidence_file_ids": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/nonEmptyString"
+          },
+          "uniqueItems": true
+        },
+        "tools_run": {
+          "type": "array",
+          "maxItems": 4,
+          "uniqueItems": true,
+          "prefixItems": [
+            {
+              "const": "memcheck"
+            },
+            {
+              "const": "initcheck"
+            },
+            {
+              "const": "racecheck"
+            },
+            {
+              "const": "synccheck"
+            }
+          ],
+          "items": false
+        },
+        "leak_check_full": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "error_count": {
+          "$ref": "#/$defs/nullableNonnegativeInteger"
+        }
+      },
+      "allOf": [
+        {
+          "$ref": "#/$defs/resultOutcomeRule"
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "PASS"
+              }
+            },
+            "required": [
+              "status"
+            ]
+          },
+          "then": {
+            "properties": {
+              "tools_run": {
+                "minItems": 4
+              },
+              "leak_check_full": {
+                "const": true
+              },
+              "error_count": {
+                "const": 0
+              },
+              "command_ids": {
+                "minItems": 4
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "NOT_RUN"
+              }
+            },
+            "required": [
+              "status"
+            ]
+          },
+          "then": {
+            "properties": {
+              "tools_run": {
+                "maxItems": 0
+              },
+              "leak_check_full": {
+                "type": "null"
+              },
+              "error_count": {
+                "type": "null"
+              },
+              "command_ids": {
+                "maxItems": 0
+              },
+              "evidence_file_ids": {
+                "maxItems": 0
+              }
+            }
+          }
+        }
+      ]
+    },
+    "graphResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "reason",
+        "command_ids",
+        "evidence_file_ids",
+        "capture_succeeded",
+        "replay_count",
+        "output_matches_golden"
+      ],
+      "properties": {
+        "status": {
+          "$ref": "#/$defs/resultStatus"
+        },
+        "reason": {
+          "$ref": "#/$defs/nullableString"
+        },
+        "command_ids": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/nonEmptyString"
+          },
+          "uniqueItems": true
+        },
+        "evidence_file_ids": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/nonEmptyString"
+          },
+          "uniqueItems": true
+        },
+        "capture_succeeded": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "replay_count": {
+          "$ref": "#/$defs/nullableNonnegativeInteger"
+        },
+        "output_matches_golden": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "$ref": "#/$defs/resultOutcomeRule"
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "PASS"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "capture_succeeded": {
+                "const": true
+              },
+              "replay_count": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "output_matches_golden": {
+                "const": true
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "NOT_RUN"
+              }
+            },
+            "required": [
+              "status"
+            ]
+          },
+          "then": {
+            "properties": {
+              "capture_succeeded": {
+                "type": "null"
+              },
+              "replay_count": {
+                "type": "null"
+              },
+              "output_matches_golden": {
+                "type": "null"
+              },
+              "command_ids": {
+                "maxItems": 0
+              },
+              "evidence_file_ids": {
+                "maxItems": 0
+              }
+            }
+          }
+        }
+      ]
+    },
+    "allocationResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "reason",
+        "command_ids",
+        "evidence_file_ids",
+        "preallocated_input_output",
+        "allocated_delta_bytes",
+        "reserved_delta_bytes",
+        "output_pointer_stable"
+      ],
+      "properties": {
+        "status": {
+          "$ref": "#/$defs/resultStatus"
+        },
+        "reason": {
+          "$ref": "#/$defs/nullableString"
+        },
+        "command_ids": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/nonEmptyString"
+          },
+          "uniqueItems": true
+        },
+        "evidence_file_ids": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/nonEmptyString"
+          },
+          "uniqueItems": true
+        },
+        "preallocated_input_output": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "allocated_delta_bytes": {
+          "$ref": "#/$defs/nullableNonnegativeInteger"
+        },
+        "reserved_delta_bytes": {
+          "$ref": "#/$defs/nullableNonnegativeInteger"
+        },
+        "output_pointer_stable": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "$ref": "#/$defs/resultOutcomeRule"
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "PASS"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "preallocated_input_output": {
+                "const": true
+              },
+              "allocated_delta_bytes": {
+                "const": 0
+              },
+              "reserved_delta_bytes": {
+                "const": 0
+              },
+              "output_pointer_stable": {
+                "const": true
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "NOT_RUN"
+              }
+            },
+            "required": [
+              "status"
+            ]
+          },
+          "then": {
+            "properties": {
+              "preallocated_input_output": {
+                "type": "null"
+              },
+              "allocated_delta_bytes": {
+                "type": "null"
+              },
+              "reserved_delta_bytes": {
+                "type": "null"
+              },
+              "output_pointer_stable": {
+                "type": "null"
+              },
+              "command_ids": {
+                "maxItems": 0
+              },
+              "evidence_file_ids": {
+                "maxItems": 0
+              }
+            }
+          }
+        }
+      ]
+    },
+    "kernelImageResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "reason",
+        "command_ids",
+        "evidence_file_ids",
+        "error_found"
+      ],
+      "properties": {
+        "status": {
+          "$ref": "#/$defs/resultStatus"
+        },
+        "reason": {
+          "$ref": "#/$defs/nullableString"
+        },
+        "command_ids": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/nonEmptyString"
+          },
+          "uniqueItems": true
+        },
+        "evidence_file_ids": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/nonEmptyString"
+          },
+          "uniqueItems": true
+        },
+        "error_found": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "$ref": "#/$defs/resultOutcomeRule"
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "PASS"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "error_found": {
+                "const": false
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "NOT_RUN"
+              }
+            },
+            "required": [
+              "status"
+            ]
+          },
+          "then": {
+            "properties": {
+              "error_found": {
+                "type": "null"
+              },
+              "command_ids": {
+                "maxItems": 0
+              },
+              "evidence_file_ids": {
+                "maxItems": 0
+              }
+            }
+          }
+        }
+      ]
+    },
+    "binaryInspectionResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "reason",
+        "command_ids",
+        "evidence_file_ids",
+        "sass_target_present",
+        "ptx_target_present"
+      ],
+      "properties": {
+        "status": {
+          "$ref": "#/$defs/resultStatus"
+        },
+        "reason": {
+          "$ref": "#/$defs/nullableString"
+        },
+        "command_ids": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/nonEmptyString"
+          },
+          "uniqueItems": true
+        },
+        "evidence_file_ids": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/nonEmptyString"
+          },
+          "uniqueItems": true
+        },
+        "sass_target_present": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "ptx_target_present": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "$ref": "#/$defs/resultOutcomeRule"
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "PASS"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "sass_target_present": {
+                "const": true
+              },
+              "ptx_target_present": {
+                "const": true
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "NOT_RUN"
+              }
+            },
+            "required": [
+              "status"
+            ]
+          },
+          "then": {
+            "properties": {
+              "sass_target_present": {
+                "type": "null"
+              },
+              "ptx_target_present": {
+                "type": "null"
+              },
+              "command_ids": {
+                "maxItems": 0
+              },
+              "evidence_file_ids": {
+                "maxItems": 0
+              }
+            }
+          }
+        }
+      ]
+    },
+    "extension": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "sources",
+        "architecture",
+        "binary",
+        "build",
+        "binary_inspection",
+        "numerical_golden",
+        "native_execution",
+        "forced_ptx_jit",
+        "compute_sanitizer",
+        "cuda_graph_capture_replay",
+        "memory_allocation",
+        "no_kernel_image_error",
+        "build_metadata",
+        "cuobjdump_command_ids",
+        "kernel_image_error_detected"
+      ],
+      "properties": {
+        "name": {
+          "const": "e00_cuda_certification"
+        },
+        "sources": {
+          "type": "array",
+          "minItems": 2,
+          "items": {
+            "$ref": "#/$defs/sourceArtifact"
+          }
+        },
+        "architecture": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "derived_from",
+            "compute_capability",
+            "equivalent_torch_cuda_arch_list",
+            "compiled_sass_targets",
+            "compiled_ptx_targets"
+          ],
+          "properties": {
+            "derived_from": {
+              "const": "nvidia_smi_and_torch_cuda_capability_agreement"
+            },
+            "compute_capability": {
+              "$ref": "#/$defs/nullableComputeCapability"
+            },
+            "equivalent_torch_cuda_arch_list": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^[0-9]+\\.[0-9]+\\+PTX$"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "compiled_sass_targets": {
+              "type": "array",
+              "uniqueItems": true,
+              "items": {
+                "type": "string",
+                "pattern": "^sm_[0-9]+$"
+              }
+            },
+            "compiled_ptx_targets": {
+              "type": "array",
+              "uniqueItems": true,
+              "items": {
+                "type": "string",
+                "pattern": "^compute_[0-9]+$"
+              }
+            }
+          },
+          "allOf": [
+            {
+              "if": {
+                "properties": {
+                  "compute_capability": {
+                    "type": "null"
+                  }
+                },
+                "required": [
+                  "compute_capability"
+                ]
+              },
+              "then": {
+                "properties": {
+                  "equivalent_torch_cuda_arch_list": {
+                    "type": "null"
+                  }
+                }
+              },
+              "else": {
+                "properties": {
+                  "equivalent_torch_cuda_arch_list": {
+                    "type": "string",
+                    "pattern": "^[0-9]+\\.[0-9]+\\+PTX$"
+                  }
+                }
+              }
+            }
+          ]
+        },
+        "binary": {
+          "$ref": "#/$defs/binaryArtifact"
+        },
+        "build": {
+          "$ref": "#/$defs/resultEnvelope"
+        },
+        "binary_inspection": {
+          "$ref": "#/$defs/binaryInspectionResult"
+        },
+        "numerical_golden": {
+          "$ref": "#/$defs/numericalGoldenResult"
+        },
+        "build_metadata": {
+          "$ref": "#/$defs/commandOutput"
+        },
+        "cuobjdump_command_ids": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/nonEmptyString"
+          }
+        },
+        "native_execution": {
+          "$ref": "#/$defs/nativeExecutionResult"
+        },
+        "forced_ptx_jit": {
+          "$ref": "#/$defs/forcedPtxResult"
+        },
+        "compute_sanitizer": {
+          "$ref": "#/$defs/sanitizerResult"
+        },
+        "cuda_graph_capture_replay": {
+          "$ref": "#/$defs/graphResult"
+        },
+        "memory_allocation": {
+          "$ref": "#/$defs/allocationResult"
+        },
+        "no_kernel_image_error": {
+          "$ref": "#/$defs/kernelImageResult"
+        },
+        "kernel_image_error_detected": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "binary_inspection": {
+                "properties": {
+                  "status": {
+                    "const": "NOT_RUN"
+                  }
+                },
+                "required": [
+                  "status"
+                ]
+              }
+            },
+            "required": [
+              "binary_inspection"
+            ]
+          },
+          "then": {
+            "properties": {
+              "cuobjdump_command_ids": {
+                "maxItems": 0
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "cuobjdump_command_ids": {
+                "minItems": 2
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "binary_inspection": {
+                "properties": {
+                  "status": {
+                    "const": "PASS"
+                  }
+                },
+                "required": [
+                  "status"
+                ]
+              }
+            },
+            "required": [
+              "binary_inspection"
+            ]
+          },
+          "then": {
+            "properties": {
+              "architecture": {
+                "properties": {
+                  "compute_capability": {
+                    "$ref": "#/$defs/computeCapability"
+                  },
+                  "equivalent_torch_cuda_arch_list": {
+                    "type": "string",
+                    "pattern": "^[0-9]+\\.[0-9]+\\+PTX$"
+                  },
+                  "compiled_sass_targets": {
+                    "minItems": 1
+                  },
+                  "compiled_ptx_targets": {
+                    "minItems": 1
+                  }
+                }
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "architecture": {
+                "properties": {
+                  "compiled_sass_targets": {
+                    "maxItems": 0
+                  },
+                  "compiled_ptx_targets": {
+                    "maxItems": 0
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "commandEnvironment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "LC_ALL",
+        "LANG",
+        "TZ",
+        "PATH",
+        "CUDA_HOME",
+        "PYTHONNOUSERSITE",
+        "PYTHONOPTIMIZE",
+        "PYTHONHASHSEED",
+        "CC",
+        "CXX",
+        "GIT_CONFIG_GLOBAL",
+        "GIT_CONFIG_NOSYSTEM"
+      ],
+      "properties": {
+        "LC_ALL": {
+          "const": "C"
+        },
+        "LANG": {
+          "type": "string"
+        },
+        "TZ": {
+          "const": "UTC"
+        },
+        "PATH": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "GIT_CONFIG_GLOBAL": {
+          "const": "/dev/null"
+        },
+        "GIT_CONFIG_NOSYSTEM": {
+          "const": "1"
+        },
+        "CUDA_HOME": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "CUDA_VISIBLE_DEVICES": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "TORCH_CUDA_ARCH_LIST": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "TORCH_EXTENSIONS_DIR": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "CUDA_FORCE_PTX_JIT": {
+          "enum": [
+            "0",
+            "1"
+          ]
+        },
+        "CUDA_DISABLE_PTX_JIT": {
+          "enum": [
+            "0",
+            "1"
+          ]
+        },
+        "CUDA_CACHE_PATH": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "PYTHONNOUSERSITE": {
+          "enum": [
+            "0",
+            "1"
+          ]
+        },
+        "PYTHONOPTIMIZE": {
+          "const": "0"
+        },
+        "MAX_JOBS": {
+          "type": "string",
+          "pattern": "^[1-9][0-9]*$"
+        },
+        "CUDA_CACHE_DISABLE": {
+          "enum": [
+            "0",
+            "1"
+          ]
+        },
+        "CUDA_DEVICE_ORDER": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "CC": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "CXX": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "PYTHONHASHSEED": {
+          "const": "0"
+        },
+        "E00_DETECTED_ARCH": {
+          "type": "string",
+          "pattern": "^[0-9]+\\.[0-9]+$"
+        },
+        "E00_EXTENSION_PATH": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "E00_EXTENSION_MODULE": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "E00_ALLOCATION_ITERATIONS": {
+          "type": "string",
+          "pattern": "^[1-9][0-9]*$"
+        },
+        "PYTORCH_NO_CUDA_MEMORY_CACHING": {
+          "enum": [
+            "0",
+            "1"
+          ]
+        }
+      }
+    },
+    "evidenceFile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "path",
+        "role",
+        "sha256",
+        "size_bytes"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+        },
+        "path": {
+          "$ref": "#/$defs/relativeArtifactPath"
+        },
+        "role": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]*$"
+        },
+        "sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "size_bytes": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "commandOutput": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "sha256",
+        "size_bytes"
+      ],
+      "properties": {
+        "path": {
+          "$ref": "#/$defs/relativeArtifactPath"
+        },
+        "sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "size_bytes": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "evidenceCommand": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "purpose",
+        "started_at_utc",
+        "finished_at_utc",
+        "duration_seconds",
+        "argv",
+        "cwd",
+        "relevant_environment",
+        "exit_code",
+        "expected_exit_codes",
+        "matched_expectation",
+        "stdout",
+        "stderr"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+        },
+        "purpose": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "started_at_utc": {
+          "$ref": "#/$defs/timestampUtc"
+        },
+        "finished_at_utc": {
+          "$ref": "#/$defs/timestampUtc"
+        },
+        "duration_seconds": {
+          "type": "number",
+          "minimum": 0
+        },
+        "argv": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string"
+          }
+        },
+        "cwd": {
+          "type": "string",
+          "pattern": "^/"
+        },
+        "relevant_environment": {
+          "$ref": "#/$defs/commandEnvironment"
+        },
+        "exit_code": {
+          "type": "integer"
+        },
+        "expected_exit_codes": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "integer"
+          },
+          "uniqueItems": true
+        },
+        "matched_expectation": {
+          "type": "boolean"
+        },
+        "stdout": {
+          "$ref": "#/$defs/commandOutput"
+        },
+        "stderr": {
+          "$ref": "#/$defs/commandOutput"
+        }
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "storage",
+        "commands",
+        "files",
+        "checksum_ledger",
+        "checksum_verification",
+        "completion_marker"
+      ],
+      "properties": {
+        "storage": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "root",
+            "run_directory",
+            "append_only",
+            "exclusive_temporary_sibling",
+            "atomic_final_rename",
+            "no_overwrite_final_rename"
+          ],
+          "properties": {
+            "root": {
+              "const": "docs/evidence/e00"
+            },
+            "run_directory": {
+              "type": "string",
+              "pattern": "^docs/evidence/e00/e00-[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+            },
+            "append_only": {
+              "const": true
+            },
+            "exclusive_temporary_sibling": {
+              "const": true
+            },
+            "atomic_final_rename": {
+              "const": true
+            },
+            "no_overwrite_final_rename": {
+              "const": true
+            }
+          }
+        },
+        "commands": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/evidenceCommand"
+          }
+        },
+        "files": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/evidenceFile"
+          }
+        },
+        "checksum_ledger": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "algorithm",
+            "path",
+            "covers_all_payload_files",
+            "exclusions"
+          ],
+          "properties": {
+            "algorithm": {
+              "const": "sha256"
+            },
+            "path": {
+              "const": "checksums.sha256"
+            },
+            "covers_all_payload_files": {
+              "const": true
+            },
+            "exclusions": {
+              "type": "array",
+              "minItems": 2,
+              "maxItems": 2,
+              "uniqueItems": true,
+              "prefixItems": [
+                {
+                  "const": "checksums.sha256"
+                },
+                {
+                  "const": "COMPLETE"
+                }
+              ],
+              "items": false
+            }
+          }
+        },
+        "checksum_verification": {
+          "$ref": "#/$defs/resultEnvelope"
+        },
+        "completion_marker": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "written_last",
+            "contains_ledger_sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "COMPLETE"
+            },
+            "written_last": {
+              "const": true
+            },
+            "contains_ledger_sha256": {
+              "const": true
+            }
+          }
+        }
+      }
+    },
+    "gateCheck": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "status",
+        "reason",
+        "command_ids",
+        "evidence_file_ids"
+      ],
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "status": {
+          "$ref": "#/$defs/resultStatus"
+        },
+        "reason": {
+          "$ref": "#/$defs/nullableString"
+        },
+        "command_ids": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/nonEmptyString"
+          },
+          "uniqueItems": true
+        },
+        "evidence_file_ids": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/nonEmptyString"
+          },
+          "uniqueItems": true
+        }
+      },
+      "allOf": [
+        {
+          "$ref": "#/$defs/resultOutcomeRule"
+        }
+      ]
+    },
+    "gate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "aggregate_status",
+        "checks"
+      ],
+      "properties": {
+        "name": {
+          "const": "G0"
+        },
+        "aggregate_status": {
+          "enum": [
+            "PASS",
+            "FAIL"
+          ]
+        },
+        "checks": {
+          "type": "array",
+          "minItems": 17,
+          "maxItems": 17,
+          "prefixItems": [
+            {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/gateCheck"
+                },
+                {
+                  "properties": {
+                    "name": {
+                      "const": "committed_clean_code"
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/gateCheck"
+                },
+                {
+                  "properties": {
+                    "name": {
+                      "const": "native_host_environment_verified"
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/gateCheck"
+                },
+                {
+                  "properties": {
+                    "name": {
+                      "const": "single_uuid_selected_gpu"
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/gateCheck"
+                },
+                {
+                  "properties": {
+                    "name": {
+                      "const": "target_sku_match"
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/gateCheck"
+                },
+                {
+                  "properties": {
+                    "name": {
+                      "const": "hardware_identity_complete"
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/gateCheck"
+                },
+                {
+                  "properties": {
+                    "name": {
+                      "const": "power_clock_state_complete"
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/gateCheck"
+                },
+                {
+                  "properties": {
+                    "name": {
+                      "const": "required_toolchain_complete"
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/gateCheck"
+                },
+                {
+                  "properties": {
+                    "name": {
+                      "const": "torch_cuda_available"
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/gateCheck"
+                },
+                {
+                  "properties": {
+                    "name": {
+                      "const": "capability_identity_match"
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/gateCheck"
+                },
+                {
+                  "properties": {
+                    "name": {
+                      "const": "extension_build"
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/gateCheck"
+                },
+                {
+                  "properties": {
+                    "name": {
+                      "const": "native_sass_execution"
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/gateCheck"
+                },
+                {
+                  "properties": {
+                    "name": {
+                      "const": "forced_ptx_jit_execution"
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/gateCheck"
+                },
+                {
+                  "properties": {
+                    "name": {
+                      "const": "compute_sanitizer_clean"
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/gateCheck"
+                },
+                {
+                  "properties": {
+                    "name": {
+                      "const": "no_kernel_image_error"
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/gateCheck"
+                },
+                {
+                  "properties": {
+                    "name": {
+                      "const": "no_foreign_compute_process"
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/gateCheck"
+                },
+                {
+                  "properties": {
+                    "name": {
+                      "const": "manifest_schema_valid"
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/gateCheck"
+                },
+                {
+                  "properties": {
+                    "name": {
+                      "const": "evidence_checksums_valid"
+                    }
+                  }
+                }
+              ]
+            }
+          ],
+          "items": false
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "aggregate_status": {
+                "const": "PASS"
+              }
+            },
+            "required": [
+              "aggregate_status"
+            ]
+          },
+          "then": {
+            "properties": {
+              "checks": {
+                "items": {
+                  "properties": {
+                    "status": {
+                      "const": "PASS"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "checks": {
+                "contains": {
+                  "properties": {
+                    "status": {
+                      "enum": [
+                        "FAIL",
+                        "NOT_RUN"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "status"
+                  ]
+                },
+                "minContains": 1
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "checks": {
+                "items": {
+                  "properties": {
+                    "status": {
+                      "const": "PASS"
+                    }
+                  },
+                  "required": [
+                    "status"
+                  ]
+                }
+              }
+            },
+            "required": [
+              "checks"
+            ]
+          },
+          "then": {
+            "properties": {
+              "aggregate_status": {
+                "const": "PASS"
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+}

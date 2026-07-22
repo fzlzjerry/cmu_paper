@@ -7,10 +7,11 @@ Authoritative contract: CODEX_WORKFLOW.md plus AGENTS.md
 
 - Current phase: Phase 1 / E00 in progress
 - Phase 0 status: PASS
-- Next action: commit Decision 0002 and the E00 implementation, then run G0
+- Next action: review and commit the E00 implementation, then run formal G0
 - Active admission gate: G0 not started
 - Benchmark implementation changes: none
-- CUDA builds or executions: none
+- CUDA builds or executions: development-only E00 certification checks passed;
+  formal evidence not yet run
 - Benchmark or profiler data produced: none
 - Scientific performance claims: none
 
@@ -88,9 +89,9 @@ repository.
 
 ## Next action
 
-Commit Decision 0002 and its tracking updates, then implement and commit the E00
-collector from a clean tree. Run only the minimal CUDA certification extension,
-verify native SASS, forced PTX/JIT, numerical, CUDA Graph, allocation, process
-isolation, and Compute Sanitizer gates, and stop if G0 fails. E01 must implement
-the general append-only artifact policy, pin the measurement container, and pass
-container-parity G0 before E02 or any method CUDA or timing work begins.
+Review and commit the E00 collector, then invoke `make preflight` from that clean
+implementation SHA. Record native SASS, forced PTX/JIT, numerical, CUDA Graph,
+allocation, process-isolation, and all four Compute Sanitizer results; stop if
+G0 fails. E01 must implement the general append-only artifact policy, pin the
+measurement container, and pass container-parity G0 before E02 or any method
+CUDA or timing work begins.

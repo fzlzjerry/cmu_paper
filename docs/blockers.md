@@ -11,7 +11,7 @@ None has been resolved by a silent fallback.
 | ID | Blocking condition | Blocks | Evidence / next action | Status |
 |---|---|---|---|---|
 | B-001 | No Git commit or code SHA existed after Phase 0. | E00 durable gate evidence and every later run | Resolved by reviewed root commit 9569d938d9023a3e71d98f12234efa1897004533. | resolved 2026-07-22 |
-| B-002 | Current hardware and CUDA toolchain are uncertified. | E01 and all CUDA work | Run E00 and require G0 native, forced-PTX, sanitizer, SKU, clock, and process-isolation evidence. | expected next-phase work |
+| B-002 | Current hardware and CUDA toolchain are uncertified. | E01 and all non-E00 CUDA work | Run E00 and require G0 native, forced-PTX, sanitizer, SKU, clock, and process-isolation evidence. | expected next-phase work |
 | B-003 | TurboQuant paper has no identified author-owned code repository; vLLM v0.25.1 is only a pinned candidate. | E05 golden fixtures | Establish reference authority/equivalence and record a decision if upstream semantics differ. | open |
 | B-004 | Primary model ID, immutable revision, config hash, geometry, and context limit are unset. | E02 and method fixtures | Select only after G0, verify all method geometry, and record a model-selection decision. | open |
 | B-005 | KVQuant calibration dataset/revision, preprocessing, seed, cap, and artifact do not exist. | E09-E11 | Freeze and checksum them in Phase 9; no calibration during scans. | open |
