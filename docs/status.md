@@ -1,7 +1,10 @@
 # Project status
 
 Last updated: 2026-07-22
-Authoritative contract: CODEX_WORKFLOW.md plus AGENTS.md
+Authoritative contracts: CODEX_WORKFLOW.md for active performance engineering;
+CODEX_POST_PERFORMANCE_QUALITY_VALIDATION.md for post-performance quality
+scheduling; CODEX_QUALITY_EVALUATION_ADDENDUM.md for non-conflicting quality
+requirements; and AGENTS.md. Decision 0005 records precedence.
 
 ## Current state
 
@@ -17,6 +20,10 @@ Authoritative contract: CODEX_WORKFLOW.md plus AGENTS.md
   not admitted because SASS inspection failed
 - Benchmark or profiler data produced: none
 - Scientific performance claims: none
+- Quality protocol: preregistered by Decision 0005 before any performance or
+  quality result
+- Quality execution: LOCKED; `PERFORMANCE_DATA_FROZEN` is absent
+- Quality runs or quality-only dependency installations: none
 
 ## Repository
 
@@ -79,6 +86,7 @@ repository.
 | G2-KVQ | NOT EVALUATED | requires E09-E11 |
 | G1-G5 unified admission | NOT EVALUATED | requires E12 |
 | Pilot/full-scan gates | NOT EVALUATED | no method admitted and no timing collected |
+| Post-performance quality validation | LOCKED | Decision 0005; `PERFORMANCE_DATA_FROZEN` absent |
 
 ## Phase 0 acceptance
 
