@@ -26,6 +26,7 @@ DEFAULT_SNAPSHOT = Path(
 )
 TRANSFORMERS_VERSION = "4.57.6"
 EXPECTED_HASHES = {
+    "LICENSE": "64e1b2889b7892e6bbe7a7ed5bfe6ff793c61f9d584345f8f41cf9f5cb30a369",
     "config.json": "29e4c210b0d6ac178b16b2a255a568bdb23b581e50ca1ef6a6d071dd85704e6e",
     "generation_config.json": "189fb0c0d7fd8a527db217c0a60a0e013f0394cd8800f9697a666a9e75e5f7fd",
     "model.safetensors.index.json": "146776fce3f6db1103aa6f249e65ee5544c5923ce6f971b092eee79aa6e5d37b",
@@ -36,6 +37,19 @@ EXPECTED_HASHES = {
     "model-00002-of-00004.safetensors": "09d433f650646834a83c580877bd60c6d1f88f7755305c12576b5c7058f9af15",
     "model-00003-of-00004.safetensors": "fc1cdddd6bfa91128d6e94ee73d0ce62bfcdb7af29e978ddcab30c66ae9ea7fa",
     "model-00004-of-00004.safetensors": "92ecfe1a2414458b4821ac8c13cf8cb70aed66b5eea8dc5ad9eeb4ff309d6d7b",
+}
+EXPECTED_SIZES = {
+    "LICENSE": 7_627,
+    "config.json": 855,
+    "generation_config.json": 184,
+    "model-00001-of-00004.safetensors": 4_976_698_672,
+    "model-00002-of-00004.safetensors": 4_999_802_720,
+    "model-00003-of-00004.safetensors": 4_915_916_176,
+    "model-00004-of-00004.safetensors": 1_168_138_808,
+    "model.safetensors.index.json": 23_950,
+    "special_tokens_map.json": 296,
+    "tokenizer.json": 9_085_657,
+    "tokenizer_config.json": 55_351,
 }
 
 
@@ -121,11 +135,25 @@ def verify_frozen_snapshot(
         raise ModelAccessError("the exact frozen model snapshot is absent")
     if snapshot.name != MODEL_REVISION:
         raise ModelIdentityError("snapshot directory is not the frozen revision")
+    observed_entries = {path.name for path in snapshot.iterdir()}
+    expected_entries = set(EXPECTED_HASHES)
+    if observed_entries != expected_entries:
+        missing = sorted(expected_entries - observed_entries)
+        unexpected = sorted(observed_entries - expected_entries)
+        raise ModelIdentityError(
+            "frozen snapshot entry set differs: "
+            f"missing={missing!r}, unexpected={unexpected!r}"
+        )
+    model_cache_root = snapshot.parent.parent
+    if any(model_cache_root.rglob("*.incomplete")):
+        raise ModelIdentityError("incomplete download artifact exists in model cache")
     observed: dict[str, str] = {}
     for name, expected_hash in EXPECTED_HASHES.items():
         path = snapshot / name
         if not path.is_file():
             raise ModelAccessError(f"required frozen model artifact is absent: {name}")
+        if path.stat().st_size != EXPECTED_SIZES[name]:
+            raise ModelIdentityError(f"byte size mismatch for frozen artifact: {name}")
         digest = sha256_file(path)
         if digest != expected_hash:
             raise ModelIdentityError(f"SHA-256 mismatch for frozen artifact: {name}")
@@ -219,6 +247,10 @@ def load_frozen_model(
     model.requires_grad_(False)
     if model.__class__.__name__ != "LlamaForCausalLM":
         raise ModelIdentityError("loaded architecture is not LlamaForCausalLM")
+    if tokenizer.__class__.__name__ != "PreTrainedTokenizerFast":
+        raise ModelIdentityError(
+            "loaded tokenizer class is not PreTrainedTokenizerFast"
+        )
     config = model.config
     for name, expected in {
         "num_hidden_layers": 32,

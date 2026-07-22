@@ -44,7 +44,14 @@ class RunStatus(StrEnum):
     BUILD_FAILED = "build_failed"
     RUNTIME_FAILED = "runtime_failed"
     NUMERICAL_FAILED = "numerical_failed"
+    MODEL_IDENTITY_UNRESOLVED = "model_identity_unresolved"
+    MODEL_ACCESS_BLOCKED = "model_access_blocked"
+    BACKEND_UNSUPPORTED = "backend_unsupported"
+    ALLOCATION_FAILED = "allocation_failed"
+    STATE_DRIFT_DETECTED = "state_drift_detected"
+    GQA_MATERIALIZATION_DETECTED = "gqa_materialization_detected"
     GRAPH_CAPTURE_FAILED = "graph_capture_failed"
+    GRAPH_REPLAY_FAILED = "graph_replay_failed"
     PROFILER_FAILED = "profiler_failed"
     CAPACITY_INFEASIBLE = "capacity_infeasible"
     UNSTABLE = "unstable"
@@ -72,6 +79,11 @@ class RunKind(StrEnum):
     NSYS = "nsys"
     NCU = "ncu"
     SYNTHETIC = "synthetic"
+    PHASE3_ADMISSION = "phase3_admission"
+
+
+class MeasurementScope(StrEnum):
+    NATIVE_HOST_ADMISSION = "native_host_admission"
 
 
 class ClaimClass(StrEnum):

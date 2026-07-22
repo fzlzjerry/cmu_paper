@@ -253,6 +253,22 @@ class RunManifest(StrictModel):
     def __post_init__(self) -> None:
         require_schema(self.schema_version, self.SCHEMA_VERSION)
         require_schema(self.artifact_schema_version, self.ARTIFACT_SCHEMA_VERSION)
+        phase3_only_statuses = {
+            RunStatus.MODEL_IDENTITY_UNRESOLVED,
+            RunStatus.MODEL_ACCESS_BLOCKED,
+            RunStatus.BACKEND_UNSUPPORTED,
+            RunStatus.ALLOCATION_FAILED,
+            RunStatus.STATE_DRIFT_DETECTED,
+            RunStatus.GQA_MATERIALIZATION_DETECTED,
+            RunStatus.GRAPH_REPLAY_FAILED,
+        }
+        if (
+            self.run_kind is RunKind.PHASE3_ADMISSION
+            or self.status in phase3_only_statuses
+        ):
+            raise ValueError(
+                "Phase 3 run kinds and failure states require the Phase 3 manifest schema"
+            )
         require_run_id(self.run_id)
         require_utc_timestamp(self.created_at_utc, field_name="created_at_utc")
         require_git_sha(self.git_sha)
@@ -479,6 +495,8 @@ class SampleRecord(StrictModel):
 
     def __post_init__(self) -> None:
         require_schema(self.schema_version, self.SCHEMA_VERSION)
+        if self.run_kind is RunKind.PHASE3_ADMISSION:
+            raise ValueError("Phase 3 samples require the Phase 3 evidence schema")
         require_run_id(self.run_id)
         require_utc_timestamp(self.timestamp_utc)
         require_git_sha(self.git_sha)
@@ -678,6 +696,8 @@ class RunSummary(StrictModel):
 
     def __post_init__(self) -> None:
         require_schema(self.schema_version, self.SCHEMA_VERSION)
+        if self.run_kind is RunKind.PHASE3_ADMISSION:
+            raise ValueError("Phase 3 summaries require the Phase 3 evidence schema")
         require_run_id(self.run_id)
         require_utc_timestamp(self.generated_at_utc)
         require_sha256(self.source_manifest_sha256)
