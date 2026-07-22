@@ -8,9 +8,9 @@ authoritative local task index until issues are created elsewhere.
 |---|---|---|---|---|
 | E00 | Hardware preflight | Phase 0 PASS | hardware manifest; native extension; PTX/JIT; Compute Sanitizer; G0 | complete: native-host G0 PASS in `e00-20260722T050632.375718Z-6442ba1f7554-02d5bd32` |
 | E01 | Repository scaffold and schemas | G0 | strict schemas; append-only writer; durable artifact policy; digest-pinned container; parity preflight | partial: Phase 2 local scaffold/contracts/writer PASS; durable storage and container-parity items remain open as B-009/B-010 |
-| E02 | BF16 static-cache baseline | E01 and container-parity G0 for formal closure; Decision 0007 for Phase 3 engineering scope | reference numerical match; static allocation; GQA audit | exact checkpoint/tokenizer resolved; Phase 3 implementation pending; formal closure pending B-009/B-010 |
-| E03 | Fixed-L benchmark | E02; Decision 0007 permits only bounded Phase 3 admission runner | fixed-L and growing-context runners; timing-boundary tests | Phase 3 engineering work preregistered; ordinary timing closed |
-| E04 | CUDA Graph harness | E02-E03 | capture/replay correctness; no replay allocation; eager/graph lanes | Phase 3 fixed-L engineering lane preregistered |
+| E02 | BF16 static-cache baseline | E01 and container-parity G0 for formal closure; Decision 0007 for Phase 3 engineering scope | reference numerical match; static allocation; GQA audit | Phase 3 implementation complete but engineering G1 FAIL; 19/20 numerical/cache checks passed, GQA proof failed, eager allocation failed; formal closure pending B-009-B-013 |
+| E03 | Fixed-L benchmark | E02; Decision 0007 permits only bounded Phase 3 admission runner | fixed-L and growing-context runners; timing-boundary tests | runners implemented and all 20 bounded processes attempted once; admission failed; ordinary timing remains closed |
+| E04 | CUDA Graph harness | E02-E03 | capture/replay correctness; no replay allocation; eager/graph lanes | 8/8 bounded graph captures replayed with eager agreement and zero replay allocation, but overall G1 remains FAIL and the eager lane is blocked |
 | E05 | TurboQuant reference lane | E00-E04 | authoritative pinned source; isolated container; golden fixtures | pending |
 | E06 | TurboQuant measurement adapter | E05 | numerical, byte, graph, path, sanitizer, smoke evidence; G2-TQ | pending |
 | E07 | KIVI reference lane | G2-TQ | pinned legacy container; rollover and K/V asymmetry fixtures | pending |
@@ -18,7 +18,7 @@ authoritative local task index until issues are created elsewhere.
 | E09 | KVQuant calibration | G2-KIVI | frozen dataset/revision/seed/cap/artifacts/checksums | pending |
 | E10 | KVQuant reference lane | E09 | dense/sparse/sink fixtures for 4/3/2-bit and cap cases | pending |
 | E11 | KVQuant measurement adapter | E10 | fixed sparse buffers; byte breakdown; graph/path tests; G2-KVQ | pending |
-| E12 | Admission gates | E02-E11 | machine-readable G1-G5 report for every main configuration | pending |
+| E12 | Admission gates | E02-E11 | machine-readable G1-G5 report for every main configuration | Phase 3 BF16-only G1 report complete with FAIL; unified E12 and G2-G5 remain pending |
 | E13 | Pilot scan | E12 PASS | immutable randomized samples; QC; provisional knees; pilot gate | pending |
 | E14 | Nsight Systems integration | E13 | nsys-only runs around knees; launch/sync/kernel evidence | pending |
 | E15 | Nsight Compute integration | E13 | current-SM metric discovery; measured traffic; ncu-only runs | pending |
@@ -51,6 +51,9 @@ task list. E16 remains closed until its evidence is reviewed.
   only after pilot admission and keeps method/cache/backend/shape fixed.
 - E12 includes an operator-level MHA control with identical head dimension and
   no GQA repetition.
+- Phase 3 failures B-011-B-013 require a new Git SHA and complete new bounded
+  campaigns. Existing failed/aborted runs remain immutable; selective reruns
+  are prohibited.
 - E13 and E16 use blocked randomization and retain every failed, unstable, and
   capacity-infeasible point with a machine-readable reason.
 - E14/E15 must set run_kind to nsys or ncu; only run_kind=timing enters latency

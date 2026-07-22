@@ -8,29 +8,33 @@ requirements; and AGENTS.md. Decision 0005 records precedence.
 
 ## Current state
 
-- Current phase: Phase 3 identity resolution complete; BF16 baseline
-  implementation is next. Phase 2 status remains PASS.
+- Current phase: Phase 3 implementation and bounded admission complete with
+  status FAIL. Phase 2 remains PASS. Phase 4 is closed.
 - Phase 0 status: PASS
 - Phase 1 remediation status: PASS
-- Next action: execute only the preregistered Phase 3 BF16 baseline task at
-  Decision 0007; Phase 4 remains closed
+- Next action: remediate B-011 through B-013 in a new task and new Git SHA,
+  then repeat the complete bounded Phase 3 campaigns with new run IDs; do not
+  selectively rerun points and do not begin Phase 4
 - Active admission gate: native-host G0 PASS; container-parity G0 remains a
   later E01 requirement before E02
-- Benchmark implementation changes: none yet; the exact Phase 3 model and
-  tokenizer identity is locally verified, but no cache, decode runner, CUDA
-  kernel, or timing path has been implemented at this checkpoint
+- Benchmark implementation changes: exact BF16 static cache, fixed-L and
+  growing-context runners, eager and CUDA Graph lanes, timing, allocation,
+  telemetry, campaign lifecycle, and source-backed G1 reporting are
+  implemented; no custom CUDA/C++ extension was introduced
 - CUDA builds or executions: the new formal E00 run passed extension build,
   native execution, forced PTX/JIT, numerical golden, CUDA Graph, allocation,
   SASS/PTX inspection, and all required Compute Sanitizer lanes
-- Benchmark, profiler, or quality data produced: none
+- Benchmark, profiler, or quality data produced: 20 checksum-valid Phase 3
+  native-host admission runs and one immutable G1 report exist; eight graph
+  lanes contain claim-ineligible engineering timing, while profiler and
+  quality data remain absent
 - Scientific performance claims: none
 - Quality protocol: preregistered by Decision 0005 before any performance or
   quality result
 - Quality execution: LOCKED; `PERFORMANCE_DATA_FROZEN` is absent
 - Quality runs or quality-only dependency installations: none
 - Full-scan admission: CLOSED
-- G1-G5 at entry: NOT EVALUATED; Phase 3 may evaluate only the BF16 engineering
-  G1 verdict
+- Gate state: G0 PASS; BF16 G1 FAIL; G2-G5 NOT EVALUATED
 
 ## Repository
 
@@ -53,6 +57,27 @@ local append-only staging/finalization implementation. Its tests use temporary
 roots only. The local controls do not select a durable backing store or an
 immutable publication locator, so B-009 remains open. No digest-pinned
 measurement container or container-parity G0 exists, so B-010 remains open.
+
+Phase 3 execution used clean SHA
+`457123b12220aa4a724968c1b4dd04340cf34a54`. The fixed-L campaign
+`phase3-20260722t112917207390z-457123b1-36731e` attempted all 16 frozen
+processes; the growing-context campaign
+`phase3-20260722t113532869819z-457123b1-694228` attempted all four. Nineteen
+runs finalized as `gqa_materialization_detected` because the exact operator
+audit could not prove the required fused native-GQA kernel path; one fixed-L
+eager run finalized `aborted` after a terminal process-query ambiguity. This
+taxonomy is fail-closed: all 79 operator audits recorded no query-head-sized
+KV temporary, so Phase 3 does not make a positive physical-materialization
+claim. Eleven eager allocation audits also recorded allocator events. All
+eight graph replay audits recorded zero allocation events and passed
+eager/graph numerical agreement, but those facts cannot override G1.
+
+Reporting-only descendant SHA
+`ade0e86d2243ff193f684e008f99f35403dca293` produced immutable report
+`phase3-g1-20260722t115413439499z-457123b1-e225cd`, status FAIL, SHA-256
+`060a88283f083e281692a2c471d279da9bfc635e0f513e2dca588ed729d85c7d`.
+Independent rederivation and repository governance validation pass. B-009,
+B-010, B-011, B-012, and B-013 remain open.
 
 At Phase 0 start, the only top-level inputs were AGENTS.md,
 CODEX_WORKFLOW.md, and Archive.zip. No implementation, model config, CUDA
@@ -100,12 +125,12 @@ repository.
 | Phase 0 repository/input audit | PASS | literature manifests; method notes; source lock; decision, risks, blockers, tasks |
 | G0 native-host hardware certification | PASS | `docs/evidence/e00/e00-20260722T050632.375718Z-6442ba1f7554-02d5bd32/`; prior immutable FAIL retained |
 | Phase 2 repository/contracts/tooling | PASS | strict schemas and examples; fail-closed CLI; append-only local writer; 54 Phase 2 tests; repository checks |
-| G1 BF16 baseline | NOT EVALUATED | exact checkpoint/tokenizer resolved; implementation and bounded admission remain |
+| G1 BF16 baseline | FAIL | 20/20 processes preserved; 19 `gqa_materialization_detected`, one `aborted`; immutable report `phase3-g1-20260722t115413439499z-457123b1-e225cd` |
 | G2-TQ | NOT EVALUATED | requires E05-E06 |
 | G2-KIVI | NOT EVALUATED | requires E07-E08 |
 | G2-KVQ | NOT EVALUATED | requires E09-E11 |
 | G1-G5 unified admission | NOT EVALUATED | requires E12 |
-| Pilot/full-scan gates | NOT EVALUATED | no method admitted and no timing collected |
+| Pilot/full-scan gates | CLOSED / NOT EVALUATED | BF16 G1 failed; no method admitted; graph timing is non-claim admission evidence only |
 | Post-performance quality validation | LOCKED | Decision 0005; `PERFORMANCE_DATA_FROZEN` absent |
 
 ## Phase 0 acceptance
@@ -123,12 +148,13 @@ repository.
 
 ## Next action
 
-Decision 0007 and the operator's Phase 3 task now permit only bounded BF16
-implementation and non-claim `native_host_admission` engineering timing on the
-certified host. B-010 still requires a digest-pinned measurement container and
-container-parity G0 before formal E02 closure, ordinary timing, later method
-admission, or a performance claim. B-009 still requires durable append-only
-storage and an immutable locator/publication mechanism before durable/formal or
-claim-bearing evidence. Phase 3 may evaluate only its BF16 engineering G1
-verdict; G2-G5 and formal/unified admission remain NOT EVALUATED. Full Scan is
-CLOSED, quality execution is LOCKED, and `PERFORMANCE_DATA_FROZEN` is absent.
+Phase 3 is complete with G1 FAIL. The minimum remediation is to make the
+geometry-specific fused native-GQA path directly provable, remove every eager
+decode allocation event, and correct the terminal process-monitor race. Any
+remediation requires a new Git SHA and complete new bounded campaigns; the
+failed evidence remains immutable and no point may be selectively rerun.
+B-010 still requires a digest-pinned measurement container and container-parity
+G0 before formal E02 closure, ordinary timing, later method admission, or a
+performance claim. B-009 still requires durable append-only storage and an
+immutable locator/publication mechanism. G2-G5 remain NOT EVALUATED, Full Scan
+is CLOSED, quality execution is LOCKED, and `PERFORMANCE_DATA_FROZEN` is absent.

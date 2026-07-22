@@ -2,12 +2,11 @@
 
 Last updated: 2026-07-22.
 
-## Phase 2 disposition
+## Current disposition
 
-No unresolved item prevents the Phase 2 local scaffold/contracts acceptance
-criteria from passing. The items below block later tasks and must not be
-bypassed. B-009 and B-010 remain deliberately open; none has been resolved by
-a silent fallback.
+Phase 2 remains PASS. Phase 3 completed with BF16 G1 FAIL. The items below
+block later tasks and must not be bypassed. B-009 through B-013 remain open;
+none has been resolved by a silent fallback.
 
 | ID | Blocking condition | Blocks | Evidence / next action | Status |
 |---|---|---|---|---|
@@ -21,3 +20,6 @@ a silent fallback.
 | B-008 | qpdf is not installed for an additional PDF structural scan. | Optional defense-in-depth literature check | Install only in a reviewed environment or use an equivalent static scanner; current pdfinfo/pdfdetach checks are recorded. | open, non-gating |
 | B-009 | Phase 2 implements and tests local no-replace staging, lifecycle records, provenance locking, checksums, inventories, completion markers, and finalized-run validation, but no durable append-only store, external attestation, or immutable locator/publication scheme is selected or demonstrated. | E01 task closure, formal/unified G1-G5 admission, durable evidence claims, and every claim-bearing run. Decision 0007 narrowly permits a Phase 3 engineering G1 verdict from locally finalized checksum-valid non-claim evidence; it does not claim durable immutability. | Select and exercise the durable store; publish an immutable locator plus manifest/ledger digest and verify retrieval before closing. Local chmod and same-user checksums are defense in depth, not durable immutability. Decision 0002 remains limited to Git-tracked E00 evidence. | open; local controls implemented 2026-07-22 |
 | B-010 | No digest-pinned measurement container exists and host G0 cannot certify one. | Formal E02 closure, later method CUDA implementation/admission, formal/unified G1-G5, ordinary timing, and every performance claim. Decision 0007 narrowly permits bounded BF16 Phase 3 implementation and `native_host_admission` engineering timing on the certified host. | After E01, pin the measurement image by digest and rerun the identical preflight inside it before formal measurement or later method admission. | open |
+| B-011 | All 79 executed GQA SUT operator audits recorded only `aten.scaled_dot_product_attention.default`, so the frozen audit could not directly establish the required fused native-GQA kernel path. Every audit had `passed=false`; no query-head-sized KV temporary was observed. All 19 MHA operator controls likewise exposed only the high-level ATen SDPA operation and failed their frozen fused-operator proof. | BF16 G1, Phase 4, every later method baseline comparison. | Add direct geometry-specific fused-kernel/dispatch evidence for the GQA SUT and the MHA control without weakening the frozen no-materialization requirement. Use a new Git SHA and rerun both complete bounded campaigns with new run IDs; preserve all current failures. Do not reinterpret `query_head_sized_kv_temporary=false` as sufficient proof. | open; materialized by Phase 3 G1 FAIL 2026-07-22 |
+| B-012 | All 11 completed eager allocation audits observed measured-operation allocator traffic: 1,066 events in each fixed-L audit or 17,056 events in each 16-step growing-context audit; both batch sizes occur in each group. Persistent allocated/reserved deltas were zero. Eight graph replay audits recorded zero events. | BF16 G1 eager lane, Phase 4 common baseline. | Preallocate or eliminate every eager-path output/workspace allocation, retain the exact endpoint, and prove zero events in a new full bounded campaign. Do not account the events away because they are transient. | open; materialized by Phase 3 G1 FAIL 2026-07-22 |
+| B-013 | Fixed-L `batch=1,L=16384,eager` worker completed its internal GQA-failure result. In the final during-process sample, `compute_apps` reported PID 432362 as `[No data]` and `pmon` no longer listed it, so the process was recorded unknown; the preceding five samples identified the same PID/start ticks as the allowed supervised child, and after/release snapshots contained no compute process. The coordinator correctly finalized the run as `aborted` with `process_audit.passed=false`. | Complete BF16 G1 evidence and exact all-run identity/numerical/cache joins. | Make terminal process-exit classification race-safe without permitting foreign or unknown compute. Verify with a new run ID as part of the complete post-remediation campaigns; do not overwrite or selectively rerun the aborted point. | open; one immutable aborted run 2026-07-22 |
