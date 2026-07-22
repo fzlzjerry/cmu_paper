@@ -1175,8 +1175,47 @@ def validate_phase3_campaign_and_report_roots(artifacts: Path) -> list[str]:
             from kvbench.runtime.phase3_report import (
                 validate_phase3_g1_report_directory,
             )
+            from kvbench.runtime.phase3_report_publication import (
+                validate_failed_report_attempt,
+            )
 
             for child in sorted(reports.iterdir()):
+                if child.name == ".kvbench-report-staging":
+                    if child.is_symlink() or not child.is_dir():
+                        errors.append("unsafe Phase 3 report staging root")
+                    elif any(child.iterdir()):
+                        errors.append("nonempty Phase 3 report staging root")
+                    continue
+                if child.name == ".kvbench-report-reservations":
+                    if child.is_symlink() or not child.is_dir():
+                        errors.append("unsafe Phase 3 report reservation root")
+                        continue
+                    for reservation in sorted(child.iterdir()):
+                        metadata = reservation.lstat()
+                        if (
+                            stat.S_ISLNK(metadata.st_mode)
+                            or not stat.S_ISREG(metadata.st_mode)
+                            or metadata.st_mode
+                            & (stat.S_IWUSR | stat.S_IWGRP | stat.S_IWOTH)
+                        ):
+                            errors.append(
+                                f"unsafe Phase 3 report reservation: {reservation.name}"
+                            )
+                    continue
+                if child.name == ".kvbench-report-failed":
+                    if child.is_symlink() or not child.is_dir():
+                        errors.append("unsafe Phase 3 failed-report root")
+                        continue
+                    for attempt in sorted(child.iterdir()):
+                        if (
+                            attempt.is_symlink()
+                            or not attempt.is_dir()
+                            or not validate_failed_report_attempt(attempt).get("valid")
+                        ):
+                            errors.append(
+                                f"invalid Phase 3 failed report: {attempt.name}"
+                            )
+                    continue
                 if child.is_symlink() or not child.is_dir():
                     errors.append(
                         f"unsafe Phase 3 report child: {child.name}"

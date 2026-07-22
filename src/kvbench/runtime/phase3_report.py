@@ -95,7 +95,9 @@ _REPORT_GENERATOR_CHANGE_PATHS = frozenset(
     {
         "scripts/validate_phase2.py",
         "src/kvbench/runtime/phase3_report.py",
+        "src/kvbench/runtime/phase3_report_publication.py",
         "tests/unit/test_phase3_report.py",
+        "tests/unit/test_phase3_report_publication.py",
     }
 )
 _POST_REPORT_CHANGE_PATHS = frozenset(
@@ -2153,105 +2155,46 @@ def write_phase3_g1_report(
     *,
     repository_root: str | Path = REPOSITORY_ROOT,
 ) -> dict[str, Any]:
-    """Write a new immutable report bundle; never reuse an existing directory."""
+    """Publish a new report through the version-2 append-only lifecycle."""
 
-    repository = Path(repository_root).resolve(strict=True)
-    report, stability_payloads, derivation = build_phase3_g1_report(
+    from kvbench.runtime.phase3_report_publication import (
+        publish_phase3_g1_report,
+    )
+
+    return publish_phase3_g1_report(
         fixed_campaign_id,
         growing_campaign_id,
-        repository_root=repository,
+        repository_root=repository_root,
     )
-    root = repository / "artifacts" / "phase3_reports"
-    if root.exists() and (root.is_symlink() or not root.is_dir()):
-        raise Phase3ReportError("Phase 3 report root is unsafe")
-    root.mkdir(mode=0o755, parents=True, exist_ok=True)
-    timestamp = datetime.now(timezone.utc).strftime("%Y%m%dt%H%M%S%fZ").lower()
-    report_id = f"phase3-g1-{timestamp}-{report.git_sha[:8]}-{secrets.token_hex(3)}"
-    if not _REPORT_ID.fullmatch(report_id):
-        raise Phase3ReportError("generated report ID is invalid")
-    directory = root / report_id
-    os.mkdir(directory, 0o755)
-    try:
-        _exclusive_write(
-            directory / "source_campaigns.json",
-            canonical_json_bytes(
-                {
-                    "schema_version": "kvbench-phase3-report-sources-1.0.0",
-                    "fixed_campaign_id": fixed_campaign_id,
-                    "growing_campaign_id": growing_campaign_id,
-                    "explicit_selection": True,
-                }
-            )
-            + b"\n",
-        )
-        stability_root = directory / "stability"
-        if stability_payloads:
-            os.mkdir(stability_root, 0o755)
-        for relative, payload in sorted(stability_payloads.items()):
-            target = directory / relative
-            _exclusive_write(target, canonical_json_bytes(payload) + b"\n")
-        _exclusive_write(
-            directory / "derivation.json",
-            canonical_json_bytes(derivation) + b"\n",
-        )
-        _exclusive_write(
-            directory / "report.json",
-            canonical_json_bytes(report) + b"\n",
-        )
-        payload_paths = sorted(
-            path
-            for path in directory.rglob("*")
-            if path.is_file()
-        )
-        ledger = b"".join(
-            f"{sha256_hex(path.read_bytes())}  {path.relative_to(directory).as_posix()}\n".encode(
-                "utf-8"
-            )
-            for path in payload_paths
-        )
-        _exclusive_write(directory / "checksums.sha256", ledger)
-        completion = {
-            "schema_version": "kvbench-phase3-g1-completion-1.0.0",
-            "report_id": report_id,
-            "status": report.status.value,
-            "report_sha256": sha256_hex((directory / "report.json").read_bytes()),
-            "checksum_ledger_sha256": sha256_hex(ledger),
-            "written_last": True,
-        }
-        _exclusive_write(
-            directory / "COMPLETE",
-            canonical_json_bytes(completion) + b"\n",
-        )
-        for path in sorted(directory.rglob("*"), reverse=True):
-            path.chmod(0o444 if path.is_file() else 0o555)
-        directory.chmod(0o555)
-    except BaseException:
-        # A partial directory is intentionally retained as immutable evidence.
-        for path in sorted(directory.rglob("*"), reverse=True):
-            try:
-                path.chmod(0o444 if path.is_file() else 0o555)
-            except OSError:
-                pass
-        directory.chmod(0o555)
-        raise
-    validation = validate_phase3_g1_report_directory(directory)
-    if not validation["valid"]:
-        raise Phase3ReportError("written Phase 3 report failed independent validation")
-    return {
-        "schema_version": "kvbench-phase3-g1-write-result-1.0.0",
-        "ok": True,
-        "report_id": report_id,
-        "status": report.status.value,
-        "report_dir": directory.relative_to(repository).as_posix(),
-        "report_sha256": validation["report_sha256"],
-        "execution_attempted": False,
-        "timing_collected": False,
-        "performance_claim_eligible": False,
-    }
 
 
-def validate_phase3_g1_report_directory(path: str | Path) -> dict[str, Any]:
+def validate_phase3_g1_report_directory(
+    path: str | Path,
+    *,
+    repository_root: str | Path | None = None,
+) -> dict[str, Any]:
     """Independently validate one finalized report bundle and stability hashes."""
+
+    candidate = Path(path).absolute()
+    try:
+        completion_payload = _strict_json_object(
+            candidate / "COMPLETE",
+            canonical=True,
+        )
+    except (OSError, ValueError, Phase3ReportError):
+        completion_payload = {}
+    if (
+        completion_payload.get("schema_version")
+        == "kvbench-phase3-g1-completion-2.0.0"
+    ):
+        from kvbench.runtime.phase3_report_publication import (
+            validate_phase3_g1_report_directory_v2,
+        )
+
+        return validate_phase3_g1_report_directory_v2(
+            candidate,
+            repository_root=repository_root,
+        )
 
     errors: list[str] = []
     report_sha = ""
