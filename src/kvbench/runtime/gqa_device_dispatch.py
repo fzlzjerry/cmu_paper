@@ -7,8 +7,9 @@ identity: profiler timestamps and durations never become benchmark timing.
 
 from __future__ import annotations
 
+import ast
 from collections.abc import Callable, Mapping, Set
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import hashlib
 import importlib
 import json
@@ -22,7 +23,12 @@ from typing import Any
 import warnings
 
 from kvbench.runtime.gqa_taxonomy import classify_gqa_evidence
-from kvbench.schema import GQAVerdict
+from kvbench.schema import (
+    GQAVerdict,
+    derive_cache_layout_fingerprint,
+    derive_phase3_point_fingerprint,
+)
+from kvbench.schema.base import require_identifier, require_run_id
 
 
 FLASH_FORWARD_FAMILY = "pytorch_flash::flash_fwd_kernel"
@@ -45,7 +51,37 @@ REQUIRED_SUT_SOURCES = (
     "src/kvbench/runtime/bf16_endpoint.py",
     "src/kvbench/runtime/static_cache.py",
 )
+PHASE3_CACHE_LAYOUT_NAME = "layers_batch_kv_heads_context_head_dim"
+PHASE3_CACHE_LAYOUT_SCHEMA = "kvbench-bf16-static-cache-layout-1.0.0"
+PHASE3_NUM_LAYERS = 32
+PHASE3_NUM_QUERY_HEADS = 32
+PHASE3_NUM_KV_HEADS = 8
+PHASE3_HEAD_DIM = 128
+PHASE3_DTYPE = "torch.bfloat16"
+PHASE3_DTYPE_BYTES = 2
+EAGER_EXECUTION_MODE = "eager"
+CUDA_GRAPH_REPLAY_EXECUTION_MODE = "cuda_graph_replay"
+DISPATCH_EXECUTION_MODES = frozenset(
+    {EAGER_EXECUTION_MODE, CUDA_GRAPH_REPLAY_EXECUTION_MODE}
+)
+PHASE3_FLASH_RELATED_FAMILIES = (
+    (FLASH_FORWARD_FAMILY, FLASH_SPLIT_KV_FAMILY),
+)
 _SHA256_RE = re.compile(r"\A[0-9a-f]{64}\Z")
+_PHASE3_POINT_RE = re.compile(
+    r"\A(?P<runner>fixed_l|growing_context)-"
+    r"b(?P<batch>[1-9][0-9]*)-l(?P<context>[1-9][0-9]*)-"
+    r"(?P<graph>eager|cuda_graph)-r(?P<replicate>[1-9][0-9]*)\Z"
+)
+_FLASH_FORWARD_KERNEL_RE = re.compile(
+    r"pytorch_flash::flash_fwd_kernel(?:<|\()"
+)
+_FLASH_SPLIT_FORWARD_KERNEL_RE = re.compile(
+    r"pytorch_flash::flash_fwd_splitkv_kernel(?:<|\()"
+)
+_FLASH_SPLIT_COMBINE_KERNEL_RE = re.compile(
+    r"pytorch_flash::flash_fwd_splitkv_combine_kernel(?:<|\()"
+)
 _EVENT_CLASSIFICATIONS = frozenset(
     {
         "flash_attention",
@@ -63,9 +99,26 @@ _FORBIDDEN_SOURCE_PATTERNS = (
     ("repeat_interleave", re.compile(r"\brepeat_interleave\b")),
     ("tensor_repeat", re.compile(r"\.repeat\s*\(")),
     ("tensor_expand", re.compile(r"\.expand\s*\(")),
+    (
+        "replication_copy",
+        re.compile(
+            r"\b(?:expanded|query_head|replicated)_"
+            r"(?:kv|key|value)[A-Za-z0-9_]*"
+            r"\.copy_?\s*\("
+        ),
+    ),
     ("torch_cat", re.compile(r"\btorch\.cat\s*\(")),
     ("dynamic_cache", re.compile(r"\bDynamicCache\b")),
 )
+_SELECTED_SOURCE_FUNCTION_PATHS = {
+    REQUIRED_SUT_SOURCES[0]: ("flash_attention_forward",),
+    REQUIRED_SUT_SOURCES[1]: (
+        "BF16DecodeEndpoint._attention",
+        "BF16DecodeEndpoint._base_forward",
+        "BF16DecodeEndpoint.decode",
+    ),
+    REQUIRED_SUT_SOURCES[2]: ("BF16StaticCache.update",),
+}
 
 
 class GQADeviceDispatchError(RuntimeError):
@@ -127,6 +180,59 @@ def _optional_trace_integer(args: Mapping[str, object], key: str) -> int | None:
     return value
 
 
+def _optional_positive_trace_integer(
+    args: Mapping[str, object],
+    key: str,
+) -> int | None:
+    if key not in args:
+        return None
+    value = args[key]
+    if (
+        not isinstance(value, int)
+        or isinstance(value, bool)
+        or value <= 0
+    ):
+        raise ChromeTraceValidationError(
+            "CUDA device event has invalid optional " + repr(key)
+        )
+    return value
+
+
+def _optional_graph_identity(
+    args: Mapping[str, object],
+) -> tuple[int | None, int | None]:
+    graph_key = "graph id"
+    node_key = "graph node id"
+    graph_present = graph_key in args
+    node_present = node_key in args
+    if not graph_present and not node_present:
+        return None, None
+    if graph_present != node_present:
+        raise ChromeTraceValidationError(
+            "CUDA device graph identity is only partially present"
+        )
+    graph_id = args[graph_key]
+    graph_node_id = args[node_key]
+    if (
+        not isinstance(graph_id, int)
+        or isinstance(graph_id, bool)
+        or graph_id < 0
+        or not isinstance(graph_node_id, int)
+        or isinstance(graph_node_id, bool)
+        or graph_node_id < 0
+    ):
+        raise ChromeTraceValidationError(
+            "CUDA device graph identity is invalid"
+        )
+    if graph_id == 0 and graph_node_id == 0:
+        return None, None
+    if graph_id > 0 and graph_node_id > 0:
+        return graph_id, graph_node_id
+    raise ChromeTraceValidationError(
+        "CUDA device graph identity mixes sentinel and positive values"
+    )
+
+
 def normalize_kernel_family(name: str) -> str | None:
     """Return a frozen Flash forward family without matching templates."""
 
@@ -176,13 +282,17 @@ class CUDADeviceEvent:
     name: str
     stream: int
     correlation_id: int
-    external_id: int
+    external_id: int | None
     device: int | None
     context: int | None
     classification: str
     kernel_family: str | None
-    copy_bytes: int | None
-    copy_direction: str | None
+    copy_bytes: int | None = None
+    copy_direction: str | None = None
+    memory_bytes: int | None = None
+    memory_role: str | None = None
+    graph_id: int | None = None
+    graph_node_id: int | None = None
 
     def __post_init__(self) -> None:
         if self.order < 0:
@@ -191,8 +301,21 @@ class CUDADeviceEvent:
             raise ValueError("device event category is unsupported")
         if not self.name.strip():
             raise ValueError("device event name must be non-empty")
-        if self.stream < 0 or self.correlation_id <= 0 or self.external_id <= 0:
+        if (
+            not isinstance(self.stream, int)
+            or isinstance(self.stream, bool)
+            or self.stream < 0
+            or not isinstance(self.correlation_id, int)
+            or isinstance(self.correlation_id, bool)
+            or self.correlation_id <= 0
+        ):
             raise ValueError("device event identifiers are invalid")
+        if self.external_id is not None and (
+            not isinstance(self.external_id, int)
+            or isinstance(self.external_id, bool)
+            or self.external_id <= 0
+        ):
+            raise ValueError("device event external ID is invalid")
         if self.device is not None and self.device < 0:
             raise ValueError("device event device is invalid")
         if self.context is not None and self.context < 0:
@@ -214,6 +337,27 @@ class CUDADeviceEvent:
             not is_copy or not self.copy_direction.strip()
         ):
             raise ValueError("device copy direction evidence is invalid")
+        is_memset = self.classification == "device_memset"
+        if self.memory_bytes is not None and (
+            not is_memset
+            or not isinstance(self.memory_bytes, int)
+            or isinstance(self.memory_bytes, bool)
+            or self.memory_bytes <= 0
+        ):
+            raise ValueError("device memset byte evidence is invalid")
+        if self.memory_role is not None and (
+            not is_memset or not self.memory_role.strip()
+        ):
+            raise ValueError("device memset role evidence is invalid")
+        if (self.graph_id is None) != (self.graph_node_id is None):
+            raise ValueError("device graph and graph-node IDs must coexist")
+        for value in (self.graph_id, self.graph_node_id):
+            if value is not None and (
+                not isinstance(value, int)
+                or isinstance(value, bool)
+                or value <= 0
+            ):
+                raise ValueError("device graph identifier is invalid")
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -229,6 +373,10 @@ class CUDADeviceEvent:
             "kernel_family": self.kernel_family,
             "copy_bytes": self.copy_bytes,
             "copy_direction": self.copy_direction,
+            "memory_bytes": self.memory_bytes,
+            "memory_role": self.memory_role,
+            "graph_id": self.graph_id,
+            "graph_node_id": self.graph_node_id,
         }
 
 
@@ -241,13 +389,17 @@ class _TraceEventCandidate:
     name: str
     stream: int
     correlation_id: int
-    external_id: int
+    external_id: int | None
     device: int | None
     context: int | None
     classification: str
     kernel_family: str | None
     copy_bytes: int | None
     copy_direction: str | None
+    memory_bytes: int | None
+    memory_role: str | None
+    graph_id: int | None
+    graph_node_id: int | None
 
 
 def _trace_event_list(raw: bytes) -> list[dict[str, object]]:
@@ -312,6 +464,17 @@ def _interval_contains(
     )
 
 
+def _intervals_overlap(
+    left: tuple[float, float],
+    right: tuple[float, float],
+) -> bool:
+    tolerance = 0.01
+    return bool(
+        left[0] < right[1] - tolerance
+        and right[0] < left[1] - tolerance
+    )
+
+
 def _copy_metadata(
     *,
     classification: str,
@@ -355,9 +518,43 @@ def _copy_metadata(
     return size, direction
 
 
+def _memset_metadata(
+    *,
+    classification: str,
+    args: Mapping[str, object],
+) -> tuple[int | None, str | None]:
+    if classification != "device_memset":
+        return None, None
+    sizes: list[int] = []
+    for key in ("bytes", "Bytes", "size", "Size"):
+        value = args.get(key)
+        if value is None:
+            continue
+        if not isinstance(value, int) or isinstance(value, bool) or value <= 0:
+            raise ChromeTraceValidationError("device memset byte count is invalid")
+        sizes.append(value)
+    if len(set(sizes)) > 1:
+        raise ChromeTraceValidationError("device memset byte counts disagree")
+    roles: list[str] = []
+    for key in ("memory role", "Memory role", "role"):
+        value = args.get(key)
+        if value is None:
+            continue
+        if not isinstance(value, str) or not value.strip():
+            raise ChromeTraceValidationError("device memset role is invalid")
+        roles.append(value.strip())
+    if len(set(roles)) > 1:
+        raise ChromeTraceValidationError("device memset roles disagree")
+    return (None if not sizes else sizes[0], None if not roles else roles[0])
+
+
 def _parse_device_candidates(
     trace_events: list[dict[str, object]],
+    *,
+    require_external_id: bool = True,
 ) -> tuple[_TraceEventCandidate, ...]:
+    if not isinstance(require_external_id, bool):
+        raise TypeError("external-ID requirement must be boolean")
     parsed: list[_TraceEventCandidate] = []
     for original_index, raw_event in enumerate(trace_events):
         category = raw_event.get("cat")
@@ -374,6 +571,11 @@ def _parse_device_candidates(
             name=name,
             args=args,
         )
+        memory_bytes, memory_role = _memset_metadata(
+            classification=classification,
+            args=args,
+        )
+        graph_id, graph_node_id = _optional_graph_identity(args)
         parsed.append(
             _TraceEventCandidate(
                 timestamp=interval[0],
@@ -385,8 +587,10 @@ def _parse_device_candidates(
                 correlation_id=_required_trace_integer(
                     args, "correlation", positive=True
                 ),
-                external_id=_required_trace_integer(
-                    args, "External id", positive=True
+                external_id=(
+                    _required_trace_integer(args, "External id", positive=True)
+                    if require_external_id
+                    else _optional_positive_trace_integer(args, "External id")
                 ),
                 device=_optional_trace_integer(args, "device"),
                 context=_optional_trace_integer(args, "context"),
@@ -394,6 +598,10 @@ def _parse_device_candidates(
                 kernel_family=family,
                 copy_bytes=copy_bytes,
                 copy_direction=copy_direction,
+                memory_bytes=memory_bytes,
+                memory_role=memory_role,
+                graph_id=graph_id,
+                graph_node_id=graph_node_id,
             )
         )
     return tuple(parsed)
@@ -417,6 +625,10 @@ def _canonical_device_events(
             kernel_family=item.kernel_family,
             copy_bytes=item.copy_bytes,
             copy_direction=item.copy_direction,
+            memory_bytes=item.memory_bytes,
+            memory_role=item.memory_role,
+            graph_id=item.graph_id,
+            graph_node_id=item.graph_node_id,
         )
         for order, item in enumerate(ordered)
     )
@@ -488,8 +700,89 @@ class TraceScopeEvidence:
 
 
 @dataclass(frozen=True, slots=True)
+class CUDAGraphTraceScopeEvidence:
+    """Marker-to-cudaGraphLaunch-to-device linkage with timing removed."""
+
+    marker: str
+    marker_external_id: int
+    cpu_process_id: int
+    cpu_thread_id: int
+    graph_launch_external_id: int | None
+    runtime_correlations: tuple[int, ...]
+    gpu_stream: int
+    graph_id: int
+    graph_node_ids: tuple[int, ...]
+
+    def __post_init__(self) -> None:
+        if not self.marker.strip():
+            raise ValueError("graph trace scope marker is absent")
+        for name in (
+            "marker_external_id",
+            "cpu_process_id",
+            "cpu_thread_id",
+        ):
+            _positive_integer(getattr(self, name), name)
+        if self.graph_launch_external_id is not None:
+            _positive_integer(
+                self.graph_launch_external_id,
+                "graph_launch_external_id",
+            )
+        if self.gpu_stream < 0:
+            raise ValueError("graph trace scope GPU stream is invalid")
+        _positive_integer(self.graph_id, "graph_id")
+        if (
+            not self.graph_node_ids
+            or len(self.graph_node_ids) != len(set(self.graph_node_ids))
+        ):
+            raise ValueError("graph trace node IDs are absent or duplicated")
+        for node_id in self.graph_node_ids:
+            _positive_integer(node_id, "graph_node_id")
+        if len(self.runtime_correlations) != 1:
+            raise ValueError("graph trace requires one launch correlation")
+        correlation = self.runtime_correlations[0]
+        if (
+            not isinstance(correlation, int)
+            or isinstance(correlation, bool)
+            or correlation <= 0
+        ):
+            raise ValueError("graph trace launch correlation is invalid")
+
+    @property
+    def nested_cpu_external_ids(self) -> tuple[int, ...]:
+        if self.graph_launch_external_id is None:
+            return ()
+        return (self.graph_launch_external_id,)
+
+    @property
+    def external_id_linkage(self) -> str:
+        return (
+            "absent_in_raw"
+            if self.graph_launch_external_id is None
+            else "present_and_matched"
+        )
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "marker": self.marker,
+            "marker_external_id": self.marker_external_id,
+            "cpu_process_id": self.cpu_process_id,
+            "cpu_thread_id": self.cpu_thread_id,
+            "dispatch_root": "cudaGraphLaunch",
+            "graph_launch_external_id": self.graph_launch_external_id,
+            "external_id_linkage": self.external_id_linkage,
+            "nested_cpu_external_ids": list(self.nested_cpu_external_ids),
+            "runtime_correlations": list(self.runtime_correlations),
+            "gpu_stream": self.gpu_stream,
+            "graph_id": self.graph_id,
+            "graph_node_ids": list(self.graph_node_ids),
+            "timestamps_retained": False,
+            "durations_retained": False,
+        }
+
+
+@dataclass(frozen=True, slots=True)
 class ScopedCUDAActivities:
-    scope: TraceScopeEvidence
+    scope: TraceScopeEvidence | CUDAGraphTraceScopeEvidence
     device_events: tuple[CUDADeviceEvent, ...]
 
     def __post_init__(self) -> None:
@@ -508,11 +801,14 @@ def parse_scoped_chrome_cuda_events(
     raw: bytes,
     *,
     marker: str,
+    require_kernel_launch_runtime: bool = False,
 ) -> ScopedCUDAActivities:
     """Require an unambiguous marker/CPU/runtime/device correlation chain."""
 
     if not isinstance(marker, str) or not marker.strip():
         raise ValueError("dispatch trace marker must be non-empty")
+    if not isinstance(require_kernel_launch_runtime, bool):
+        raise TypeError("kernel-launch correlation requirement must be boolean")
     trace_events = _trace_event_list(raw)
     host_markers = [
         event
@@ -612,10 +908,11 @@ def parse_scoped_chrome_cuda_events(
         )
         linked_cpu = candidate.external_id in nested_ids
         within_gpu_marker = _interval_contains(gpu_interval, interval)
+        overlaps_host_marker = _intervals_overlap(host_interval, interval)
         on_marker_stream = candidate.stream == gpu_stream
         link = (candidate.external_id, candidate.correlation_id)
         runtime_matches = runtime_by_link.get(link, [])
-        related = linked_cpu or within_gpu_marker
+        related = linked_cpu or within_gpu_marker or overlaps_host_marker
         fully_linked = bool(
             linked_cpu
             and within_gpu_marker
@@ -628,6 +925,18 @@ def parse_scoped_chrome_cuda_events(
                 "CUDA device event is ambiguously or incompletely marker-linked"
             )
         if fully_linked:
+            runtime_name = runtime_matches[0].get("name")
+            if (
+                require_kernel_launch_runtime
+                and candidate.category == "kernel"
+                and (
+                    not isinstance(runtime_name, str)
+                    or "launch" not in runtime_name.casefold()
+                )
+            ):
+                raise ChromeTraceValidationError(
+                    "CUDA kernel is not linked to a launch runtime event"
+                )
             selected.append(candidate)
     if not selected:
         raise ChromeTraceValidationError("marked SDPA has no linked CUDA activity")
@@ -653,6 +962,148 @@ def parse_scoped_chrome_cuda_events(
     return ScopedCUDAActivities(
         scope=scope,
         device_events=_canonical_device_events(tuple(selected)),
+    )
+
+
+def parse_scoped_chrome_cuda_graph_events(
+    raw: bytes,
+    *,
+    marker: str,
+) -> ScopedCUDAActivities:
+    """Require one marker/cudaGraphLaunch/device correlation chain."""
+
+    if not isinstance(marker, str) or not marker.strip():
+        raise ValueError("dispatch trace marker must be non-empty")
+    trace_events = _trace_event_list(raw)
+    host_markers = [
+        event
+        for event in trace_events
+        if event.get("cat") == "user_annotation" and event.get("name") == marker
+    ]
+    gpu_markers = [
+        event
+        for event in trace_events
+        if event.get("cat") == "gpu_user_annotation"
+        and event.get("name") == marker
+    ]
+    if len(host_markers) != 1 or len(gpu_markers) != 1:
+        raise ChromeTraceValidationError(
+            "graph marker does not have one host/GPU annotation pair"
+        )
+    host_marker = host_markers[0]
+    gpu_marker = gpu_markers[0]
+    host_interval = _complete_interval(host_marker)
+    gpu_interval = _complete_interval(gpu_marker)
+    host_args = _event_args(host_marker)
+    gpu_args = _event_args(gpu_marker)
+    marker_external_id = _required_trace_integer(
+        host_args, "External id", positive=True
+    )
+    if (
+        _required_trace_integer(gpu_args, "External id", positive=True)
+        != marker_external_id
+    ):
+        raise ChromeTraceValidationError("graph host/GPU marker IDs differ")
+    if not _interval_contains(host_interval, gpu_interval):
+        raise ChromeTraceValidationError(
+            "graph GPU marker is not contained by its host marker"
+        )
+    cpu_pid = _trace_integer(host_marker, "pid")
+    cpu_tid = _trace_integer(host_marker, "tid")
+    gpu_stream = _trace_integer(gpu_marker, "tid")
+    launches = [
+        event
+        for event in trace_events
+        if event.get("cat") == "cuda_runtime"
+        and event.get("pid") == cpu_pid
+        and event.get("tid") == cpu_tid
+        and isinstance(event.get("name"), str)
+        and "cudagraphlaunch" in str(event.get("name")).casefold()
+        and _interval_contains(host_interval, _complete_interval(event))
+    ]
+    if len(launches) != 1:
+        raise ChromeTraceValidationError(
+            "graph marker does not contain exactly one cudaGraphLaunch"
+        )
+    launch_args = _event_args(launches[0])
+    launch_external_id = _optional_positive_trace_integer(
+        launch_args,
+        "External id",
+    )
+    launch_correlation = _required_trace_integer(
+        launch_args, "correlation", positive=True
+    )
+    launch_interval = _complete_interval(launches[0])
+    if launch_interval[1] > gpu_interval[0] + 0.01:
+        raise ChromeTraceValidationError(
+            "cudaGraphLaunch does not precede its GPU marker"
+        )
+    candidates = _parse_device_candidates(
+        trace_events,
+        require_external_id=False,
+    )
+    selected: list[_TraceEventCandidate] = []
+    for candidate in candidates:
+        interval = (candidate.timestamp, candidate.timestamp + candidate.duration)
+        within_gpu_marker = _interval_contains(gpu_interval, interval)
+        overlaps_host_marker = _intervals_overlap(host_interval, interval)
+        if not within_gpu_marker and overlaps_host_marker:
+            raise ChromeTraceValidationError(
+                "host-overlapping graph device event is outside the GPU marker"
+            )
+        if not within_gpu_marker:
+            continue
+        if candidate.correlation_id != launch_correlation:
+            raise ChromeTraceValidationError(
+                "in-marker graph device event has the wrong correlation"
+            )
+        if candidate.stream != gpu_stream:
+            raise ChromeTraceValidationError(
+                "in-marker graph device event has the wrong stream"
+            )
+        if candidate.external_id != launch_external_id:
+            raise ChromeTraceValidationError(
+                "graph launch/device External-ID presence or value differs"
+            )
+        if candidate.graph_id is None or candidate.graph_node_id is None:
+            raise ChromeTraceValidationError(
+                "graph device event lacks graph or graph-node identity"
+            )
+        selected.append(candidate)
+    if not selected:
+        raise ChromeTraceValidationError("cudaGraphLaunch has no linked CUDA activity")
+    canonical_events = _canonical_device_events(tuple(selected))
+    graph_ids = {event.graph_id for event in canonical_events}
+    if len(graph_ids) != 1:
+        raise ChromeTraceValidationError(
+            "in-marker graph device events have mixed graph IDs"
+        )
+    graph_node_ids = tuple(
+        event.graph_node_id
+        for event in canonical_events
+        if event.graph_node_id is not None
+    )
+    if len(graph_node_ids) != len(set(graph_node_ids)):
+        raise ChromeTraceValidationError(
+            "in-marker graph device events have duplicate graph-node IDs"
+        )
+    graph_id = next(iter(graph_ids))
+    if graph_id is None:  # pragma: no cover - guarded above
+        raise AssertionError("validated graph identity disappeared")
+    scope = CUDAGraphTraceScopeEvidence(
+        marker=marker,
+        marker_external_id=marker_external_id,
+        cpu_process_id=cpu_pid,
+        cpu_thread_id=cpu_tid,
+        graph_launch_external_id=launch_external_id,
+        runtime_correlations=(launch_correlation,),
+        gpu_stream=gpu_stream,
+        graph_id=graph_id,
+        graph_node_ids=graph_node_ids,
+    )
+    return ScopedCUDAActivities(
+        scope=scope,
+        device_events=canonical_events,
     )
 
 
@@ -732,6 +1183,7 @@ class RawTraceArtifact:
     relative_path: str
     sha256: str
     size_bytes: int
+    execution_mode: str = EAGER_EXECUTION_MODE
 
     def __post_init__(self) -> None:
         path = PurePosixPath(self.relative_path)
@@ -746,6 +1198,8 @@ class RawTraceArtifact:
             raise ValueError("raw trace SHA-256 is invalid")
         if not isinstance(self.size_bytes, int) or self.size_bytes <= 0:
             raise ValueError("raw trace size must be positive")
+        if self.execution_mode not in DISPATCH_EXECUTION_MODES:
+            raise ValueError("raw trace execution mode is unsupported")
 
     @classmethod
     def from_path(
@@ -753,12 +1207,14 @@ class RawTraceArtifact:
         path: Path,
         *,
         relative_path: str,
+        execution_mode: str = EAGER_EXECUTION_MODE,
     ) -> RawTraceArtifact:
         raw = path.read_bytes()
         return cls(
             relative_path=relative_path,
             sha256=hashlib.sha256(raw).hexdigest(),
             size_bytes=len(raw),
+            execution_mode=execution_mode,
         )
 
     def to_dict(self) -> dict[str, object]:
@@ -772,6 +1228,16 @@ class RawTraceArtifact:
             "relative_path": self.relative_path,
             "sha256": self.sha256,
             "size_bytes": self.size_bytes,
+            "execution_mode": self.execution_mode,
+            "cuda_graph_capture_contract": (
+                {
+                    "helper": "kvbench.runtime.cuda_graph.capture_fixed_graph",
+                    "dedicated_side_stream": True,
+                    "capture_error_mode": "global",
+                }
+                if self.execution_mode == CUDA_GRAPH_REPLAY_EXECUTION_MODE
+                else None
+            ),
         }
 
 
@@ -814,6 +1280,73 @@ class BackendControlEvidence:
             and self.source_build_verified
         )
 
+    @property
+    def control_transcript_verified(self) -> bool:
+        expected_rejection = bool(
+            self.rejected_control_error
+            == "No available kernel. Aborting execution."
+            and any(
+                "Flash attention kernel not used because:" in item
+                for item in self.rejected_control_warnings
+            )
+            and any(
+                "Expected query, key and value to all be of dtype: "
+                "{Half, BFloat16}." in item
+                for item in self.rejected_control_warnings
+            )
+            and self.rejected_control_synchronized
+        )
+        if self.rejected_control_failed != expected_rejection:
+            return False
+        if len(self.eligibility_diagnostics) < 3:
+            return False
+        enabled_line, eligible_line, choice_line = (
+            self.eligibility_diagnostics[-3:]
+        )
+        if enabled_line != "enabled_backends=" + ",".join(
+            self.enabled_backends
+        ):
+            return False
+        if eligible_line != (
+            f"can_use_flash_attention={self.flash_eligible}"
+        ):
+            return False
+        prefix = "fused_sdp_choice="
+        if not choice_line.startswith(prefix):
+            return False
+        try:
+            choice = int(choice_line.removeprefix(prefix))
+        except ValueError:
+            return False
+        return bool(
+            (choice == 1)
+            == (self.fused_backend_name == "FLASH_ATTENTION")
+        )
+
+    @property
+    def control_transcript_sha256(self) -> str:
+        raw = json.dumps(
+            {
+                "eligibility_diagnostics": self.eligibility_diagnostics,
+                "enabled_backends": self.enabled_backends,
+                "flash_eligible": self.flash_eligible,
+                "fused_backend_name": self.fused_backend_name,
+                "rejected_control_error": self.rejected_control_error,
+                "rejected_control_failed": self.rejected_control_failed,
+                "rejected_control_synchronized": (
+                    self.rejected_control_synchronized
+                ),
+                "rejected_control_warnings": self.rejected_control_warnings,
+                "source_build_fingerprint": self.source_build_fingerprint,
+                "source_build_verified": self.source_build_verified,
+            },
+            allow_nan=False,
+            ensure_ascii=True,
+            separators=(",", ":"),
+            sort_keys=True,
+        ).encode("utf-8")
+        return hashlib.sha256(raw).hexdigest()
+
     def to_dict(self) -> dict[str, object]:
         return {
             "enabled_backends": list(self.enabled_backends),
@@ -826,6 +1359,8 @@ class BackendControlEvidence:
             "source_build_fingerprint": self.source_build_fingerprint,
             "source_build_verified": self.source_build_verified,
             "eligibility_diagnostics": list(self.eligibility_diagnostics),
+            "control_transcript_sha256": self.control_transcript_sha256,
+            "control_transcript_verified": self.control_transcript_verified,
             "passed": self.passed,
         }
 
@@ -891,12 +1426,466 @@ class TensorShapeEvidence:
 
 
 @dataclass(frozen=True, slots=True)
+class Phase3DispatchPointBinding:
+    """Exact run/point and active-cache geometry for one dispatch audit."""
+
+    run_id: str
+    point_id: str
+    point_fingerprint: str
+    runner_kind: str
+    graph_mode: str
+    process_replicate: int
+    batch_size: int
+    starting_context: int
+    active_context: int
+    capacity: int
+
+    def __post_init__(self) -> None:
+        require_run_id(self.run_id)
+        require_identifier(self.point_id, field_name="point_id")
+        match = _PHASE3_POINT_RE.fullmatch(self.point_id)
+        if match is None:
+            raise ValueError("point_id does not encode a Phase 3 process point")
+        observed = (
+            self.runner_kind,
+            self.graph_mode,
+            self.process_replicate,
+            self.batch_size,
+            self.starting_context,
+        )
+        expected = (
+            match.group("runner"),
+            match.group("graph"),
+            int(match.group("replicate")),
+            int(match.group("batch")),
+            int(match.group("context")),
+        )
+        if observed != expected:
+            raise ValueError("dispatch point fields differ from point_id")
+        if self.point_fingerprint != derive_phase3_point_fingerprint(self.point_id):
+            raise ValueError("dispatch point fingerprint differs from Phase 3 grid")
+        expected_capacity = self.starting_context + (
+            1 if self.runner_kind == "fixed_l" else 16
+        )
+        if self.capacity != expected_capacity:
+            raise ValueError("dispatch cache capacity differs from Phase 3 point")
+        minimum_active = self.starting_context + 1
+        maximum_active = (
+            minimum_active
+            if self.runner_kind == "fixed_l"
+            else self.starting_context + 16
+        )
+        if not minimum_active <= self.active_context <= maximum_active:
+            raise ValueError("active context is outside the Phase 3 point trajectory")
+
+    @classmethod
+    def create(
+        cls,
+        *,
+        run_id: str,
+        point_id: str,
+        batch_size: int,
+        active_context: int,
+        capacity: int,
+    ) -> Phase3DispatchPointBinding:
+        match = _PHASE3_POINT_RE.fullmatch(point_id)
+        if match is None:
+            raise ValueError("point_id does not encode a Phase 3 process point")
+        return cls(
+            run_id=run_id,
+            point_id=point_id,
+            point_fingerprint=derive_phase3_point_fingerprint(point_id),
+            runner_kind=match.group("runner"),
+            graph_mode=match.group("graph"),
+            process_replicate=int(match.group("replicate")),
+            batch_size=batch_size,
+            starting_context=int(match.group("context")),
+            active_context=active_context,
+            capacity=capacity,
+        )
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "run_id": self.run_id,
+            "point_id": self.point_id,
+            "point_fingerprint": self.point_fingerprint,
+            "runner_kind": self.runner_kind,
+            "graph_mode": self.graph_mode,
+            "process_replicate": self.process_replicate,
+            "batch_size": self.batch_size,
+            "starting_context": self.starting_context,
+            "active_context": self.active_context,
+            "capacity": self.capacity,
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class StaticCacheLayoutEvidence:
+    """Declared and checksum-bound native-KV static-cache layout."""
+
+    layout_name: str
+    tensor_shape: tuple[int, ...]
+    tensor_stride: tuple[int, ...]
+    dtype: str
+    element_size: int
+    device: str
+    workspace_bytes: int
+    implementation_source_path: str
+    implementation_sha256: str
+    layout_fingerprint: str
+
+    def __post_init__(self) -> None:
+        if self.layout_name != PHASE3_CACHE_LAYOUT_NAME:
+            raise ValueError("cache layout name differs from frozen Phase 3 layout")
+        if len(self.tensor_shape) != 5 or len(self.tensor_stride) != 5:
+            raise ValueError("cache declaration must be rank five")
+        if any(value <= 0 for value in self.tensor_shape):
+            raise ValueError("cache declaration dimensions must be positive")
+        if self.tensor_shape[0] != PHASE3_NUM_LAYERS:
+            raise ValueError("cache declaration has the wrong layer count")
+        if self.tensor_shape[2] != PHASE3_NUM_KV_HEADS:
+            raise ValueError("cache declaration has the wrong backing head count")
+        if self.tensor_shape[4] != PHASE3_HEAD_DIM:
+            raise ValueError("cache declaration has the wrong head dimension")
+        expected_stride = (
+            self.tensor_shape[1]
+            * self.tensor_shape[2]
+            * self.tensor_shape[3]
+            * self.tensor_shape[4],
+            self.tensor_shape[2] * self.tensor_shape[3] * self.tensor_shape[4],
+            self.tensor_shape[3] * self.tensor_shape[4],
+            self.tensor_shape[4],
+            1,
+        )
+        if self.tensor_stride != expected_stride:
+            raise ValueError("cache declaration strides differ from frozen layout")
+        if self.dtype != PHASE3_DTYPE or self.element_size != PHASE3_DTYPE_BYTES:
+            raise ValueError("cache declaration must use BF16")
+        if not self.device.startswith("cuda:"):
+            raise ValueError("cache declaration must identify one CUDA device")
+        if (
+            not isinstance(self.workspace_bytes, int)
+            or isinstance(self.workspace_bytes, bool)
+            or self.workspace_bytes < 0
+        ):
+            raise ValueError("cache workspace bytes must be nonnegative")
+        if self.implementation_source_path != REQUIRED_SUT_SOURCES[2]:
+            raise ValueError("cache implementation source path differs")
+        if not _SHA256_RE.fullmatch(self.implementation_sha256):
+            raise ValueError("cache implementation SHA-256 is invalid")
+        expected_fingerprint = derive_cache_layout_fingerprint(
+            num_layers=self.tensor_shape[0],
+            batch_size=self.tensor_shape[1],
+            num_kv_heads=self.tensor_shape[2],
+            capacity=self.tensor_shape[3],
+            head_dim=self.tensor_shape[4],
+            device=self.device,
+            workspace_bytes=self.workspace_bytes,
+            implementation_sha256=self.implementation_sha256,
+        )
+        if self.layout_fingerprint != expected_fingerprint:
+            raise ValueError("cache layout fingerprint differs from declaration")
+
+    @property
+    def batch_size(self) -> int:
+        return self.tensor_shape[1]
+
+    @property
+    def capacity(self) -> int:
+        return self.tensor_shape[3]
+
+    @property
+    def single_tensor_storage_bytes(self) -> int:
+        elements = 1
+        for dimension in self.tensor_shape:
+            elements *= dimension
+        return elements * self.element_size
+
+    @classmethod
+    def create(
+        cls,
+        *,
+        batch_size: int,
+        capacity: int,
+        device: str,
+        workspace_bytes: int,
+        implementation_sha256: str,
+        layout_fingerprint: str,
+    ) -> StaticCacheLayoutEvidence:
+        shape = (
+            PHASE3_NUM_LAYERS,
+            batch_size,
+            PHASE3_NUM_KV_HEADS,
+            capacity,
+            PHASE3_HEAD_DIM,
+        )
+        stride = (
+            batch_size * PHASE3_NUM_KV_HEADS * capacity * PHASE3_HEAD_DIM,
+            PHASE3_NUM_KV_HEADS * capacity * PHASE3_HEAD_DIM,
+            capacity * PHASE3_HEAD_DIM,
+            PHASE3_HEAD_DIM,
+            1,
+        )
+        return cls(
+            layout_name=PHASE3_CACHE_LAYOUT_NAME,
+            tensor_shape=shape,
+            tensor_stride=stride,
+            dtype=PHASE3_DTYPE,
+            element_size=PHASE3_DTYPE_BYTES,
+            device=device,
+            workspace_bytes=workspace_bytes,
+            implementation_source_path=REQUIRED_SUT_SOURCES[2],
+            implementation_sha256=implementation_sha256,
+            layout_fingerprint=layout_fingerprint,
+        )
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "schema": PHASE3_CACHE_LAYOUT_SCHEMA,
+            "layout_name": self.layout_name,
+            "tensor_shape": list(self.tensor_shape),
+            "tensor_stride": list(self.tensor_stride),
+            "dtype": self.dtype,
+            "element_size": self.element_size,
+            "device": self.device,
+            "workspace_bytes": self.workspace_bytes,
+            "implementation_source_path": self.implementation_source_path,
+            "implementation_sha256": self.implementation_sha256,
+            "layout_fingerprint": self.layout_fingerprint,
+            "single_tensor_storage_bytes": self.single_tensor_storage_bytes,
+            "native_kv_head_backing": True,
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class StaticCacheViewBindingEvidence:
+    """Bind active per-layer K/V views to full native-KV cache tensors."""
+
+    layout: StaticCacheLayoutEvidence
+    layer_index: int
+    active_context: int
+    key_backing: TensorShapeEvidence
+    value_backing: TensorShapeEvidence
+    key_view: TensorShapeEvidence
+    value_view: TensorShapeEvidence
+    key_backing_storage_ptr: int
+    value_backing_storage_ptr: int
+    key_view_storage_ptr: int
+    value_view_storage_ptr: int
+    key_view_shares_backing_storage: bool
+    value_view_shares_backing_storage: bool
+    key_value_backing_storages_distinct: bool
+
+    def __post_init__(self) -> None:
+        if (
+            not isinstance(self.layer_index, int)
+            or isinstance(self.layer_index, bool)
+            or not 0 <= self.layer_index < PHASE3_NUM_LAYERS
+        ):
+            raise ValueError("cache layer index is invalid")
+        _positive_integer(self.active_context, "active_context")
+        if self.active_context > self.layout.capacity:
+            raise ValueError("active cache view exceeds declared capacity")
+        for field in (
+            "key_backing_storage_ptr",
+            "value_backing_storage_ptr",
+            "key_view_storage_ptr",
+            "value_view_storage_ptr",
+        ):
+            _positive_integer(getattr(self, field), field)
+        for field in (
+            "key_view_shares_backing_storage",
+            "value_view_shares_backing_storage",
+            "key_value_backing_storages_distinct",
+        ):
+            if not isinstance(getattr(self, field), bool):
+                raise TypeError("cache storage-binding flags must be boolean")
+        expected_flags = (
+            self.key_view_storage_ptr == self.key_backing_storage_ptr,
+            self.value_view_storage_ptr == self.value_backing_storage_ptr,
+            self.key_backing_storage_ptr != self.value_backing_storage_ptr,
+        )
+        observed_flags = (
+            self.key_view_shares_backing_storage,
+            self.value_view_shares_backing_storage,
+            self.key_value_backing_storages_distinct,
+        )
+        if observed_flags != expected_flags:
+            raise ValueError("cache storage-binding flags differ from pointers")
+
+    @property
+    def storage_pointer_transcript_sha256(self) -> str:
+        transcript = json.dumps(
+            {
+                "key_backing_storage_ptr": self.key_backing_storage_ptr,
+                "key_view_storage_ptr": self.key_view_storage_ptr,
+                "value_backing_storage_ptr": self.value_backing_storage_ptr,
+                "value_view_storage_ptr": self.value_view_storage_ptr,
+            },
+            allow_nan=False,
+            ensure_ascii=True,
+            separators=(",", ":"),
+            sort_keys=True,
+        ).encode("utf-8")
+        return hashlib.sha256(transcript).hexdigest()
+
+    @property
+    def failure_reasons(self) -> tuple[str, ...]:
+        reasons: list[str] = []
+        expected_backing_shape = self.layout.tensor_shape
+        expected_backing_stride = self.layout.tensor_stride
+        expected_storage_bytes = self.layout.single_tensor_storage_bytes
+        expected_view_shape = (
+            self.layout.batch_size,
+            PHASE3_NUM_KV_HEADS,
+            self.active_context,
+            PHASE3_HEAD_DIM,
+        )
+        expected_view_stride = expected_backing_stride[1:]
+        expected_offset = self.layer_index * expected_backing_stride[0]
+        for label, tensor in (
+            ("key_backing", self.key_backing),
+            ("value_backing", self.value_backing),
+        ):
+            if tensor.shape != expected_backing_shape:
+                reasons.append(f"{label}_shape_mismatch")
+            if tensor.stride != expected_backing_stride:
+                reasons.append(f"{label}_stride_mismatch")
+            if tensor.storage_bytes != expected_storage_bytes:
+                reasons.append(f"{label}_storage_bytes_mismatch")
+            if tensor.storage_offset != 0:
+                reasons.append(f"{label}_storage_offset_mismatch")
+            if not tensor.is_contiguous:
+                reasons.append(f"{label}_not_contiguous")
+        for label, tensor in (
+            ("key_view", self.key_view),
+            ("value_view", self.value_view),
+        ):
+            if tensor.shape != expected_view_shape:
+                reasons.append(f"{label}_shape_mismatch")
+            if tensor.stride != expected_view_stride:
+                reasons.append(f"{label}_stride_mismatch")
+            if tensor.storage_bytes != expected_storage_bytes:
+                reasons.append(f"{label}_storage_bytes_mismatch")
+            if tensor.storage_offset != expected_offset:
+                reasons.append(f"{label}_storage_offset_mismatch")
+        for label, tensor in (
+            ("key_backing", self.key_backing),
+            ("value_backing", self.value_backing),
+            ("key_view", self.key_view),
+            ("value_view", self.value_view),
+        ):
+            if tensor.dtype != self.layout.dtype:
+                reasons.append(f"{label}_dtype_mismatch")
+            if tensor.element_size != self.layout.element_size:
+                reasons.append(f"{label}_element_size_mismatch")
+            if tensor.device != self.layout.device:
+                reasons.append(f"{label}_device_mismatch")
+        if not self.key_view_shares_backing_storage:
+            reasons.append("key_view_not_bound_to_backing")
+        if not self.value_view_shares_backing_storage:
+            reasons.append("value_view_not_bound_to_backing")
+        if not self.key_value_backing_storages_distinct:
+            reasons.append("key_value_backing_storage_alias")
+        return tuple(reasons)
+
+    @property
+    def verified(self) -> bool:
+        return not self.failure_reasons
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "layout": self.layout.to_dict(),
+            "layer_index": self.layer_index,
+            "active_context": self.active_context,
+            "key_backing": self.key_backing.to_dict(),
+            "value_backing": self.value_backing.to_dict(),
+            "key_view": self.key_view.to_dict(),
+            "value_view": self.value_view.to_dict(),
+            "storage_pointers": {
+                "key_backing": self.key_backing_storage_ptr,
+                "key_view": self.key_view_storage_ptr,
+                "value_backing": self.value_backing_storage_ptr,
+                "value_view": self.value_view_storage_ptr,
+                "sha256": self.storage_pointer_transcript_sha256,
+            },
+            "key_view_shares_backing_storage": (
+                self.key_view_shares_backing_storage
+            ),
+            "value_view_shares_backing_storage": (
+                self.value_view_shares_backing_storage
+            ),
+            "key_value_backing_storages_distinct": (
+                self.key_value_backing_storages_distinct
+            ),
+            "active_view_storage_may_exceed_logical_bytes": True,
+            "verified": self.verified,
+            "failure_reasons": list(self.failure_reasons),
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class SourceFindingEvidence:
+    """Typed source-audit finding with truthful taxonomy semantics."""
+
+    code: str
+    evidence_type: str
+    positive_materialization_evidence: bool
+
+    def __post_init__(self) -> None:
+        if not self.code.strip():
+            raise ValueError("source finding code is absent")
+        if self.evidence_type not in {
+            "direct_gqa_replication_path",
+            "source_contract_violation",
+        }:
+            raise ValueError("source finding evidence type is unsupported")
+        expected_type = (
+            "direct_gqa_replication_path"
+            if self.positive_materialization_evidence
+            else "source_contract_violation"
+        )
+        if self.evidence_type != expected_type:
+            raise ValueError("source finding taxonomy is inconsistent")
+
+    @classmethod
+    def from_code(
+        cls,
+        code: str,
+        *,
+        positive_materialization_evidence: bool,
+    ) -> SourceFindingEvidence:
+        return cls(
+            code=code,
+            evidence_type=(
+                "direct_gqa_replication_path"
+                if positive_materialization_evidence
+                else "source_contract_violation"
+            ),
+            positive_materialization_evidence=(
+                positive_materialization_evidence
+            ),
+        )
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "code": self.code,
+            "evidence_type": self.evidence_type,
+            "positive_materialization_evidence": (
+                self.positive_materialization_evidence
+            ),
+        }
+
+
+@dataclass(frozen=True, slots=True)
 class SourceFileEvidence:
     """Identity and forbidden-path findings for one selected SUT source."""
 
     relative_path: str
     sha256: str
     findings: tuple[str, ...]
+    direct_replication_findings: tuple[str, ...] = ()
+    selected_function_paths: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         path = PurePosixPath(self.relative_path)
@@ -911,18 +1900,91 @@ class SourceFileEvidence:
             raise ValueError("source audit SHA-256 is invalid")
         if any(not finding.strip() for finding in self.findings):
             raise ValueError("source audit findings must be non-empty strings")
+        if any(not item.strip() for item in self.selected_function_paths):
+            raise ValueError("selected source function path is absent")
+        if (
+            self.findings != tuple(dict.fromkeys(self.findings))
+            or self.direct_replication_findings
+            != tuple(dict.fromkeys(self.direct_replication_findings))
+            or not set(self.direct_replication_findings).issubset(self.findings)
+            or self.direct_replication_findings
+            != tuple(
+                finding
+                for finding in self.findings
+                if finding in frozenset(self.direct_replication_findings)
+            )
+            or self.selected_function_paths
+            != tuple(dict.fromkeys(self.selected_function_paths))
+        ):
+            raise ValueError("source audit findings are not canonical")
 
     @property
     def passed(self) -> bool:
-        return not self.findings
+        expected_paths = _SELECTED_SOURCE_FUNCTION_PATHS.get(self.relative_path)
+        return bool(
+            not self.findings
+            and (
+                expected_paths is None
+                or self.selected_function_paths == expected_paths
+            )
+        )
+
+    @property
+    def selected_execution_path_verified(self) -> bool:
+        expected_paths = _SELECTED_SOURCE_FUNCTION_PATHS.get(self.relative_path)
+        return bool(
+            expected_paths is None
+            or self.selected_function_paths == expected_paths
+        )
+
+    @property
+    def typed_findings(self) -> tuple[SourceFindingEvidence, ...]:
+        direct = frozenset(self.direct_replication_findings)
+        return tuple(
+            SourceFindingEvidence.from_code(
+                item,
+                positive_materialization_evidence=item in direct,
+            )
+            for item in self.findings
+        )
+
+    @property
+    def positive_materialization_findings(self) -> tuple[str, ...]:
+        return tuple(
+            finding.code
+            for finding in self.typed_findings
+            if finding.positive_materialization_evidence
+        )
 
     def to_dict(self) -> dict[str, object]:
         return {
             "relative_path": self.relative_path,
             "sha256": self.sha256,
             "findings": list(self.findings),
+            "direct_replication_findings": list(
+                self.direct_replication_findings
+            ),
+            "selected_function_paths": list(self.selected_function_paths),
+            "selected_execution_path_verified": (
+                self.selected_execution_path_verified
+            ),
+            "typed_findings": [item.to_dict() for item in self.typed_findings],
             "passed": self.passed,
         }
+
+
+def source_materialization_evidence(
+    sources: tuple[SourceFileEvidence, ...],
+) -> tuple[str, ...]:
+    """Return canonical positive source evidence with file identity."""
+
+    return tuple(
+        sorted(
+            f"source:{source.relative_path}:{finding}"
+            for source in sources
+            for finding in source.positive_materialization_findings
+        )
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -1009,8 +2071,9 @@ class DispatchControlEvidence:
     warmup_count: int
     backend: BackendControlEvidence
     raw_trace: RawTraceArtifact | None
-    trace_scope: TraceScopeEvidence | None
+    trace_scope: TraceScopeEvidence | CUDAGraphTraceScopeEvidence | None
     device_events: tuple[CUDADeviceEvent, ...]
+    execution_mode: str = EAGER_EXECUTION_MODE
 
     def __post_init__(self) -> None:
         if self.role not in {"gqa", "mha_control"}:
@@ -1033,6 +2096,21 @@ class DispatchControlEvidence:
             raise ValueError("dispatch control differs from frozen KV geometry")
         if self.dtype != "torch.bfloat16" or self.dtype_bytes != 2:
             raise ValueError("dispatch control must use frozen BF16")
+        if self.execution_mode not in DISPATCH_EXECUTION_MODES:
+            raise ValueError("dispatch control execution mode is unsupported")
+        if (
+            self.raw_trace is not None
+            and self.raw_trace.execution_mode != self.execution_mode
+        ):
+            raise ValueError("dispatch control and raw trace modes differ")
+        if self.trace_scope is not None:
+            expected_scope = (
+                TraceScopeEvidence
+                if self.execution_mode == EAGER_EXECUTION_MODE
+                else CUDAGraphTraceScopeEvidence
+            )
+            if not isinstance(self.trace_scope, expected_scope):
+                raise ValueError("dispatch trace scope differs from execution mode")
         if tuple(event.order for event in self.device_events) != tuple(
             range(len(self.device_events))
         ):
@@ -1044,11 +2122,36 @@ class DispatchControlEvidence:
             if correlations != self.trace_scope.runtime_correlations:
                 raise ValueError("trace scope correlations differ from device events")
             if any(
-                event.external_id not in self.trace_scope.nested_cpu_external_ids
-                or event.stream != self.trace_scope.gpu_stream
+                event.stream != self.trace_scope.gpu_stream
                 for event in self.device_events
             ):
                 raise ValueError("device events differ from retained trace scope")
+            if isinstance(self.trace_scope, TraceScopeEvidence):
+                if any(
+                    event.external_id
+                    not in self.trace_scope.nested_cpu_external_ids
+                    for event in self.device_events
+                ):
+                    raise ValueError(
+                        "eager device External IDs differ from trace scope"
+                    )
+            else:
+                graph_ids = {event.graph_id for event in self.device_events}
+                graph_node_ids = tuple(
+                    event.graph_node_id for event in self.device_events
+                )
+                if (
+                    any(
+                        event.external_id
+                        != self.trace_scope.graph_launch_external_id
+                        for event in self.device_events
+                    )
+                    or graph_ids != {self.trace_scope.graph_id}
+                    or graph_node_ids != self.trace_scope.graph_node_ids
+                ):
+                    raise ValueError(
+                        "graph device identities differ from trace scope"
+                    )
 
     @property
     def byte_evidence(self) -> KVByteEvidence:
@@ -1098,6 +2201,7 @@ class DispatchControlEvidence:
             self.dtype_bytes,
             self.is_causal,
             self.warmup_count,
+            self.execution_mode,
         )
 
     def to_dict(self) -> dict[str, object]:
@@ -1114,6 +2218,7 @@ class DispatchControlEvidence:
                 "dtype_bytes": self.dtype_bytes,
                 "is_causal": self.is_causal,
                 "warmup_count": self.warmup_count,
+                "execution_mode": self.execution_mode,
             },
             "backend": self.backend.to_dict(),
             "raw_trace": None if self.raw_trace is None else self.raw_trace.to_dict(),
@@ -1126,6 +2231,339 @@ class DispatchControlEvidence:
             "events_before_attention": [
                 event.to_dict() for event in self.events_before_attention
             ],
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class FlashKernelSequenceEvidence:
+    """Strict standard-forward or split-K-forward-plus-combine sequence."""
+
+    family: str | None
+    variant: str
+    kernel_names: tuple[str, ...]
+    kernel_orders: tuple[int, ...]
+    forward_orders: tuple[int, ...]
+    combine_orders: tuple[int, ...]
+    reasons: tuple[str, ...]
+
+    def __post_init__(self) -> None:
+        if self.family not in {
+            None,
+            FLASH_FORWARD_FAMILY,
+            FLASH_SPLIT_KV_FAMILY,
+        }:
+            raise ValueError("Flash sequence family is unsupported")
+        if self.variant not in {
+            "standard_forward",
+            "split_k_forward_combine",
+            "unverified",
+        }:
+            raise ValueError("Flash sequence variant is unsupported")
+        if len(self.kernel_names) != len(self.kernel_orders):
+            raise ValueError("Flash sequence kernel names and orders differ")
+        if self.kernel_orders != tuple(sorted(set(self.kernel_orders))):
+            raise ValueError("Flash sequence kernel orders are not canonical")
+        if self.forward_orders != tuple(sorted(set(self.forward_orders))):
+            raise ValueError("Flash forward orders are not canonical")
+        if self.combine_orders != tuple(sorted(set(self.combine_orders))):
+            raise ValueError("Flash combine orders are not canonical")
+        if any(not reason.strip() for reason in self.reasons):
+            raise ValueError("Flash sequence reasons must be non-empty")
+        if self.passed != (self.family is not None):
+            raise ValueError("Flash sequence family and verdict differ")
+
+    @property
+    def passed(self) -> bool:
+        return not self.reasons
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "family": self.family,
+            "variant": self.variant,
+            "kernel_names": list(self.kernel_names),
+            "kernel_orders": list(self.kernel_orders),
+            "forward_orders": list(self.forward_orders),
+            "combine_orders": list(self.combine_orders),
+            "passed": self.passed,
+            "reasons": list(self.reasons),
+        }
+
+
+def analyze_flash_kernel_sequence(
+    events: tuple[CUDADeviceEvent, ...],
+) -> FlashKernelSequenceEvidence:
+    """Identify one unambiguous Flash forward sequence from scoped events."""
+
+    flash_events = tuple(
+        event for event in events if event.classification == "flash_attention"
+    )
+    reasons: list[str] = []
+    if not flash_events:
+        reasons.append("flash_attention_kernel_absent")
+    unrelated_kernels = tuple(
+        event
+        for event in events
+        if event.category == "kernel" and event.classification == "unknown_kernel"
+    )
+    if unrelated_kernels:
+        reasons.append("unrelated_scoped_kernel_present")
+    families = {
+        event.kernel_family
+        for event in flash_events
+        if event.kernel_family is not None
+    }
+    if len(families) > 1:
+        reasons.append("ambiguous_flash_kernel_families")
+
+    strict_standard = tuple(
+        event
+        for event in flash_events
+        if _FLASH_FORWARD_KERNEL_RE.search(event.name) is not None
+    )
+    strict_split_forward = tuple(
+        event
+        for event in flash_events
+        if _FLASH_SPLIT_FORWARD_KERNEL_RE.search(event.name) is not None
+    )
+    strict_split_combine = tuple(
+        event
+        for event in flash_events
+        if _FLASH_SPLIT_COMBINE_KERNEL_RE.search(event.name) is not None
+    )
+    recognized_orders = {
+        event.order
+        for event in (
+            *strict_standard,
+            *strict_split_forward,
+            *strict_split_combine,
+        )
+    }
+    if any(event.order not in recognized_orders for event in flash_events):
+        reasons.append("unrecognized_flash_kernel_component")
+
+    family: str | None = None
+    variant = "unverified"
+    forward_orders: tuple[int, ...] = ()
+    combine_orders: tuple[int, ...] = ()
+    if not reasons and families == {FLASH_FORWARD_FAMILY}:
+        if len(flash_events) != 1 or len(strict_standard) != 1:
+            reasons.append("ambiguous_standard_flash_sequence")
+        else:
+            family = FLASH_FORWARD_FAMILY
+            variant = "standard_forward"
+            forward_orders = (strict_standard[0].order,)
+    elif not reasons and families == {FLASH_SPLIT_KV_FAMILY}:
+        if (
+            len(flash_events) != 2
+            or len(strict_split_forward) != 1
+            or len(strict_split_combine) != 1
+        ):
+            reasons.append("split_k_requires_one_forward_and_one_combine")
+        elif strict_split_forward[0].order >= strict_split_combine[0].order:
+            reasons.append("split_k_combine_does_not_follow_forward")
+        else:
+            family = FLASH_SPLIT_KV_FAMILY
+            variant = "split_k_forward_combine"
+            forward_orders = (strict_split_forward[0].order,)
+            combine_orders = (strict_split_combine[0].order,)
+    elif not reasons:
+        reasons.append("flash_kernel_family_unverified")
+
+    if reasons:
+        family = None
+        variant = "unverified"
+        forward_orders = ()
+        combine_orders = ()
+    return FlashKernelSequenceEvidence(
+        family=family,
+        variant=variant,
+        kernel_names=tuple(event.name for event in flash_events),
+        kernel_orders=tuple(event.order for event in flash_events),
+        forward_orders=forward_orders,
+        combine_orders=combine_orders,
+        reasons=tuple(reasons),
+    )
+
+
+def compare_geometry_bound_kernel_sequences(
+    gqa: FlashKernelSequenceEvidence,
+    mha: FlashKernelSequenceEvidence,
+    *,
+    explicitly_related: Set[tuple[str, str]] = frozenset(),
+) -> KernelFamilyComparison:
+    """Compare exact families with no implicit standard/split-K approval."""
+
+    if not gqa.passed or not mha.passed:
+        relation = "unverified"
+    elif gqa.family == mha.family:
+        relation = "same"
+    elif (gqa.family, mha.family) in explicitly_related or (
+        mha.family,
+        gqa.family,
+    ) in explicitly_related:
+        relation = "related"
+    else:
+        relation = "unrelated"
+    return KernelFamilyComparison(
+        relation=relation,
+        gqa_families=() if gqa.family is None else (gqa.family,),
+        mha_families=() if mha.family is None else (mha.family,),
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class GeometryBoundSourceShapeEvidence:
+    """Source and tensor evidence for a production-cache GQA/MHA pair."""
+
+    sources: tuple[SourceFileEvidence, ...]
+    gqa_query: TensorShapeEvidence
+    gqa_output: TensorShapeEvidence
+    cache: StaticCacheViewBindingEvidence
+    mha_query: TensorShapeEvidence
+    mha_key: TensorShapeEvidence
+    mha_value: TensorShapeEvidence
+    mha_output: TensorShapeEvidence
+
+    def __post_init__(self) -> None:
+        paths = tuple(source.relative_path for source in self.sources)
+        if paths != REQUIRED_SUT_SOURCES:
+            raise ValueError("geometry-bound source evidence differs from the SUT")
+        if len(set(paths)) != len(paths):
+            raise ValueError("geometry-bound source paths contain duplicates")
+
+    @property
+    def source_verified(self) -> bool:
+        source_by_path = {source.relative_path: source for source in self.sources}
+        return bool(
+            all(source.passed for source in self.sources)
+            and all(
+                source.selected_function_paths
+                == _SELECTED_SOURCE_FUNCTION_PATHS[source.relative_path]
+                for source in self.sources
+            )
+            and source_by_path[REQUIRED_SUT_SOURCES[2]].sha256
+            == self.cache.layout.implementation_sha256
+        )
+
+    def shape_verified_for(
+        self,
+        gqa: DispatchControlEvidence,
+        mha: DispatchControlEvidence,
+    ) -> bool:
+        expected_query = (
+            gqa.batch_size,
+            PHASE3_NUM_QUERY_HEADS,
+            1,
+            PHASE3_HEAD_DIM,
+        )
+        expected_gqa_kv = (
+            gqa.batch_size,
+            PHASE3_NUM_KV_HEADS,
+            gqa.context_length,
+            PHASE3_HEAD_DIM,
+        )
+        expected_mha_kv = (
+            mha.batch_size,
+            PHASE3_NUM_QUERY_HEADS,
+            mha.context_length,
+            PHASE3_HEAD_DIM,
+        )
+        expected_query_stride = (
+            PHASE3_NUM_QUERY_HEADS * PHASE3_HEAD_DIM,
+            PHASE3_HEAD_DIM,
+            PHASE3_HEAD_DIM,
+            1,
+        )
+        expected_mha_kv_stride = (
+            PHASE3_NUM_QUERY_HEADS * mha.context_length * PHASE3_HEAD_DIM,
+            mha.context_length * PHASE3_HEAD_DIM,
+            PHASE3_HEAD_DIM,
+            1,
+        )
+        query_tensors = (
+            self.gqa_query,
+            self.mha_query,
+        )
+        output_tensors = (
+            self.gqa_output,
+            self.mha_output,
+        )
+        tensors = (
+            self.gqa_query,
+            self.gqa_output,
+            self.cache.key_view,
+            self.cache.value_view,
+            self.mha_query,
+            self.mha_key,
+            self.mha_value,
+            self.mha_output,
+        )
+        return bool(
+            self.cache.verified
+            and self.cache.active_context == gqa.context_length
+            and self.cache.layout.batch_size == gqa.batch_size
+            and self.gqa_query.shape == expected_query
+            and self.gqa_output.shape == expected_query
+            and self.cache.key_view.shape == expected_gqa_kv
+            and self.cache.value_view.shape == expected_gqa_kv
+            and self.mha_query.shape == expected_query
+            and self.mha_output.shape == expected_query
+            and self.mha_key.shape == expected_mha_kv
+            and self.mha_value.shape == expected_mha_kv
+            and all(
+                tensor.stride == expected_query_stride
+                for tensor in query_tensors
+            )
+            and all(
+                all(
+                    dimension == 1 or observed == expected
+                    for dimension, observed, expected in zip(
+                        tensor.shape,
+                        tensor.stride,
+                        expected_query_stride,
+                        strict=True,
+                    )
+                )
+                for tensor in output_tensors
+            )
+            and self.mha_key.stride == expected_mha_kv_stride
+            and self.mha_value.stride == expected_mha_kv_stride
+            and all(
+                tensor.storage_bytes == tensor.logical_bytes
+                and tensor.storage_offset == 0
+                and tensor.is_contiguous
+                for tensor in (*query_tensors, *output_tensors)
+            )
+            and self.gqa_query == self.mha_query
+            and all(tensor.dtype == PHASE3_DTYPE for tensor in tensors)
+            and all(tensor.element_size == PHASE3_DTYPE_BYTES for tensor in tensors)
+            and len({tensor.device for tensor in tensors}) == 1
+            and self.mha_key.storage_bytes == self.mha_key.logical_bytes
+            and self.mha_value.storage_bytes == self.mha_value.logical_bytes
+            and self.mha_key.storage_offset == 0
+            and self.mha_value.storage_offset == 0
+            and self.mha_key.is_contiguous
+            and self.mha_value.is_contiguous
+        )
+
+    def to_dict(
+        self,
+        *,
+        gqa: DispatchControlEvidence,
+        mha: DispatchControlEvidence,
+    ) -> dict[str, object]:
+        return {
+            "sources": [source.to_dict() for source in self.sources],
+            "source_paths": [source.relative_path for source in self.sources],
+            "source_verified": self.source_verified,
+            "gqa_query": self.gqa_query.to_dict(),
+            "gqa_output": self.gqa_output.to_dict(),
+            "cache": self.cache.to_dict(),
+            "mha_query": self.mha_query.to_dict(),
+            "mha_key": self.mha_key.to_dict(),
+            "mha_value": self.mha_value.to_dict(),
+            "mha_output": self.mha_output.to_dict(),
+            "shape_verified": self.shape_verified_for(gqa, mha),
         }
 
 
@@ -1215,6 +2653,12 @@ class GQAProofEvaluation:
         }
 
 
+def _preceding_activity_is_nonmaterializing(
+    control: DispatchControlEvidence,
+) -> bool:
+    return not control.events_before_attention
+
+
 def evaluate_gqa_device_dispatch(
     *,
     gqa: DispatchControlEvidence | None,
@@ -1225,6 +2669,7 @@ def evaluate_gqa_device_dispatch(
     expanded_kv_allocation_detected: bool = False,
     expanded_kv_tensor_detected: bool = False,
     explicitly_related_families: Set[tuple[str, str]] = frozenset(),
+    source_positive_materialization_evidence: tuple[str, ...] = (),
 ) -> GQAProofEvaluation:
     """Evaluate device proof through the corrected four-state taxonomy."""
 
@@ -1258,7 +2703,7 @@ def evaluate_gqa_device_dispatch(
         and family.passed
     )
 
-    positive: list[str] = []
+    positive: list[str] = list(source_positive_materialization_evidence)
     if expanded_kv_allocation_detected:
         positive.append("expanded_kv_allocation")
     if expanded_kv_tensor_detected:
@@ -1284,8 +2729,8 @@ def evaluate_gqa_device_dispatch(
         dispatch_verified
         and gqa is not None
         and mha is not None
-        and not gqa.events_before_attention
-        and not mha.events_before_attention
+        and _preceding_activity_is_nonmaterializing(gqa)
+        and _preceding_activity_is_nonmaterializing(mha)
         and not any(
             event.classification
             in (MATERIALIZATION_CLASSIFICATIONS | COPY_CANDIDATE_CLASSIFICATIONS)
@@ -1330,6 +2775,136 @@ def evaluate_gqa_device_dispatch(
     )
 
 
+def evaluate_geometry_bound_gqa_device_dispatch(
+    *,
+    point: Phase3DispatchPointBinding,
+    gqa: DispatchControlEvidence,
+    mha: DispatchControlEvidence,
+    gqa_sequence: FlashKernelSequenceEvidence,
+    mha_sequence: FlashKernelSequenceEvidence,
+    source_shape: GeometryBoundSourceShapeEvidence,
+    explicitly_related_families: Set[tuple[str, str]] = frozenset(),
+) -> GQAProofEvaluation:
+    """Evaluate dispatch-only evidence bound to one production cache geometry."""
+
+    family = compare_geometry_bound_kernel_sequences(
+        gqa_sequence,
+        mha_sequence,
+        explicitly_related=explicitly_related_families,
+    )
+    held_constants_match = gqa.held_constants() == mha.held_constants()
+    source_build_match = (
+        gqa.backend.source_build_fingerprint
+        == mha.backend.source_build_fingerprint
+    )
+    expected_execution_mode = (
+        CUDA_GRAPH_REPLAY_EXECUTION_MODE
+        if point.graph_mode == "cuda_graph"
+        else EAGER_EXECUTION_MODE
+    )
+    point_geometry_matches = bool(
+        gqa.batch_size == point.batch_size
+        and mha.batch_size == point.batch_size
+        and gqa.context_length == point.active_context
+        and mha.context_length == point.active_context
+        and source_shape.cache.active_context == point.active_context
+        and source_shape.cache.layout.capacity == point.capacity
+        and source_shape.cache.layout.batch_size == point.batch_size
+        and gqa.execution_mode == expected_execution_mode
+        and mha.execution_mode == expected_execution_mode
+    )
+    dispatch_verified = bool(
+        held_constants_match
+        and source_build_match
+        and point_geometry_matches
+        and gqa.raw_trace is not None
+        and mha.raw_trace is not None
+        and gqa.trace_scope is not None
+        and mha.trace_scope is not None
+        and gqa.backend.passed
+        and mha.backend.passed
+        and gqa.backend.control_transcript_verified
+        and mha.backend.control_transcript_verified
+        and gqa_sequence.passed
+        and mha_sequence.passed
+        and family.passed
+    )
+
+    positive: list[str] = list(
+        source_materialization_evidence(source_shape.sources)
+    )
+    expanded_copy_sizes = {
+        gqa.byte_evidence.expanded_kv_bytes,
+        gqa.byte_evidence.expanded_kv_bytes // 2,
+    }
+    positive.extend(
+        f"device_event:{event.classification}:{event.name}"
+        for event in gqa.events_before_attention
+        if event.classification in MATERIALIZATION_CLASSIFICATIONS
+    )
+    positive.extend(
+        f"expanded_kv_copy:{event.copy_bytes}:{event.name}"
+        for event in gqa.events_before_attention
+        if event.classification in COPY_CANDIDATE_CLASSIFICATIONS
+        and event.copy_bytes in expanded_copy_sizes
+    )
+    forbidden_device_activity = any(
+        event.classification
+        in (MATERIALIZATION_CLASSIFICATIONS | COPY_CANDIDATE_CLASSIFICATIONS)
+        for event in (*gqa.device_events, *mha.device_events)
+    )
+    no_replication_kernel_verified = bool(
+        dispatch_verified
+        and _preceding_activity_is_nonmaterializing(gqa)
+        and _preceding_activity_is_nonmaterializing(mha)
+        and not forbidden_device_activity
+    )
+    source_verified = source_shape.source_verified
+    shape_verified = source_shape.shape_verified_for(gqa, mha)
+    allocation_verified = False
+    verdict = classify_gqa_evidence(
+        materialization_evidence=bool(positive),
+        dispatch_verified=dispatch_verified,
+        no_replication_kernel_verified=no_replication_kernel_verified,
+        allocation_verified=allocation_verified,
+        source_verified=source_verified,
+        shape_verified=shape_verified,
+    )
+    reasons: list[str] = []
+    if positive:
+        reasons.append("positive materialization evidence exists")
+    if not held_constants_match:
+        reasons.append("GQA and MHA production controls differ")
+    if not source_build_match:
+        reasons.append("GQA and MHA backend identities differ")
+    if not point_geometry_matches:
+        reasons.append("dispatch geometry differs from the bound Phase 3 point")
+    if not gqa_sequence.passed:
+        reasons.extend(f"gqa_sequence:{item}" for item in gqa_sequence.reasons)
+    if not mha_sequence.passed:
+        reasons.extend(f"mha_sequence:{item}" for item in mha_sequence.reasons)
+    if not family.passed:
+        reasons.append("GQA and MHA Flash kernel families are not related")
+    if dispatch_verified and not no_replication_kernel_verified:
+        reasons.append("no-preceding-materialization proof is incomplete")
+    if not source_verified:
+        reasons.append("source proof is incomplete")
+    if not shape_verified:
+        reasons.append("production cache shape/storage binding is incomplete")
+    reasons.append("allocation proof is pending checksum-bound Task C evidence")
+    return GQAProofEvaluation(
+        verdict=verdict,
+        dispatch_verified=dispatch_verified,
+        no_replication_kernel_verified=no_replication_kernel_verified,
+        allocation_verified=False,
+        source_verified=source_verified,
+        shape_verified=shape_verified,
+        family_comparison=family,
+        positive_materialization_evidence=tuple(positive),
+        reasons=tuple(reasons),
+    )
+
+
 def collect_torch_profiler_trace(
     operation: Callable[[], Any],
     output_path: Path,
@@ -1338,12 +2913,15 @@ def collect_torch_profiler_trace(
     marker: str,
     warmup_count: int,
     device: Any,
+    execution_mode: str = EAGER_EXECUTION_MODE,
 ) -> RawTraceArtifact:
     """Export one untouched CPU+CUDA Chrome trace outside benchmark timing."""
 
     if not callable(operation):
         raise TypeError("dispatch operation must be callable")
     _positive_integer(warmup_count, "warmup_count")
+    if execution_mode not in DISPATCH_EXECUTION_MODES:
+        raise ValueError("dispatch trace execution mode is unsupported")
     if not marker.strip():
         raise ValueError("dispatch trace marker must be non-empty")
     path = Path(output_path)
@@ -1367,10 +2945,20 @@ def collect_torch_profiler_trace(
 
     torch = importlib.import_module("torch")
     profiler = importlib.import_module("torch.profiler")
-    for _ in range(warmup_count):
-        operation()
-    torch.cuda.synchronize(device=device)
     retained_output: Any = None
+    captured_graph: Any = None
+    if execution_mode == EAGER_EXECUTION_MODE:
+        for _ in range(warmup_count):
+            operation()
+        torch.cuda.synchronize(device=device)
+    else:
+        graph_module = importlib.import_module("kvbench.runtime.cuda_graph")
+        captured_graph = graph_module.capture_fixed_graph(
+            operation,
+            warmup_steps=warmup_count,
+            device=device,
+        )
+        retained_output = captured_graph.output
     with profiler.profile(
         activities=[
             profiler.ProfilerActivity.CPU,
@@ -1381,7 +2969,10 @@ def collect_torch_profiler_trace(
         with_stack=True,
     ) as trace:
         with torch.autograd.profiler.record_function(marker):
-            retained_output = operation()
+            if execution_mode == EAGER_EXECUTION_MODE:
+                retained_output = operation()
+            else:
+                retained_output = captured_graph.replay()
     torch.cuda.synchronize(device=device)
     trace.export_chrome_trace(str(staging_path))
     staged_directory_stat = os.lstat(staging_directory)
@@ -1422,6 +3013,7 @@ def collect_torch_profiler_trace(
         artifact = RawTraceArtifact.from_path(
             path,
             relative_path=artifact_relative_path,
+            execution_mode=execution_mode,
         )
     finally:
         os.close(trace_fd)
@@ -1432,7 +3024,7 @@ def collect_torch_profiler_trace(
         os.fsync(directory_fd)
     finally:
         os.close(directory_fd)
-    del retained_output
+    del captured_graph, retained_output
     return artifact
 
 
@@ -1508,30 +3100,237 @@ def audit_gqa_source_files(
             raise GQADeviceDispatchError(
                 "source audit target escapes the source root"
             ) from error
-        raw = resolved.read_bytes()
-        try:
-            text = raw.decode("utf-8")
-        except UnicodeDecodeError as error:
-            raise GQADeviceDispatchError(
-                f"source audit target is not UTF-8: {relative}"
-            ) from error
-        findings = tuple(
-            label
-            for label, pattern in _FORBIDDEN_SOURCE_PATTERNS
-            if pattern.search(text) is not None
-        )
-        evidence.append(
-            SourceFileEvidence(
-                relative_path=relative,
-                sha256=hashlib.sha256(raw).hexdigest(),
-                findings=findings,
-            )
-        )
+        evidence.append(source_file_evidence_from_bytes(relative, resolved.read_bytes()))
     evidence.sort(key=lambda item: item.relative_path)
     paths = tuple(item.relative_path for item in evidence)
     if len(set(paths)) != len(paths):
         raise GQADeviceDispatchError("source audit paths contain duplicates")
     return tuple(evidence)
+
+
+def _source_expression_identifiers(node: ast.AST) -> tuple[str, ...]:
+    identifiers: list[str] = []
+    for item in ast.walk(node):
+        if isinstance(item, ast.Name):
+            identifiers.append(item.id)
+        elif isinstance(item, ast.Attribute):
+            identifiers.append(item.attr)
+    return tuple(identifiers)
+
+
+def _identifier_names_kv_tensor(identifier: str) -> bool:
+    lowered = identifier.casefold()
+    if lowered in {"k", "v", "kv", "key", "value"}:
+        return True
+    tokens = frozenset(filter(None, re.split(r"[^a-z0-9]+", lowered)))
+    return bool(
+        tokens & {"key", "value", "kv"}
+        or ({"k", "cache"} <= tokens)
+        or ({"v", "cache"} <= tokens)
+        or ({"k", "states"} <= tokens)
+        or ({"v", "states"} <= tokens)
+    )
+
+
+def _expression_names_kv_tensor(node: ast.AST) -> bool:
+    return any(
+        _identifier_names_kv_tensor(identifier)
+        for identifier in _source_expression_identifiers(node)
+    )
+
+
+def _identifier_names_replication_target(identifier: str) -> bool:
+    lowered = identifier.casefold()
+    return bool(
+        any(
+            token in lowered
+            for token in (
+                "expanded_kv",
+                "replicated_kv",
+                "query_head_kv",
+                "expanded_key",
+                "expanded_value",
+                "replicated_key",
+                "replicated_value",
+            )
+        )
+    )
+
+
+def _expression_names_replication_target(node: ast.AST) -> bool:
+    return any(
+        _identifier_names_replication_target(identifier)
+        for identifier in _source_expression_identifiers(node)
+    )
+
+
+def _call_leaf_name(call: ast.Call) -> str | None:
+    if isinstance(call.func, ast.Name):
+        return call.func.id
+    if isinstance(call.func, ast.Attribute):
+        return call.func.attr
+    return None
+
+
+def _qualified_source_functions(
+    tree: ast.Module,
+) -> dict[str, ast.FunctionDef | ast.AsyncFunctionDef]:
+    functions: dict[str, ast.FunctionDef | ast.AsyncFunctionDef] = {}
+    for node in tree.body:
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            functions[node.name] = node
+        elif isinstance(node, ast.ClassDef):
+            for child in node.body:
+                if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    functions[f"{node.name}.{child.name}"] = child
+    return functions
+
+
+def _selected_executable_nodes(
+    functions: Mapping[str, ast.FunctionDef | ast.AsyncFunctionDef],
+    selected_paths: tuple[str, ...],
+) -> tuple[ast.AST, ...]:
+    retained: list[ast.AST] = []
+    for path in selected_paths:
+        function = functions.get(path)
+        if function is None:
+            continue
+        pending = list(reversed(function.body))
+        while pending:
+            node = pending.pop()
+            retained.append(node)
+            children = tuple(ast.iter_child_nodes(node))
+            for child in reversed(children):
+                if isinstance(
+                    child,
+                    (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda),
+                ):
+                    continue
+                pending.append(child)
+    return tuple(retained)
+
+
+def _call_expands_kv(call: ast.Call) -> bool:
+    if _call_leaf_name(call) != "expand":
+        return False
+    receiver = call.func.value if isinstance(call.func, ast.Attribute) else None
+    first_argument = call.args[0] if call.args else None
+    return bool(
+        (receiver is not None and _expression_names_kv_tensor(receiver))
+        or (
+            first_argument is not None
+            and _expression_names_kv_tensor(first_argument)
+        )
+    )
+
+
+def _direct_source_replication_findings(
+    selected_nodes: tuple[ast.AST, ...],
+) -> tuple[str, ...]:
+    """Classify direct replication only on exact selected execution paths."""
+
+    direct: set[str] = set()
+    for node in selected_nodes:
+        if not isinstance(node, ast.Call):
+            continue
+        leaf = _call_leaf_name(node)
+        if leaf == "repeat_kv":
+            direct.add("repeat_kv")
+        receiver = node.func.value if isinstance(node.func, ast.Attribute) else None
+        first_argument = node.args[0] if node.args else None
+        operates_on_kv = bool(
+            (receiver is not None and _expression_names_kv_tensor(receiver))
+            or (
+                first_argument is not None
+                and _expression_names_kv_tensor(first_argument)
+            )
+        )
+        if leaf == "repeat_interleave" and operates_on_kv:
+            direct.add("repeat_interleave")
+        if leaf == "repeat" and operates_on_kv:
+            direct.add("tensor_repeat")
+        if leaf in {"clone", "contiguous"} and any(
+            _call_expands_kv(item)
+            for item in ast.walk(node)
+            if isinstance(item, ast.Call) and item is not node
+        ):
+            direct.add("tensor_expand")
+        if (
+            leaf in {"copy", "copy_"}
+            and receiver is not None
+            and _expression_names_replication_target(receiver)
+        ):
+            direct.add("replication_copy")
+
+    assignment_nodes = (
+        node
+        for node in selected_nodes
+        if isinstance(node, (ast.Assign, ast.AnnAssign, ast.NamedExpr))
+    )
+    for assignment in assignment_nodes:
+        if isinstance(assignment, ast.Assign):
+            targets = tuple(assignment.targets)
+            value = assignment.value
+        else:
+            targets = (assignment.target,)
+            value = assignment.value
+        if value is None:
+            continue
+        if not any(_expression_names_replication_target(item) for item in targets):
+            continue
+        for call in (
+            item for item in ast.walk(value) if isinstance(item, ast.Call)
+        ):
+            leaf = _call_leaf_name(call)
+            if leaf == "repeat_interleave":
+                direct.add("repeat_interleave")
+            elif leaf == "repeat":
+                direct.add("tensor_repeat")
+            elif leaf == "expand":
+                direct.add("tensor_expand")
+    return tuple(
+        label
+        for label, _pattern in _FORBIDDEN_SOURCE_PATTERNS
+        if label in direct
+    )
+
+
+def source_file_evidence_from_bytes(
+    relative_path: str,
+    raw: bytes,
+) -> SourceFileEvidence:
+    """Rebuild one source finding record from retained bytes only."""
+
+    if not isinstance(raw, bytes) or not raw:
+        raise GQADeviceDispatchError("source audit bytes are absent")
+    try:
+        text = raw.decode("utf-8")
+    except UnicodeDecodeError as error:
+        raise GQADeviceDispatchError(
+            f"source audit target is not UTF-8: {relative_path}"
+        ) from error
+    try:
+        tree = ast.parse(text)
+    except (SyntaxError, ValueError, RecursionError) as error:
+        raise GQADeviceDispatchError("source audit target is not valid Python") from error
+    expected_paths = _SELECTED_SOURCE_FUNCTION_PATHS.get(relative_path, ())
+    functions = _qualified_source_functions(tree)
+    selected_paths = tuple(path for path in expected_paths if path in functions)
+    selected_nodes = _selected_executable_nodes(functions, selected_paths)
+    findings = tuple(
+        label
+        for label, pattern in _FORBIDDEN_SOURCE_PATTERNS
+        if pattern.search(text) is not None
+    )
+    return SourceFileEvidence(
+        relative_path=relative_path,
+        sha256=hashlib.sha256(raw).hexdigest(),
+        findings=findings,
+        direct_replication_findings=(
+            _direct_source_replication_findings(selected_nodes)
+        ),
+        selected_function_paths=selected_paths,
+    )
 
 
 def tensor_shape_evidence(tensor: Any) -> TensorShapeEvidence:
@@ -1559,6 +3358,50 @@ def tensor_shape_evidence(tensor: Any) -> TensorShapeEvidence:
         storage_bytes=int(storage.nbytes()),
         storage_offset=int(tensor.storage_offset()),
         is_contiguous=bool(tensor.is_contiguous()),
+    )
+
+
+def static_cache_view_binding_evidence(
+    *,
+    layout: StaticCacheLayoutEvidence,
+    layer_index: int,
+    active_context: int,
+    key_backing: Any,
+    value_backing: Any,
+    key_view: Any,
+    value_view: Any,
+) -> StaticCacheViewBindingEvidence:
+    """Capture metadata and storage identity without tensor-to-host conversion."""
+
+    key_backing_storage = key_backing.untyped_storage()
+    value_backing_storage = value_backing.untyped_storage()
+    key_view_storage = key_view.untyped_storage()
+    value_view_storage = value_view.untyped_storage()
+    key_backing_pointer = int(key_backing_storage.data_ptr())
+    value_backing_pointer = int(value_backing_storage.data_ptr())
+    key_view_pointer = int(key_view_storage.data_ptr())
+    value_view_pointer = int(value_view_storage.data_ptr())
+    return StaticCacheViewBindingEvidence(
+        layout=layout,
+        layer_index=layer_index,
+        active_context=active_context,
+        key_backing=tensor_shape_evidence(key_backing),
+        value_backing=tensor_shape_evidence(value_backing),
+        key_view=tensor_shape_evidence(key_view),
+        value_view=tensor_shape_evidence(value_view),
+        key_backing_storage_ptr=key_backing_pointer,
+        value_backing_storage_ptr=value_backing_pointer,
+        key_view_storage_ptr=key_view_pointer,
+        value_view_storage_ptr=value_view_pointer,
+        key_view_shares_backing_storage=bool(
+            key_view_pointer == key_backing_pointer
+        ),
+        value_view_shares_backing_storage=bool(
+            value_view_pointer == value_backing_pointer
+        ),
+        key_value_backing_storages_distinct=bool(
+            key_backing_pointer != value_backing_pointer
+        ),
     )
 
 
@@ -1762,11 +3605,60 @@ def _validate_control_tensors(
         raise GQADeviceDispatchError("dispatch control devices differ")
 
 
+def _validate_geometry_bound_control_tensors(
+    torch: Any,
+    *,
+    role: str,
+    query: Any,
+    key: Any,
+    value: Any,
+    active_context: int,
+) -> None:
+    """Validate arbitrary Phase 3 B/context while freezing model geometry."""
+
+    if role not in {"gqa", "mha_control"}:
+        raise ValueError("geometry-bound dispatch role is unsupported")
+    if not all(isinstance(item, torch.Tensor) for item in (query, key, value)):
+        raise GQADeviceDispatchError("geometry-bound controls require tensors")
+    if query.ndim != 4 or key.ndim != 4 or value.ndim != 4:
+        raise GQADeviceDispatchError("geometry-bound controls must be rank four")
+    expected_kv_heads = (
+        PHASE3_NUM_KV_HEADS if role == "gqa" else PHASE3_NUM_QUERY_HEADS
+    )
+    if (
+        int(query.shape[1]) != PHASE3_NUM_QUERY_HEADS
+        or int(key.shape[1]) != expected_kv_heads
+    ):
+        raise GQADeviceDispatchError("geometry-bound control heads differ")
+    if (
+        int(query.shape[-1]) != PHASE3_HEAD_DIM
+        or int(key.shape[-1]) != PHASE3_HEAD_DIM
+    ):
+        raise GQADeviceDispatchError("geometry-bound head dimension differs")
+    if int(query.shape[-2]) != 1:
+        raise GQADeviceDispatchError("geometry-bound control must use one query")
+    if tuple(key.shape) != tuple(value.shape):
+        raise GQADeviceDispatchError("geometry-bound K/V shapes differ")
+    if int(query.shape[0]) != int(key.shape[0]):
+        raise GQADeviceDispatchError("geometry-bound batch dimensions differ")
+    if int(key.shape[-2]) != active_context:
+        raise GQADeviceDispatchError("K/V view differs from active context")
+    if query.dtype != torch.bfloat16 or key.dtype != query.dtype:
+        raise GQADeviceDispatchError("geometry-bound controls must use BF16")
+    if value.dtype != query.dtype:
+        raise GQADeviceDispatchError("geometry-bound V dtype differs")
+    if query.device.type != "cuda":
+        raise GQADeviceDispatchError("geometry-bound controls require CUDA")
+    if key.device != query.device or value.device != query.device:
+        raise GQADeviceDispatchError("geometry-bound control devices differ")
+
+
 def _read_verified_trace(
     path: Path,
     artifact: RawTraceArtifact,
     *,
     marker: str,
+    require_kernel_launch_runtime: bool = False,
 ) -> ScopedCUDAActivities:
     if not path.is_file() or path.is_symlink():
         raise GQADeviceDispatchError("raw trace is not a real file")
@@ -1775,7 +3667,13 @@ def _read_verified_trace(
         raise GQADeviceDispatchError("raw trace size changed after collection")
     if hashlib.sha256(raw).hexdigest() != artifact.sha256:
         raise GQADeviceDispatchError("raw trace digest changed after collection")
-    return parse_scoped_chrome_cuda_events(raw, marker=marker)
+    if artifact.execution_mode == CUDA_GRAPH_REPLAY_EXECUTION_MODE:
+        return parse_scoped_chrome_cuda_graph_events(raw, marker=marker)
+    return parse_scoped_chrome_cuda_events(
+        raw,
+        marker=marker,
+        require_kernel_launch_runtime=require_kernel_launch_runtime,
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -1855,6 +3753,9 @@ class GQADeviceDispatchAudit:
             ),
             expanded_kv_tensor_detected=self.expanded_kv_tensor_detected,
             explicitly_related_families=set(self.explicitly_related_families),
+            source_positive_materialization_evidence=(
+                source_materialization_evidence(self.gqa_source_shape.sources)
+            ),
         )
         if expected != self.evaluation:
             raise ValueError("dispatch audit evaluation is not reproducible")
@@ -1896,6 +3797,511 @@ class GQADeviceDispatchAudit:
             ],
             "evaluation": self.evaluation.to_dict(),
         }
+
+
+def _geometry_bound_trace_marker(
+    point: Phase3DispatchPointBinding,
+    role: str,
+) -> str:
+    if role not in {"gqa", "mha_control"}:
+        raise ValueError("geometry-bound dispatch role is unsupported")
+    return (
+        f"kvbench.phase3.geometry_dispatch.{point.run_id}."
+        f"{point.point_id}.{role}"
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class GeometryBoundRawTraceValidationEvidence:
+    """Raw-derived trace scopes, device events, sequences, and digest."""
+
+    execution_mode: str
+    gqa_raw_sha256: str
+    gqa_raw_size_bytes: int
+    mha_raw_sha256: str
+    mha_raw_size_bytes: int
+    gqa_scope: TraceScopeEvidence | CUDAGraphTraceScopeEvidence
+    mha_scope: TraceScopeEvidence | CUDAGraphTraceScopeEvidence
+    gqa_device_events: tuple[CUDADeviceEvent, ...]
+    mha_device_events: tuple[CUDADeviceEvent, ...]
+    gqa_kernel_sequence: FlashKernelSequenceEvidence
+    mha_kernel_sequence: FlashKernelSequenceEvidence
+    evidence_sha256: str
+
+    def __post_init__(self) -> None:
+        if self.execution_mode not in DISPATCH_EXECUTION_MODES:
+            raise ValueError("raw validation execution mode is unsupported")
+        for value in (self.gqa_raw_sha256, self.mha_raw_sha256):
+            if not _SHA256_RE.fullmatch(value):
+                raise ValueError("raw validation SHA-256 is invalid")
+        for value in (self.gqa_raw_size_bytes, self.mha_raw_size_bytes):
+            _positive_integer(value, "raw_trace_size_bytes")
+        expected_scope = (
+            TraceScopeEvidence
+            if self.execution_mode == EAGER_EXECUTION_MODE
+            else CUDAGraphTraceScopeEvidence
+        )
+        if not isinstance(self.gqa_scope, expected_scope) or not isinstance(
+            self.mha_scope, expected_scope
+        ):
+            raise ValueError("raw validation scope differs from execution mode")
+        if analyze_flash_kernel_sequence(self.gqa_device_events) != (
+            self.gqa_kernel_sequence
+        ):
+            raise ValueError("raw GQA kernel sequence is not reproducible")
+        if analyze_flash_kernel_sequence(self.mha_device_events) != (
+            self.mha_kernel_sequence
+        ):
+            raise ValueError("raw MHA kernel sequence is not reproducible")
+        if self.evidence_sha256 != self._derive_sha256():
+            raise ValueError("raw trace validation digest differs")
+
+    def _payload(self) -> dict[str, object]:
+        return {
+            "execution_mode": self.execution_mode,
+            "gqa_raw_sha256": self.gqa_raw_sha256,
+            "gqa_raw_size_bytes": self.gqa_raw_size_bytes,
+            "mha_raw_sha256": self.mha_raw_sha256,
+            "mha_raw_size_bytes": self.mha_raw_size_bytes,
+            "gqa_scope": self.gqa_scope.to_dict(),
+            "mha_scope": self.mha_scope.to_dict(),
+            "gqa_device_events": [
+                event.to_dict() for event in self.gqa_device_events
+            ],
+            "mha_device_events": [
+                event.to_dict() for event in self.mha_device_events
+            ],
+            "gqa_kernel_sequence": self.gqa_kernel_sequence.to_dict(),
+            "mha_kernel_sequence": self.mha_kernel_sequence.to_dict(),
+        }
+
+    def _derive_sha256(self) -> str:
+        raw = json.dumps(
+            self._payload(),
+            allow_nan=False,
+            ensure_ascii=True,
+            separators=(",", ":"),
+            sort_keys=True,
+        ).encode("utf-8")
+        return hashlib.sha256(raw).hexdigest()
+
+    @classmethod
+    def create(
+        cls,
+        *,
+        execution_mode: str,
+        gqa_raw_sha256: str,
+        gqa_raw_size_bytes: int,
+        mha_raw_sha256: str,
+        mha_raw_size_bytes: int,
+        gqa_scope: TraceScopeEvidence | CUDAGraphTraceScopeEvidence,
+        mha_scope: TraceScopeEvidence | CUDAGraphTraceScopeEvidence,
+        gqa_device_events: tuple[CUDADeviceEvent, ...],
+        mha_device_events: tuple[CUDADeviceEvent, ...],
+    ) -> GeometryBoundRawTraceValidationEvidence:
+        gqa_sequence = analyze_flash_kernel_sequence(gqa_device_events)
+        mha_sequence = analyze_flash_kernel_sequence(mha_device_events)
+        payload = {
+            "execution_mode": execution_mode,
+            "gqa_raw_sha256": gqa_raw_sha256,
+            "gqa_raw_size_bytes": gqa_raw_size_bytes,
+            "mha_raw_sha256": mha_raw_sha256,
+            "mha_raw_size_bytes": mha_raw_size_bytes,
+            "gqa_scope": gqa_scope.to_dict(),
+            "mha_scope": mha_scope.to_dict(),
+            "gqa_device_events": [event.to_dict() for event in gqa_device_events],
+            "mha_device_events": [event.to_dict() for event in mha_device_events],
+            "gqa_kernel_sequence": gqa_sequence.to_dict(),
+            "mha_kernel_sequence": mha_sequence.to_dict(),
+        }
+        digest = hashlib.sha256(
+            json.dumps(
+                payload,
+                allow_nan=False,
+                ensure_ascii=True,
+                separators=(",", ":"),
+                sort_keys=True,
+            ).encode("utf-8")
+        ).hexdigest()
+        return cls(
+            execution_mode=execution_mode,
+            gqa_raw_sha256=gqa_raw_sha256,
+            gqa_raw_size_bytes=gqa_raw_size_bytes,
+            mha_raw_sha256=mha_raw_sha256,
+            mha_raw_size_bytes=mha_raw_size_bytes,
+            gqa_scope=gqa_scope,
+            mha_scope=mha_scope,
+            gqa_device_events=gqa_device_events,
+            mha_device_events=mha_device_events,
+            gqa_kernel_sequence=gqa_sequence,
+            mha_kernel_sequence=mha_sequence,
+            evidence_sha256=digest,
+        )
+
+    def to_dict(self) -> dict[str, object]:
+        return {**self._payload(), "evidence_sha256": self.evidence_sha256}
+
+
+def revalidate_geometry_bound_raw_traces(
+    *,
+    point: Phase3DispatchPointBinding,
+    gqa_artifact: RawTraceArtifact,
+    mha_artifact: RawTraceArtifact,
+    gqa_raw: bytes,
+    mha_raw: bytes,
+) -> GeometryBoundRawTraceValidationEvidence:
+    """Purely reparse retained raw traces and rebuild all dispatch evidence."""
+
+    execution_mode = (
+        CUDA_GRAPH_REPLAY_EXECUTION_MODE
+        if point.graph_mode == "cuda_graph"
+        else EAGER_EXECUTION_MODE
+    )
+    for label, artifact, raw in (
+        ("gqa", gqa_artifact, gqa_raw),
+        ("mha_control", mha_artifact, mha_raw),
+    ):
+        if artifact.execution_mode != execution_mode:
+            raise GQADeviceDispatchError(
+                f"{label} raw trace execution mode differs from point"
+            )
+        if len(raw) != artifact.size_bytes:
+            raise GQADeviceDispatchError(f"{label} raw trace size differs")
+        if hashlib.sha256(raw).hexdigest() != artifact.sha256:
+            raise GQADeviceDispatchError(f"{label} raw trace digest differs")
+    parser = (
+        parse_scoped_chrome_cuda_graph_events
+        if execution_mode == CUDA_GRAPH_REPLAY_EXECUTION_MODE
+        else parse_scoped_chrome_cuda_events
+    )
+    if execution_mode == EAGER_EXECUTION_MODE:
+        gqa_scoped = parser(
+            gqa_raw,
+            marker=_geometry_bound_trace_marker(point, "gqa"),
+            require_kernel_launch_runtime=True,
+        )
+        mha_scoped = parser(
+            mha_raw,
+            marker=_geometry_bound_trace_marker(point, "mha_control"),
+            require_kernel_launch_runtime=True,
+        )
+    else:
+        gqa_scoped = parser(
+            gqa_raw,
+            marker=_geometry_bound_trace_marker(point, "gqa"),
+        )
+        mha_scoped = parser(
+            mha_raw,
+            marker=_geometry_bound_trace_marker(point, "mha_control"),
+        )
+    return GeometryBoundRawTraceValidationEvidence.create(
+        execution_mode=execution_mode,
+        gqa_raw_sha256=gqa_artifact.sha256,
+        gqa_raw_size_bytes=gqa_artifact.size_bytes,
+        mha_raw_sha256=mha_artifact.sha256,
+        mha_raw_size_bytes=mha_artifact.size_bytes,
+        gqa_scope=gqa_scoped.scope,
+        mha_scope=mha_scoped.scope,
+        gqa_device_events=gqa_scoped.device_events,
+        mha_device_events=mha_scoped.device_events,
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class Phase3GeometryBoundGQADeviceDispatchAudit:
+    """Dispatch-only proof bound to one production Phase 3 cache geometry."""
+
+    point: Phase3DispatchPointBinding
+    backend_identity: BackendIdentityEvidence
+    gqa: DispatchControlEvidence
+    mha: DispatchControlEvidence
+    source_shape: GeometryBoundSourceShapeEvidence
+    gqa_kernel_sequence: FlashKernelSequenceEvidence
+    mha_kernel_sequence: FlashKernelSequenceEvidence
+    trace_validation: GeometryBoundRawTraceValidationEvidence
+    explicitly_related_families: tuple[tuple[str, str], ...]
+    related_family_policy_sha256: str | None
+    evaluation: GQAProofEvaluation
+
+    def __post_init__(self) -> None:
+        expected_execution_mode = (
+            CUDA_GRAPH_REPLAY_EXECUTION_MODE
+            if self.point.graph_mode == "cuda_graph"
+            else EAGER_EXECUTION_MODE
+        )
+        if self.gqa.role != "gqa" or self.mha.role != "mha_control":
+            raise ValueError("geometry-bound controls have incorrect roles")
+        if (
+            self.gqa.batch_size != self.point.batch_size
+            or self.mha.batch_size != self.point.batch_size
+            or self.gqa.context_length != self.point.active_context
+            or self.mha.context_length != self.point.active_context
+            or self.gqa.query_length != 1
+            or self.mha.query_length != 1
+            or self.gqa.is_causal
+            or self.mha.is_causal
+            or self.gqa.execution_mode != expected_execution_mode
+            or self.mha.execution_mode != expected_execution_mode
+        ):
+            raise ValueError("geometry-bound controls differ from the Phase 3 point")
+        cache = self.source_shape.cache
+        if (
+            cache.active_context != self.point.active_context
+            or cache.layout.batch_size != self.point.batch_size
+            or cache.layout.capacity != self.point.capacity
+        ):
+            raise ValueError("static-cache evidence differs from the point binding")
+        if self.gqa.raw_trace is None or self.mha.raw_trace is None:
+            raise ValueError("geometry-bound raw traces are absent")
+        if self.gqa.trace_scope is None or self.mha.trace_scope is None:
+            raise ValueError("geometry-bound trace scopes are absent")
+        if self.gqa.trace_scope.marker != _geometry_bound_trace_marker(
+            self.point, "gqa"
+        ):
+            raise ValueError("GQA trace marker differs from run/point binding")
+        if self.mha.trace_scope.marker != _geometry_bound_trace_marker(
+            self.point, "mha_control"
+        ):
+            raise ValueError("MHA trace marker differs from run/point binding")
+        source_paths = tuple(
+            item.relative_path for item in self.source_shape.sources
+        )
+        if source_paths != REQUIRED_SUT_SOURCES:
+            raise ValueError("geometry-bound source paths differ from the SUT")
+        fingerprints = {
+            self.gqa.backend.source_build_fingerprint,
+            self.mha.backend.source_build_fingerprint,
+        }
+        if fingerprints != {self.backend_identity.sha256}:
+            raise ValueError("geometry-bound backend controls differ from identity")
+        if self.explicitly_related_families != tuple(
+            sorted(set(self.explicitly_related_families))
+        ):
+            raise ValueError("related-family policy pairs are not canonical")
+        if any(
+            not isinstance(pair, tuple)
+            or len(pair) != 2
+            or any(not isinstance(item, str) or not item for item in pair)
+            for pair in self.explicitly_related_families
+        ):
+            raise ValueError("related-family policy pair is malformed")
+        allowed_pairs = set(PHASE3_FLASH_RELATED_FAMILIES)
+        if any(
+            pair not in allowed_pairs and (pair[1], pair[0]) not in allowed_pairs
+            for pair in self.explicitly_related_families
+        ):
+            raise ValueError("related-family policy contains an unsupported pair")
+        if self.related_family_policy_sha256 is not None and not (
+            _SHA256_RE.fullmatch(self.related_family_policy_sha256)
+        ):
+            raise ValueError("related-family policy SHA-256 is invalid")
+        if bool(self.explicitly_related_families) != bool(
+            self.related_family_policy_sha256
+        ):
+            raise ValueError(
+                "related families and decision-record digest must coexist"
+            )
+        if (
+            self.trace_validation.execution_mode != expected_execution_mode
+            or self.trace_validation.gqa_raw_sha256 != self.gqa.raw_trace.sha256
+            or self.trace_validation.gqa_raw_size_bytes
+            != self.gqa.raw_trace.size_bytes
+            or self.trace_validation.mha_raw_sha256 != self.mha.raw_trace.sha256
+            or self.trace_validation.mha_raw_size_bytes
+            != self.mha.raw_trace.size_bytes
+            or self.trace_validation.gqa_scope != self.gqa.trace_scope
+            or self.trace_validation.mha_scope != self.mha.trace_scope
+            or self.trace_validation.gqa_device_events != self.gqa.device_events
+            or self.trace_validation.mha_device_events != self.mha.device_events
+        ):
+            raise ValueError("raw-derived trace validation differs from controls")
+        if analyze_flash_kernel_sequence(self.gqa.device_events) != (
+            self.gqa_kernel_sequence
+        ):
+            raise ValueError("GQA kernel sequence is not reproducible")
+        if analyze_flash_kernel_sequence(self.mha.device_events) != (
+            self.mha_kernel_sequence
+        ):
+            raise ValueError("MHA kernel sequence is not reproducible")
+        expected = evaluate_geometry_bound_gqa_device_dispatch(
+            point=self.point,
+            gqa=self.gqa,
+            mha=self.mha,
+            gqa_sequence=self.gqa_kernel_sequence,
+            mha_sequence=self.mha_kernel_sequence,
+            source_shape=self.source_shape,
+            explicitly_related_families=set(
+                self.explicitly_related_families
+            ),
+        )
+        if expected != self.evaluation:
+            raise ValueError("geometry-bound dispatch evaluation is not reproducible")
+        if self.evaluation.allocation_verified or self.evaluation.verdict is (
+            GQAVerdict.NONMATERIALIZATION_VERIFIED
+        ):
+            raise ValueError("dispatch-only evidence cannot verify allocation")
+
+    def to_dict(self) -> dict[str, object]:
+        assert self.gqa.raw_trace is not None
+        assert self.mha.raw_trace is not None
+        return {
+            "schema_version": (
+                "kvbench-phase3-geometry-bound-gqa-device-dispatch-audit-1.0.0"
+            ),
+            "run_kind": "dispatch_audit",
+            "measurement_scope": "phase3_point_bound_static_cache_operator_controls",
+            "profiler_instrumented": True,
+            "performance_timing_reported": False,
+            "benchmark_timing_eligible": False,
+            "point_binding": self.point.to_dict(),
+            "backend_identity": self.backend_identity.to_dict(),
+            "source_shape": self.source_shape.to_dict(
+                gqa=self.gqa,
+                mha=self.mha,
+            ),
+            "raw_trace_validation": self.trace_validation.to_dict(),
+            "raw_trace_bytes_verified": True,
+            "strict_marker_dispatch_launch_correlation_verified": True,
+            "dispatch_trace_sha256": {
+                "gqa": self.gqa.raw_trace.sha256,
+                "mha_control": self.mha.raw_trace.sha256,
+            },
+            "gqa": self.gqa.to_dict(),
+            "mha_control": self.mha.to_dict(),
+            "kernel_sequences": {
+                "gqa": self.gqa_kernel_sequence.to_dict(),
+                "mha_control": self.mha_kernel_sequence.to_dict(),
+            },
+            "kernel_family_policy": {
+                "standard_family": FLASH_FORWARD_FAMILY,
+                "split_k_family": FLASH_SPLIT_KV_FAMILY,
+                "split_k_contract": (
+                    "exactly_one_forward_followed_by_exactly_one_combine"
+                ),
+                "explicitly_related_pairs": [
+                    list(pair) for pair in self.explicitly_related_families
+                ],
+                "candidate_related_pairs": [
+                    list(pair) for pair in PHASE3_FLASH_RELATED_FAMILIES
+                ],
+                "decision_record_sha256": self.related_family_policy_sha256,
+                "decision_approved": bool(self.explicitly_related_families),
+                "unrelated_or_ambiguous_rejected": True,
+            },
+            "allocation_size_proof": {
+                "verified": False,
+                "dispatch_trace_hash_binding_required": True,
+                "binding_owner": "phase3_task_c_allocation_attribution",
+                "raw_derived_binding_inputs": {
+                    "trace_validation_sha256": (
+                        self.trace_validation.evidence_sha256
+                    ),
+                    "gqa_trace": {
+                        "relative_path": self.gqa.raw_trace.relative_path,
+                        "sha256": self.gqa.raw_trace.sha256,
+                        "size_bytes": self.gqa.raw_trace.size_bytes,
+                    },
+                    "mha_control_trace": {
+                        "relative_path": self.mha.raw_trace.relative_path,
+                        "sha256": self.mha.raw_trace.sha256,
+                        "size_bytes": self.mha.raw_trace.size_bytes,
+                    },
+                    "gqa_kv_bytes": self.gqa.byte_evidence.to_dict(),
+                    "mha_control_kv_bytes": self.mha.byte_evidence.to_dict(),
+                },
+            },
+            "evaluation": self.evaluation.to_dict(),
+        }
+
+
+def revalidate_phase3_geometry_bound_dispatch_audit(
+    audit: Phase3GeometryBoundGQADeviceDispatchAudit,
+    *,
+    gqa_raw: bytes,
+    mha_raw: bytes,
+    backend_identity_raw: bytes,
+    source_bytes_by_path: Mapping[str, bytes],
+) -> Phase3GeometryBoundGQADeviceDispatchAudit:
+    """Purely rebuild a serialized audit's raw trace and source bindings."""
+
+    if not isinstance(backend_identity_raw, bytes) or not backend_identity_raw:
+        raise GQADeviceDispatchError("raw backend identity is absent")
+    try:
+        backend_payload = json.loads(backend_identity_raw.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError, RecursionError) as error:
+        raise GQADeviceDispatchError("raw backend identity is invalid") from error
+    if not isinstance(backend_payload, dict):
+        raise GQADeviceDispatchError("raw backend identity must be an object")
+    rebuilt_backend_identity = BackendIdentityEvidence.from_payload(
+        backend_payload
+    )
+    if (
+        backend_identity_raw
+        != rebuilt_backend_identity.canonical_json.encode("utf-8")
+        or rebuilt_backend_identity != audit.backend_identity
+    ):
+        raise GQADeviceDispatchError(
+            "retained backend identity bytes differ from audit identity"
+        )
+    if set(source_bytes_by_path) != set(REQUIRED_SUT_SOURCES):
+        raise GQADeviceDispatchError("raw source bundle paths are incomplete")
+    rebuilt_sources = tuple(
+        source_file_evidence_from_bytes(path, source_bytes_by_path[path])
+        for path in REQUIRED_SUT_SOURCES
+    )
+    if rebuilt_sources != audit.source_shape.sources:
+        raise GQADeviceDispatchError("retained source bytes differ from audit identity")
+    if audit.gqa.raw_trace is None or audit.mha.raw_trace is None:
+        raise GQADeviceDispatchError("audit raw trace metadata is absent")
+    trace_validation = revalidate_geometry_bound_raw_traces(
+        point=audit.point,
+        gqa_artifact=audit.gqa.raw_trace,
+        mha_artifact=audit.mha.raw_trace,
+        gqa_raw=gqa_raw,
+        mha_raw=mha_raw,
+    )
+    gqa = replace(
+        audit.gqa,
+        trace_scope=trace_validation.gqa_scope,
+        device_events=trace_validation.gqa_device_events,
+    )
+    mha = replace(
+        audit.mha,
+        trace_scope=trace_validation.mha_scope,
+        device_events=trace_validation.mha_device_events,
+    )
+    source_shape = replace(audit.source_shape, sources=rebuilt_sources)
+    evaluation = evaluate_geometry_bound_gqa_device_dispatch(
+        point=audit.point,
+        gqa=gqa,
+        mha=mha,
+        gqa_sequence=trace_validation.gqa_kernel_sequence,
+        mha_sequence=trace_validation.mha_kernel_sequence,
+        source_shape=source_shape,
+        explicitly_related_families=set(
+            audit.explicitly_related_families
+        ),
+    )
+    rebuilt = Phase3GeometryBoundGQADeviceDispatchAudit(
+        point=audit.point,
+        backend_identity=rebuilt_backend_identity,
+        gqa=gqa,
+        mha=mha,
+        source_shape=source_shape,
+        gqa_kernel_sequence=trace_validation.gqa_kernel_sequence,
+        mha_kernel_sequence=trace_validation.mha_kernel_sequence,
+        trace_validation=trace_validation,
+        explicitly_related_families=audit.explicitly_related_families,
+        related_family_policy_sha256=(
+            audit.related_family_policy_sha256
+        ),
+        evaluation=evaluation,
+    )
+    if rebuilt != audit:
+        raise GQADeviceDispatchError(
+            "raw-derived dispatch audit differs from retained audit"
+        )
+    return rebuilt
 
 
 def collect_gqa_mha_device_dispatch(
@@ -2082,6 +4488,9 @@ def collect_gqa_mha_device_dispatch(
         expanded_kv_allocation_detected=expanded_kv_allocation_detected,
         expanded_kv_tensor_detected=expanded_kv_tensor_detected,
         explicitly_related_families=set(related),
+        source_positive_materialization_evidence=(
+            source_materialization_evidence(gqa_source_shape.sources)
+        ),
     )
     return GQADeviceDispatchAudit(
         backend_identity=identity,
@@ -2094,5 +4503,294 @@ def collect_gqa_mha_device_dispatch(
         expanded_kv_allocation_detected=expanded_kv_allocation_detected,
         expanded_kv_tensor_detected=expanded_kv_tensor_detected,
         explicitly_related_families=related,
+        evaluation=evaluation,
+    )
+
+
+def collect_phase3_geometry_bound_gqa_mha_device_dispatch(
+    *,
+    run_id: str,
+    point_id: str,
+    active_context: int,
+    cache_capacity: int,
+    cache_layout_fingerprint: str,
+    cache_workspace_bytes: int,
+    cache_layer_index: int,
+    cache_key_backing: Any,
+    cache_value_backing: Any,
+    gqa_query: Any,
+    gqa_key_view: Any,
+    gqa_value_view: Any,
+    mha_query: Any,
+    mha_key: Any,
+    mha_value: Any,
+    output_directory: Path,
+    artifact_relative_root: str,
+    source_root: Path,
+    source_paths: tuple[Path, ...],
+    is_causal: bool,
+    scale: float,
+    warmup_count: int,
+    explicitly_related_families: Set[tuple[str, str]] = frozenset(),
+    related_family_policy_sha256: str | None = None,
+) -> Phase3GeometryBoundGQADeviceDispatchAudit:
+    """Collect dispatch-only evidence for one actual Phase 3 cache view.
+
+    This path deliberately has no allocator-verdict argument. Task C must bind
+    its raw allocator evidence to the retained GQA/MHA trace hashes before the
+    combined non-materialization verdict can become verified.
+    """
+
+    _positive_integer(active_context, "active_context")
+    _positive_integer(cache_capacity, "cache_capacity")
+    _positive_integer(warmup_count, "warmup_count")
+    if not isinstance(is_causal, bool):
+        raise TypeError("is_causal must be boolean")
+    if is_causal:
+        raise ValueError("geometry-bound decode controls must be non-causal")
+    if not isinstance(scale, (int, float)) or isinstance(scale, bool):
+        raise TypeError("scale must be numeric")
+    if not math.isfinite(float(scale)) or float(scale) != PHASE3_HEAD_DIM**-0.5:
+        raise ValueError("geometry-bound scale differs from frozen head scale")
+    try:
+        related_families = tuple(sorted(set(explicitly_related_families)))
+    except TypeError as error:
+        raise ValueError("related-family policy pairs are malformed") from error
+    if any(
+        not isinstance(pair, tuple)
+        or len(pair) != 2
+        or any(not isinstance(item, str) or not item for item in pair)
+        for pair in related_families
+    ):
+        raise ValueError("related-family policy pair is malformed")
+    allowed_pairs = set(PHASE3_FLASH_RELATED_FAMILIES)
+    if any(
+        pair not in allowed_pairs and (pair[1], pair[0]) not in allowed_pairs
+        for pair in related_families
+    ):
+        raise ValueError("related-family policy contains an unsupported pair")
+    if related_family_policy_sha256 is not None and not _SHA256_RE.fullmatch(
+        related_family_policy_sha256
+    ):
+        raise ValueError("related-family policy SHA-256 is invalid")
+    if bool(related_families) != bool(related_family_policy_sha256):
+        raise ValueError(
+            "related families and decision-record digest must coexist"
+        )
+    relative_root = PurePosixPath(artifact_relative_root)
+    if (
+        not artifact_relative_root
+        or relative_root.is_absolute()
+        or "." in relative_root.parts
+        or ".." in relative_root.parts
+    ):
+        raise ValueError("artifact trace root must be safe and relative")
+    output_root = Path(output_directory)
+    if not output_root.is_dir() or output_root.is_symlink():
+        raise GQADeviceDispatchError("trace output directory must be real")
+
+    torch = importlib.import_module("torch")
+    controls = (
+        ("gqa", gqa_query, gqa_key_view, gqa_value_view),
+        ("mha_control", mha_query, mha_key, mha_value),
+    )
+    for role, query, key, value in controls:
+        _validate_geometry_bound_control_tensors(
+            torch,
+            role=role,
+            query=query,
+            key=key,
+            value=value,
+            active_context=active_context,
+        )
+    if not isinstance(cache_key_backing, torch.Tensor) or not isinstance(
+        cache_value_backing, torch.Tensor
+    ):
+        raise GQADeviceDispatchError("static-cache backings require tensors")
+    if (
+        tuple(int(item) for item in gqa_query.shape[:1] + gqa_query.shape[2:])
+        != tuple(int(item) for item in mha_query.shape[:1] + mha_query.shape[2:])
+        or gqa_query.dtype != mha_query.dtype
+        or gqa_query.device != mha_query.device
+    ):
+        raise GQADeviceDispatchError("geometry-bound held constants differ")
+    point = Phase3DispatchPointBinding.create(
+        run_id=run_id,
+        point_id=point_id,
+        batch_size=int(gqa_query.shape[0]),
+        active_context=active_context,
+        capacity=cache_capacity,
+    )
+    execution_mode = (
+        CUDA_GRAPH_REPLAY_EXECUTION_MODE
+        if point.graph_mode == "cuda_graph"
+        else EAGER_EXECUTION_MODE
+    )
+    sources = audit_gqa_source_files(source_root, source_paths)
+    if tuple(item.relative_path for item in sources) != REQUIRED_SUT_SOURCES:
+        raise GQADeviceDispatchError(
+            "geometry-bound dispatch requires the exact frozen SUT source set"
+        )
+    source_by_path = {source.relative_path: source for source in sources}
+    cache_source = source_by_path[REQUIRED_SUT_SOURCES[2]]
+    layout = StaticCacheLayoutEvidence.create(
+        batch_size=point.batch_size,
+        capacity=cache_capacity,
+        device=str(gqa_query.device),
+        workspace_bytes=cache_workspace_bytes,
+        implementation_sha256=cache_source.sha256,
+        layout_fingerprint=cache_layout_fingerprint,
+    )
+    cache_binding = static_cache_view_binding_evidence(
+        layout=layout,
+        layer_index=cache_layer_index,
+        active_context=active_context,
+        key_backing=cache_key_backing,
+        value_backing=cache_value_backing,
+        key_view=gqa_key_view,
+        value_view=gqa_value_view,
+    )
+    if not cache_binding.verified:
+        raise GQADeviceDispatchError(
+            "static-cache view binding failed: "
+            + ",".join(cache_binding.failure_reasons)
+        )
+
+    backend_module = importlib.import_module("kvbench.runtime.backend")
+    forced_flash_execution = backend_module.forced_flash_execution
+    identity = BackendIdentityEvidence.from_payload(
+        backend_module.backend_identity()
+    )
+    backend_controls = {
+        role: _collect_backend_control(
+            torch,
+            query=query,
+            key=key,
+            value=value,
+            is_causal=False,
+            scale=float(scale),
+            identity=identity,
+            forced_flash_execution=forced_flash_execution,
+        )
+        for role, query, key, value in controls
+    }
+
+    retained_operation_outputs: dict[str, Any] = {}
+
+    def operation(
+        role: str,
+        query: Any,
+        key: Any,
+        value: Any,
+    ) -> Callable[[], Any]:
+        def invoke() -> Any:
+            with forced_flash_execution():
+                output = torch.nn.functional.scaled_dot_product_attention(
+                    query,
+                    key,
+                    value,
+                    attn_mask=None,
+                    dropout_p=0.0,
+                    is_causal=False,
+                    scale=float(scale),
+                    enable_gqa=True,
+                )
+            retained_operation_outputs[role] = output
+            return output
+
+        return invoke
+
+    retained_controls: dict[str, DispatchControlEvidence] = {}
+    output_shapes: dict[str, TensorShapeEvidence] = {}
+    for role, query, key, value in controls:
+        filename = (
+            "gqa.geometry.chrome.json"
+            if role == "gqa"
+            else "mha.geometry.chrome.json"
+        )
+        trace_path = output_root / filename
+        relative_path = (relative_root / filename).as_posix()
+        marker = _geometry_bound_trace_marker(point, role)
+        invoke = operation(role, query, key, value)
+        artifact = collect_torch_profiler_trace(
+            invoke,
+            trace_path,
+            artifact_relative_path=relative_path,
+            marker=marker,
+            warmup_count=warmup_count,
+            device=query.device,
+            execution_mode=execution_mode,
+        )
+        scoped = _read_verified_trace(
+            trace_path,
+            artifact,
+            marker=marker,
+            require_kernel_launch_runtime=True,
+        )
+        output_shapes[role] = tensor_shape_evidence(
+            retained_operation_outputs.pop(role)
+        )
+        retained_controls[role] = DispatchControlEvidence(
+            role=role,
+            batch_size=int(query.shape[0]),
+            context_length=int(key.shape[-2]),
+            query_length=int(query.shape[-2]),
+            num_query_heads=int(query.shape[1]),
+            num_kv_heads=int(key.shape[1]),
+            head_dim=int(query.shape[-1]),
+            dtype=str(query.dtype),
+            dtype_bytes=int(query.element_size()),
+            is_causal=False,
+            warmup_count=warmup_count,
+            backend=backend_controls[role],
+            raw_trace=artifact,
+            trace_scope=scoped.scope,
+            device_events=scoped.device_events,
+            execution_mode=execution_mode,
+        )
+
+    gqa = retained_controls["gqa"]
+    mha = retained_controls["mha_control"]
+    assert gqa.raw_trace is not None
+    assert mha.raw_trace is not None
+    trace_validation = revalidate_geometry_bound_raw_traces(
+        point=point,
+        gqa_artifact=gqa.raw_trace,
+        mha_artifact=mha.raw_trace,
+        gqa_raw=(output_root / "gqa.geometry.chrome.json").read_bytes(),
+        mha_raw=(output_root / "mha.geometry.chrome.json").read_bytes(),
+    )
+    source_shape = GeometryBoundSourceShapeEvidence(
+        sources=sources,
+        gqa_query=tensor_shape_evidence(gqa_query),
+        gqa_output=output_shapes["gqa"],
+        cache=cache_binding,
+        mha_query=tensor_shape_evidence(mha_query),
+        mha_key=tensor_shape_evidence(mha_key),
+        mha_value=tensor_shape_evidence(mha_value),
+        mha_output=output_shapes["mha_control"],
+    )
+    gqa_sequence = analyze_flash_kernel_sequence(gqa.device_events)
+    mha_sequence = analyze_flash_kernel_sequence(mha.device_events)
+    evaluation = evaluate_geometry_bound_gqa_device_dispatch(
+        point=point,
+        gqa=gqa,
+        mha=mha,
+        gqa_sequence=gqa_sequence,
+        mha_sequence=mha_sequence,
+        source_shape=source_shape,
+        explicitly_related_families=set(related_families),
+    )
+    return Phase3GeometryBoundGQADeviceDispatchAudit(
+        point=point,
+        backend_identity=identity,
+        gqa=gqa,
+        mha=mha,
+        source_shape=source_shape,
+        gqa_kernel_sequence=gqa_sequence,
+        mha_kernel_sequence=mha_sequence,
+        trace_validation=trace_validation,
+        explicitly_related_families=related_families,
+        related_family_policy_sha256=related_family_policy_sha256,
         evaluation=evaluation,
     )
