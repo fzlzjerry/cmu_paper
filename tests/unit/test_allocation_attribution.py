@@ -943,6 +943,131 @@ class AllocationFormulaTests(unittest.TestCase):
             AllocationClass.GQA_EXPANSION,
         )
 
+    def test_outer_endpoint_audit_wrapper_is_unknown_not_instrumentation(
+        self,
+    ) -> None:
+        trace = alloc_lifetime(
+            12_345,
+            python_stack=[
+                {
+                    "name": "collect_phase3_endpoint_allocation_audit",
+                    "filename": (
+                        "/workspace/src/kvbench/runtime/"
+                        "phase3_endpoint_audit.py"
+                    ),
+                    "line": 972,
+                }
+            ],
+        )
+        parsed = attribution(trace, rules=AttributionRules())
+        self.assertEqual(
+            parsed.allocations[0].event_class,
+            AllocationClass.UNKNOWN,
+        )
+        result = evaluate_refined_eager_criterion(parsed, zero_memory())
+        self.assertFalse(result.passed)
+        self.assertIn(
+            "forbidden_allocation_class:unknown",
+            result.failure_reasons,
+        )
+
+    def test_exact_audit_instrumentation_frame_requires_name_and_source(
+        self,
+    ) -> None:
+        canonical = {
+            "name": "_allocation_audit_capture_output",
+            "filename": (
+                "/workspace/src/kvbench/runtime/"
+                "allocation_attribution.py"
+            ),
+            "line": 2054,
+        }
+        parsed = attribution(
+            alloc_lifetime(12_345, python_stack=[canonical]),
+            rules=AttributionRules(),
+        )
+        self.assertEqual(
+            parsed.allocations[0].event_class,
+            AllocationClass.AUDIT_INSTRUMENTATION,
+        )
+        for spoof in (
+            {**canonical, "name": "allocation_audit_capture_output"},
+            {**canonical, "filename": "/workspace/spoof.py"},
+        ):
+            with self.subTest(spoof=spoof):
+                spoofed = attribution(
+                    alloc_lifetime(12_345, python_stack=[spoof]),
+                    rules=AttributionRules(),
+                )
+                self.assertEqual(
+                    spoofed.allocations[0].event_class,
+                    AllocationClass.UNKNOWN,
+                )
+
+        with self.assertRaises(AllocationAttributionError):
+            AttributionRules(audit_instrumentation_python_frames=())
+
+    def test_outer_endpoint_audit_wrapper_does_not_preempt_output_policy(
+        self,
+    ) -> None:
+        trace = alloc_lifetime(
+            geometry().output_bytes,
+            python_stack=[
+                {"name": "decode", "filename": "model.py", "line": 10},
+                {
+                    "name": "collect_phase3_endpoint_allocation_audit",
+                    "filename": (
+                        "src/kvbench/runtime/phase3_endpoint_audit.py"
+                    ),
+                    "line": 972,
+                },
+            ],
+        )
+        parsed = attribution(trace, rules=output_rules())
+        self.assertEqual(
+            parsed.allocations[0].event_class,
+            AllocationClass.FIXED_OUTPUT,
+        )
+
+    def test_outer_endpoint_audit_wrapper_does_not_preempt_split_k_formula(
+        self,
+    ) -> None:
+        value = geometry()
+        trace = alloc_lifetime(
+            value.flash_split_k_output_accumulator_bytes(32),
+            python_stack=[
+                {
+                    "name": "collect_phase3_endpoint_allocation_audit",
+                    "filename": (
+                        "src/kvbench/runtime/phase3_endpoint_audit.py"
+                    ),
+                }
+            ],
+            cpp_stack=split_cpp_stack(),
+        )
+        parsed = attribution(
+            trace,
+            rules=AttributionRules(
+                frozen_backend_identity=BACKEND,
+                split_k_expected_pair_count=1,
+            ),
+        )
+        item = parsed.allocations[0]
+        self.assertEqual(
+            item.event_class,
+            AllocationClass.CONTEXT_SCALED_WORKSPACE,
+        )
+        self.assertEqual(
+            item.size_formula,
+            "flash_split_k_output_accumulator",
+        )
+        result = evaluate_refined_eager_criterion(parsed, zero_memory())
+        self.assertFalse(result.passed)
+        self.assertIn(
+            "flash_split_k_independent_verifier_unavailable",
+            result.failure_reasons,
+        )
+
     def test_native_kv_sized_allocation_is_cache_growth(self) -> None:
         trace = alloc_lifetime(geometry().native_kv_combined_bytes)
         parsed = attribution(trace)
