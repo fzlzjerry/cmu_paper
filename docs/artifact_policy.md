@@ -11,6 +11,15 @@ may begin until E01 implements the controls below and B-009 is closed. Durable
 storage and publication location are intentionally not selected in Phase 0;
 that operational choice must be recorded before the first such run.
 
+## E00 boundary
+
+Decision 0002 permits the prerequisite, non-performance G0 certification to
+write append-only Git-tracked evidence under `docs/evidence/e00/<run_id>/`.
+This narrow path must use unique IDs, atomic finalization, checksums, and a
+completion marker. It does not authorize G1-G5 admission or performance runs,
+which remain blocked by B-009 until E01 implements the general artifact writer
+and durable backing.
+
 ## Required E01 controls
 
 1. Write each run into a unique staging directory and atomically rename it on

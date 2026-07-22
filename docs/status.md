@@ -5,9 +5,9 @@ Authoritative contract: CODEX_WORKFLOW.md plus AGENTS.md
 
 ## Current state
 
-- Current phase: Phase 0 complete
+- Current phase: Phase 1 / E00 in progress
 - Phase 0 status: PASS
-- Next action: review and commit Phase 0 records, then Phase 1 / E00 preflight
+- Next action: commit Decision 0002 and the E00 implementation, then run G0
 - Active admission gate: G0 not started
 - Benchmark implementation changes: none
 - CUDA builds or executions: none
@@ -17,11 +17,9 @@ Authoritative contract: CODEX_WORKFLOW.md plus AGENTS.md
 ## Repository
 
 The initial non-Git workspace contained three operator-provided inputs but no
-implementation. It was initialized as a Git repository on branch main and
-remains unborn: there is no initial commit, HEAD SHA, remote, or tracked file.
-This is acceptable for the repository/input audit. B-001 requires a reviewed
-initial commit before E00 produces durable gate evidence or any later run
-begins.
+implementation. The reviewed Phase 0 records are committed on branch main at
+9569d938d9023a3e71d98f12234efa1897004533. B-001 is resolved. No remote is
+configured.
 
 At Phase 0 start, the only top-level inputs were AGENTS.md,
 CODEX_WORKFLOW.md, and Archive.zip. No implementation, model config, CUDA
@@ -90,9 +88,9 @@ repository.
 
 ## Next action
 
-Review and commit the Phase 0 records to close B-001, then run Phase 1 exactly
-as E00: collect the hardware/toolchain/container manifest, compile and execute
-only the minimal CUDA certification extension, verify forced PTX/JIT and
-Compute Sanitizer, and stop if G0 fails. E01 must implement the append-only
-artifact policy and close B-009. Do not begin BF16 or method implementation
-before G0 passes.
+Commit Decision 0002 and its tracking updates, then implement and commit the E00
+collector from a clean tree. Run only the minimal CUDA certification extension,
+verify native SASS, forced PTX/JIT, numerical, CUDA Graph, allocation, process
+isolation, and Compute Sanitizer gates, and stop if G0 fails. E01 must implement
+the general append-only artifact policy, pin the measurement container, and pass
+container-parity G0 before E02 or any method CUDA or timing work begins.

@@ -6,9 +6,9 @@ authoritative local task index until issues are created elsewhere.
 
 | ID | Scope | Depends on | Required evidence / gate | Status |
 |---|---|---|---|---|
-| E00 | Hardware preflight | Phase 0 PASS | hardware manifest; native extension; PTX/JIT; Compute Sanitizer; G0 | ready |
-| E01 | Repository scaffold and schemas | G0 | strict schemas; append-only writer; durable artifact locator/digest policy; CLI; tests | pending |
-| E02 | BF16 static-cache baseline | E01 | reference numerical match; static allocation; GQA audit | pending |
+| E00 | Hardware preflight | Phase 0 PASS | hardware manifest; native extension; PTX/JIT; Compute Sanitizer; G0 | in progress |
+| E01 | Repository scaffold and schemas | G0 | strict schemas; append-only writer; durable artifact policy; digest-pinned container; parity preflight | pending |
+| E02 | BF16 static-cache baseline | E01 and container-parity G0 | reference numerical match; static allocation; GQA audit | pending |
 | E03 | Fixed-L benchmark | E02 | fixed-L and growing-context runners; timing-boundary tests | pending |
 | E04 | CUDA Graph harness | E02-E03 | capture/replay correctness; no replay allocation; eager/graph lanes | pending |
 | E05 | TurboQuant reference lane | E00-E04 | authoritative pinned source; isolated container; golden fixtures | pending |
@@ -39,6 +39,8 @@ task list. E16 remains closed until its evidence is reviewed.
 
 - E01 implements docs/artifact_policy.md; no claim-bearing run starts while
   B-009 remains open.
+- E01 also pins the measurement container digest and reruns E00 inside it;
+  B-010 keeps E02 and all later CUDA or timing work closed until parity passes.
 - E03 includes growing-context request validation but does not mix those
   samples with fixed-L fitting.
 - E04 owns the capture/replay harness used by M14-GRAPH-AB; that milestone runs
