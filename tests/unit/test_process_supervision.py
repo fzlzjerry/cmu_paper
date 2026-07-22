@@ -2,10 +2,20 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 import tempfile
+from types import SimpleNamespace
 import unittest
+from unittest import mock
 
+from kvbench.runtime.phase3_coordinator import (
+    Phase3CoordinatorError,
+    _nonreaping_exit_observed,
+    _registry_snapshot_verdict,
+    _worker_argv as coordinator_worker_argv,
+)
+from kvbench.runtime.phase3_worker import _worker_argv as worker_worker_argv
 from kvbench.runtime.process_supervision import (
     DeviceProcessObservation,
     HandshakeEvent,
@@ -18,7 +28,9 @@ from kvbench.runtime.process_supervision import (
     RunOwnedProcessRegistry,
     SnapshotDisposition,
     command_fingerprint,
+    read_handshake_event,
     read_process_identity,
+    write_handshake_event,
 )
 
 
@@ -87,6 +99,36 @@ def reap(registry: RunOwnedProcessRegistry, returncode: int) -> None:
         returncode,
         recorded_at_utc=RECORDED_AT,
     )
+
+
+def process_record(
+    *,
+    pid: int = 432362,
+    start_time_ticks: int = 10973359,
+    gpu_uuid: str = "GPU-unit-0001",
+) -> dict[str, object]:
+    return {
+        "gpu_uuid": gpu_uuid,
+        "pid": pid,
+        "process_start_time_ticks": start_time_ticks,
+    }
+
+
+def process_snapshot(
+    *,
+    allowed: tuple[dict[str, object], ...] = (),
+    foreign: tuple[dict[str, object], ...] = (),
+    unknown: tuple[dict[str, object], ...] = (),
+    errors: tuple[str, ...] = (),
+    query_exit_code: int = 0,
+) -> dict[str, object]:
+    return {
+        "allowed_compute_processes": list(allowed),
+        "foreign_compute_processes": list(foreign),
+        "unknown_processes": list(unknown),
+        "errors": list(errors),
+        "query_exit_code": query_exit_code,
+    }
 
 
 class ProcessIdentityTests(unittest.TestCase):
@@ -241,6 +283,46 @@ class HandshakeTests(unittest.TestCase):
             registry.record_supervisor_reaped(0, recorded_at_utc=RECORDED_AT)
 
 
+class HandshakePersistenceTests(unittest.TestCase):
+    def test_atomic_event_round_trip_refresh_and_no_replace(self) -> None:
+        source = make_registry()
+        event = source.record_worker_stage(
+            HandshakeStage.WORKER_STARTED,
+            recorded_at_utc=RECORDED_AT,
+        )
+        with tempfile.TemporaryDirectory() as raw_directory:
+            directory = Path(raw_directory).resolve()
+            path = write_handshake_event(directory, event)
+
+            self.assertEqual(read_handshake_event(path), event)
+            destination = make_registry()
+            self.assertEqual(destination.refresh_handshake_directory(directory), 1)
+            self.assertEqual(
+                destination.observed_worker_stages,
+                (HandshakeStage.WORKER_STARTED,),
+            )
+            with self.assertRaises(ProcessSupervisionError):
+                write_handshake_event(directory, event)
+
+    def test_coordinator_and_worker_reconstruct_the_same_command(self) -> None:
+        point = SimpleNamespace(
+            point_id="fixed-l-b1-l64-eager-r1",
+            process_replicate=2,
+        )
+        coordinator = coordinator_worker_argv(
+            "configs/phase3-fixed-l.yaml",
+            point,
+            "phase3-remediation-unit",
+        )
+        worker = worker_worker_argv(
+            "configs/phase3-fixed-l.yaml",
+            point.point_id,
+            point.process_replicate,
+            "phase3-remediation-unit",
+        )
+        self.assertEqual(coordinator, worker)
+
+
 class DeviceProcessOwnershipTests(unittest.TestCase):
     def test_pid_disappearance_retains_registered_child_ownership(self) -> None:
         registry = make_registry()
@@ -363,6 +445,10 @@ class DeviceProcessOwnershipTests(unittest.TestCase):
     def test_process_handle_and_pidfd_metadata_are_preserved(self) -> None:
         registry = make_registry(pidfd=9)
         evidence = registry.to_evidence()
+        self.assertEqual(
+            evidence["schema_version"],
+            "kvbench-phase3-process-registry-2.0.0",
+        )
         handle = evidence["handle"]
         self.assertIsInstance(handle, dict)
         assert isinstance(handle, dict)
@@ -382,6 +468,128 @@ class DeviceProcessOwnershipTests(unittest.TestCase):
         self.assertFalse(handle["pidfd_supported"])
         self.assertFalse(handle["pidfd_opened"])
         self.assertIsNone(handle["pidfd"])
+
+
+class CoordinatorOwnershipJoinTests(unittest.TestCase):
+    def test_exact_registered_row_is_owned_despite_raw_foreign_bucket(self) -> None:
+        registry = make_registry()
+        verdict = _registry_snapshot_verdict(
+            process_snapshot(foreign=(process_record(),)),
+            registry,
+            terminal_resolution_allowed=False,
+        )
+
+        self.assertTrue(verdict["passed"])
+        self.assertEqual(
+            verdict["registry_verdict"]["disposition"],
+            SnapshotDisposition.OWNED_ONLY.value,
+        )
+
+    def test_terminal_stale_registered_row_is_owned(self) -> None:
+        registry = make_registry()
+        record_through(registry, HandshakeStage.EVIDENCE_FLUSHED)
+        registry.note_exit_observed()
+        verdict = _registry_snapshot_verdict(
+            process_snapshot(
+                unknown=(process_record(start_time_ticks=0),),
+                errors=(
+                    "compute_apps GPU GPU-unit-0001 PID 432362 "
+                    "has no pmon process type",
+                    "cannot read /proc/432362/stat: FileNotFoundError",
+                ),
+                query_exit_code=2,
+            ),
+            registry,
+            terminal_resolution_allowed=True,
+        )
+
+        self.assertTrue(verdict["passed"])
+        self.assertTrue(verdict["terminal_registered_process_resolution"])
+        self.assertEqual(
+            verdict["registry_verdict"]["disposition"],
+            SnapshotDisposition.OWNED_ONLY.value,
+        )
+
+    def test_unrelated_snapshot_error_remains_a_hard_failure(self) -> None:
+        registry = make_registry()
+        record_through(registry, HandshakeStage.EVIDENCE_FLUSHED)
+        verdict = _registry_snapshot_verdict(
+            process_snapshot(
+                foreign=(process_record(),),
+                errors=("pmon exited with status 1",),
+                query_exit_code=2,
+            ),
+            registry,
+            terminal_resolution_allowed=True,
+        )
+
+        self.assertFalse(verdict["passed"])
+        self.assertFalse(verdict["terminal_registered_process_resolution"])
+        self.assertTrue(verdict["query_evidence_hard_failure"])
+        reap(registry, 0)
+        outcome = registry.terminal_outcome()
+        self.assertIs(
+            outcome.disposition,
+            OwnershipDisposition.UNVERIFIED_PROCESS_DETECTED,
+        )
+        self.assertFalse(outcome.exclusivity_passed)
+
+    def test_pid_reuse_and_foreign_coexistence_remain_hard_failures(self) -> None:
+        reused_registry = make_registry()
+        reused = _registry_snapshot_verdict(
+            process_snapshot(
+                foreign=(process_record(start_time_ticks=10973360),),
+            ),
+            reused_registry,
+            terminal_resolution_allowed=True,
+        )
+        self.assertFalse(reused["passed"])
+        self.assertEqual(
+            reused["registry_verdict"]["disposition"],
+            SnapshotDisposition.PID_REUSE_DETECTED.value,
+        )
+
+        foreign_registry = make_registry()
+        coexistence = _registry_snapshot_verdict(
+            process_snapshot(
+                foreign=(
+                    process_record(),
+                    process_record(pid=777777, start_time_ticks=900),
+                ),
+            ),
+            foreign_registry,
+            terminal_resolution_allowed=True,
+        )
+        self.assertFalse(coexistence["passed"])
+        self.assertEqual(
+            coexistence["registry_verdict"]["disposition"],
+            SnapshotDisposition.FOREIGN_PROCESS_DETECTED.value,
+        )
+
+    def test_nonreaping_waitid_observation_does_not_use_process_poll(self) -> None:
+        registry = make_registry(pidfd_supported=False, pidfd=None)
+        with mock.patch(
+            "kvbench.runtime.phase3_coordinator.os.waitid",
+            return_value=object(),
+        ) as waitid:
+            self.assertTrue(_nonreaping_exit_observed(registry))
+
+        waitid.assert_called_once()
+        flags = waitid.call_args.args[2]
+        self.assertTrue(flags & os.WEXITED)
+        self.assertTrue(flags & os.WNOHANG)
+        self.assertTrue(flags & os.WNOWAIT)
+        self.assertTrue(registry.exit_observed)
+        self.assertFalse(registry.reaped)
+
+    def test_nonreaping_waitid_reap_race_fails_closed(self) -> None:
+        registry = make_registry(pidfd_supported=False, pidfd=None)
+        with mock.patch(
+            "kvbench.runtime.phase3_coordinator.os.waitid",
+            side_effect=ChildProcessError,
+        ):
+            with self.assertRaises(Phase3CoordinatorError):
+                _nonreaping_exit_observed(registry)
 
 
 if __name__ == "__main__":

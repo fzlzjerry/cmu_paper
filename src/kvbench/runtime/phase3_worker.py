@@ -14,6 +14,15 @@ import traceback
 from typing import Any
 
 from kvbench.config import load_phase3_admission_bundle
+from kvbench.runtime.process_supervision import (
+    HandshakeEvent,
+    HandshakeStage,
+    ProcessIdentity,
+    ProcessSupervisionError,
+    command_fingerprint,
+    read_process_identity,
+    write_handshake_event,
+)
 from kvbench.schema import (
     GraphMode,
     Phase3WorkerResult,
@@ -23,14 +32,27 @@ from kvbench.schema import (
     expand_phase3_process_points,
     sha256_hex,
 )
+from kvbench.schema.phase3 import (
+    PHASE3_GPU_UUID,
+    PHASE3_PYTHON_EXECUTABLE,
+    PHASE3_REPOSITORY_ROOT,
+)
 
 
 IPC_PATH_ENV = "KVBENCH_PHASE3_IPC_PATH"
 READY_PATH_ENV = "KVBENCH_PHASE3_AUDIT_READY"
 RELEASE_PATH_ENV = "KVBENCH_PHASE3_AUDIT_RELEASE"
 HANDSHAKE_TIMEOUT_ENV = "KVBENCH_PHASE3_HANDSHAKE_TIMEOUT_SECONDS"
+HANDSHAKE_DIR_ENV = "KVBENCH_PHASE3_HANDSHAKE_DIR"
+COMMAND_FINGERPRINT_ENV = "KVBENCH_PHASE3_COMMAND_FINGERPRINT"
 HANDSHAKE_TIMEOUT_SECONDS = 120.0
 MAX_REASON_CHARACTERS = 1000
+
+_ACTIVE_HANDSHAKE_DIRECTORY: Path | None = None
+_ACTIVE_PROCESS_IDENTITY: ProcessIdentity | None = None
+_ACTIVE_RUN_ID: str | None = None
+_ACTIVE_COMMAND_FINGERPRINT: str | None = None
+_ACTIVE_WORKER_STAGES: list[HandshakeStage] = []
 
 
 class WorkerProtocolError(RuntimeError):
@@ -63,6 +85,11 @@ def _exclusive_write(path: Path, data: bytes) -> None:
         os.fsync(descriptor)
     finally:
         os.close(descriptor)
+    parent_descriptor = os.open(parent, os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        os.fsync(parent_descriptor)
+    finally:
+        os.close(parent_descriptor)
 
 
 def _process_start_ticks() -> int:
@@ -87,15 +114,151 @@ def _required_ipc_path(name: str) -> Path:
     return path
 
 
-def _await_supervisor_release() -> tuple[Path, Path, Path]:
+def _worker_argv(
+    plan_path: str,
+    point_id: str,
+    replicate: int,
+    run_id: str,
+) -> tuple[str, ...]:
+    return (
+        PHASE3_PYTHON_EXECUTABLE,
+        "-m",
+        "kvbench",
+        "phase3-worker",
+        "--plan",
+        plan_path,
+        "--point-id",
+        point_id,
+        "--replicate",
+        str(replicate),
+        "--run-id",
+        run_id,
+    )
+
+
+def _initialize_worker_handshake(
+    *,
+    plan_path: str,
+    point_id: str,
+    replicate: int,
+    run_id: str,
+) -> None:
+    global _ACTIVE_COMMAND_FINGERPRINT
+    global _ACTIVE_HANDSHAKE_DIRECTORY
+    global _ACTIVE_PROCESS_IDENTITY
+    global _ACTIVE_RUN_ID
+    global _ACTIVE_WORKER_STAGES
+
+    handshake_directory = _required_ipc_path(HANDSHAKE_DIR_ENV)
+    try:
+        metadata = handshake_directory.lstat()
+    except OSError as error:
+        raise WorkerProtocolError("worker handshake directory is absent") from error
+    if stat.S_ISLNK(metadata.st_mode) or not stat.S_ISDIR(metadata.st_mode):
+        raise WorkerProtocolError("worker handshake directory is unsafe")
+    expected_fingerprint = os.environ.get(COMMAND_FINGERPRINT_ENV)
+    if not expected_fingerprint:
+        raise WorkerProtocolError("expected worker command fingerprint is absent")
+    environment = dict(os.environ)
+    environment.pop(COMMAND_FINGERPRINT_ENV, None)
+    environment_sha256 = sha256_hex(canonical_json_bytes(environment))
+    working_directory = str(Path.cwd().resolve(strict=True))
+    if working_directory != PHASE3_REPOSITORY_ROOT:
+        raise WorkerProtocolError("worker working directory differs")
+    observed_fingerprint = command_fingerprint(
+        _worker_argv(plan_path, point_id, replicate, run_id),
+        working_directory=working_directory,
+        environment_sha256=environment_sha256,
+    )
+    try:
+        identity = read_process_identity(os.getpid())
+    except ProcessSupervisionError as error:
+        raise WorkerProtocolError("cannot register worker process identity") from error
+    _ACTIVE_HANDSHAKE_DIRECTORY = handshake_directory
+    _ACTIVE_PROCESS_IDENTITY = identity
+    _ACTIVE_RUN_ID = run_id
+    _ACTIVE_COMMAND_FINGERPRINT = observed_fingerprint
+    _ACTIVE_WORKER_STAGES = []
+    _emit_worker_stage(HandshakeStage.WORKER_STARTED)
+    if observed_fingerprint != expected_fingerprint:
+        raise WorkerProtocolError("worker command fingerprint differs")
+
+
+def _handshake_timestamp() -> str:
+    from datetime import datetime, timezone
+
+    return (
+        datetime.now(timezone.utc)
+        .isoformat(timespec="microseconds")
+        .replace("+00:00", "Z")
+    )
+
+
+def _emit_worker_stage(
+    stage: HandshakeStage,
+    *,
+    evidence_sha256: str | None = None,
+) -> None:
+    if (
+        _ACTIVE_HANDSHAKE_DIRECTORY is None
+        or _ACTIVE_PROCESS_IDENTITY is None
+        or _ACTIVE_RUN_ID is None
+        or _ACTIVE_COMMAND_FINGERPRINT is None
+    ):
+        raise WorkerProtocolError("worker handshake is not initialized")
+    worker_stages = tuple(HandshakeStage)[:-1]
+    if len(_ACTIVE_WORKER_STAGES) >= len(worker_stages):
+        raise WorkerProtocolError("worker handshake is already complete")
+    expected = worker_stages[len(_ACTIVE_WORKER_STAGES)]
+    if stage is not expected:
+        raise WorkerProtocolError(
+            f"worker handshake expected {expected.value}, not {stage.value}"
+        )
+    identity = _ACTIVE_PROCESS_IDENTITY
+    event = HandshakeEvent(
+        sequence=stage.sequence,
+        stage=stage,
+        recorded_at_utc=_handshake_timestamp(),
+        run_id=_ACTIVE_RUN_ID,
+        gpu_uuid=PHASE3_GPU_UUID,
+        pid=identity.pid,
+        process_start_time_ticks=identity.start_time_ticks,
+        parent_pid=identity.parent_pid,
+        command_fingerprint=_ACTIVE_COMMAND_FINGERPRINT,
+        evidence_sha256=evidence_sha256,
+    )
+    try:
+        write_handshake_event(_ACTIVE_HANDSHAKE_DIRECTORY, event)
+    except ProcessSupervisionError as error:
+        raise WorkerProtocolError("cannot publish worker handshake event") from error
+    _ACTIVE_WORKER_STAGES.append(stage)
+
+
+def _await_supervisor_release(
+    *,
+    plan_path: str,
+    point_id: str,
+    replicate: int,
+    run_id: str,
+) -> tuple[Path, Path, Path]:
     ipc_path = _required_ipc_path(IPC_PATH_ENV)
     ready_path = _required_ipc_path(READY_PATH_ENV)
     release_path = _required_ipc_path(RELEASE_PATH_ENV)
+    handshake_directory = _required_ipc_path(HANDSHAKE_DIR_ENV)
     parents = {
-        path.parent.resolve(strict=True) for path in (ipc_path, ready_path, release_path)
+        path.parent.resolve(strict=True)
+        for path in (ipc_path, ready_path, release_path, handshake_directory)
     }
-    if len(parents) != 1 or len({ipc_path.name, ready_path.name, release_path.name}) != 3:
+    if len(parents) != 1 or len(
+        {ipc_path.name, ready_path.name, release_path.name, handshake_directory.name}
+    ) != 4:
         raise WorkerProtocolError("worker IPC paths must be distinct siblings")
+    _initialize_worker_handshake(
+        plan_path=plan_path,
+        point_id=point_id,
+        replicate=replicate,
+        run_id=run_id,
+    )
     ready_payload = {
         "schema_version": "kvbench-phase3-worker-ready-1.0.0",
         "pid": os.getpid(),
@@ -359,8 +522,13 @@ def execute_worker(
 ) -> Phase3WorkerResult:
     """Execute one point after the supervisor has certified exclusivity."""
 
+    ipc_path, _, _ = _await_supervisor_release(
+        plan_path=plan_path,
+        point_id=point_id,
+        replicate=replicate,
+        run_id=run_id,
+    )
     bundle, point = _point_for_request(plan_path, point_id, replicate)
-    ipc_path, _, _ = _await_supervisor_release()
     expected_operations = (
         bundle.plan.measurement.measured_count
         * bundle.plan.measurement.measured_batches
@@ -385,6 +553,8 @@ def execute_worker(
     reason: str | None = None
     try:
         torch = importlib.import_module("torch")
+        torch.cuda.init()
+        _emit_worker_stage(HandshakeStage.CUDA_CONTEXT_CREATED)
 
         from kvbench.runtime.cuda_graph import validate_full_model_fixed_graph
         from kvbench.runtime.fixed_l_runner import run_fixed_l
@@ -437,39 +607,43 @@ def execute_worker(
             device=device,
         )
         evidence["stage"] = "running_point"
-        if point.runner_kind is RunnerKind.FIXED_L:
-            current = _deterministic_ids(
-                torch,
-                batch_size=point.batch_size,
-                length=1,
-                offset=40_000,
-                device=device,
-            )
-            result = run_fixed_l(
-                loaded.model,
-                prefix,
-                current,
-                context_length=point.context_length,
-                graph_mode=point.graph_mode.value,
-                warmup_steps=bundle.plan.measurement.warmup_count,
-                measured_steps=bundle.plan.measurement.measured_count,
-                measured_batches=bundle.plan.measurement.measured_batches,
-            )
-        else:
-            decode = _deterministic_ids(
-                torch,
-                batch_size=point.batch_size,
-                length=point.output_steps,
-                offset=50_000,
-                device=device,
-            )
-            result = run_growing_context(
-                loaded.model,
-                prefix,
-                decode,
-                starting_context=point.context_length,
-                warmup_trajectories=bundle.plan.measurement.warmup_count,
-            )
+        _emit_worker_stage(HandshakeStage.MEASUREMENT_STARTED)
+        try:
+            if point.runner_kind is RunnerKind.FIXED_L:
+                current = _deterministic_ids(
+                    torch,
+                    batch_size=point.batch_size,
+                    length=1,
+                    offset=40_000,
+                    device=device,
+                )
+                result = run_fixed_l(
+                    loaded.model,
+                    prefix,
+                    current,
+                    context_length=point.context_length,
+                    graph_mode=point.graph_mode.value,
+                    warmup_steps=bundle.plan.measurement.warmup_count,
+                    measured_steps=bundle.plan.measurement.measured_count,
+                    measured_batches=bundle.plan.measurement.measured_batches,
+                )
+            else:
+                decode = _deterministic_ids(
+                    torch,
+                    batch_size=point.batch_size,
+                    length=point.output_steps,
+                    offset=50_000,
+                    device=device,
+                )
+                result = run_growing_context(
+                    loaded.model,
+                    prefix,
+                    decode,
+                    starting_context=point.context_length,
+                    warmup_trajectories=bundle.plan.measurement.warmup_count,
+                )
+        finally:
+            _emit_worker_stage(HandshakeStage.MEASUREMENT_FINISHED)
         runtime = result.to_dict()
         evidence["runtime"] = runtime
         completed_operations = (
@@ -515,7 +689,13 @@ def execute_worker(
         failure_reason=reason,
     )
     evidence["worker_result"] = worker_result.to_dict()
-    _exclusive_write(ipc_path, canonical_json_bytes(evidence) + b"\n")
+    evidence_bytes = canonical_json_bytes(evidence) + b"\n"
+    _exclusive_write(ipc_path, evidence_bytes)
+    if _ACTIVE_WORKER_STAGES == list(tuple(HandshakeStage)[:4]):
+        _emit_worker_stage(
+            HandshakeStage.EVIDENCE_FLUSHED,
+            evidence_sha256=sha256_hex(evidence_bytes),
+        )
     return worker_result
 
 
@@ -524,3 +704,5 @@ def emit_worker_result(result: Phase3WorkerResult) -> None:
 
     sys.stdout.buffer.write(canonical_json_bytes(result) + b"\n")
     sys.stdout.buffer.flush()
+    if _ACTIVE_WORKER_STAGES == list(tuple(HandshakeStage)[:5]):
+        _emit_worker_stage(HandshakeStage.WORKER_EXITING)

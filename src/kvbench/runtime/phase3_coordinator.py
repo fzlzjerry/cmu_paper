@@ -10,6 +10,7 @@ import json
 import os
 from pathlib import Path
 import secrets
+import select
 import signal
 import stat
 import subprocess
@@ -25,6 +26,17 @@ from kvbench.runtime.artifacts import (
     validate_run_directory,
 )
 from kvbench.runtime.phase3_campaign import Phase3CampaignRecorder
+from kvbench.runtime.process_supervision import (
+    DeviceProcessObservation,
+    HandshakeStage,
+    OwnershipDisposition,
+    ProcessSupervisionError,
+    RunOwnedProcessRegistry,
+    SnapshotDisposition,
+    command_fingerprint,
+    read_process_identity,
+    write_handshake_event,
+)
 from kvbench.schema import (
     BF16BackendIdentity,
     BF16CacheIdentity,
@@ -97,6 +109,8 @@ SENSITIVE_ENV_FRAGMENTS = (
     "proxy",
 )
 SENSITIVE_ENV_KEY_EXEMPTIONS = frozenset({"TOKENIZERS_PARALLELISM"})
+HANDSHAKE_DIRECTORY_ENV = "KVBENCH_PHASE3_HANDSHAKE_DIR"
+COMMAND_FINGERPRINT_ENV = "KVBENCH_PHASE3_COMMAND_FINGERPRINT"
 
 
 class Phase3CoordinatorError(RuntimeError):
@@ -238,6 +252,7 @@ def _worker_environment(temp_root: Path) -> dict[str, str]:
         "KVBENCH_PHASE3_IPC_PATH": str(temp_root / "worker-evidence.json"),
         "KVBENCH_PHASE3_AUDIT_READY": str(temp_root / "worker-ready.json"),
         "KVBENCH_PHASE3_AUDIT_RELEASE": str(temp_root / "worker-release"),
+        HANDSHAKE_DIRECTORY_ENV: str(temp_root / "worker-handshake"),
         "KVBENCH_PHASE3_HANDSHAKE_TIMEOUT_SECONDS": str(READY_TIMEOUT_SECONDS),
     }
     if any(
@@ -344,10 +359,60 @@ def _exclusive_release(path: Path) -> None:
         os.close(descriptor)
 
 
-def _wait_for_ready(process: subprocess.Popen[bytes], ready_path: Path) -> dict[str, Any]:
+def _pidfd_open(pid: int) -> tuple[bool, int | None]:
+    opener = getattr(os, "pidfd_open", None)
+    if opener is None:
+        return False, None
+    try:
+        return True, opener(pid, 0)
+    except OSError:
+        return True, None
+
+
+def _nonreaping_exit_observed(registry: RunOwnedProcessRegistry) -> bool:
+    """Observe exit through pidfd or waitid WNOWAIT without reaping."""
+
+    if registry.exit_observed:
+        return True
+    pidfd = registry.pidfd
+    if pidfd is not None:
+        poller = select.poll()
+        poller.register(pidfd, select.POLLIN | select.POLLHUP | select.POLLERR)
+        if poller.poll(0):
+            registry.note_exit_observed()
+            return True
+        return False
+    try:
+        observation = os.waitid(
+            os.P_PID,
+            registry.identity.process.pid,
+            os.WEXITED | os.WNOHANG | os.WNOWAIT,
+        )
+    except ChildProcessError as error:
+        raise Phase3CoordinatorError(
+            "registered worker was reaped outside the supervisor"
+        ) from error
+    if observation is not None:
+        registry.note_exit_observed()
+        return True
+    return False
+
+
+def _wait_for_ready(
+    registry: RunOwnedProcessRegistry,
+    ready_path: Path,
+    handshake_directory: Path,
+) -> dict[str, Any]:
     deadline = time.monotonic() + READY_TIMEOUT_SECONDS
     while time.monotonic() < deadline:
-        if ready_path.exists():
+        try:
+            registry.refresh_handshake_directory(handshake_directory)
+        except ProcessSupervisionError as error:
+            raise Phase3CoordinatorError("worker_started event is invalid") from error
+        if (
+            HandshakeStage.WORKER_STARTED in registry.observed_worker_stages
+            and ready_path.exists()
+        ):
             metadata = ready_path.lstat()
             if stat.S_ISLNK(metadata.st_mode) or not stat.S_ISREG(metadata.st_mode):
                 raise Phase3CoordinatorError("worker readiness path is unsafe")
@@ -357,29 +422,150 @@ def _wait_for_ready(process: subprocess.Popen[bytes], ready_path: Path) -> dict[
                 label="worker readiness",
             )
             if (
-                payload.get("pid") != process.pid
+                payload.get("pid") != registry.identity.process.pid
                 or not isinstance(payload.get("process_start_time_ticks"), int)
                 or payload.get("process_start_time_ticks", -1) < 0
+                or payload.get("process_start_time_ticks")
+                != registry.identity.process.start_time_ticks
                 or payload.get("cuda_imported") is not False
             ):
                 raise Phase3CoordinatorError("worker readiness identity differs")
             return payload
-        if process.poll() is not None:
-            raise Phase3CoordinatorError("worker exited before readiness")
+        if _nonreaping_exit_observed(registry):
+            try:
+                registry.refresh_handshake_directory(handshake_directory)
+            except ProcessSupervisionError as error:
+                raise Phase3CoordinatorError("worker handshake is invalid") from error
+            raise Phase3CoordinatorError(
+                "registered worker exited before worker_started readiness completed"
+            )
         time.sleep(0.05)
     raise Phase3CoordinatorError("worker readiness timed out")
 
 
-def _terminate_worker(process: subprocess.Popen[bytes]) -> None:
-    if process.poll() is not None:
-        return
+def _terminate_worker(process: subprocess.Popen[bytes]) -> int:
+    if process.returncode is not None:
+        return process.returncode
     try:
         os.killpg(process.pid, signal.SIGTERM)
-        process.wait(timeout=10)
-    except (ProcessLookupError, subprocess.TimeoutExpired):
-        if process.poll() is None:
+    except ProcessLookupError:
+        pass
+    try:
+        return process.wait(timeout=10)
+    except subprocess.TimeoutExpired:
+        try:
             os.killpg(process.pid, signal.SIGKILL)
-            process.wait(timeout=10)
+        except ProcessLookupError:
+            pass
+        return process.wait(timeout=10)
+
+
+def _device_observation(value: object) -> DeviceProcessObservation:
+    if not isinstance(value, Mapping):
+        raise Phase3CoordinatorError("GPU process record is not an object")
+    gpu_uuid = value.get("gpu_uuid")
+    pid = value.get("pid")
+    start_ticks = value.get("process_start_time_ticks")
+    if (
+        not isinstance(gpu_uuid, str)
+        or not isinstance(pid, int)
+        or isinstance(pid, bool)
+        or not isinstance(start_ticks, int)
+        or isinstance(start_ticks, bool)
+    ):
+        raise Phase3CoordinatorError("GPU process record identity is malformed")
+    return DeviceProcessObservation(
+        gpu_uuid=gpu_uuid,
+        pid=pid,
+        process_start_time_ticks=None if start_ticks == 0 else start_ticks,
+    )
+
+
+def _registry_snapshot_verdict(
+    snapshot: Mapping[str, Any],
+    registry: RunOwnedProcessRegistry,
+    *,
+    terminal_resolution_allowed: bool,
+) -> dict[str, Any]:
+    """Join raw device records to the registry without weakening foreign checks."""
+
+    errors = snapshot.get("errors")
+    if not isinstance(errors, list) or any(not isinstance(item, str) for item in errors):
+        registry.note_unverified_device_evidence(
+            "GPU process snapshot errors are malformed"
+        )
+        raise Phase3CoordinatorError("GPU process snapshot errors are malformed")
+    observations: list[DeviceProcessObservation] = []
+    unknown_observations: list[DeviceProcessObservation] = []
+    for key in (
+        "allowed_compute_processes",
+        "foreign_compute_processes",
+        "unknown_processes",
+    ):
+        records = snapshot.get(key)
+        if not isinstance(records, list):
+            registry.note_unverified_device_evidence(
+                "GPU process snapshot list is malformed"
+            )
+            raise Phase3CoordinatorError("GPU process snapshot list is malformed")
+        try:
+            parsed = [_device_observation(item) for item in records]
+        except Phase3CoordinatorError:
+            registry.note_unverified_device_evidence(
+                "GPU process record identity is malformed"
+            )
+            raise
+        observations.extend(parsed)
+        if key == "unknown_processes":
+            unknown_observations.extend(parsed)
+    registered = registry.identity
+    if terminal_resolution_allowed and any(
+        item.pid == registered.process.pid
+        and item.gpu_uuid == registered.gpu_uuid
+        and item.process_start_time_ticks is None
+        for item in unknown_observations
+    ):
+        registry.observe_proc_start_time(None)
+    try:
+        verdict = registry.classify_device_snapshot(tuple(observations))
+    except ProcessSupervisionError as error:
+        registry.note_unverified_device_evidence(
+            "GPU process ownership join failed"
+        )
+        raise Phase3CoordinatorError("GPU process ownership join failed") from error
+    temporal_errors_owned = bool(
+        errors
+        and terminal_resolution_allowed
+        and snapshot.get("query_exit_code") == 2
+        and verdict.disposition is SnapshotDisposition.OWNED_ONLY
+        and all(
+            (
+                "has no pmon process type" in error
+                and f"PID {registered.process.pid}" in error
+            )
+            or f"cannot read /proc/{registered.process.pid}/stat" in error
+            for error in errors
+        )
+    )
+    query_exit_code = snapshot.get("query_exit_code")
+    clean_query = query_exit_code == 0 and errors == []
+    query_evidence_hard_failure = not clean_query and not temporal_errors_owned
+    if query_evidence_hard_failure:
+        registry.note_unverified_device_evidence(
+            "GPU process query failed outside exact terminal worker resolution"
+        )
+    passed = bool(
+        not verdict.hard_failure
+        and (clean_query or temporal_errors_owned)
+    )
+    return {
+        "passed": passed,
+        "terminal_registered_process_resolution": temporal_errors_owned,
+        "query_evidence_hard_failure": query_evidence_hard_failure,
+        "registry_verdict": verdict.to_dict(),
+        "raw_query_exit_code": query_exit_code,
+        "raw_errors": errors,
+    }
 
 
 def _cache_identity(point: Any) -> BF16CacheIdentity:
@@ -691,7 +877,16 @@ def _run_point(
     created_at = _utc_now()
     with tempfile.TemporaryDirectory(prefix=f"kvbench-{run_id}-", dir="/tmp") as raw_temp:
         temp_root = Path(raw_temp).resolve(strict=True)
+        handshake_directory = temp_root / "worker-handshake"
+        handshake_directory.mkdir(mode=0o700)
         environment = _worker_environment(temp_root)
+        worker_argv = _worker_argv(plan_path, point, run_id)
+        expected_command_fingerprint = command_fingerprint(
+            worker_argv,
+            working_directory=str(REPOSITORY_ROOT),
+            environment_sha256=sha256_hex(canonical_json_bytes(environment)),
+        )
+        environment[COMMAND_FINGERPRINT_ENV] = expected_command_fingerprint
         cache = _cache_identity(point)
         initial = _initial_manifest(
             bundle=bundle,
@@ -734,6 +929,12 @@ def _run_point(
         result: Phase3WorkerResult | None = None
         evidence: dict[str, Any] | None = None
         process: subprocess.Popen[bytes] | None = None
+        registry: RunOwnedProcessRegistry | None = None
+        pidfd_supported = hasattr(os, "pidfd_open")
+        opened_pidfd: int | None = None
+        pidfd_was_opened = False
+        ownership_outcome: dict[str, Any] | None = None
+        handshake_evidence: dict[str, Any] | None = None
         stdout_path = temp_root / "worker.stdout"
         stderr_path = temp_root / "worker.stderr"
         failure_reason: str | None = None
@@ -745,7 +946,7 @@ def _run_point(
                 raise Phase3CoordinatorError("foreign or unknown compute before worker")
             with stdout_path.open("wb") as stdout_handle, stderr_path.open("wb") as stderr_handle:
                 process = subprocess.Popen(
-                    _worker_argv(plan_path, point, run_id),
+                    worker_argv,
                     cwd=REPOSITORY_ROOT,
                     env=environment,
                     stdin=subprocess.DEVNULL,
@@ -753,58 +954,130 @@ def _run_point(
                     stderr=stderr_handle,
                     start_new_session=True,
                 )
+                pidfd_supported, opened_pidfd = _pidfd_open(process.pid)
+                pidfd_was_opened = opened_pidfd is not None
+                try:
+                    process_identity = read_process_identity(process.pid)
+                    registry = RunOwnedProcessRegistry.register_spawn(
+                        process_identity=process_identity,
+                        expected_supervisor_pid=os.getpid(),
+                        process_handle=process,
+                        pidfd_supported=pidfd_supported,
+                        pidfd=opened_pidfd,
+                        run_id=run_id,
+                        gpu_uuid=PHASE3_GPU_UUID,
+                        spawned_at_utc=_utc_now(),
+                        expected_command_fingerprint=expected_command_fingerprint,
+                    )
+                except ProcessSupervisionError as error:
+                    raise Phase3CoordinatorError(
+                        "worker process registration failed"
+                    ) from error
                 ready = _wait_for_ready(
-                    process,
+                    registry,
                     Path(environment["KVBENCH_PHASE3_AUDIT_READY"]),
+                    handshake_directory,
                 )
                 process_snapshots["ready"] = ready
-                pid = int(ready["pid"])
-                start_ticks = int(ready["process_start_time_ticks"])
-                release_audit = _process_snapshot(pid=pid, start_ticks=start_ticks)
+                registry.refresh_handshake_directory(handshake_directory)
+                release_audit = _process_snapshot()
+                registry.refresh_handshake_directory(handshake_directory)
                 process_snapshots["release_audit"] = release_audit
-                if not _snapshot_clean(release_audit, allow_supervised=True):
+                release_verdict = _registry_snapshot_verdict(
+                    release_audit,
+                    registry,
+                    terminal_resolution_allowed=False,
+                )
+                process_snapshots["release_registry_verdict"] = release_verdict
+                if release_verdict["passed"] is not True:
                     raise Phase3CoordinatorError("worker release audit failed closed")
                 _exclusive_release(Path(environment["KVBENCH_PHASE3_AUDIT_RELEASE"]))
                 during_samples: list[dict[str, Any]] = []
-                saw_allowed_compute = False
+                during_verdicts: list[dict[str, Any]] = []
+                saw_registered_compute = False
                 worker_deadline = time.monotonic() + WORKER_TIMEOUT_SECONDS
-                while process.poll() is None:
+                while True:
+                    try:
+                        registry.refresh_handshake_directory(handshake_directory)
+                    except ProcessSupervisionError as error:
+                        raise Phase3CoordinatorError(
+                            "worker handshake refresh failed"
+                        ) from error
+                    if _nonreaping_exit_observed(registry):
+                        registry.refresh_handshake_directory(handshake_directory)
+                        break
                     if time.monotonic() >= worker_deadline:
                         raise Phase3CoordinatorError("worker execution timed out")
-                    candidate = _process_snapshot(pid=pid, start_ticks=start_ticks)
-                    if not _snapshot_clean(candidate, allow_supervised=True):
-                        if (
-                            process.poll() is not None
-                            and candidate.get("foreign_compute_processes") == []
-                            and candidate.get("unknown_processes") == []
-                        ):
-                            break
-                        process_snapshots["during"] = {
-                            "schema_version": "kvbench-phase3-process-monitor-1.0.0",
-                            "sampling_target_seconds": 2.0,
-                            "samples": [*during_samples, candidate],
-                        }
-                        raise Phase3CoordinatorError("worker process audit detected foreign compute")
-                    if candidate.get("allowed_compute_processes"):
-                        saw_allowed_compute = True
-                    during_samples.append(candidate)
-                    time.sleep(2.0)
-                if not during_samples or not saw_allowed_compute:
-                    raise Phase3CoordinatorError(
-                        "worker process monitoring did not observe clean compute"
+                    candidate = _process_snapshot()
+                    registry.refresh_handshake_directory(handshake_directory)
+                    exited_during_snapshot = _nonreaping_exit_observed(registry)
+                    registry.refresh_handshake_directory(handshake_directory)
+                    terminal_resolution_allowed = bool(
+                        exited_during_snapshot
+                        or HandshakeStage.EVIDENCE_FLUSHED
+                        in registry.observed_worker_stages
                     )
+                    candidate_verdict = _registry_snapshot_verdict(
+                        candidate,
+                        registry,
+                        terminal_resolution_allowed=terminal_resolution_allowed,
+                    )
+                    during_samples.append(candidate)
+                    during_verdicts.append(candidate_verdict)
+                    registry_verdict = candidate_verdict.get("registry_verdict")
+                    if isinstance(registry_verdict, Mapping) and registry_verdict.get(
+                        "owned"
+                    ):
+                        saw_registered_compute = True
+                    if candidate_verdict["passed"] is not True:
+                        process_snapshots["during"] = {
+                            "schema_version": "kvbench-phase3-process-monitor-2.0.0",
+                            "sampling_target_seconds": 2.0,
+                            "samples": during_samples,
+                            "sample_registry_verdicts": during_verdicts,
+                        }
+                        raise Phase3CoordinatorError(
+                            "worker process audit detected foreign or unverified compute"
+                        )
+                    if exited_during_snapshot:
+                        break
+                    time.sleep(2.0)
                 process_snapshots["during"] = {
-                    "schema_version": "kvbench-phase3-process-monitor-1.0.0",
+                    "schema_version": "kvbench-phase3-process-monitor-2.0.0",
                     "sampling_target_seconds": 2.0,
                     "samples": during_samples,
-                    "saw_allowed_compute": saw_allowed_compute,
+                    "sample_registry_verdicts": during_verdicts,
+                    "saw_registered_compute": saw_registered_compute,
+                    "fast_exit_before_first_telemetry_poll": not during_samples,
                     "monitoring_stopped_before_worker_exit": False,
                 }
-                process.wait(timeout=WORKER_TIMEOUT_SECONDS)
+                registry.refresh_handshake_directory(handshake_directory)
+                returncode = process.wait(timeout=WORKER_TIMEOUT_SECONDS)
+                reaped_event = registry.record_supervisor_reaped(
+                    returncode,
+                    recorded_at_utc=_utc_now(),
+                )
+                write_handshake_event(handshake_directory, reaped_event)
+                ownership = registry.terminal_outcome()
+                ownership_outcome = ownership.to_dict()
+                if ownership.disposition is not OwnershipDisposition.OWNED_COMPLETED:
+                    raise Phase3CoordinatorError(
+                        f"worker ownership failed: {ownership.disposition.value}"
+                    )
+            registry.refresh_handshake_directory(handshake_directory)
             after = _process_snapshot()
+            registry.refresh_handshake_directory(handshake_directory)
             process_snapshots["after"] = after
-            if not _snapshot_clean(after, allow_supervised=False):
-                raise Phase3CoordinatorError("compute process leaked after worker")
+            after_verdict = _registry_snapshot_verdict(
+                after,
+                registry,
+                terminal_resolution_allowed=True,
+            )
+            process_snapshots["after_registry_verdict"] = after_verdict
+            if after_verdict["passed"] is not True:
+                raise Phase3CoordinatorError(
+                    "post-reap process audit detected foreign or unverified compute"
+                )
             stdout = stdout_path.read_bytes()
             parsed_result = _parse_canonical_json(
                 stdout,
@@ -825,8 +1098,9 @@ def _run_point(
             ipc_metadata = ipc_path.lstat()
             if stat.S_ISLNK(ipc_metadata.st_mode) or not stat.S_ISREG(ipc_metadata.st_mode):
                 raise Phase3CoordinatorError("worker IPC path is unsafe")
+            ipc_bytes = ipc_path.read_bytes()
             evidence = _parse_canonical_json(
-                ipc_path.read_bytes(),
+                ipc_bytes,
                 maximum_bytes=MAX_IPC_BYTES,
                 label="worker evidence",
             )
@@ -840,13 +1114,53 @@ def _run_point(
             if isinstance(runtime, Mapping):
                 if runtime.get("cache_layout_fingerprint") != cache.layout_fingerprint:
                     raise Phase3CoordinatorError("runtime cache fingerprint differs")
-            if result.status is RunStatus.COMPLETED and not saw_allowed_compute:
-                raise Phase3CoordinatorError("completed worker lacked active compute audit")
+            assert registry is not None
+            registry_evidence = registry.to_evidence()
+            events = registry_evidence.get("handshake_events")
+            if not isinstance(events, list):
+                raise Phase3CoordinatorError(
+                    "registered worker handshake evidence is malformed"
+                )
+            evidence_events = [
+                event
+                for event in events
+                if isinstance(event, Mapping)
+                and event.get("stage") == HandshakeStage.EVIDENCE_FLUSHED.value
+            ]
+            if (
+                len(evidence_events) != 1
+                or evidence_events[0].get("evidence_sha256")
+                != sha256_hex(ipc_bytes)
+            ):
+                raise Phase3CoordinatorError(
+                    "evidence_flushed digest differs from worker IPC"
+                )
             audit_passed = True
         except BaseException as error:
             failure_reason = f"{type(error).__name__}: {' '.join(str(error).split())}"[:1000]
-            if process is not None:
-                _terminate_worker(process)
+            if process is not None and process.returncode is None:
+                if registry is not None:
+                    try:
+                        registry.refresh_handshake_directory(handshake_directory)
+                    except ProcessSupervisionError:
+                        pass
+                returncode = _terminate_worker(process)
+                if registry is not None and not registry.reaped:
+                    registry.note_exit_observed()
+                    try:
+                        registry.refresh_handshake_directory(handshake_directory)
+                    except ProcessSupervisionError:
+                        pass
+                    reaped_event = registry.record_supervisor_reaped(
+                        returncode,
+                        recorded_at_utc=_utc_now(),
+                    )
+                    try:
+                        write_handshake_event(handshake_directory, reaped_event)
+                    except ProcessSupervisionError:
+                        pass
+            if registry is not None and registry.reaped:
+                ownership_outcome = registry.terminal_outcome().to_dict()
             try:
                 if "after" not in process_snapshots:
                     process_snapshots["after"] = _process_snapshot()
@@ -861,18 +1175,75 @@ def _run_point(
                 run_id=run_id,
                 reason=failure_reason,
             )
+        finally:
+            if opened_pidfd is not None:
+                os.close(opened_pidfd)
+                opened_pidfd = None
         stdout = stdout_path.read_bytes() if stdout_path.is_file() else b""
         stderr = stderr_path.read_bytes() if stderr_path.is_file() else b""
         run.write_bytes("logs/worker.stdout.txt", stdout)
         run.write_bytes("logs/worker.stderr.txt", stderr)
         for name, snapshot in process_snapshots.items():
             run.write_json(f"environment/process.{name}.json", snapshot)
+        if registry is not None:
+            registry_evidence = registry.to_evidence()
+            registry_evidence["pidfd_closed_by_supervisor"] = pidfd_was_opened
+            registry_evidence["process_handle_reaped_by_supervisor"] = registry.reaped
+            handshake_evidence = {
+                "schema_version": "kvbench-phase3-worker-handshake-2.0.0",
+                "run_id": run_id,
+                "events": registry_evidence["handshake_events"],
+                "terminal_outcome": ownership_outcome,
+                "evidence_flushed_required_for_owned_completion": True,
+            }
+        else:
+            registry_evidence = {
+                "schema_version": "kvbench-phase3-process-registry-2.0.0",
+                "registry_created": False,
+                "run_id": run_id,
+                "pidfd_supported": pidfd_supported,
+                "pidfd_closed_by_supervisor": pidfd_was_opened,
+            }
+            handshake_evidence = {
+                "schema_version": "kvbench-phase3-worker-handshake-2.0.0",
+                "run_id": run_id,
+                "events": [],
+                "terminal_outcome": None,
+                "evidence_flushed_required_for_owned_completion": True,
+            }
+        run.write_json("environment/process.registry.json", registry_evidence)
+        run.write_json("environment/process.handshake.json", handshake_evidence)
+        ownership_disposition = (
+            None
+            if ownership_outcome is None
+            else ownership_outcome.get("disposition")
+        )
+        exclusivity_passed = bool(
+            ownership_outcome is not None
+            and ownership_outcome.get("exclusivity_passed") is True
+        )
         run.write_json(
             "validation/process_audit_outcome.json",
             {
-                "schema_version": "kvbench-phase3-process-audit-1.0.0",
+                "schema_version": "kvbench-phase3-process-audit-2.0.0",
                 "passed": audit_passed,
                 "certified_helper": "preflight/process_query.py",
+                "registry_created": registry is not None,
+                "ownership_verdict": ownership_disposition,
+                "exclusivity_passed": exclusivity_passed,
+                "evidence_flushed": bool(
+                    ownership_outcome is not None
+                    and ownership_outcome.get("evidence_flushed") is True
+                ),
+                "worker_exiting_observed": bool(
+                    ownership_outcome is not None
+                    and ownership_outcome.get("worker_exiting_observed") is True
+                ),
+                "pid_start_time_protected": registry is not None,
+                "pidfd_supported": pidfd_supported,
+                "pidfd_opened": pidfd_was_opened,
+                "pidfd_closed": pidfd_was_opened,
+                "failure_reason": None if audit_passed else failure_reason,
                 "foreign_compute_allowed": False,
                 "unknown_compute_allowed": False,
             },

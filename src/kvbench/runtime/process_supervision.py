@@ -591,7 +591,7 @@ class OwnershipOutcome:
 class RunOwnedProcessRegistry:
     """Retain worker ownership independently of procfs lifetime and polling."""
 
-    SCHEMA_VERSION = "kvbench-phase3-process-registry-1.0.0"
+    SCHEMA_VERSION = "kvbench-phase3-process-registry-2.0.0"
 
     def __init__(
         self,
@@ -819,6 +819,18 @@ class RunOwnedProcessRegistry:
         if priorities.get(disposition, 0) > existing_priority:
             self._hard_disposition = disposition
             self._hard_reason = reason
+
+    def note_unverified_device_evidence(self, reason: str) -> None:
+        """Make a malformed or failed device query a sticky exclusivity failure."""
+
+        if not isinstance(reason, str) or not reason:
+            raise ProcessSupervisionError(
+                "unverified device evidence reason must be nonempty"
+            )
+        self._record_hard_failure(
+            OwnershipDisposition.UNVERIFIED_PROCESS_DETECTED,
+            reason,
+        )
 
     def observe_proc_start_time(
         self,
