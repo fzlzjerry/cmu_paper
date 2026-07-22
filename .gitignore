@@ -1,0 +1,16 @@
+# Operator-provided and extracted literature inputs are preserved locally and
+# represented in Git by their manifests and checksums.
+/Archive.zip
+/literature/raw/
+
+# Raw experimental outputs are append-only and are not normal code-PR content.
+# Audit and durable-publication requirements are in docs/artifact_policy.md.
+/artifacts/
+
+# Local environments, caches, and profiler output.
+/.venv/
+/__pycache__/
+*.py[cod]
+*.egg-info/
+*.nsys-rep
+*.ncu-rep

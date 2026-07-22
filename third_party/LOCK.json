@@ -1,0 +1,181 @@
+{
+  "schema_version": 2,
+  "generated_at_utc": "2026-07-21T17:13:29Z",
+  "last_updated_at_utc": "2026-07-21T17:37:13Z",
+  "policy": {
+    "checkout_by_commit_only": true,
+    "floating_default_branches_forbidden": true,
+    "execute_during_phase_0": false,
+    "transitive_environment_lock_required_before_reference_execution": true
+  },
+  "sources": [
+    {
+      "id": "vllm_turboquant",
+      "method": "turboquant",
+      "lane": ["reference", "measurement_source_candidate"],
+      "repository": "https://github.com/vllm-project/vllm.git",
+      "revision": "752a3a504485790a2e8491cacbb35c137339ad34",
+      "tree": "3ec7a4eb00f9bc8fec399bea6cf7de27a7936372",
+      "tag": "v0.25.1",
+      "revision_kind": "release_tag_commit",
+      "revision_verified_with": "git ls-remote and read-only shallow source inspection",
+      "declared_license": "Apache-2.0",
+      "license_verification_status": "verified_from_root_license",
+      "acquisition_status": "planned",
+      "notes": [
+        "The TurboQuant paper does not name an author-owned implementation repository.",
+        "This upstream vLLM release contains all four cache dtype names in CODEX_WORKFLOW.md.",
+        "Source comments say this DRIVE/EDEN/HIGGS-style implementation predates the TurboQuant paper and intentionally omits QJL.",
+        "Matching cache dtype names do not establish paper authority or equivalence; that remains hard-gating Phase 5 work."
+      ]
+    },
+    {
+      "id": "kivi",
+      "method": "kivi",
+      "lane": ["reference"],
+      "repository": "https://github.com/jy-yuan/KIVI.git",
+      "revision": "876b4d2d08e3b1d5f70d0969c299d8c7c42ddfb6",
+      "tree": "c94c31b2cfd44eeb9a18cff9dcdf03adff4ac49b",
+      "observed_branch": "main",
+      "revision_kind": "commit",
+      "commit_authored_at": "2025-11-20T12:34:32-08:00",
+      "revision_verified_with": "git ls-remote and read-only shallow source inspection",
+      "declared_license": "MIT",
+      "license_verification_status": "verified_from_root_license",
+      "acquisition_status": "planned",
+      "notes": [
+        "Repository URL is stated in arXiv:2402.02750v2.",
+        "Checkout commands must use the revision, never the observed branch.",
+        "This is a post-paper official-repository snapshot selected as an exact audit-time candidate because it includes GQA-aware paths; paper-era equivalence is not assumed.",
+        "The develop branch was observed at 8c3bdf1f83d5b548d1a6ad4fbef8f1bbc5686804 but is not selected."
+      ]
+    },
+    {
+      "id": "kvquant",
+      "method": "kvquant",
+      "lane": ["calibration", "reference"],
+      "repository": "https://github.com/SqueezeAILab/KVQuant.git",
+      "revision": "57a238357f0ffe50084670fcd5781c9848f80ea2",
+      "observed_branch": "main",
+      "tree": "094e0f736f77ee327e5350cbd1eefb1c936aa77b",
+      "revision_kind": "commit",
+      "revision_verified_with": "git ls-remote and read-only shallow source inspection",
+      "declared_license": "Apache Software License",
+      "license_evidence": "deployment/pyproject.toml classifier only",
+      "license_verification_status": "unresolved_no_root_license",
+      "acquisition_status": "planned",
+      "notes": [
+        "Repository URL is stated in arXiv:2401.18079v6.",
+        "Checkout commands must use the revision, never the observed branch.",
+        "The pinned tree contains three Transformers-derived source snapshots; their parent-tree hashes and nested license paths are recorded below, but their upstream commit identities are unresolved.",
+        "The README attributes reused components to GPTQ, GPTQ-for-LLaMA, and SqueezeLLM; exact file-to-upstream commit lineage remains unresolved."
+      ]
+    },
+    {
+      "id": "kivi_lm_evaluation_harness",
+      "method": "kivi",
+      "lane": ["reference_environment_dependency"],
+      "repository": "https://github.com/EleutherAI/lm-evaluation-harness.git",
+      "revision": "c9bbec6e7de418b9082379da82797522eb173054",
+      "tree": "f768f7f6693a1068b0d9644535c2f858898b9211",
+      "revision_kind": "direct_git_requirement_commit",
+      "required_by": "KIVI requirements.txt line 70",
+      "revision_verified_with": "read-only exact-commit fetch into /tmp and FETCH_HEAD verification",
+      "declared_license": "MIT",
+      "license_verification_status": "verified_from_LICENSE.md",
+      "acquisition_status": "planned",
+      "notes": [
+        "This dependency is part of the isolated KIVI Reference Lane only.",
+        "No code from this repository was imported or executed during Phase 0."
+      ]
+    }
+  ],
+  "embedded_sources": [
+    {
+      "id": "kvquant_transformers_deployment",
+      "parent_source_id": "kvquant",
+      "parent_revision": "57a238357f0ffe50084670fcd5781c9848f80ea2",
+      "path": "deployment/transformers",
+      "embedded_tree": "ad1b59d25d28d87c3d84e7dfbee3820e466e3d3e",
+      "observed_version": "4.38.0.dev0",
+      "candidate_upstream_repository": "https://github.com/huggingface/transformers.git",
+      "upstream_revision": null,
+      "declared_license": "Apache-2.0",
+      "license_evidence": "deployment/transformers/LICENSE",
+      "provenance_status": "bytes_fixed_by_parent_commit_upstream_revision_unresolved",
+      "required_action": "Before reference execution, copying, or redistribution, map the embedded tree to an exact upstream commit and record any KVQuant patch delta."
+    },
+    {
+      "id": "kvquant_transformers_gradients",
+      "parent_source_id": "kvquant",
+      "parent_revision": "57a238357f0ffe50084670fcd5781c9848f80ea2",
+      "path": "gradients",
+      "embedded_tree": "363e26431801bb9d5e0967e1d8993a1406048187",
+      "observed_version": "4.38.0.dev0",
+      "candidate_upstream_repository": "https://github.com/huggingface/transformers.git",
+      "upstream_revision": null,
+      "declared_license": "Apache-2.0",
+      "license_evidence": "gradients/LICENSE",
+      "provenance_status": "bytes_fixed_by_parent_commit_upstream_revision_unresolved",
+      "required_action": "Before reference execution, copying, or redistribution, map the embedded tree to an exact upstream commit and record any KVQuant patch delta."
+    },
+    {
+      "id": "kvquant_transformers_dbrx",
+      "parent_source_id": "kvquant",
+      "parent_revision": "57a238357f0ffe50084670fcd5781c9848f80ea2",
+      "path": "quant/dbrx",
+      "embedded_tree": "1ec047a7ab4c99ef0f42841bb435fac1e3c0c948",
+      "observed_version": "4.41.0.dev0",
+      "candidate_upstream_repository": "https://github.com/huggingface/transformers.git",
+      "upstream_revision": null,
+      "declared_license": "Apache-2.0",
+      "license_evidence": "quant/dbrx/LICENSE",
+      "provenance_status": "bytes_fixed_by_parent_commit_upstream_revision_unresolved",
+      "required_action": "Before reference execution, copying, or redistribution, map the embedded tree to an exact upstream commit and record any KVQuant patch delta."
+    }
+  ],
+  "attributed_repository_commit_plans": [
+    {
+      "id": "kvquant_gptq_lineage",
+      "repository": "https://github.com/IST-DASLab/gptq.git",
+      "revision": null,
+      "evidence": "KVQuant README acknowledgement",
+      "status": "exact_lineage_unresolved",
+      "required_action": "Map reused files to an exact upstream commit or document why no exact match exists before copying or redistribution."
+    },
+    {
+      "id": "kvquant_gptq_for_llama_lineage",
+      "repository": "https://github.com/qwopqwop200/GPTQ-for-LLaMa.git",
+      "revision": null,
+      "evidence": "KVQuant README acknowledgement",
+      "status": "exact_lineage_unresolved",
+      "required_action": "Map reused files to an exact upstream commit or document why no exact match exists before copying or redistribution."
+    },
+    {
+      "id": "kvquant_squeezellm_lineage",
+      "repository": "https://github.com/SqueezeAILab/SqueezeLLM.git",
+      "revision": null,
+      "evidence": "KVQuant README acknowledgement",
+      "status": "exact_lineage_unresolved",
+      "required_action": "Map reused files to an exact upstream commit or document why no exact match exists before copying or redistribution."
+    }
+  ],
+  "unresolved_inputs": [
+    {
+      "id": "primary_model",
+      "required_action": "Select model ID and immutable revision after G0, then record a decision before creating the model config."
+    },
+    {
+      "id": "kvquant_calibration_dataset",
+      "required_action": "Select dataset ID and immutable revision before Phase 9 and record it in the calibration manifest."
+    },
+    {
+      "id": "container_bases",
+      "required_action": "Resolve every base image to a registry digest before any reference or measurement run."
+    },
+    {
+      "id": "kvquant_embedded_source_lineage",
+      "required_action": "Resolve upstream commits and local patch deltas for all embedded or attributed KVQuant source before reference execution, copying, or redistribution; the pinned outer commit fixes current bytes but does not establish upstream lineage."
+    }
+  ]
+}
