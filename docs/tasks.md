@@ -1,13 +1,13 @@
 # Research task breakdown
 
-Status values in this Phase 0 ledger are planning states, not admission
+Status values in this research ledger are planning states, not admission
 results. No remote issue tracker is configured, so this file is the
 authoritative local task index until issues are created elsewhere.
 
 | ID | Scope | Depends on | Required evidence / gate | Status |
 |---|---|---|---|---|
 | E00 | Hardware preflight | Phase 0 PASS | hardware manifest; native extension; PTX/JIT; Compute Sanitizer; G0 | complete: native-host G0 PASS in `e00-20260722T050632.375718Z-6442ba1f7554-02d5bd32` |
-| E01 | Repository scaffold and schemas | G0 | strict schemas; append-only writer; durable artifact policy; digest-pinned container; parity preflight | pending |
+| E01 | Repository scaffold and schemas | G0 | strict schemas; append-only writer; durable artifact policy; digest-pinned container; parity preflight | partial: Phase 2 local scaffold/contracts/writer PASS; durable storage and container-parity items remain open as B-009/B-010 |
 | E02 | BF16 static-cache baseline | E01 and container-parity G0 | reference numerical match; static allocation; GQA audit | pending |
 | E03 | Fixed-L benchmark | E02 | fixed-L and growing-context runners; timing-boundary tests | pending |
 | E04 | CUDA Graph harness | E02-E03 | capture/replay correctness; no replay allocation; eager/graph lanes | pending |
@@ -37,10 +37,12 @@ task list. E16 remains closed until its evidence is reviewed.
 
 ## Cross-cutting subtasks
 
-- E01 implements docs/artifact_policy.md; no claim-bearing run starts while
-  B-009 remains open.
-- E01 also pins the measurement container digest and reruns E00 inside it;
-  B-010 keeps E02 and all later CUDA or timing work closed until parity passes.
+- Phase 2 implements the local portion of docs/artifact_policy.md; no
+  claim-bearing run starts while B-009's durable-store/locator requirements
+  remain open.
+- E01 task closure still requires a pinned measurement-container digest and
+  identical E00 execution inside it; B-010 keeps E02 and all later CUDA or
+  timing work closed until parity passes.
 - E03 includes growing-context request validation but does not mix those
   samples with fixed-L fitting.
 - E04 owns the capture/replay harness used by M14-GRAPH-AB; that milestone runs

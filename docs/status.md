@@ -8,22 +8,27 @@ requirements; and AGENTS.md. Decision 0005 records precedence.
 
 ## Current state
 
-- Current phase: Phase 1 / E00 remediation complete; native-host G0 PASS
+- Current phase: Phase 2 repository scaffold and experiment contracts complete;
+  Phase 2 status PASS
 - Phase 0 status: PASS
-- Next action: stop after Phase 1 remediation. Phase 2 may be proposed in a
-  new task, but must not start as part of this remediation task
+- Phase 1 remediation status: PASS
+- Next action: stop after Phase 2. Phase 3 may be proposed in a new task but
+  has not started
 - Active admission gate: native-host G0 PASS; container-parity G0 remains a
   later E01 requirement before E02
-- Benchmark implementation changes: none
+- Benchmark implementation changes: none; Phase 2 adds validation contracts,
+  not a model, cache, decode runner, CUDA kernel, or timing path
 - CUDA builds or executions: the new formal E00 run passed extension build,
   native execution, forced PTX/JIT, numerical golden, CUDA Graph, allocation,
   SASS/PTX inspection, and all required Compute Sanitizer lanes
-- Benchmark or profiler data produced: none
+- Benchmark, profiler, or quality data produced: none
 - Scientific performance claims: none
 - Quality protocol: preregistered by Decision 0005 before any performance or
   quality result
 - Quality execution: LOCKED; `PERFORMANCE_DATA_FROZEN` is absent
 - Quality runs or quality-only dependency installations: none
+- Full-scan admission: CLOSED
+- G1-G5: NOT EVALUATED
 
 ## Repository
 
@@ -39,6 +44,13 @@ and the exact `cuda-nvdisasm-13-0=13.0.85-1` package/tool identity was locked at
 `e00-20260722T050632.375718Z-6442ba1f7554-02d5bd32` finalized as immutable PASS
 evidence. B-001 and B-002 are resolved; B-009 and B-010 remain open. No remote
 is configured.
+
+Phase 2 adds a dependency-free strict schema package, 11 versioned contract
+templates, a fail-closed CLI, deterministic command reconstruction, and a
+local append-only staging/finalization implementation. Its tests use temporary
+roots only. The local controls do not select a durable backing store or an
+immutable publication locator, so B-009 remains open. No digest-pinned
+measurement container or container-parity G0 exists, so B-010 remains open.
 
 At Phase 0 start, the only top-level inputs were AGENTS.md,
 CODEX_WORKFLOW.md, and Archive.zip. No implementation, model config, CUDA
@@ -85,6 +97,7 @@ repository.
 |---|---|---|
 | Phase 0 repository/input audit | PASS | literature manifests; method notes; source lock; decision, risks, blockers, tasks |
 | G0 native-host hardware certification | PASS | `docs/evidence/e00/e00-20260722T050632.375718Z-6442ba1f7554-02d5bd32/`; prior immutable FAIL retained |
+| Phase 2 repository/contracts/tooling | PASS | strict schemas and examples; fail-closed CLI; append-only local writer; 54 Phase 2 tests; repository checks |
 | G1 BF16 baseline | NOT EVALUATED | requires G0 and E01-E04 |
 | G2-TQ | NOT EVALUATED | requires E05-E06 |
 | G2-KIVI | NOT EVALUATED | requires E07-E08 |
@@ -108,8 +121,10 @@ repository.
 
 ## Next action
 
-Stop after the successful Phase 1 remediation. Phase 2 may be proposed in a
-new task, but must not begin in this task. G1-G5 remain NOT EVALUATED, the full
-scan remains CLOSED, and quality execution remains LOCKED. When separately
-authorized, E01 must implement the general append-only artifact policy, pin
-the measurement container by digest, and pass container-parity G0 before E02.
+Stop after successful Phase 2. Phase 3 may be proposed in a new task but must
+not begin automatically. Before any E02 CUDA/model work or timing, B-010 still
+requires a digest-pinned measurement container and identical container-parity
+G0. Before any claim-bearing run, B-009 still requires durable append-only
+storage and an immutable locator/publication mechanism. G1-G5 remain NOT
+EVALUATED, the full scan remains CLOSED, quality execution remains LOCKED, and
+`PERFORMANCE_DATA_FROZEN` remains absent.

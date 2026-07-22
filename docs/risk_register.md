@@ -1,6 +1,6 @@
 # Risk register
 
-Last updated: 2026-07-22 after successful Phase 1 G0 remediation.
+Last updated: 2026-07-22 after successful Phase 2 local validation.
 
 | ID | Risk and evidence | Potential impact | Required mitigation / gate | Status |
 |---|---|---|---|---|
@@ -23,6 +23,6 @@ Last updated: 2026-07-22 after successful Phase 1 G0 remediation.
 | R-017 | KIVI source uses torch.cat for cache growth and may specialize kernels for group sizes different from the planned 32. | Direct reference timing is unfair or configuration unsupported. | Reference is correctness-only; build a preallocated adapter and prove group-size-32 semantics with fixtures. | open |
 | R-018 | KVQuant reference computes top-k/outlier masks dynamically and uses explicit synchronization in its harness. | CPU sync, dynamic allocation, and contaminated timing. | Move calibration/selection outside measurement; use fixed-cap buffers; never import reference timings. | open |
 | R-019 | Repository files are owned by root in the current environment. | A later non-root operator may be unable to update the project. | Verify ownership in environment/bootstrap setup before Phase 1 writes; do not recursively change ownership without operator approval. | open |
-| R-020 | Raw `/artifacts/` is Git-ignored and no durable append-only backing or locator publication mechanism exists yet. | Claim evidence could be lost or unauditable despite local checksums. | E01 implements and tests docs/artifact_policy.md; B-009 blocks admission/claim runs until durable storage and report linkage are fixed. | open |
+| R-020 | Phase 2 now provides tested local no-replace finalization, strict inventories, SHA-256 ledgers, completion markers, provenance locking, and formal-evidence-root guards. Raw `/artifacts/` remains Git-ignored, and no durable append-only backing, external attestation, retention proof, or locator publication mechanism exists. | Local evidence can still be lost or coherently rewritten by the same storage principal; claim evidence would be unauditable without external retention and linkage. | B-009 blocks admission and claim-bearing runs until a durable store is exercised and an immutable locator plus manifest/ledger digest is published and retrieval-verified. | locally mitigated; durable risk open |
 | R-021 | The selected KIVI official-repository commit postdates arXiv v2 and includes later GQA changes. | Candidate fixtures may silently validate post-paper rather than paper-era semantics. | E07 documents the equivalence comparison and requires a decision before accepting fixtures; otherwise preserve both scopes or exclude. | open |
 | R-022 | Native-host G0 has no container digest and cannot certify the eventual measurement image. | Later CUDA behavior could differ despite host certification. | B-010 requires the identical preflight to pass in a digest-pinned measurement container after E01 and before E02 or timing. | open |
