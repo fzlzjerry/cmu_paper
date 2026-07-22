@@ -1,10 +1,10 @@
 #!/usr/bin/python3
-"""Dependency-free, read-only Phase 2 repository validation.
+"""Dependency-free, read-only repository governance validation.
 
 These checks never execute CUDA, timing, profiler, model, or quality code and
 never install packages. They protect the certified E00 evidence/environment
-while providing honest standard-library-only format, AST, and annotation
-checks for the Phase 2 package.
+while preserving the completed Phase 2 audit boundary and validating the
+approved Phase 3 implementation separately.
 """
 
 from __future__ import annotations
@@ -29,7 +29,8 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"
-ENTRY_COMMIT = "aba70be8220972c068c6fbeac279d54e34cddbde"
+PHASE2_ENTRY_COMMIT = "aba70be8220972c068c6fbeac279d54e34cddbde"
+PHASE2_FINAL_COMMIT = "c16139b0f365eaa052b17cff2fd19c1d4c62a4d1"
 QUALITY_COMMIT = "6535a6f6a4e5caa53213e917e9fcf8fc9c0f0190"
 ENVIRONMENT_COMMIT = "6442ba1f7554ea0ebf0b3bb1a920c94567cab689"
 EVIDENCE_COMMIT = "aba70be8220972c068c6fbeac279d54e34cddbde"
@@ -63,7 +64,7 @@ E00_RUNS = {
         ),
     },
 }
-CONFIG_PATHS = (
+PHASE2_CONFIG_PATHS = (
     "configs/hardware/rtx_pro_6000.yaml",
     "configs/models/primary_gqa_model.yaml",
     "configs/methods/bf16.yaml",
@@ -76,6 +77,11 @@ CONFIG_PATHS = (
     "configs/plans/profiler_subset.yaml",
     "configs/plans/full_scan.yaml",
 )
+PHASE3_CONFIG_PATHS = (
+    "configs/plans/phase3_bf16_fixed_l.yaml",
+    "configs/plans/phase3_bf16_growing.yaml",
+)
+CONFIG_PATHS = (*PHASE2_CONFIG_PATHS, *PHASE3_CONFIG_PATHS)
 PHASE2_ALLOWED_PATHS = frozenset(
     {
         ".gitignore",
@@ -86,7 +92,7 @@ PHASE2_ALLOWED_PATHS = frozenset(
         "artifacts/README.md",
         "calibration/README.md",
         "reference/README.md",
-        *CONFIG_PATHS,
+        *PHASE2_CONFIG_PATHS,
         "docs/experiment_contract.md",
         "docs/measurement_protocol.md",
         "docs/method_notes/README.md",
@@ -119,7 +125,75 @@ PHASE2_ALLOWED_PATHS = frozenset(
         "tests/unit/test_phase2_governance.py",
     }
 )
+PHASE3_ALLOWED_PATHS = frozenset(
+    {
+        ".gitignore",
+        "Makefile",
+        "configs/models/primary_gqa_model.yaml",
+        "configs/methods/bf16.yaml",
+        "configs/plans/phase3_bf16_fixed_l.yaml",
+        "configs/plans/phase3_bf16_growing.yaml",
+        "docs/blockers.md",
+        "docs/decisions/0007-phase3-primary-model-and-bf16-backend.md",
+        "docs/evidence/phase3/backend-identity.md",
+        "docs/evidence/phase3/g1-admission.json",
+        "docs/evidence/phase3/model-identity.md",
+        "docs/experiment_contract.md",
+        "docs/measurement_protocol.md",
+        "docs/plans/phase3-bf16-baseline.md",
+        "docs/phase_reports/phase3.md",
+        "docs/risk_register.md",
+        "docs/status.md",
+        "docs/tasks.md",
+        "preflight/requirements-phase3.txt",
+        "scripts/bootstrap_phase3.py",
+        "scripts/validate_phase2.py",
+        "src/kvbench/cli.py",
+        "src/kvbench/config.py",
+        "src/kvbench/schema/__init__.py",
+        "src/kvbench/schema/base.py",
+        "src/kvbench/schema/phase3.py",
+        "src/kvbench/schema/result.py",
+        "src/kvbench/runtime/__init__.py",
+        "src/kvbench/runtime/allocation.py",
+        "src/kvbench/runtime/artifacts.py",
+        "src/kvbench/runtime/backend.py",
+        "src/kvbench/runtime/bf16_endpoint.py",
+        "src/kvbench/runtime/command.py",
+        "src/kvbench/runtime/cuda_graph.py",
+        "src/kvbench/runtime/fixed_l_runner.py",
+        "src/kvbench/runtime/gqa_audit.py",
+        "src/kvbench/runtime/growing_context_runner.py",
+        "src/kvbench/runtime/model_loader.py",
+        "src/kvbench/runtime/numerical.py",
+        "src/kvbench/runtime/phase3_coordinator.py",
+        "src/kvbench/runtime/phase3_campaign.py",
+        "src/kvbench/runtime/phase3_report.py",
+        "src/kvbench/runtime/phase3_worker.py",
+        "src/kvbench/runtime/static_cache.py",
+        "src/kvbench/runtime/telemetry.py",
+        "src/kvbench/runtime/timing.py",
+        "tests/schema/test_config_schema.py",
+        "tests/schema/test_phase3_schema.py",
+        "tests/unit/test_phase3_artifacts.py",
+        "tests/unit/test_phase3_cli.py",
+        "tests/unit/test_phase3_governance.py",
+        "tests/unit/test_phase3_campaign.py",
+        "tests/unit/test_phase3_report.py",
+        "tests/unit/test_phase3_runtime.py",
+        "tests/cuda/test_phase3_runtime_cuda.py",
+        "tests/cuda/test_phase3_full_model.py",
+        "tests/graph/test_phase3_full_model_graph.py",
+        "tests/graph/test_phase3_runtime_graph.py",
+    }
+)
 RAW_RESULT_SUFFIXES = {
+    ".bin",
+    ".cc",
+    ".cpp",
+    ".cu",
+    ".cuh",
+    ".gguf",
     ".ncu-rep",
     ".nsys-rep",
     ".parquet",
@@ -127,7 +201,82 @@ RAW_RESULT_SUFFIXES = {
     ".pt",
     ".pth",
 }
-BANNED_IMPORTS = {"lm_eval", "longbench", "ruler", "torch", "transformers", "triton", "vllm"}
+BANNED_IMPORTS = {
+    "datasets",
+    "evaluate",
+    "lm_eval",
+    "longbench",
+    "ruler",
+    "triton",
+    "vllm",
+}
+PHASE3_EXTERNAL_IMPORTS = {
+    "src/kvbench/runtime/allocation.py": {"torch"},
+    "src/kvbench/runtime/backend.py": {"torch"},
+    "src/kvbench/runtime/bf16_endpoint.py": {"torch"},
+    "src/kvbench/runtime/cuda_graph.py": {"torch"},
+    "src/kvbench/runtime/fixed_l_runner.py": {"torch"},
+    "src/kvbench/runtime/gqa_audit.py": {"torch"},
+    "src/kvbench/runtime/growing_context_runner.py": {"torch"},
+    "src/kvbench/runtime/model_loader.py": {"torch", "transformers"},
+    "src/kvbench/runtime/numerical.py": {"torch"},
+    "src/kvbench/runtime/static_cache.py": {"torch"},
+    "src/kvbench/runtime/timing.py": {"torch"},
+}
+HOT_PATH_FUNCTIONS = {
+    "src/kvbench/runtime/backend.py": {
+        "flash_attention_forward",
+    },
+    "src/kvbench/runtime/static_cache.py": {"update"},
+    "src/kvbench/runtime/bf16_endpoint.py": {
+        "rotate_half_in_place",
+        "_attention",
+        "_base_forward",
+        "decode",
+    },
+    "src/kvbench/runtime/cuda_graph.py": {"replay"},
+    "src/kvbench/runtime/fixed_l_runner.py": {
+        "eager_operation",
+    },
+    "src/kvbench/runtime/growing_context_runner.py": {
+        "trajectory_step",
+        "full_trajectory",
+    },
+}
+HOT_PATH_BANNED_CALLS = {
+    "cat",
+    "cpu",
+    "expand",
+    "item",
+    "numpy",
+    "repeat_interleave",
+    "repeat_kv",
+    "synchronize",
+    "tolist",
+}
+E00_PROTECTED_PATHS = (
+    "preflight/README.md",
+    "preflight/__init__.py",
+    "preflight/audit_checkpoint.py",
+    "preflight/e00_cuda/binding.cpp",
+    "preflight/e00_cuda/build.py",
+    "preflight/e00_cuda/xor_kernel.cu",
+    "preflight/e00_cuda/xor_kernel.h",
+    "preflight/e00_manifest.schema.json",
+    "preflight/process_query.py",
+    "preflight/python_integrity_probe.py",
+    "preflight/python_probe.py",
+    "preflight/requirements-e00.txt",
+    "preflight/run_preflight.py",
+    "preflight/system-packages.lock.json",
+    "scripts/preflight.sh",
+    "tests/allocation/test_e00_allocation.py",
+    "tests/cuda/e00_runtime_probe.py",
+    "tests/cuda/e00_sanitizer_probe.py",
+    "tests/golden/test_e00_numerical.py",
+    "tests/graph_capture/test_e00_graph.py",
+    "tests/unit/test_preflight_unit.py",
+)
 METHOD_NAMES = {"bf16", "turboquant", "kivi", "kvquant"}
 SAFE_IDENTIFIER = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}")
 REQUIREMENT = re.compile(
@@ -209,15 +358,34 @@ def report(name: str, errors: Sequence[str], *, note: str | None = None) -> int:
     return 0
 
 
-def changed_paths() -> set[str]:
-    changed = git_paths(("diff", "--name-only", "-z", ENTRY_COMMIT, "--"))
+def historical_phase2_paths() -> set[str]:
+    return git_paths(
+        (
+            "diff",
+            "--name-only",
+            "-z",
+            PHASE2_ENTRY_COMMIT,
+            PHASE2_FINAL_COMMIT,
+            "--",
+        )
+    )
+
+
+def current_phase3_paths() -> set[str]:
+    changed = git_paths(
+        ("diff", "--name-only", "-z", PHASE2_FINAL_COMMIT, "--")
+    )
     untracked = git_paths(
         ("ls-files", "--others", "--exclude-standard", "-z", "--")
     )
     return changed | untracked
 
 
-def phase2_python_paths() -> list[Path]:
+def changed_paths() -> set[str]:
+    return current_phase3_paths()
+
+
+def repository_python_paths() -> list[Path]:
     paths: set[Path] = set()
     if SRC.is_dir():
         paths.update(SRC.rglob("*.py"))
@@ -228,6 +396,13 @@ def phase2_python_paths() -> list[Path]:
     unit_tests = ROOT / "tests" / "unit"
     if unit_tests.is_dir():
         paths.update(unit_tests.glob("test_phase2_*.py"))
+        paths.update(unit_tests.glob("test_phase3_*.py"))
+    cuda_tests = ROOT / "tests" / "cuda"
+    if cuda_tests.is_dir():
+        paths.update(cuda_tests.glob("test_phase3_*.py"))
+    graph_tests = ROOT / "tests" / "graph"
+    if graph_tests.is_dir():
+        paths.update(graph_tests.glob("test_phase3_*.py"))
     return sorted(path for path in paths if path.is_file())
 
 
@@ -240,7 +415,7 @@ def check_format() -> int:
         if Path(relative).suffix in text_suffixes
         or relative in {".gitignore", "Makefile"}
     }
-    candidates.update(phase2_python_paths())
+    candidates.update(repository_python_paths())
     for path in sorted(candidates):
         if not path.is_file():
             continue
@@ -269,7 +444,7 @@ def check_format() -> int:
 
 def check_lint() -> int:
     errors: list[str] = []
-    paths = phase2_python_paths()
+    paths = repository_python_paths()
     if not any(path.is_relative_to(SRC) for path in paths):
         errors.append("src/kvbench Python package is missing")
     for path in paths:
@@ -322,7 +497,7 @@ def check_lint() -> int:
             elif node.level == 0 and node.module:
                 imported.add(node.module.split(".", 1)[0])
             banned = imported & BANNED_IMPORTS
-            if banned and path.is_relative_to(SRC):
+            if banned:
                 errors.append(
                     f"out-of-scope import {sorted(banned)!r}: "
                     f"{relative}:{node.lineno}"
@@ -332,17 +507,216 @@ def check_lint() -> int:
                 for name in imported
                 if name not in sys.stdlib_module_names and name != "kvbench"
             }
-            if external and (
+            allowed_external = PHASE3_EXTERNAL_IMPORTS.get(relative, set())
+            undeclared = external - allowed_external
+            if undeclared and (
                 path.is_relative_to(SRC) or path.name == "validate_phase2.py"
             ):
                 errors.append(
-                    f"undeclared non-stdlib import {sorted(external)!r}: "
+                    f"undeclared non-stdlib import {sorted(undeclared)!r}: "
                     f"{relative}:{node.lineno}"
                 )
     return report(
         "lint",
         errors,
         note="AST compilation and dependency/scope lint",
+    )
+
+
+def _call_leaf(node: ast.Call) -> str | None:
+    function = node.func
+    if isinstance(function, ast.Name):
+        return function.id
+    if isinstance(function, ast.Attribute):
+        return function.attr
+    return None
+
+
+def _contains_forbidden_expand_reshape(node: ast.AST) -> bool:
+    if not isinstance(node, ast.Call):
+        return False
+    if _call_leaf(node) not in {"reshape", "view"}:
+        return False
+    function = node.func
+    if not isinstance(function, ast.Attribute):
+        return False
+    return any(
+        isinstance(inner, ast.Call) and _call_leaf(inner) == "expand"
+        for inner in ast.walk(function.value)
+    )
+
+
+def _function_definitions(tree: ast.AST) -> dict[str, list[ast.AST]]:
+    definitions: dict[str, list[ast.AST]] = {}
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            definitions.setdefault(node.name, []).append(node)
+    return definitions
+
+
+def _hot_node_errors(
+    relative: str,
+    function_name: str,
+    node: ast.AST,
+) -> list[str]:
+    errors: list[str] = []
+    for child in ast.walk(node):
+        if isinstance(child, ast.Call):
+            leaf = _call_leaf(child)
+            if leaf in HOT_PATH_BANNED_CALLS:
+                errors.append(
+                    f"forbidden hot-path call {leaf}: "
+                    f"{relative}:{getattr(child, 'lineno', 0)}:"
+                    f"{function_name}"
+                )
+            if leaf in {
+                "run",
+                "Popen",
+                "collect_telemetry",
+                "print",
+                "debug",
+                "info",
+                "warning",
+                "error",
+                "critical",
+            }:
+                errors.append(
+                    f"logging, telemetry, or subprocess call in hot path: "
+                    f"{relative}:{getattr(child, 'lineno', 0)}:"
+                    f"{function_name}"
+                )
+            if _contains_forbidden_expand_reshape(child):
+                errors.append(
+                    f"expand-plus-reshape in hot path: "
+                    f"{relative}:{getattr(child, 'lineno', 0)}:"
+                    f"{function_name}"
+                )
+        if isinstance(child, ast.Name) and child.id == "DynamicCache":
+            errors.append(
+                f"DynamicCache in hot path: {relative}:"
+                f"{getattr(child, 'lineno', 0)}:{function_name}"
+            )
+    return errors
+
+
+def check_hot_path() -> int:
+    errors: list[str] = []
+    trees: dict[str, ast.AST] = {}
+    for relative, expected_names in HOT_PATH_FUNCTIONS.items():
+        path = ROOT / relative
+        if not path.is_file():
+            errors.append(f"missing Phase 3 SUT source: {relative}")
+            continue
+        try:
+            tree = ast.parse(
+                path.read_text(encoding="utf-8"),
+                filename=relative,
+            )
+        except (SyntaxError, UnicodeError) as error:
+            errors.append(
+                f"cannot audit Phase 3 SUT source {relative}: {error}"
+            )
+            continue
+        trees[relative] = tree
+        definitions = _function_definitions(tree)
+        for name in sorted(expected_names):
+            matches = definitions.get(name, [])
+            if len(matches) != 1:
+                errors.append(
+                    f"expected exactly one audited function "
+                    f"{relative}:{name}, found {len(matches)}"
+                )
+                continue
+            errors.extend(
+                _hot_node_errors(relative, name, matches[0])
+            )
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Call) and _call_leaf(node) in {
+                "cat",
+                "repeat_interleave",
+                "repeat_kv",
+            }:
+                errors.append(
+                    f"forbidden GQA/cache operation in SUT source: "
+                    f"{relative}:{getattr(node, 'lineno', 0)}"
+                )
+            if isinstance(node, ast.Name) and node.id == "DynamicCache":
+                errors.append(
+                    f"DynamicCache in SUT source: {relative}:"
+                    f"{getattr(node, 'lineno', 0)}"
+                )
+            if _contains_forbidden_expand_reshape(node):
+                errors.append(
+                    f"expand-plus-reshape in SUT source: {relative}:"
+                    f"{getattr(node, 'lineno', 0)}"
+                )
+    timing_path = ROOT / "src/kvbench/runtime/timing.py"
+    if not timing_path.is_file():
+        errors.append("missing Phase 3 timing source")
+    else:
+        try:
+            timing_tree = ast.parse(
+                timing_path.read_text(encoding="utf-8"),
+                filename="src/kvbench/runtime/timing.py",
+            )
+        except (SyntaxError, UnicodeError) as error:
+            errors.append(f"cannot audit Phase 3 timing source: {error}")
+        else:
+            definitions = _function_definitions(timing_tree)
+            loop_specs = {
+                "measure_fixed_batches": "count",
+                "measure_growing_trajectory": "steps",
+            }
+            for name, range_name in loop_specs.items():
+                matches = definitions.get(name, [])
+                if len(matches) != 1:
+                    errors.append(
+                        f"expected exactly one timing function: {name}"
+                    )
+                    continue
+                function = matches[0]
+                synchronize_calls = sum(
+                    1
+                    for node in ast.walk(function)
+                    if isinstance(node, ast.Call)
+                    and _call_leaf(node) == "synchronize"
+                )
+                if synchronize_calls != 2:
+                    errors.append(
+                        f"{name} must contain exactly start/end "
+                        f"synchronization boundaries"
+                    )
+                operation_loops = [
+                    node
+                    for node in ast.walk(function)
+                    if isinstance(node, ast.For)
+                    and isinstance(node.iter, ast.Call)
+                    and _call_leaf(node.iter) == "range"
+                    and len(node.iter.args) == 1
+                    and isinstance(node.iter.args[0], ast.Name)
+                    and node.iter.args[0].id == range_name
+                ]
+                if len(operation_loops) != 1:
+                    errors.append(
+                        f"{name} must retain one exact measured "
+                        f"operation loop"
+                    )
+                    continue
+                loop_wrapper = ast.Module(
+                    body=operation_loops[0].body,
+                    type_ignores=[],
+                )
+                errors.extend(
+                    _hot_node_errors(
+                        "src/kvbench/runtime/timing.py",
+                        f"{name}:measured_loop",
+                        loop_wrapper,
+                    )
+                )
+    return report(
+        "hot-path",
+        errors,
+        note="measured decode and GQA/cache AST audit",
     )
 
 
@@ -389,8 +763,15 @@ def check_annotations() -> int:
         return report("annotations", ["src/kvbench package is missing"])
     if str(SRC) not in sys.path:
         sys.path.insert(0, str(SRC))
+    phase3_child = os.environ.get(
+        "KVBENCH_PHASE3_ANNOTATION_CHILD"
+    ) == "1"
     modules: list[Any] = []
     for path in sorted(SRC.rglob("*.py")):
+        relative = path.relative_to(ROOT).as_posix()
+        is_phase3_external = relative in PHASE3_EXTERNAL_IMPORTS
+        if phase3_child != is_phase3_external:
+            continue
         name = module_name(path)
         if not name:
             continue
@@ -457,6 +838,46 @@ def check_annotations() -> int:
             "runtime annotation resolution, not third-party static "
             "type analysis"
         ),
+    )
+
+
+def check_phase3_annotations() -> int:
+    errors: list[str] = []
+    python = ROOT / ".venv" / "bin" / "python"
+    site = ROOT / ".phase3" / "site-packages"
+    if not python.is_file():
+        errors.append("certified Phase 3 base interpreter is missing")
+    if not site.is_dir():
+        errors.append("isolated Phase 3 dependency target is missing")
+    if errors:
+        return report("phase3-annotations", errors)
+    environment = {
+        "HF_HUB_DISABLE_TELEMETRY": "1",
+        "HF_HUB_OFFLINE": "1",
+        "KVBENCH_PHASE3_ANNOTATION_CHILD": "1",
+        "LANG": "C",
+        "LC_ALL": "C",
+        "PYTHONDONTWRITEBYTECODE": "1",
+        "PYTHONNOUSERSITE": "1",
+        "PYTHONPATH": f"{site}:{SRC}",
+        "TOKENIZERS_PARALLELISM": "false",
+        "TRANSFORMERS_OFFLINE": "1",
+    }
+    result = run(
+        (str(python), str(Path(__file__).resolve()), "annotations"),
+        environment=environment,
+    )
+    if result.returncode != 0:
+        errors.append(
+            "Phase 3 runtime annotation resolution failed"
+        )
+        detail = (result.stderr or result.stdout).strip()
+        if detail:
+            errors.append(detail.replace("\n", " | "))
+    return report(
+        "phase3-annotations",
+        errors,
+        note="isolated runtime annotation resolution",
     )
 
 
@@ -642,10 +1063,7 @@ def freeze_markers() -> list[Path]:
         directories[:] = [
             item
             for item in directories
-            if item not in {".git", ".venv", "__pycache__"}
-            and not (
-                base_path == ROOT / "docs" and item == "evidence"
-            )
+            if item not in {".git", ".phase3", ".venv", "__pycache__"}
         ]
         markers.extend(
             base_path / item
@@ -727,40 +1145,135 @@ def make_target_block(text: str, target: str) -> str | None:
     return "\n".join(lines[start:end]) + "\n"
 
 
+def validate_phase3_artifact_root() -> list[str]:
+    errors: list[str] = []
+    artifacts = ROOT / "artifacts"
+    phase3 = artifacts / "phase3"
+    forbidden = (
+        artifacts / "quality",
+        artifacts / "profiler",
+        ROOT / "docs" / "evidence" / "quality",
+        ROOT / "paper-results",
+        ROOT / "paper_results",
+        ROOT / "results",
+    )
+    for path in forbidden:
+        if path.exists() or path.is_symlink():
+            errors.append(
+                f"forbidden Phase 3 output path exists: "
+                f"{path.relative_to(ROOT)}"
+            )
+    if artifacts.is_symlink():
+        return [*errors, "artifact root is a symlink"]
+    if artifacts.exists():
+        unexpected = sorted(
+            path.name
+            for path in artifacts.iterdir()
+            if path.name not in {"README.md", "phase3"}
+        )
+        if unexpected:
+            errors.append(
+                f"unapproved artifact roots: {unexpected!r}"
+            )
+    if not phase3.exists() and not phase3.is_symlink():
+        return errors
+    if phase3.is_symlink() or not phase3.is_dir():
+        return [*errors, "Phase 3 artifact root is unsafe"]
+    for control_name in (
+        ".kvbench-staging",
+        ".kvbench-reservations",
+    ):
+        control = phase3 / control_name
+        if control.is_symlink() or (
+            control.exists() and not control.is_dir()
+        ):
+            errors.append(
+                f"Phase 3 control path is unsafe: {control_name}"
+            )
+    staging = phase3 / ".kvbench-staging"
+    if staging.is_dir() and any(staging.iterdir()):
+        errors.append("Phase 3 contains incomplete staging runs")
+    for child in sorted(phase3.iterdir()):
+        if child.name in {
+            ".kvbench-staging",
+            ".kvbench-reservations",
+        }:
+            continue
+        if child.is_symlink() or not child.is_dir():
+            errors.append(
+                f"unsafe Phase 3 artifact child: {child.name}"
+            )
+            continue
+        result = run(
+            (
+                "/usr/bin/python3",
+                "-m",
+                "kvbench",
+                "validate-run",
+                str(child),
+            ),
+            environment=phase2_environment(),
+        )
+        if result.returncode != 0:
+            errors.append(
+                f"invalid or incomplete Phase 3 run: {child.name}"
+            )
+    return errors
+
+
 def check_scope() -> int:
     errors: list[str] = []
-    changed = changed_paths()
-    unexpected = sorted(changed - PHASE2_ALLOWED_PATHS)
+    if not commit_is_ancestor(PHASE2_FINAL_COMMIT):
+        errors.append(
+            "the accepted Phase 2 final commit is not an ancestor of HEAD"
+        )
+    historical = historical_phase2_paths()
+    historical_unexpected = sorted(
+        historical - PHASE2_ALLOWED_PATHS
+    )
+    if historical_unexpected:
+        errors.append(
+            "historical files outside the approved Phase 2 plan: "
+            f"{historical_unexpected!r}"
+        )
+    changed = current_phase3_paths()
+    unexpected = sorted(changed - PHASE3_ALLOWED_PATHS)
     if unexpected:
         errors.append(
-            f"files outside the approved Phase 2 plan: {unexpected!r}"
+            f"files outside the approved Phase 3 plan: {unexpected!r}"
         )
     for relative in sorted(changed):
         if relative.startswith("docs/evidence/e00/"):
             errors.append(f"immutable E00 evidence changed: {relative}")
         if relative in QUALITY_PROTOCOL_HASHES:
             errors.append(
-                f"quality protocol changed during Phase 2: {relative}"
+                f"quality protocol changed during Phase 3: {relative}"
             )
         if Path(relative).suffix in RAW_RESULT_SUFFIXES:
             errors.append(
-                f"raw benchmark/profiler/model artifact in "
-                f"Phase 2 scope: {relative}"
+                f"forbidden binary, kernel, model, or profiler artifact "
+                f"in Phase 3 scope: {relative}"
+            )
+        if relative.startswith(
+            (
+                "artifacts/profiler/",
+                "artifacts/quality/",
+                "paper-results/",
+                "paper_results/",
+                "results/",
+            )
+        ):
+            errors.append(
+                f"forbidden result tree in Phase 3 scope: {relative}"
             )
     e00_changes = git_paths(
         (
             "diff",
             "--name-only",
             "-z",
-            ENTRY_COMMIT,
+            PHASE2_FINAL_COMMIT,
             "--",
-            "preflight",
-            "scripts/preflight.sh",
-            "tests/allocation",
-            "tests/cuda",
-            "tests/golden",
-            "tests/graph_capture",
-            "tests/unit/test_preflight_unit.py",
+            *E00_PROTECTED_PATHS,
         )
     )
     if e00_changes:
@@ -768,7 +1281,9 @@ def check_scope() -> int:
             f"certified E00 implementation changed: "
             f"{sorted(e00_changes)!r}"
         )
-    entry_makefile = git(("show", f"{ENTRY_COMMIT}:Makefile"))
+    entry_makefile = git(
+        ("show", f"{PHASE2_FINAL_COMMIT}:Makefile")
+    )
     current_path = ROOT / "Makefile"
     if entry_makefile.returncode != 0 or not current_path.is_file():
         errors.append("cannot compare certified Makefile targets")
@@ -781,31 +1296,17 @@ def check_scope() -> int:
                 errors.append(
                     f"certified Makefile target semantics changed: {target}"
                 )
-    artifacts = ROOT / "artifacts"
-    if artifacts.exists():
-        payloads = sorted(
-            path.relative_to(ROOT).as_posix()
-            for path in artifacts.rglob("*")
-            if path.is_file()
-            and path.relative_to(artifacts).as_posix() != "README.md"
-        )
-        if payloads:
-            errors.append(
-                f"repository artifact root contains run payloads: {payloads!r}"
-            )
+    errors.extend(validate_phase3_artifact_root())
     forbidden_modules = (
         "src/kvbench/adapters",
-        "src/kvbench/model",
-        "src/kvbench/metrics",
-        "src/kvbench/runtime/static_cache.py",
-        "src/kvbench/runtime/cuda_graph.py",
-        "src/kvbench/runtime/fixed_l_runner.py",
-        "src/kvbench/runtime/growing_context_runner.py",
+        "src/kvbench/methods/turboquant",
+        "src/kvbench/methods/kivi",
+        "src/kvbench/methods/kvquant",
     )
     for relative in forbidden_modules:
         if (ROOT / relative).exists():
             errors.append(
-                f"Phase 3+ implementation exists in Phase 2 scope: {relative}"
+                f"Phase 4+ implementation exists in Phase 3 scope: {relative}"
             )
     return report("scope", errors)
 
@@ -817,7 +1318,7 @@ def check_immutable() -> int:
             "diff",
             "--quiet",
             "--no-ext-diff",
-            ENTRY_COMMIT,
+            PHASE2_ENTRY_COMMIT,
             "--",
             "docs/evidence/e00",
         )
@@ -1145,6 +1646,56 @@ def check_package_lock() -> int:
     return report("package-lock", errors)
 
 
+def check_phase3_package_lock() -> int:
+    errors: list[str] = []
+    environment = {
+        "LANG": "C",
+        "LC_ALL": "C",
+        "PYTHONDONTWRITEBYTECODE": "1",
+        "PYTHONNOUSERSITE": "1",
+        "TZ": "UTC",
+    }
+    result = run(
+        (
+            str(ROOT / ".venv" / "bin" / "python"),
+            "scripts/bootstrap_phase3.py",
+            "verify",
+        ),
+        environment=environment,
+    )
+    payload: dict[str, Any] = {}
+    if result.returncode != 0:
+        errors.append(
+            "Phase 3 dependency verification failed "
+            f"(exit {result.returncode})"
+        )
+    else:
+        try:
+            parsed = json.loads(result.stdout)
+        except json.JSONDecodeError:
+            errors.append(
+                "Phase 3 dependency verifier output is not JSON"
+            )
+        else:
+            if isinstance(parsed, dict):
+                payload = parsed
+            else:
+                errors.append(
+                    "Phase 3 dependency verifier output is not an object"
+                )
+    if payload and payload.get("status") != "pass":
+        errors.append(
+            "Phase 3 dependency verifier did not report pass"
+        )
+    if payload and payload.get("target") != str(
+        ROOT / ".phase3" / "site-packages"
+    ):
+        errors.append(
+            "Phase 3 dependency target identity mismatch"
+        )
+    return report("phase3-package-lock", errors)
+
+
 def check_method() -> int:
     method = os.environ.get("KVBENCH_METHOD", "")
     errors: list[str] = []
@@ -1172,12 +1723,15 @@ def check_run_id() -> int:
 CHECKS: dict[str, Callable[[], int]] = {
     "format": check_format,
     "lint": check_lint,
+    "hot-path": check_hot_path,
     "annotations": check_annotations,
+    "phase3-annotations": check_phase3_annotations,
     "configs": check_configs,
     "provenance": check_provenance,
     "scope": check_scope,
     "immutable": check_immutable,
     "package-lock": check_package_lock,
+    "phase3-package-lock": check_phase3_package_lock,
     "method": check_method,
     "run-id": check_run_id,
 }
@@ -1202,12 +1756,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     for name in (
         "format",
         "lint",
+        "hot-path",
         "annotations",
+        "phase3-annotations",
         "configs",
         "provenance",
         "scope",
         "immutable",
         "package-lock",
+        "phase3-package-lock",
     ):
         try:
             result |= CHECKS[name]()

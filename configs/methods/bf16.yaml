@@ -5,13 +5,12 @@
   "method": "bf16",
   "resolution": {
     "schema_version": "kvbench.resolution.v1",
-    "status": "unresolved",
+    "status": "blocked",
     "blockers": [
-      "B-004",
       "B-010",
       "E02"
     ],
-    "reason": "The model, measurement container, and BF16 static-cache baseline are not yet resolved."
+    "reason": "The exact BF16 implementation is frozen for the narrow native-host Phase 3 admission lane, but formal E02 closure remains blocked by B-010 and the G1 result."
   },
   "source_lock_id": null,
   "source_revision": null,
@@ -19,19 +18,15 @@
   "implementation": {
     "resolution": {
       "schema_version": "kvbench.resolution.v1",
-      "status": "unresolved",
-      "blockers": [
-        "B-004",
-        "B-010",
-        "E02"
-      ],
-      "reason": "The BF16 static-cache implementation has not been built or admitted."
+      "status": "resolved",
+      "blockers": [],
+      "reason": null
     },
-    "attention_backend": null,
-    "cache_layout": null,
-    "adapter_source_sha256": null,
-    "kernel_binary_sha256": null,
-    "graph_support": "not_evaluated"
+    "attention_backend": "pytorch_2.12.1_flash_sdpa_fa2_2.5.7_forced_gqa",
+    "cache_layout": "two_contiguous_bf16_layers_batch_kv_heads_context_head_dim_tensors",
+    "adapter_source_sha256": "0d185b132987627abe0272a4e66f14202ac5a06c832fe0cc59050c9d7a403313",
+    "kernel_binary_sha256": "b248fb7e9935440965e4736eea48868b315ba41012734b7ce058fc0a2d0b1984",
+    "graph_support": "cuda_graph"
   },
   "variants": [
     {
@@ -39,13 +34,9 @@
       "role": "baseline",
       "resolution": {
         "schema_version": "kvbench.resolution.v1",
-        "status": "unresolved",
-        "blockers": [
-          "B-004",
-          "B-010",
-          "E02"
-        ],
-        "reason": "The BF16 baseline variant has not been implemented or admitted."
+        "status": "resolved",
+        "blockers": [],
+        "reason": null
       },
       "parameters": {
         "parameter_type": "bf16",

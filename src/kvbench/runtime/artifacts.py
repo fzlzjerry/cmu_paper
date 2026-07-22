@@ -42,19 +42,9 @@ _CONTROL_PATHS = {
     "checksums.sha256",
     "COMPLETE",
 }
-_TERMINAL_STATUSES = {
-    "completed",
-    "build_failed",
-    "runtime_failed",
-    "numerical_failed",
-    "graph_capture_failed",
-    "profiler_failed",
-    "capacity_infeasible",
-    "unstable",
-    "backend_fallback",
-    "unsupported_geometry",
-    "aborted",
-}
+_TERMINAL_STATUSES = frozenset(
+    status.value for status in RunStatus if status.is_terminal
+)
 _MUTABLE_MANIFEST_FIELDS = {
     "status",
     "started_at_utc",
@@ -243,6 +233,18 @@ def _file_role(relative: str) -> str:
         return "log"
     if relative.startswith("raw/"):
         return "raw"
+    if relative.startswith("config/"):
+        return "configuration"
+    if relative.startswith("environment/"):
+        return "environment"
+    if relative.startswith("telemetry/"):
+        return "telemetry"
+    if relative.startswith("allocation/"):
+        return "allocation"
+    if relative.startswith("gqa/"):
+        return "gqa"
+    if relative.startswith("numerical/"):
+        return "numerical"
     if relative.startswith("validation/"):
         return "validation"
     return "artifact"
@@ -264,9 +266,11 @@ def _payload_files(stage: Path, exclusions: set[str]) -> list[Path]:
     return files
 
 
-def _validate_manifest(payload: Mapping[str, Any]) -> RunManifest:
+def _validate_manifest(payload: Mapping[str, Any]) -> object:
     try:
-        return RunManifest.from_dict(dict(payload))
+        from kvbench.schema import parse_run_manifest
+
+        return parse_run_manifest(dict(payload))
     except SchemaValidationError:
         raise
     except (TypeError, ValueError) as error:
@@ -469,6 +473,47 @@ class ArtifactRun:
             raise ProvenanceError(
                 "final manifest changes immutable initial command or provenance",
             )
+
+        from kvbench.schema import Phase3RunManifest
+
+        if isinstance(parsed, Phase3RunManifest):
+            required = {
+                "config/plan.json",
+                "config/referenced_fingerprints.json",
+                "environment/live_hardware.json",
+                "environment/worker_environment.json",
+                "logs/worker.stderr.txt",
+                "logs/worker.stdout.txt",
+                "validation/point.json",
+                "validation/process_audit_outcome.json",
+                "validation/worker_result.json",
+            }
+            if parsed.status is RunStatus.COMPLETED:
+                required.update(
+                    {
+                        "allocation/audit.json",
+                        "environment/process.after.json",
+                        "environment/process.before.json",
+                        "environment/process.during.json",
+                        "environment/process.ready.json",
+                        "environment/process.release_audit.json",
+                        "gqa/audit.json",
+                        "numerical/agreement.json",
+                        "raw/timing.json",
+                        "raw/worker_evidence.json",
+                        "telemetry/snapshots.json",
+                        "validation/model_identity.json",
+                    }
+                )
+            missing = sorted(
+                relative
+                for relative in required
+                if not (self.stage / relative).is_file()
+            )
+            if missing:
+                raise ArtifactStateError(
+                    "Phase 3 finalization lacks required evidence payloads"
+                )
 
         self._write_lifecycle(3, "finalizing")
         self._state = "finalizing"
@@ -897,6 +942,29 @@ def validate_run_directory(
         )
 
 
+def phase3_artifact_store(
+    repository_root: str | Path | None = None,
+) -> AppendOnlyArtifactStore:
+    """Return the exact local Phase 3 engineering-evidence store."""
+
+    root = (
+        Path(repository_root).resolve(strict=True)
+        if repository_root is not None
+        else Path(__file__).resolve().parents[3]
+    )
+    return AppendOnlyArtifactStore(
+        root / "artifacts" / "phase3",
+        formal_evidence_roots=(
+            root / "docs" / "evidence",
+            root / "artifacts" / "quality",
+            root / "artifacts" / "profiler",
+            root / "paper-results",
+            root / "paper_results",
+            root / "results",
+        ),
+    )
+
+
 def summarize_run_directory(run_dir: str | Path) -> dict[str, Any]:
     """Return structural facts only; this function makes no scientific claims."""
 
@@ -923,6 +991,10 @@ def summarize_run_directory(run_dir: str | Path) -> dict[str, Any]:
         "valid": validation.valid,
         "run_kind": manifest.get("run_kind"),
         "claim_class": manifest.get("claim_class"),
+        "performance_claim_eligible": manifest.get(
+            "performance_claim_eligible"
+        ),
+        "measurement_scope": manifest.get("measurement_scope"),
         "quality_status": (
             manifest.get("quality", {}).get("quality_status")
             if isinstance(manifest.get("quality"), dict)

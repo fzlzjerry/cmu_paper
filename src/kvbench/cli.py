@@ -15,10 +15,17 @@ from kvbench.config import (
     ExperimentConfig,
     load_config,
     load_experiment_bundle,
+    load_phase3_admission_bundle,
 )
-from kvbench.errors import ErrorCode, KVBenchError, PhaseNotImplementedError
+from kvbench.errors import (
+    AdmissionError,
+    ErrorCode,
+    KVBenchError,
+    PhaseNotImplementedError,
+)
 from kvbench.runtime.artifacts import summarize_run_directory, validate_run_directory
 from kvbench.validation import evaluate_admission
+from kvbench.schema import Phase3AdmissionPlan, expand_phase3_process_points
 
 
 def _emit(payload: dict[str, Any], *, stream: Any | None = None) -> None:
@@ -89,6 +96,53 @@ def command_preflight(args: argparse.Namespace) -> int:
 
 def command_run(args: argparse.Namespace) -> int:
     bundle = load_experiment_bundle(args.plan)
+    if isinstance(bundle.plan, Phase3AdmissionPlan):
+        phase3_bundle = load_phase3_admission_bundle(args.plan)
+        plan_path = _repository_relative(phase3_bundle.plan_path)
+        points = expand_phase3_process_points(phase3_bundle.plan)
+        if args.dry_run:
+            _emit(
+                {
+                    "schema_version": "kvbench-phase3-dry-run-1.0.0",
+                    "ok": True,
+                    "command": "run",
+                    "plan": plan_path,
+                    "plan_sha256": phase3_bundle.plan.fingerprint(),
+                    "intended_argv": [
+                        "kvbench",
+                        "run",
+                        "--plan",
+                        plan_path,
+                        "--dry-run",
+                    ],
+                    "point_ids": [point.point_id for point in points],
+                    "expected_process_count": len(points),
+                    "narrow_native_host_execution_ready": (
+                        phase3_bundle.execution_ready
+                    ),
+                    "formal_blockers_retained": list(
+                        phase3_bundle.all_blockers
+                    ),
+                    "performance_execution_implemented": True,
+                    "execution_attempted": False,
+                    "timing_collected": False,
+                    "profiler_executed": False,
+                    "quality_executed": False,
+                    "performance_claim_eligible": False,
+                    "measurement_scope": "native_host_admission",
+                }
+            )
+            return 0
+        try:
+            from kvbench.runtime.phase3_coordinator import run_phase3_campaign
+
+            result = run_phase3_campaign(plan_path)
+        except RuntimeError as error:
+            raise AdmissionError(
+                f"Phase 3 coordination failed closed: {error}"
+            ) from error
+        _emit(result)
+        return 0 if result["ok"] else 1
     admission = evaluate_admission(bundle)
     plan_path = _repository_relative(bundle.plan_path)
     intended = ("kvbench", "run", "--plan", plan_path, "--dry-run")
@@ -116,6 +170,39 @@ def command_run(args: argparse.Namespace) -> int:
     payload["error"] = error.to_dict()
     _emit(payload, stream=sys.stderr)
     return 3
+
+
+def command_phase3_worker(args: argparse.Namespace) -> int:
+    """Internal supervised worker; direct invocation fails without IPC state."""
+
+    from kvbench.runtime.phase3_worker import execute_worker, emit_worker_result
+
+    result = execute_worker(
+        plan_path=args.plan,
+        point_id=args.point_id,
+        replicate=args.replicate,
+        run_id=args.run_id,
+    )
+    emit_worker_result(result)
+    return 0
+
+
+def command_phase3_report(args: argparse.Namespace) -> int:
+    """Derive and write one immutable report from two explicit campaigns."""
+
+    try:
+        from kvbench.runtime.phase3_report import write_phase3_g1_report
+
+        result = write_phase3_g1_report(
+            args.fixed_campaign_id,
+            args.growing_campaign_id,
+        )
+    except RuntimeError as error:
+        raise AdmissionError(
+            f"Phase 3 report derivation failed closed: {error}"
+        ) from error
+    _emit(result)
+    return 0
 
 
 def command_validate_run(args: argparse.Namespace) -> int:
@@ -162,6 +249,18 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--plan", required=True)
     run.add_argument("--dry-run", action="store_true")
     run.set_defaults(handler=command_run)
+
+    phase3_worker = subparsers.add_parser("phase3-worker")
+    phase3_worker.add_argument("--plan", required=True)
+    phase3_worker.add_argument("--point-id", required=True)
+    phase3_worker.add_argument("--replicate", required=True, type=int)
+    phase3_worker.add_argument("--run-id", required=True)
+    phase3_worker.set_defaults(handler=command_phase3_worker)
+
+    phase3_report = subparsers.add_parser("phase3-report")
+    phase3_report.add_argument("--fixed-campaign-id", required=True)
+    phase3_report.add_argument("--growing-campaign-id", required=True)
+    phase3_report.set_defaults(handler=command_phase3_report)
 
     validate_run = subparsers.add_parser("validate-run")
     validate_run.add_argument("run_dir")

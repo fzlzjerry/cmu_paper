@@ -14,10 +14,15 @@ PHASE2_PYTHON := /usr/bin/python3
 PHASE2_ENV := PYTHONDONTWRITEBYTECODE=1 PYTHONNOUSERSITE=1 PYTHONPATH=src
 PHASE2_VALIDATE := $(PHASE2_ENV) $(PHASE2_PYTHON) scripts/validate_phase2.py
 PHASE2_CLI := $(PHASE2_ENV) $(PHASE2_PYTHON) -m kvbench
+PHASE3_PYTHON := .venv/bin/python
+PHASE3_SITE := $(CURDIR)/.phase3/site-packages
+PHASE3_ENV := /usr/bin/env PYTHONDONTWRITEBYTECODE=1 PYTHONNOUSERSITE=1 PYTHONPATH=$(PHASE3_SITE):src HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 HF_HUB_DISABLE_TELEMETRY=1 TOKENIZERS_PARALLELISM=false
+PHASE3_CLI := $(PHASE3_ENV) $(PHASE3_PYTHON) -m kvbench
 
-.PHONY: bootstrap test checks format-check lint typecheck config-check
+.PHONY: bootstrap bootstrap-phase3 test checks format-check lint hot-path-check typecheck config-check
 .PHONY: provenance-check scope-check immutable-check package-lock-check
-.PHONY: test-cuda test-graph smoke pilot full-scan profile-subset
+.PHONY: phase3-package-lock-check test-cuda test-graph test-allocation
+.PHONY: smoke pilot full-scan profile-subset
 .PHONY: fit figures reproduce
 
 preflight:
@@ -33,14 +38,21 @@ bootstrap:
 	@$(PHASE2_VALIDATE) package-lock
 	@echo '{"status":"ready","action":"verified_only","installed":false}'
 
+bootstrap-phase3:
+	@$(PHASE3_ENV) $(PHASE3_PYTHON) scripts/bootstrap_phase3.py verify
+
 format-check:
 	@$(PHASE2_VALIDATE) format
 
 lint:
 	@$(PHASE2_VALIDATE) lint
 
+hot-path-check:
+	@$(PHASE2_VALIDATE) hot-path
+
 typecheck:
 	@$(PHASE2_VALIDATE) annotations
+	@$(PHASE2_VALIDATE) phase3-annotations
 
 config-check:
 	@$(PHASE2_VALIDATE) configs
@@ -57,19 +69,24 @@ immutable-check:
 package-lock-check:
 	@$(PHASE2_VALIDATE) package-lock
 
-checks: format-check lint typecheck config-check provenance-check scope-check immutable-check package-lock-check
+phase3-package-lock-check:
+	@$(PHASE2_VALIDATE) phase3-package-lock
+
+checks: format-check lint hot-path-check typecheck config-check provenance-check scope-check immutable-check package-lock-check phase3-package-lock-check
 
 test: checks
 	@$(PHASE2_ENV) $(PHASE2_PYTHON) -m unittest discover -s tests/schema -p 'test_*.py' -v
 	@$(PHASE2_ENV) $(PHASE2_PYTHON) -m unittest discover -s tests/unit -p 'test_phase2_*.py' -v
+	@$(PHASE3_ENV) $(PHASE3_PYTHON) -m unittest discover -s tests/unit -p 'test_phase3_*.py' -v
+	@$(PHASE2_VALIDATE) immutable
 
-test-cuda:
-	@echo '{"error":"phase_not_implemented","target":"test-cuda","phase":"3+"}' >&2
-	@exit 2
+test-cuda: phase3-package-lock-check immutable-check
+	@set +e; $(PHASE3_ENV) $(PHASE3_PYTHON) -m unittest discover -s tests/cuda -p 'test_phase3_*.py' -v; test_status=$$?; $(PHASE2_VALIDATE) immutable; immutable_status=$$?; if (( test_status != 0 )); then exit $$test_status; fi; exit $$immutable_status
 
-test-graph:
-	@echo '{"error":"phase_not_implemented","target":"test-graph","phase":"4+"}' >&2
-	@exit 2
+test-graph: phase3-package-lock-check immutable-check
+	@set +e; $(PHASE3_ENV) $(PHASE3_PYTHON) -m unittest discover -s tests/graph -p 'test_phase3_*.py' -v; test_status=$$?; $(PHASE2_VALIDATE) immutable; immutable_status=$$?; if (( test_status != 0 )); then exit $$test_status; fi; exit $$immutable_status
+
+test-allocation: test-cuda
 
 smoke: export KVBENCH_METHOD := $(METHOD)
 smoke:
