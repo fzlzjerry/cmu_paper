@@ -41,10 +41,10 @@ PHASE3_RAW_AUDIT_FILE_SCHEMA_VERSION = (
     "kvbench-phase3-raw-audit-file-1.0.0"
 )
 PHASE3_RAW_AUDIT_OPERATION_SCHEMA_VERSION = (
-    "kvbench-phase3-raw-audit-operation-1.0.0"
+    "kvbench-phase3-raw-audit-operation-2.0.0"
 )
 PHASE3_RAW_AUDIT_RUN_INDEX_SCHEMA_VERSION = (
-    "kvbench-phase3-raw-audit-run-index-1.0.0"
+    "kvbench-phase3-raw-audit-run-index-2.0.0"
 )
 
 RAW_AUDIT_STATUS_COMPLETED = "completed"
@@ -80,6 +80,7 @@ REQUIRED_COMPLETED_RAW_AUDIT_FILE_KINDS = tuple(
             "b012_memory_stats_before",
             "b012_mha_allocator_control",
             "b012_operation_witness",
+            "phase3_session_provenance",
         }
     )
 )
