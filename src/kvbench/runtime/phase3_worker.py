@@ -20,8 +20,24 @@ from kvbench.runtime.process_supervision import (
     ProcessIdentity,
     ProcessSupervisionError,
     command_fingerprint,
+    publish_bytes_no_replace,
+    read_published_bytes,
     read_process_identity,
     write_handshake_event,
+)
+from kvbench.runtime.phase3_audit_operation import Phase3AuditOperationKey
+from kvbench.runtime.phase3_raw_audit_evidence import (
+    Phase3RawAuditRunIndex,
+    parse_phase3_raw_audit_run_index_bytes,
+)
+from kvbench.runtime.phase3_worker_channels import (
+    PHASE3_RAW_AUDIT_OPERATION_PLAN_ENV,
+    Phase3RawAuditProducerError,
+    Phase3RawAuditProducerRegistry,
+    RawAuditOperationProducer,
+    parse_phase3_raw_audit_operation_plan_bytes,
+    phase3_worker_channel_commitment_sha256,
+    require_phase3_raw_audit_measurement_admission,
 )
 from kvbench.schema import (
     GraphMode,
@@ -46,18 +62,144 @@ HANDSHAKE_TIMEOUT_ENV = "KVBENCH_PHASE3_HANDSHAKE_TIMEOUT_SECONDS"
 HANDSHAKE_DIR_ENV = "KVBENCH_PHASE3_HANDSHAKE_DIR"
 COMMAND_FINGERPRINT_ENV = "KVBENCH_PHASE3_COMMAND_FINGERPRINT"
 RAW_AUDIT_ROOT_ENV = "KVBENCH_PHASE3_RAW_AUDIT_ROOT"
+RAW_AUDIT_INDEX_IPC_ENV = "KVBENCH_PHASE3_RAW_AUDIT_INDEX_IPC_PATH"
 HANDSHAKE_TIMEOUT_SECONDS = 120.0
 MAX_REASON_CHARACTERS = 1000
+WORKER_EVIDENCE_V2 = "kvbench-phase3-worker-evidence-2.0.0"
 
 _ACTIVE_HANDSHAKE_DIRECTORY: Path | None = None
 _ACTIVE_PROCESS_IDENTITY: ProcessIdentity | None = None
 _ACTIVE_RUN_ID: str | None = None
 _ACTIVE_COMMAND_FINGERPRINT: str | None = None
 _ACTIVE_WORKER_STAGES: list[HandshakeStage] = []
+_ACTIVE_RAW_AUDIT_RUN_INDEX: Phase3RawAuditRunIndex | None = None
+_ACTIVE_RAW_AUDIT_EXPECTED_OPERATIONS: (
+    tuple[Phase3AuditOperationKey, ...] | None
+) = None
+
 
 
 class WorkerProtocolError(RuntimeError):
     """The coordinator/worker supervision contract was malformed."""
+
+
+def build_phase3_worker_evidence_v2(
+    index: Phase3RawAuditRunIndex,
+) -> dict[str, Any]:
+    """Build the minimal IPC envelope; raw evidence bytes stay out-of-band."""
+
+    if type(index) is not Phase3RawAuditRunIndex:
+        raise TypeError("worker evidence v2 requires a raw-audit run index")
+    index_bytes = canonical_json_bytes(index.to_dict())
+    try:
+        reconstructed = parse_phase3_raw_audit_run_index_bytes(index_bytes)
+    except Exception as error:
+        raise WorkerProtocolError(
+            "worker evidence v2 index failed canonical reconstruction"
+        ) from error
+    if reconstructed != index:
+        raise WorkerProtocolError("worker evidence v2 index changed on reconstruction")
+    return {
+        "schema_version": WORKER_EVIDENCE_V2,
+        "raw_audit_run_index": index.to_dict(),
+        "raw_audit_run_index_sha256": sha256_hex(index_bytes),
+    }
+
+
+def _initialize_phase3_raw_audit_operation_plan(
+    *,
+    run_id: str,
+    point_id: str,
+) -> tuple[Phase3AuditOperationKey, ...]:
+    """Load the exact coordinator-owned plan before importing CUDA."""
+
+    global _ACTIVE_RAW_AUDIT_EXPECTED_OPERATIONS
+    if _ACTIVE_RAW_AUDIT_EXPECTED_OPERATIONS is not None:
+        raise WorkerProtocolError("raw-audit operation plan is already initialized")
+    encoded = os.environ.get(PHASE3_RAW_AUDIT_OPERATION_PLAN_ENV)
+    if not encoded:
+        raise WorkerProtocolError("raw-audit operation plan is absent")
+    try:
+        operations = parse_phase3_raw_audit_operation_plan_bytes(
+            encoded.encode("utf-8")
+        )
+    except (UnicodeEncodeError, Phase3RawAuditProducerError) as error:
+        raise WorkerProtocolError("raw-audit operation plan is invalid") from error
+    if (
+        operations[0].run_id != run_id
+        or operations[0].point_id != point_id
+    ):
+        raise WorkerProtocolError(
+            "raw-audit operation plan differs from the active worker"
+        )
+    _ACTIVE_RAW_AUDIT_EXPECTED_OPERATIONS = operations
+    return operations
+
+
+def register_phase3_raw_audit_run_index(index: Phase3RawAuditRunIndex) -> None:
+    """Register the sole plan-bound index before measurement starts."""
+
+    global _ACTIVE_RAW_AUDIT_RUN_INDEX
+    if type(index) is not Phase3RawAuditRunIndex:
+        raise TypeError("raw-audit run index has the wrong type")
+    if _ACTIVE_RAW_AUDIT_EXPECTED_OPERATIONS is None:
+        raise WorkerProtocolError("raw-audit operation plan is not initialized")
+    if _ACTIVE_WORKER_STAGES != [
+        HandshakeStage.WORKER_STARTED,
+        HandshakeStage.CUDA_CONTEXT_CREATED,
+    ]:
+        raise WorkerProtocolError(
+            "raw-audit run index must be registered before measurement"
+        )
+    if _ACTIVE_RUN_ID is not None and index.run_id != _ACTIVE_RUN_ID:
+        raise WorkerProtocolError("raw-audit run index differs from active run")
+    observed = tuple(record.operation for record in index.records)
+    if observed != _ACTIVE_RAW_AUDIT_EXPECTED_OPERATIONS:
+        raise WorkerProtocolError(
+            "raw-audit run index differs from the trusted operation plan"
+        )
+    if _ACTIVE_RAW_AUDIT_RUN_INDEX is not None:
+        raise WorkerProtocolError("raw-audit run index is already registered")
+    _ACTIVE_RAW_AUDIT_RUN_INDEX = index
+
+
+def _reset_phase3_raw_audit_run_index() -> None:
+    """Reset process-local index registration at the start of a worker run."""
+
+    global _ACTIVE_RAW_AUDIT_RUN_INDEX
+    _ACTIVE_RAW_AUDIT_RUN_INDEX = None
+
+
+def _reset_phase3_raw_audit_operation_plan() -> None:
+    """Reset the process-local trusted plan at the start of a worker run."""
+
+    global _ACTIVE_RAW_AUDIT_EXPECTED_OPERATIONS
+    _ACTIVE_RAW_AUDIT_EXPECTED_OPERATIONS = None
+
+
+def _publish_phase3_worker_evidence_channels(
+    *,
+    primary_path: Path,
+    raw_index_path: Path,
+    primary_evidence: dict[str, Any],
+    raw_index: Phase3RawAuditRunIndex,
+    run_id: str,
+    point_id: str,
+) -> str:
+    """Exclusively publish both channels and return their commitment digest."""
+
+    primary_bytes = canonical_json_bytes(primary_evidence) + b"\n"
+    raw_index_bytes = canonical_json_bytes(
+        build_phase3_worker_evidence_v2(raw_index)
+    ) + b"\n"
+    _exclusive_write(primary_path, primary_bytes)
+    _exclusive_write(raw_index_path, raw_index_bytes)
+    return phase3_worker_channel_commitment_sha256(
+        run_id=run_id,
+        point_id=point_id,
+        primary_evidence_bytes=primary_bytes,
+        raw_audit_index_bytes=raw_index_bytes,
+    )
 
 
 def _safe_reason(error: BaseException) -> str:
@@ -68,29 +210,12 @@ def _safe_reason(error: BaseException) -> str:
 
 
 def _exclusive_write(path: Path, data: bytes) -> None:
-    if not path.is_absolute() or path.parent.is_symlink():
-        raise WorkerProtocolError("IPC paths must use a real absolute parent")
-    parent = path.parent.resolve(strict=True)
-    if not parent.is_dir():
-        raise WorkerProtocolError("IPC parent is not a directory")
-    target = parent / path.name
-    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
-    if hasattr(os, "O_NOFOLLOW"):
-        flags |= os.O_NOFOLLOW
-    descriptor = os.open(target, flags, 0o600)
     try:
-        view = memoryview(data)
-        while view:
-            written = os.write(descriptor, view)
-            view = view[written:]
-        os.fsync(descriptor)
-    finally:
-        os.close(descriptor)
-    parent_descriptor = os.open(parent, os.O_RDONLY | os.O_DIRECTORY)
-    try:
-        os.fsync(parent_descriptor)
-    finally:
-        os.close(parent_descriptor)
+        publish_bytes_no_replace(path, data)
+    except ProcessSupervisionError as error:
+        raise WorkerProtocolError(
+            "worker IPC publication failed"
+        ) from error
 
 
 def _process_start_ticks() -> int:
@@ -175,11 +300,13 @@ def _initialize_worker_handshake(
         identity = read_process_identity(os.getpid())
     except ProcessSupervisionError as error:
         raise WorkerProtocolError("cannot register worker process identity") from error
+    _reset_phase3_raw_audit_operation_plan()
     _ACTIVE_HANDSHAKE_DIRECTORY = handshake_directory
     _ACTIVE_PROCESS_IDENTITY = identity
     _ACTIVE_RUN_ID = run_id
     _ACTIVE_COMMAND_FINGERPRINT = observed_fingerprint
     _ACTIVE_WORKER_STAGES = []
+    _reset_phase3_raw_audit_run_index()
     _emit_worker_stage(HandshakeStage.WORKER_STARTED)
     if observed_fingerprint != expected_fingerprint:
         raise WorkerProtocolError("worker command fingerprint differs")
@@ -247,6 +374,7 @@ def _await_supervisor_release(
     release_path = _required_ipc_path(RELEASE_PATH_ENV)
     handshake_directory = _required_ipc_path(HANDSHAKE_DIR_ENV)
     raw_audit_root = _required_ipc_path(RAW_AUDIT_ROOT_ENV)
+    raw_audit_index_path = _required_ipc_path(RAW_AUDIT_INDEX_IPC_ENV)
     parents = {
         path.parent.resolve(strict=True)
         for path in (
@@ -255,6 +383,7 @@ def _await_supervisor_release(
             release_path,
             handshake_directory,
             raw_audit_root,
+            raw_audit_index_path,
         )
     }
     if len(parents) != 1 or len(
@@ -264,8 +393,9 @@ def _await_supervisor_release(
             release_path.name,
             handshake_directory.name,
             raw_audit_root.name,
+            raw_audit_index_path.name,
         }
-    ) != 5:
+    ) != 6:
         raise WorkerProtocolError("worker IPC paths must be distinct siblings")
     try:
         raw_metadata = raw_audit_root.lstat()
@@ -309,13 +439,18 @@ def _await_supervisor_release(
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         try:
-            metadata = release_path.lstat()
+            release_payload = read_published_bytes(
+                release_path,
+                maximum_bytes=16,
+            )
         except FileNotFoundError:
             time.sleep(0.05)
             continue
-        if stat.S_ISLNK(metadata.st_mode) or not stat.S_ISREG(metadata.st_mode):
-            raise WorkerProtocolError("worker release path is unsafe")
-        if release_path.read_bytes() != b"release\n":
+        except ProcessSupervisionError as error:
+            raise WorkerProtocolError(
+                "worker release path is unsafe"
+            ) from error
+        if release_payload != b"release\n":
             raise WorkerProtocolError("worker release token is invalid")
         return ipc_path, ready_path, release_path, raw_audit_root
     raise WorkerProtocolError("worker supervisor release timed out")
@@ -533,12 +668,68 @@ def _map_exception(error: BaseException) -> RunStatus:
         return RunStatus.RUNTIME_FAILED
     try:
         torch = importlib.import_module("torch")
-
         if isinstance(error, torch.OutOfMemoryError):
             return RunStatus.CAPACITY_INFEASIBLE
     except ModuleNotFoundError:
         pass
     return RunStatus.ABORTED
+
+
+def _phase3_raw_audit_producer_bindings(
+    *,
+    expected_operations: tuple[Phase3AuditOperationKey, ...],
+    torch: Any,
+    device: Any,
+    loaded: Any,
+    point: Any,
+    prefix_input_ids: Any,
+    decode_input_ids: Any,
+) -> tuple[
+    tuple[Phase3AuditOperationKey, RawAuditOperationProducer],
+    ...,
+]:
+    """Return production producer bindings supplied by endpoint integration."""
+
+    del (
+        expected_operations,
+        torch,
+        device,
+        loaded,
+        point,
+        prefix_input_ids,
+        decode_input_ids,
+    )
+    raise WorkerProtocolError(
+        "production Phase 3 raw-audit producer API is not installed"
+    )
+
+
+def _collect_and_register_phase3_raw_audits(
+    *,
+    expected_operations: tuple[Phase3AuditOperationKey, ...],
+    raw_audit_root: Path,
+    producer_bindings: tuple[
+        tuple[Phase3AuditOperationKey, RawAuditOperationProducer],
+        ...,
+    ],
+) -> Phase3RawAuditRunIndex:
+    """Bind all producers, collect once, and enforce pre-timing admission."""
+
+    if type(producer_bindings) is not tuple:
+        raise WorkerProtocolError("raw-audit producer bindings must be a tuple")
+    registry = Phase3RawAuditProducerRegistry(expected_operations)
+    for binding in producer_bindings:
+        if type(binding) is not tuple or len(binding) != 2:
+            raise WorkerProtocolError("raw-audit producer binding is malformed")
+        operation, producer = binding
+        registry.register(operation, producer)
+    index = registry.collect(raw_audit_root)
+    register_phase3_raw_audit_run_index(index)
+    require_phase3_raw_audit_measurement_admission(
+        index,
+        expected_operations,
+    )
+    return index
 
 
 def execute_worker(
@@ -581,6 +772,10 @@ def execute_worker(
     status = RunStatus.ABORTED
     reason: str | None = None
     try:
+        raw_audit_operations = _initialize_phase3_raw_audit_operation_plan(
+            run_id=run_id,
+            point_id=point_id,
+        )
         torch = importlib.import_module("torch")
         torch.cuda.init()
         _emit_worker_stage(HandshakeStage.CUDA_CONTEXT_CREATED)
@@ -635,21 +830,46 @@ def execute_worker(
             offset=10_000,
             device=device,
         )
+        if point.runner_kind is RunnerKind.FIXED_L:
+            decode_input_ids = _deterministic_ids(
+                torch,
+                batch_size=point.batch_size,
+                length=1,
+                offset=40_000,
+                device=device,
+            )
+        else:
+            decode_input_ids = _deterministic_ids(
+                torch,
+                batch_size=point.batch_size,
+                length=point.output_steps,
+                offset=50_000,
+                device=device,
+            )
+        evidence["stage"] = "collecting_raw_audits"
+        producer_bindings = _phase3_raw_audit_producer_bindings(
+            expected_operations=raw_audit_operations,
+            torch=torch,
+            device=device,
+            loaded=loaded,
+            point=point,
+            prefix_input_ids=prefix,
+            decode_input_ids=decode_input_ids,
+        )
+        _collect_and_register_phase3_raw_audits(
+            expected_operations=raw_audit_operations,
+            raw_audit_root=raw_audit_root,
+            producer_bindings=producer_bindings,
+        )
+
         evidence["stage"] = "running_point"
         _emit_worker_stage(HandshakeStage.MEASUREMENT_STARTED)
         try:
             if point.runner_kind is RunnerKind.FIXED_L:
-                current = _deterministic_ids(
-                    torch,
-                    batch_size=point.batch_size,
-                    length=1,
-                    offset=40_000,
-                    device=device,
-                )
                 result = run_fixed_l(
                     loaded.model,
                     prefix,
-                    current,
+                    decode_input_ids,
                     context_length=point.context_length,
                     graph_mode=point.graph_mode.value,
                     warmup_steps=bundle.plan.measurement.warmup_count,
@@ -657,17 +877,10 @@ def execute_worker(
                     measured_batches=bundle.plan.measurement.measured_batches,
                 )
             else:
-                decode = _deterministic_ids(
-                    torch,
-                    batch_size=point.batch_size,
-                    length=point.output_steps,
-                    offset=50_000,
-                    device=device,
-                )
                 result = run_growing_context(
                     loaded.model,
                     prefix,
-                    decode,
+                    decode_input_ids,
                     starting_context=point.context_length,
                     warmup_trajectories=bundle.plan.measurement.warmup_count,
                 )
@@ -718,12 +931,25 @@ def execute_worker(
         failure_reason=reason,
     )
     evidence["worker_result"] = worker_result.to_dict()
-    evidence_bytes = canonical_json_bytes(evidence) + b"\n"
-    _exclusive_write(ipc_path, evidence_bytes)
-    if _ACTIVE_WORKER_STAGES == list(tuple(HandshakeStage)[:4]):
+    raw_index_path = _required_ipc_path(RAW_AUDIT_INDEX_IPC_ENV)
+    if _ACTIVE_RAW_AUDIT_RUN_INDEX is None:
+        _exclusive_write(ipc_path, canonical_json_bytes(evidence) + b"\n")
+    else:
+        commitment_sha256 = _publish_phase3_worker_evidence_channels(
+            primary_path=ipc_path,
+            raw_index_path=raw_index_path,
+            primary_evidence=evidence,
+            raw_index=_ACTIVE_RAW_AUDIT_RUN_INDEX,
+            run_id=run_id,
+            point_id=point_id,
+        )
+    if (
+        _ACTIVE_RAW_AUDIT_RUN_INDEX is not None
+        and _ACTIVE_WORKER_STAGES == list(tuple(HandshakeStage)[:4])
+    ):
         _emit_worker_stage(
             HandshakeStage.EVIDENCE_FLUSHED,
-            evidence_sha256=sha256_hex(evidence_bytes),
+            evidence_sha256=commitment_sha256,
         )
     return worker_result
 

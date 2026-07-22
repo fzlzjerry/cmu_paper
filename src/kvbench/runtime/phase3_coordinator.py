@@ -25,7 +25,25 @@ from kvbench.runtime.artifacts import (
     sha256_file,
     validate_run_directory,
 )
+from kvbench.runtime.gqa_device_dispatch import (
+    REQUIRED_SUT_SOURCES,
+    phase3_source_identity_sha256,
+)
+from kvbench.runtime.phase3_audit_operation import Phase3AuditOperationKey
 from kvbench.runtime.phase3_campaign import Phase3CampaignRecorder
+from kvbench.runtime.phase3_raw_audit_evidence import (
+    RAW_AUDIT_STATUS_COMPLETED,
+    Phase3RawAuditEvidenceError,
+    Phase3RawAuditRunIndex,
+    ingest_phase3_raw_audit_evidence_fd,
+    parse_phase3_raw_audit_run_index_bytes,
+)
+from kvbench.runtime.phase3_worker_channels import (
+    PHASE3_RAW_AUDIT_OPERATION_PLAN_ENV,
+    build_phase3_raw_audit_operation_plan_bytes,
+    build_phase3_worker_channel_commitment,
+    phase3_worker_channel_commitment_sha256,
+)
 from kvbench.runtime.process_supervision import (
     DeviceProcessObservation,
     HandshakeStage,
@@ -34,6 +52,8 @@ from kvbench.runtime.process_supervision import (
     RunOwnedProcessRegistry,
     SnapshotDisposition,
     command_fingerprint,
+    publish_bytes_no_replace,
+    read_published_bytes,
     read_process_identity,
     write_handshake_event,
 )
@@ -61,13 +81,17 @@ from kvbench.schema.phase3 import (
     PHASE3_DRIVER_VERSION,
     PHASE3_E00_MANIFEST_SHA256,
     PHASE3_E00_RUN_ID,
+    PHASE3_FIXED_PLAN_PATH,
     PHASE3_GPU_FULL_NAME,
     PHASE3_GPU_UUID,
+    PHASE3_GROWING_PLAN_PATH,
     PHASE3_HARDWARE_FINGERPRINT,
     PHASE3_HARDWARE_ID,
     PHASE3_MEASUREMENT_PROTOCOL_FINGERPRINT,
+    PHASE3_MODEL_FINGERPRINT,
     PHASE3_PCI_BUS_ID,
     PHASE3_PCI_DEVICE_ID,
+    PHASE3_PLAN_FINGERPRINTS,
     PHASE3_PYTHON_EXECUTABLE,
     PHASE3_REPOSITORY_ROOT,
     PHASE3_SOFTWARE_ENVIRONMENT_ID,
@@ -112,6 +136,71 @@ SENSITIVE_ENV_KEY_EXEMPTIONS = frozenset({"TOKENIZERS_PARALLELISM"})
 HANDSHAKE_DIRECTORY_ENV = "KVBENCH_PHASE3_HANDSHAKE_DIR"
 COMMAND_FINGERPRINT_ENV = "KVBENCH_PHASE3_COMMAND_FINGERPRINT"
 RAW_AUDIT_ROOT_ENV = "KVBENCH_PHASE3_RAW_AUDIT_ROOT"
+RAW_AUDIT_INDEX_IPC_ENV = "KVBENCH_PHASE3_RAW_AUDIT_INDEX_IPC_PATH"
+WORKER_EVIDENCE_V1 = "kvbench-phase3-worker-evidence-1.0.0"
+WORKER_EVIDENCE_V2 = "kvbench-phase3-worker-evidence-2.0.0"
+RAW_AUDIT_INGESTION_OUTCOME_SCHEMA_VERSION = (
+    "kvbench-phase3-raw-audit-ingestion-outcome-2.0.0"
+)
+PHASE3_WORKER_HANDSHAKE_EVIDENCE_SCHEMA_VERSION = (
+    "kvbench-phase3-worker-handshake-3.0.0"
+)
+PHASE3_PROCESS_AUDIT_SCHEMA_VERSION = "kvbench-phase3-process-audit-3.0.0"
+PHASE3_EXECUTION_SOURCE_PIN_SCHEMA_VERSION = (
+    "kvbench-phase3-execution-source-pin-2.0.0"
+)
+PHASE3_EXECUTION_SOURCE_PATHS = (
+    "src/kvbench/__init__.py",
+    "src/kvbench/__main__.py",
+    "src/kvbench/cli.py",
+    "src/kvbench/config.py",
+    "src/kvbench/errors.py",
+    "src/kvbench/runtime/__init__.py",
+    "src/kvbench/runtime/allocation.py",
+    "src/kvbench/runtime/allocation_attribution.py",
+    "src/kvbench/runtime/artifacts.py",
+    "src/kvbench/runtime/backend.py",
+    "src/kvbench/runtime/bf16_endpoint.py",
+    "src/kvbench/runtime/command.py",
+    "src/kvbench/runtime/cuda_graph.py",
+    "src/kvbench/runtime/fixed_l_runner.py",
+    "src/kvbench/runtime/gqa_audit.py",
+    "src/kvbench/runtime/gqa_device_dispatch.py",
+    "src/kvbench/runtime/gqa_taxonomy.py",
+    "src/kvbench/runtime/growing_context_runner.py",
+    "src/kvbench/runtime/model_loader.py",
+    "src/kvbench/runtime/numerical.py",
+    "src/kvbench/runtime/phase3_allocator_controls.py",
+    "src/kvbench/runtime/phase3_audit_operation.py",
+    "src/kvbench/runtime/phase3_campaign.py",
+    "src/kvbench/runtime/phase3_coordinator.py",
+    "src/kvbench/runtime/phase3_endpoint_audit.py",
+    "src/kvbench/runtime/phase3_raw_audit_evidence.py",
+    "src/kvbench/runtime/phase3_report.py",
+    "src/kvbench/runtime/phase3_report_publication.py",
+    "src/kvbench/runtime/phase3_worker.py",
+    "src/kvbench/runtime/phase3_worker_channels.py",
+    "src/kvbench/runtime/process_supervision.py",
+    "src/kvbench/runtime/static_cache.py",
+    "src/kvbench/runtime/telemetry.py",
+    "src/kvbench/runtime/timing.py",
+    "src/kvbench/schema/__init__.py",
+    "src/kvbench/schema/base.py",
+    "src/kvbench/schema/config.py",
+    "src/kvbench/schema/phase3.py",
+    "src/kvbench/schema/result.py",
+    "src/kvbench/validation.py",
+)
+TRANSPORT_PRIMARY_CHANNEL_ARTIFACT = (
+    "raw/transport/primary_worker_evidence.v1.jsonl"
+)
+TRANSPORT_SIDECAR_CHANNEL_ARTIFACT = (
+    "raw/transport/raw_audit_index_sidecar.v2.jsonl"
+)
+TRANSPORT_COMMITMENT_ARTIFACT = "raw/transport/channel_commitment.json"
+TRANSPORT_COMMITMENT_DIGEST_ARTIFACT = (
+    "raw/transport/channel_commitment.sha256"
+)
 READY_NOT_OBSERVED_V2 = {
     "schema_version": "kvbench-phase3-worker-ready-2.0.0",
     "readiness_observed": False,
@@ -123,6 +212,118 @@ READY_NOT_OBSERVED_V2 = {
 
 class Phase3CoordinatorError(RuntimeError):
     """Campaign coordination failed before a trustworthy worker result."""
+
+
+def _phase3_execution_source_identity_sha256(
+    source_sha256_by_path: Mapping[str, str],
+) -> str:
+    """Hash the exact ordered package source manifest used by Phase 3."""
+
+    if tuple(source_sha256_by_path) != PHASE3_EXECUTION_SOURCE_PATHS:
+        raise Phase3CoordinatorError(
+            "execution source identity requires the exact package source set"
+        )
+    sources: list[dict[str, str]] = []
+    for relative in PHASE3_EXECUTION_SOURCE_PATHS:
+        digest = source_sha256_by_path[relative]
+        if (
+            type(digest) is not str
+            or len(digest) != 64
+            or any(character not in "0123456789abcdef" for character in digest)
+        ):
+            raise Phase3CoordinatorError(
+                "execution source identity contains an invalid digest"
+            )
+        sources.append({"relative_path": relative, "sha256": digest})
+    return sha256_hex(
+        canonical_json_bytes(
+            {
+                "schema_version": "kvbench-phase3-execution-source-identity-1.0.0",
+                "sources": sources,
+            }
+        )
+    )
+
+
+@dataclasses.dataclass(frozen=True)
+class Phase3ExecutionSourcePin:
+    """Exact execution-commit bytes retained before the worker is spawned."""
+
+    execution_git_sha: str
+    source_bytes_by_path: tuple[tuple[str, bytes], ...]
+    source_identity_sha256: str
+    execution_source_identity_sha256: str
+
+    def __post_init__(self) -> None:
+        if (
+            type(self.execution_git_sha) is not str
+            or len(self.execution_git_sha) != 40
+            or any(
+                character not in "0123456789abcdef"
+                for character in self.execution_git_sha
+            )
+        ):
+            raise Phase3CoordinatorError("execution source pin Git SHA is invalid")
+        if (
+            tuple(
+                relative for relative, _ in self.source_bytes_by_path
+            )
+            != PHASE3_EXECUTION_SOURCE_PATHS
+            or any(
+                type(payload) is not bytes or not payload
+                for _, payload in self.source_bytes_by_path
+            )
+        ):
+            raise Phase3CoordinatorError(
+                "execution source pin does not contain the exact package source set"
+            )
+        if self.source_identity_sha256 != phase3_source_identity_sha256(
+            self.sut_source_sha256_by_path
+        ):
+            raise Phase3CoordinatorError("execution SUT source identity is invalid")
+        if self.execution_source_identity_sha256 != (
+            _phase3_execution_source_identity_sha256(self.source_sha256_by_path)
+        ):
+            raise Phase3CoordinatorError(
+                "execution package source identity is invalid"
+            )
+
+    @property
+    def source_sha256_by_path(self) -> dict[str, str]:
+        return {
+            relative: sha256_hex(payload)
+            for relative, payload in self.source_bytes_by_path
+        }
+
+    @property
+    def sut_source_sha256_by_path(self) -> dict[str, str]:
+        source_digests = self.source_sha256_by_path
+        return {
+            relative: source_digests[relative]
+            for relative in REQUIRED_SUT_SOURCES
+        }
+
+    def to_dict(self, *, verification_stage: str) -> dict[str, Any]:
+        if verification_stage not in {"before_spawn", "after_worker_exit"}:
+            raise ValueError("execution source verification stage is invalid")
+        return {
+            "schema_version": PHASE3_EXECUTION_SOURCE_PIN_SCHEMA_VERSION,
+            "execution_git_sha": self.execution_git_sha,
+            "verification_stage": verification_stage,
+            "source_identity_sha256": self.source_identity_sha256,
+            "execution_source_identity_sha256": (
+                self.execution_source_identity_sha256
+            ),
+            "sources": [
+                {
+                    "relative_path": relative,
+                    "sha256": sha256_hex(payload),
+                    "size_bytes": len(payload),
+                }
+                for relative, payload in self.source_bytes_by_path
+            ],
+            "live_bytes_equal_declared_commit": True,
+        }
 
 
 def _utc_now() -> str:
@@ -238,7 +439,11 @@ def _live_hardware() -> dict[str, Any]:
     }
 
 
-def _worker_environment(temp_root: Path) -> dict[str, str]:
+def _worker_environment(
+    temp_root: Path,
+    *,
+    raw_audit_operations: tuple[Phase3AuditOperationKey, ...] | None = None,
+) -> dict[str, str]:
     environment = {
         "PATH": "/usr/local/cuda/bin:/usr/bin:/bin",
         "PYTHONPATH": (
@@ -262,8 +467,15 @@ def _worker_environment(temp_root: Path) -> dict[str, str]:
         "KVBENCH_PHASE3_AUDIT_RELEASE": str(temp_root / "worker-release"),
         HANDSHAKE_DIRECTORY_ENV: str(temp_root / "worker-handshake"),
         RAW_AUDIT_ROOT_ENV: str(temp_root / "raw-audits"),
+        RAW_AUDIT_INDEX_IPC_ENV: str(temp_root / "raw-audit-index.json"),
         "KVBENCH_PHASE3_HANDSHAKE_TIMEOUT_SECONDS": str(READY_TIMEOUT_SECONDS),
     }
+    if raw_audit_operations is not None:
+        environment[PHASE3_RAW_AUDIT_OPERATION_PLAN_ENV] = (
+            build_phase3_raw_audit_operation_plan_bytes(
+                raw_audit_operations
+            ).decode("utf-8")
+        )
     if any(
         fragment in key.lower()
         for key in environment
@@ -303,6 +515,601 @@ def _parse_canonical_json(raw: bytes, *, maximum_bytes: int, label: str) -> dict
     if not isinstance(value, dict) or canonical_json_bytes(value) != body:
         raise Phase3CoordinatorError(f"{label} is not a canonical JSON object")
     return value
+
+
+def _open_private_raw_audit_root(path: Path) -> tuple[int, int]:
+    """Pin the exact empty coordinator-created raw root before worker spawn."""
+
+    required_flags = ("O_CLOEXEC", "O_DIRECTORY", "O_NOFOLLOW")
+    if any(not hasattr(os, name) for name in required_flags):
+        raise Phase3CoordinatorError(
+            "platform lacks required raw-audit descriptor flags"
+        )
+    try:
+        before = path.lstat()
+    except OSError as error:
+        raise Phase3CoordinatorError("raw-audit root is absent") from error
+    if (
+        stat.S_ISLNK(before.st_mode)
+        or not stat.S_ISDIR(before.st_mode)
+        or before.st_uid != os.geteuid()
+        or stat.S_IMODE(before.st_mode) != 0o700
+    ):
+        raise Phase3CoordinatorError(
+            "raw-audit root must be private and coordinator-owned"
+        )
+    flags = os.O_RDONLY | os.O_CLOEXEC | os.O_DIRECTORY | os.O_NOFOLLOW
+    try:
+        descriptor = os.open(path, flags)
+    except OSError as error:
+        raise Phase3CoordinatorError(
+            "raw-audit root cannot be pinned safely"
+        ) from error
+    try:
+        opened = os.fstat(descriptor)
+        if (
+            not stat.S_ISDIR(opened.st_mode)
+            or (opened.st_dev, opened.st_ino) != (before.st_dev, before.st_ino)
+            or opened.st_uid != before.st_uid
+            or stat.S_IMODE(opened.st_mode) != 0o700
+        ):
+            raise Phase3CoordinatorError(
+                "raw-audit root changed while it was pinned"
+            )
+        with os.scandir(descriptor) as entries:
+            if next(entries, None) is not None:
+                raise Phase3CoordinatorError(
+                    "raw-audit root was not empty before worker spawn"
+                )
+        return descriptor, opened.st_uid
+    except BaseException:
+        os.close(descriptor)
+        raise
+
+
+def _ipc_metadata_identity(metadata: os.stat_result) -> tuple[int, ...]:
+    return (
+        metadata.st_dev,
+        metadata.st_ino,
+        stat.S_IFMT(metadata.st_mode),
+        metadata.st_mode & 0o7777,
+        metadata.st_uid,
+        metadata.st_gid,
+        metadata.st_nlink,
+        metadata.st_size,
+        metadata.st_mtime_ns,
+        metadata.st_ctime_ns,
+    )
+
+
+def _open_private_ipc_parent(path: Path) -> tuple[int, int]:
+    """Pin the coordinator-created private IPC parent before worker spawn."""
+
+    required_flags = ("O_CLOEXEC", "O_DIRECTORY", "O_NOFOLLOW")
+    if any(not hasattr(os, name) for name in required_flags):
+        raise Phase3CoordinatorError("platform lacks required IPC descriptor flags")
+    try:
+        before = path.lstat()
+    except OSError as error:
+        raise Phase3CoordinatorError("worker IPC parent is absent") from error
+    if (
+        stat.S_ISLNK(before.st_mode)
+        or not stat.S_ISDIR(before.st_mode)
+        or before.st_uid != os.geteuid()
+        or stat.S_IMODE(before.st_mode) != 0o700
+    ):
+        raise Phase3CoordinatorError(
+            "worker IPC parent must be private and coordinator-owned"
+        )
+    try:
+        descriptor = os.open(
+            path,
+            os.O_RDONLY | os.O_CLOEXEC | os.O_DIRECTORY | os.O_NOFOLLOW,
+        )
+    except OSError as error:
+        raise Phase3CoordinatorError("worker IPC parent cannot be pinned") from error
+    opened = os.fstat(descriptor)
+    if (
+        (opened.st_dev, opened.st_ino) != (before.st_dev, before.st_ino)
+        or opened.st_uid != before.st_uid
+        or stat.S_IMODE(opened.st_mode) != 0o700
+    ):
+        os.close(descriptor)
+        raise Phase3CoordinatorError("worker IPC parent changed while opening")
+    return descriptor, opened.st_uid
+
+
+def _read_pinned_ipc_file(
+    parent_fd: int,
+    name: str,
+    *,
+    expected_owner_uid: int,
+    maximum_bytes: int,
+    label: str,
+) -> bytes:
+    """Read one worker IPC file with no path reopening or symlink following."""
+
+    if (
+        type(parent_fd) is not int
+        or parent_fd < 0
+        or type(name) is not str
+        or not name
+        or "/" in name
+        or "\\" in name
+    ):
+        raise Phase3CoordinatorError(f"{label} request is unsafe")
+    if type(expected_owner_uid) is not int or expected_owner_uid < 0:
+        raise Phase3CoordinatorError(f"{label} owner is invalid")
+    if type(maximum_bytes) is not int or maximum_bytes <= 0:
+        raise Phase3CoordinatorError(f"{label} size limit is invalid")
+    try:
+        before = os.stat(name, dir_fd=parent_fd, follow_symlinks=False)
+    except OSError as error:
+        raise Phase3CoordinatorError(f"{label} is absent") from error
+    if (
+        not stat.S_ISREG(before.st_mode)
+        or before.st_nlink != 1
+        or before.st_uid != expected_owner_uid
+        or stat.S_IMODE(before.st_mode) != 0o600
+        or before.st_size <= 0
+        or before.st_size > maximum_bytes
+    ):
+        raise Phase3CoordinatorError(f"{label} is unsafe or oversized")
+    required_flags = ("O_CLOEXEC", "O_NOFOLLOW")
+    if any(not hasattr(os, item) for item in required_flags):
+        raise Phase3CoordinatorError("platform lacks required IPC file flags")
+    try:
+        descriptor = os.open(
+            name,
+            os.O_RDONLY | os.O_CLOEXEC | os.O_NOFOLLOW,
+            dir_fd=parent_fd,
+        )
+    except OSError as error:
+        raise Phase3CoordinatorError(f"{label} cannot be opened safely") from error
+    try:
+        opened = os.fstat(descriptor)
+        if _ipc_metadata_identity(opened) != _ipc_metadata_identity(before):
+            raise Phase3CoordinatorError(f"{label} changed while opening")
+        chunks: list[bytes] = []
+        remaining = before.st_size
+        while remaining:
+            chunk = os.read(descriptor, min(1024 * 1024, remaining))
+            if not chunk:
+                raise Phase3CoordinatorError(f"{label} was truncated while reading")
+            chunks.append(chunk)
+            remaining -= len(chunk)
+        if os.read(descriptor, 1):
+            raise Phase3CoordinatorError(f"{label} grew while reading")
+        after = os.fstat(descriptor)
+        if _ipc_metadata_identity(after) != _ipc_metadata_identity(opened):
+            raise Phase3CoordinatorError(f"{label} changed while reading")
+        return b"".join(chunks)
+    finally:
+        os.close(descriptor)
+
+
+def _read_live_sut_source_bytes(relative_path: str) -> bytes:
+    """Read one pinned package source without following links or races."""
+
+    if relative_path not in PHASE3_EXECUTION_SOURCE_PATHS:
+        raise Phase3CoordinatorError(
+            "requested source is outside the exact execution source set"
+        )
+    path = REPOSITORY_ROOT / relative_path
+    try:
+        before = path.lstat()
+    except OSError as error:
+        raise Phase3CoordinatorError("required live SUT source is absent") from error
+    if (
+        stat.S_ISLNK(before.st_mode)
+        or not stat.S_ISREG(before.st_mode)
+        or before.st_nlink != 1
+        or before.st_size <= 0
+        or before.st_size > 16 * 1024 * 1024
+    ):
+        raise Phase3CoordinatorError("required live SUT source is unsafe")
+    if not hasattr(os, "O_NOFOLLOW") or not hasattr(os, "O_CLOEXEC"):
+        raise Phase3CoordinatorError("platform lacks required source file flags")
+    try:
+        descriptor = os.open(path, os.O_RDONLY | os.O_CLOEXEC | os.O_NOFOLLOW)
+    except OSError as error:
+        raise Phase3CoordinatorError("required live SUT source cannot be opened") from error
+    try:
+        opened = os.fstat(descriptor)
+        if _ipc_metadata_identity(opened) != _ipc_metadata_identity(before):
+            raise Phase3CoordinatorError("required live SUT source changed while opening")
+        chunks: list[bytes] = []
+        remaining = before.st_size
+        while remaining:
+            chunk = os.read(descriptor, min(1024 * 1024, remaining))
+            if not chunk:
+                raise Phase3CoordinatorError("required live SUT source was truncated")
+            chunks.append(chunk)
+            remaining -= len(chunk)
+        if os.read(descriptor, 1):
+            raise Phase3CoordinatorError("required live SUT source grew while reading")
+        after = os.fstat(descriptor)
+        if _ipc_metadata_identity(after) != _ipc_metadata_identity(opened):
+            raise Phase3CoordinatorError("required live SUT source changed while reading")
+        return b"".join(chunks)
+    finally:
+        os.close(descriptor)
+
+
+def _read_declared_commit_source_bytes(
+    execution_git_sha: str,
+    relative_path: str,
+) -> bytes:
+    """Read the exact source blob declared by the execution commit."""
+
+    if (
+        type(execution_git_sha) is not str
+        or len(execution_git_sha) != 40
+        or any(character not in "0123456789abcdef" for character in execution_git_sha)
+    ):
+        raise Phase3CoordinatorError("declared execution Git SHA is invalid")
+    if relative_path not in PHASE3_EXECUTION_SOURCE_PATHS:
+        raise Phase3CoordinatorError(
+            "requested commit source is outside the execution source set"
+        )
+    result = subprocess.run(
+        (
+            "/usr/bin/git",
+            "cat-file",
+            "blob",
+            f"{execution_git_sha}:{relative_path}",
+        ),
+        cwd=REPOSITORY_ROOT,
+        check=False,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        timeout=30,
+        env={"PATH": "/usr/bin:/bin", "LC_ALL": "C", "LANG": "C"},
+    )
+    if result.returncode != 0 or not result.stdout:
+        raise Phase3CoordinatorError("declared execution commit source is unavailable")
+    return result.stdout
+
+
+def _pin_phase3_execution_sources(
+    execution_git_sha: str,
+) -> Phase3ExecutionSourcePin:
+    """Bind all current Phase 3 package bytes before worker spawn."""
+
+    if _run_checked(("/usr/bin/git", "rev-parse", "HEAD")) != execution_git_sha:
+        raise Phase3CoordinatorError("live Git HEAD differs from execution Git SHA")
+    pinned: list[tuple[str, bytes]] = []
+    for relative_path in PHASE3_EXECUTION_SOURCE_PATHS:
+        declared = _read_declared_commit_source_bytes(
+            execution_git_sha,
+            relative_path,
+        )
+        live = _read_live_sut_source_bytes(relative_path)
+        if live != declared:
+            raise Phase3CoordinatorError(
+                "live execution source differs from the declared execution commit"
+            )
+        pinned.append((relative_path, declared))
+    source_digests = {
+        relative: sha256_hex(payload) for relative, payload in pinned
+    }
+    sut_source_digests = {
+        relative: source_digests[relative] for relative in REQUIRED_SUT_SOURCES
+    }
+    return Phase3ExecutionSourcePin(
+        execution_git_sha=execution_git_sha,
+        source_bytes_by_path=tuple(pinned),
+        source_identity_sha256=(
+            phase3_source_identity_sha256(sut_source_digests)
+        ),
+        execution_source_identity_sha256=(
+            _phase3_execution_source_identity_sha256(source_digests)
+        ),
+    )
+
+
+def _revalidate_phase3_execution_sources(pin: Phase3ExecutionSourcePin) -> None:
+    """Fail if HEAD, a commit blob, or live SUT bytes changed during execution."""
+
+    if type(pin) is not Phase3ExecutionSourcePin:
+        raise TypeError("execution source pin has the wrong type")
+    if _run_checked(("/usr/bin/git", "rev-parse", "HEAD")) != pin.execution_git_sha:
+        raise Phase3CoordinatorError("execution Git HEAD changed during worker lifetime")
+    if (
+        tuple(relative for relative, _ in pin.source_bytes_by_path)
+        != PHASE3_EXECUTION_SOURCE_PATHS
+    ):
+        raise Phase3CoordinatorError("execution source pin has the wrong source set")
+    for relative_path, pinned_bytes in pin.source_bytes_by_path:
+        declared = _read_declared_commit_source_bytes(
+            pin.execution_git_sha,
+            relative_path,
+        )
+        live = _read_live_sut_source_bytes(relative_path)
+        if declared != pinned_bytes or live != pinned_bytes:
+            raise Phase3CoordinatorError(
+                "execution commit or live SUT source changed during worker lifetime"
+            )
+    if (
+        phase3_source_identity_sha256(pin.sut_source_sha256_by_path)
+        != pin.source_identity_sha256
+    ):
+        raise Phase3CoordinatorError("execution SUT identity changed after pinning")
+    if (
+        _phase3_execution_source_identity_sha256(pin.source_sha256_by_path)
+        != pin.execution_source_identity_sha256
+    ):
+        raise Phase3CoordinatorError(
+            "execution package identity changed after pinning"
+        )
+
+
+def _expected_phase3_raw_audit_operations(
+    *,
+    point: Any,
+    run_id: str,
+    git_sha: str,
+    cache: BF16CacheIdentity,
+    backend: BF16BackendIdentity,
+    source_sha256_by_path: Mapping[str, str],
+) -> tuple[Phase3AuditOperationKey, ...]:
+    """Derive keys only from coordinator state pinned before worker spawn."""
+
+    expected_plan_path = (
+        PHASE3_FIXED_PLAN_PATH
+        if point.runner_kind.value == "fixed_l"
+        else PHASE3_GROWING_PLAN_PATH
+    )
+    plan_fingerprint = PHASE3_PLAN_FINGERPRINTS[expected_plan_path]
+    source_identity = phase3_source_identity_sha256(source_sha256_by_path)
+    decode_steps = (
+        (0,)
+        if point.runner_kind.value == "fixed_l"
+        else tuple(range(point.output_steps))
+    )
+    return tuple(
+        Phase3AuditOperationKey.from_point(
+            run_id=run_id,
+            point=point,
+            decode_step=decode_step,
+            cache_layout_fingerprint=cache.layout_fingerprint,
+            execution_git_sha=git_sha,
+            plan_fingerprint=plan_fingerprint,
+            hardware_identity_sha256=PHASE3_HARDWARE_FINGERPRINT,
+            software_identity_sha256=PHASE3_SOFTWARE_FINGERPRINT,
+            model_identity_sha256=PHASE3_MODEL_FINGERPRINT,
+            backend_identity_sha256=backend.fingerprint(),
+            source_identity_sha256=source_identity,
+        )
+        for decode_step in decode_steps
+    )
+
+
+def _raw_audit_ingestion_outcome() -> dict[str, Any]:
+    return {
+        "schema_version": RAW_AUDIT_INGESTION_OUTCOME_SCHEMA_VERSION,
+        "worker_evidence_schema_version": None,
+        "raw_index_schema_version": None,
+        "required": True,
+        "attempted": False,
+        "sidecar_observed": False,
+        "commitment_validation_attempted": False,
+        "commitment_validation_passed": False,
+        "channel_artifacts_preserved": False,
+        "collection_validation_attempted": False,
+        "collection_validation_passed": False,
+        "declaration_completion_observed": False,
+        "semantic_validation_pending": False,
+        "passed": False,
+        "ingestion_passed": False,
+        "collection_completion_passed": False,
+        "semantic_validation_attempted": False,
+        "semantic_validation_passed": False,
+        "scientific_completion_passed": False,
+        "terminal_eligible": False,
+        "status": "not_attempted",
+        "process_audit_passed": False,
+        "ipc_digest_validated": False,
+        "channel_commitment_validated": False,
+        "execution_source_pinned_before_spawn": False,
+        "execution_source_revalidated_after_worker_exit": False,
+        "expected_operation_count_precomputed_before_spawn": 0,
+        "source_root_pinned_before_spawn": False,
+        "source_root_path_reopened_after_spawn": False,
+        "primary_channel_artifact": None,
+        "sidecar_channel_artifact": None,
+        "commitment_payload_artifact": None,
+        "commitment_digest_artifact": None,
+        "commitment_sha256": None,
+        "index_run_id": None,
+        "index_point_id": None,
+        "index_sha256": None,
+        "declared_file_count": 0,
+        "declared_size_bytes": 0,
+        "ingested_file_count": 0,
+        "ingested_size_bytes": 0,
+        "artifact_file_count": 0,
+        "artifact_size_bytes": 0,
+        "raw_bytes_embedded_in_ipc": None,
+        "failure_reason": None,
+    }
+
+
+def _preserve_phase3_worker_channel_artifacts(
+    *,
+    run: Any,
+    run_id: str,
+    point_id: str,
+    primary_evidence_bytes: bytes,
+    raw_audit_index_bytes: bytes,
+) -> tuple[dict[str, Any], str]:
+    """Append the exact channels plus their canonical role-bound commitment."""
+
+    if type(primary_evidence_bytes) is not bytes or not primary_evidence_bytes:
+        raise Phase3CoordinatorError("primary worker evidence channel is absent")
+    if type(raw_audit_index_bytes) is not bytes or not raw_audit_index_bytes:
+        raise Phase3CoordinatorError("raw-audit sidecar channel is absent")
+    try:
+        commitment = build_phase3_worker_channel_commitment(
+            run_id=run_id,
+            point_id=point_id,
+            primary_evidence_bytes=primary_evidence_bytes,
+            raw_audit_index_bytes=raw_audit_index_bytes,
+        )
+        commitment_bytes = canonical_json_bytes(commitment)
+        commitment_sha256 = sha256_hex(commitment_bytes)
+        independently_derived = phase3_worker_channel_commitment_sha256(
+            run_id=run_id,
+            point_id=point_id,
+            primary_evidence_bytes=primary_evidence_bytes,
+            raw_audit_index_bytes=raw_audit_index_bytes,
+        )
+    except (TypeError, ValueError, UnicodeEncodeError) as error:
+        raise Phase3CoordinatorError(
+            "worker channel commitment cannot be constructed"
+        ) from error
+    if independently_derived != commitment_sha256:
+        raise Phase3CoordinatorError("worker channel commitment derivations differ")
+    run.write_bytes(TRANSPORT_PRIMARY_CHANNEL_ARTIFACT, primary_evidence_bytes)
+    run.write_bytes(TRANSPORT_SIDECAR_CHANNEL_ARTIFACT, raw_audit_index_bytes)
+    run.write_bytes(TRANSPORT_COMMITMENT_ARTIFACT, commitment_bytes)
+    run.write_bytes(
+        TRANSPORT_COMMITMENT_DIGEST_ARTIFACT,
+        commitment_sha256.encode("ascii") + b"\n",
+    )
+    return commitment, commitment_sha256
+
+
+def _validate_worker_evidence_v1(
+    *,
+    evidence: Mapping[str, Any],
+    expected_run_id: str,
+    expected_point_id: str,
+    result: Phase3WorkerResult,
+    cache_layout_fingerprint: str,
+) -> None:
+    """Retain the immutable legacy worker-evidence validation semantics."""
+
+    if (
+        evidence.get("run_id") != expected_run_id
+        or evidence.get("point_id") != expected_point_id
+        or evidence.get("worker_result") != result.to_dict()
+    ):
+        raise Phase3CoordinatorError("worker evidence identity join failed")
+    runtime = evidence.get("runtime")
+    if isinstance(runtime, Mapping):
+        if runtime.get("cache_layout_fingerprint") != cache_layout_fingerprint:
+            raise Phase3CoordinatorError("runtime cache fingerprint differs")
+
+
+def _ingest_worker_evidence_v2(
+    *,
+    evidence: Mapping[str, Any],
+    expected_run_id: str,
+    expected_point_id: str,
+    raw_audit_root_fd: int,
+    raw_audit_owner_uid: int,
+    expected_operations: tuple[Phase3AuditOperationKey, ...],
+    run: Any,
+    outcome: dict[str, Any],
+) -> Phase3RawAuditRunIndex:
+    """Validate the minimal v2 envelope and append its pinned raw bytes once."""
+
+    expected_keys = {
+        "schema_version",
+        "raw_audit_run_index",
+        "raw_audit_run_index_sha256",
+    }
+    if set(evidence) != expected_keys:
+        raise Phase3CoordinatorError(
+            "worker evidence v2 contains fields outside the raw-index envelope"
+        )
+    index_payload = evidence.get("raw_audit_run_index")
+    declared_digest = evidence.get("raw_audit_run_index_sha256")
+    if type(index_payload) is not dict or type(declared_digest) is not str:
+        raise Phase3CoordinatorError("worker evidence v2 envelope is malformed")
+    try:
+        index_bytes = canonical_json_bytes(index_payload)
+    except (TypeError, ValueError, UnicodeEncodeError) as error:
+        raise Phase3CoordinatorError(
+            "worker evidence v2 index cannot be reconstructed canonically"
+        ) from error
+    observed_digest = sha256_hex(index_bytes)
+    outcome["index_sha256"] = observed_digest
+    if declared_digest != observed_digest:
+        raise Phase3CoordinatorError("raw-audit run-index SHA-256 differs")
+    try:
+        index = parse_phase3_raw_audit_run_index_bytes(index_bytes)
+    except Phase3RawAuditEvidenceError as error:
+        raise Phase3CoordinatorError("raw-audit run index is invalid") from error
+    outcome["index_run_id"] = index.run_id
+    outcome["index_point_id"] = index.point_id
+    if index.run_id != expected_run_id or index.point_id != expected_point_id:
+        raise Phase3CoordinatorError("raw-audit run-index identity join failed")
+    observed_operations = tuple(record.operation for record in index.records)
+    if observed_operations != expected_operations:
+        raise Phase3CoordinatorError(
+            "raw-audit operation provenance differs from coordinator-owned state"
+        )
+    declared_completion = all(
+        record.status == RAW_AUDIT_STATUS_COMPLETED for record in index.records
+    )
+
+    declarations = tuple(
+        item for record in index.records for item in record.files
+    )
+    outcome["declared_file_count"] = len(declarations)
+    outcome["declared_size_bytes"] = sum(
+        item.size_bytes for item in declarations
+    )
+    try:
+        retained = ingest_phase3_raw_audit_evidence_fd(
+            raw_audit_root_fd,
+            index,
+            expected_owner_uid=raw_audit_owner_uid,
+        )
+    except Phase3RawAuditEvidenceError as error:
+        raise Phase3CoordinatorError(
+            "raw-audit source evidence failed secure ingestion"
+        ) from error
+    expected_paths = {item.path for item in declarations}
+    if set(retained) != expected_paths or any(
+        type(payload) is not bytes for payload in retained.values()
+    ):
+        raise Phase3CoordinatorError(
+            "raw-audit ingestion returned an unexpected byte set"
+        )
+    outcome["ingested_file_count"] = len(retained)
+    outcome["ingested_size_bytes"] = sum(len(value) for value in retained.values())
+    for relative in sorted(retained):
+        payload = retained[relative]
+        run.write_bytes(f"raw/audits/files/{relative}", payload)
+        outcome["artifact_file_count"] += 1
+        outcome["artifact_size_bytes"] += len(payload)
+    run.write_bytes("raw/audits/index.json", index_bytes)
+    outcome.update(
+        {
+            "passed": False,
+            "ingestion_passed": True,
+            "collection_validation_passed": False,
+            "collection_completion_passed": False,
+            "declaration_completion_observed": declared_completion,
+            "semantic_validation_attempted": False,
+            "semantic_validation_passed": False,
+            "semantic_validation_pending": declared_completion,
+            "scientific_completion_passed": False,
+            "terminal_eligible": False,
+            "status": (
+                "ingested_declared_complete_pending_semantic_validation"
+                if declared_completion
+                else "ingested_failed_evidence"
+            ),
+            "raw_bytes_embedded_in_ipc": False,
+            "failure_reason": None,
+        }
+    )
+    return index
 
 
 def _process_snapshot(*, pid: int | None = None, start_ticks: int | None = None) -> dict[str, Any]:
@@ -357,15 +1164,12 @@ def _snapshot_clean(snapshot: Mapping[str, Any], *, allow_supervised: bool) -> b
 
 
 def _exclusive_release(path: Path) -> None:
-    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
-    if hasattr(os, "O_NOFOLLOW"):
-        flags |= os.O_NOFOLLOW
-    descriptor = os.open(path, flags, 0o600)
     try:
-        os.write(descriptor, b"release\n")
-        os.fsync(descriptor)
-    finally:
-        os.close(descriptor)
+        publish_bytes_no_replace(path, b"release\n")
+    except ProcessSupervisionError as error:
+        raise Phase3CoordinatorError(
+            "worker release publication failed"
+        ) from error
 
 
 def _pidfd_open(pid: int) -> tuple[bool, int | None]:
@@ -418,15 +1222,22 @@ def _wait_for_ready(
             registry.refresh_handshake_directory(handshake_directory)
         except ProcessSupervisionError as error:
             raise Phase3CoordinatorError("worker_started event is invalid") from error
-        if (
-            HandshakeStage.WORKER_STARTED in registry.observed_worker_stages
-            and ready_path.exists()
-        ):
-            metadata = ready_path.lstat()
-            if stat.S_ISLNK(metadata.st_mode) or not stat.S_ISREG(metadata.st_mode):
-                raise Phase3CoordinatorError("worker readiness path is unsafe")
+        ready_raw: bytes | None = None
+        if HandshakeStage.WORKER_STARTED in registry.observed_worker_stages:
+            try:
+                ready_raw = read_published_bytes(
+                    ready_path,
+                    maximum_bytes=16 * 1024,
+                )
+            except FileNotFoundError:
+                pass
+            except ProcessSupervisionError as error:
+                raise Phase3CoordinatorError(
+                    "worker readiness path is unsafe"
+                ) from error
+        if ready_raw is not None:
             payload = _parse_canonical_json(
-                ready_path.read_bytes(),
+                ready_raw,
                 maximum_bytes=16 * 1024,
                 label="worker readiness",
             )
@@ -577,8 +1388,20 @@ def _registry_snapshot_verdict(
     }
 
 
-def _cache_identity(point: Any) -> BF16CacheIdentity:
-    implementation_sha256 = sha256_file(STATIC_CACHE_SOURCE)
+def _cache_identity(
+    point: Any,
+    *,
+    implementation_sha256: str,
+) -> BF16CacheIdentity:
+    if (
+        type(implementation_sha256) is not str
+        or len(implementation_sha256) != 64
+        or any(
+            character not in "0123456789abcdef"
+            for character in implementation_sha256
+        )
+    ):
+        raise Phase3CoordinatorError("pinned cache implementation digest is invalid")
     capacity = point.context_length + point.output_steps
     workspace_bytes = 32 * point.batch_size * (32 + 8) * 1 * 64 * 2
     payload = {
@@ -609,6 +1432,26 @@ def _cache_identity(point: Any) -> BF16CacheIdentity:
         ),
     }
     return BF16CacheIdentity.from_dict(payload)
+
+
+def _validate_cache_source_join(
+    cache: BF16CacheIdentity,
+    source_pin: Phase3ExecutionSourcePin,
+) -> None:
+    """Require cache layout identity to use the exact pinned implementation."""
+
+    if type(cache) is not BF16CacheIdentity:
+        raise TypeError("cache source join has the wrong cache type")
+    if type(source_pin) is not Phase3ExecutionSourcePin:
+        raise TypeError("cache source join has the wrong source-pin type")
+    static_cache_relative = STATIC_CACHE_SOURCE.relative_to(
+        REPOSITORY_ROOT
+    ).as_posix()
+    expected = source_pin.source_sha256_by_path.get(static_cache_relative)
+    if expected is None or cache.implementation_sha256 != expected:
+        raise Phase3CoordinatorError(
+            "cache identity differs from pinned static-cache source"
+        )
 
 
 def _backend_identity_stdlib() -> BF16BackendIdentity:
@@ -852,6 +1695,63 @@ def _write_runtime_artifacts(run: Any, evidence: Mapping[str, Any]) -> None:
     )
 
 
+def _resolve_phase3_terminal_status(
+    *,
+    result: Phase3WorkerResult,
+    process_audit_passed: bool,
+    worker_evidence_valid: bool,
+    raw_audit_outcome: Mapping[str, Any],
+    failure_reason: str | None,
+) -> tuple[RunStatus, str | None]:
+    """Keep safely ingested failed audits terminal but never completed."""
+
+    run_evidence_accepted = process_audit_passed and worker_evidence_valid
+    completed_raw_audit_eligible = bool(
+        raw_audit_outcome.get("ingestion_passed") is True
+        and raw_audit_outcome.get("scientific_completion_passed") is True
+        and raw_audit_outcome.get("terminal_eligible") is True
+    )
+    if (
+        run_evidence_accepted
+        and result.status is RunStatus.COMPLETED
+        and not completed_raw_audit_eligible
+    ):
+        return (
+            RunStatus.ABORTED,
+            "worker reported completed without complete scientific raw-audit evidence",
+        )
+    if run_evidence_accepted:
+        return result.status, result.failure_reason
+    return RunStatus.ABORTED, failure_reason or "run evidence validation failed"
+
+
+def _resolved_phase3_worker_result(
+    result: Phase3WorkerResult,
+    *,
+    final_status: RunStatus,
+    final_reason: str | None,
+) -> Phase3WorkerResult:
+    """Make the coordinator-owned terminal result match the run manifest."""
+
+    if type(result) is not Phase3WorkerResult:
+        raise TypeError("terminal worker result has the wrong type")
+    if type(final_status) is not RunStatus or not final_status.is_terminal:
+        raise TypeError("terminal worker status is invalid")
+    if final_status is RunStatus.COMPLETED:
+        if final_reason is not None:
+            raise Phase3CoordinatorError("completed terminal result has a reason")
+    elif type(final_reason) is not str or not final_reason:
+        raise Phase3CoordinatorError("failed terminal result lacks a reason")
+    payload = result.to_dict()
+    payload.update(
+        {
+            "status": final_status.value,
+            "failure_reason": final_reason,
+        }
+    )
+    return Phase3WorkerResult.from_dict(payload)
+
+
 def _terminal_manifest(
     initial: Phase3RunManifest,
     *,
@@ -890,7 +1790,33 @@ def _run_point(
         handshake_directory.mkdir(mode=0o700)
         raw_audit_root = temp_root / "raw-audits"
         raw_audit_root.mkdir(mode=0o700)
-        environment = _worker_environment(temp_root)
+        execution_source_pin = _pin_phase3_execution_sources(git_sha)
+        static_cache_relative = STATIC_CACHE_SOURCE.relative_to(
+            REPOSITORY_ROOT
+        ).as_posix()
+        cache = _cache_identity(
+            point,
+            implementation_sha256=(
+                execution_source_pin.source_sha256_by_path[
+                    static_cache_relative
+                ]
+            ),
+        )
+        _validate_cache_source_join(cache, execution_source_pin)
+        expected_raw_audit_operations = _expected_phase3_raw_audit_operations(
+            point=point,
+            run_id=run_id,
+            git_sha=git_sha,
+            cache=cache,
+            backend=backend,
+            source_sha256_by_path=(
+                execution_source_pin.sut_source_sha256_by_path
+            ),
+        )
+        environment = _worker_environment(
+            temp_root,
+            raw_audit_operations=expected_raw_audit_operations,
+        )
         environment_sha256 = sha256_hex(canonical_json_bytes(environment))
         worker_argv = _worker_argv(plan_path, point, run_id)
         expected_command_fingerprint = command_fingerprint(
@@ -899,7 +1825,6 @@ def _run_point(
             environment_sha256=environment_sha256,
         )
         environment[COMMAND_FINGERPRINT_ENV] = expected_command_fingerprint
-        cache = _cache_identity(point)
         initial = _initial_manifest(
             bundle=bundle,
             plan_path=plan_path,
@@ -947,6 +1872,11 @@ def _run_point(
         pidfd_supported = hasattr(os, "pidfd_open")
         opened_pidfd: int | None = None
         pidfd_was_opened = False
+        raw_audit_root_fd: int | None = None
+        raw_audit_owner_uid: int | None = None
+        ipc_parent_fd: int | None = None
+        ipc_parent_owner_uid: int | None = None
+        raw_audit_outcome = _raw_audit_ingestion_outcome()
         ownership_outcome: dict[str, Any] | None = None
         handshake_evidence: dict[str, Any] | None = None
         stdout_path = temp_root / "worker.stdout"
@@ -954,11 +1884,31 @@ def _run_point(
         failure_reason: str | None = None
         process_audit_passed = False
         worker_evidence_valid = False
+        execution_sources_revalidated = False
         try:
+            raw_audit_outcome.update(
+                {
+                    "execution_source_pinned_before_spawn": True,
+                    "expected_operation_count_precomputed_before_spawn": len(
+                        expected_raw_audit_operations
+                    ),
+                }
+            )
+            run.write_json(
+                "validation/execution_source_pin.before_spawn.json",
+                execution_source_pin.to_dict(verification_stage="before_spawn"),
+            )
             before = _process_snapshot()
             process_snapshots["before"] = before
             if not _snapshot_clean(before, allow_supervised=False):
                 raise Phase3CoordinatorError("foreign or unknown compute before worker")
+            ipc_parent_fd, ipc_parent_owner_uid = _open_private_ipc_parent(
+                temp_root
+            )
+            raw_audit_root_fd, raw_audit_owner_uid = (
+                _open_private_raw_audit_root(raw_audit_root)
+            )
+            raw_audit_outcome["source_root_pinned_before_spawn"] = True
             with stdout_path.open("wb") as stdout_handle, stderr_path.open("wb") as stderr_handle:
                 process = subprocess.Popen(
                     worker_argv,
@@ -1073,6 +2023,18 @@ def _run_point(
                     recorded_at_utc=_utc_now(),
                 )
                 write_handshake_event(handshake_directory, reaped_event)
+                _revalidate_phase3_execution_sources(execution_source_pin)
+                _validate_cache_source_join(cache, execution_source_pin)
+                execution_sources_revalidated = True
+                raw_audit_outcome[
+                    "execution_source_revalidated_after_worker_exit"
+                ] = True
+                run.write_json(
+                    "validation/execution_source_pin.after_worker_exit.json",
+                    execution_source_pin.to_dict(
+                        verification_stage="after_worker_exit"
+                    ),
+                )
                 ownership = registry.terminal_outcome()
                 ownership_outcome = ownership.to_dict()
                 if ownership.disposition is not OwnershipDisposition.OWNED_COMPLETED:
@@ -1094,6 +2056,7 @@ def _run_point(
                     "post-reap process audit detected foreign or unverified compute"
                 )
             process_audit_passed = True
+            raw_audit_outcome["process_audit_passed"] = True
             stdout = stdout_path.read_bytes()
             parsed_result = _parse_canonical_json(
                 stdout,
@@ -1110,26 +2073,58 @@ def _run_point(
                 raise Phase3CoordinatorError("worker result differs from requested point")
             if process.returncode != 0:
                 raise Phase3CoordinatorError("worker returned nonzero with a result")
-            ipc_path = Path(environment["KVBENCH_PHASE3_IPC_PATH"])
-            ipc_metadata = ipc_path.lstat()
-            if stat.S_ISLNK(ipc_metadata.st_mode) or not stat.S_ISREG(ipc_metadata.st_mode):
-                raise Phase3CoordinatorError("worker IPC path is unsafe")
-            ipc_bytes = ipc_path.read_bytes()
+            if ipc_parent_fd is None or ipc_parent_owner_uid is None:
+                raise Phase3CoordinatorError(
+                    "worker IPC parent was not pinned before spawn"
+                )
+            ipc_bytes = _read_pinned_ipc_file(
+                ipc_parent_fd,
+                "worker-evidence.json",
+                expected_owner_uid=ipc_parent_owner_uid,
+                maximum_bytes=MAX_IPC_BYTES,
+                label="primary worker evidence",
+            )
             evidence = _parse_canonical_json(
                 ipc_bytes,
                 maximum_bytes=MAX_IPC_BYTES,
-                label="worker evidence",
+                label="primary worker evidence",
             )
-            if (
-                evidence.get("run_id") != run_id
-                or evidence.get("point_id") != point.point_id
-                or evidence.get("worker_result") != result.to_dict()
-            ):
-                raise Phase3CoordinatorError("worker evidence identity join failed")
-            runtime = evidence.get("runtime")
-            if isinstance(runtime, Mapping):
-                if runtime.get("cache_layout_fingerprint") != cache.layout_fingerprint:
-                    raise Phase3CoordinatorError("runtime cache fingerprint differs")
+            evidence_schema_version = evidence.get("schema_version")
+            raw_audit_outcome["worker_evidence_schema_version"] = (
+                evidence_schema_version
+            )
+            if evidence_schema_version != WORKER_EVIDENCE_V1:
+                raise Phase3CoordinatorError(
+                    "primary worker evidence must retain the complete v1 schema"
+                )
+            raw_audit_outcome.update(
+                {
+                    "required": True,
+                    "attempted": True,
+                    "status": "sidecar_expected",
+                }
+            )
+            raw_index_ipc_bytes = _read_pinned_ipc_file(
+                ipc_parent_fd,
+                "raw-audit-index.json",
+                expected_owner_uid=ipc_parent_owner_uid,
+                maximum_bytes=MAX_IPC_BYTES,
+                label="raw-audit index sidecar",
+            )
+            raw_audit_outcome["sidecar_observed"] = True
+            raw_index_evidence = _parse_canonical_json(
+                raw_index_ipc_bytes,
+                maximum_bytes=MAX_IPC_BYTES,
+                label="raw-audit index sidecar",
+            )
+            raw_index_schema_version = raw_index_evidence.get("schema_version")
+            raw_audit_outcome["raw_index_schema_version"] = (
+                raw_index_schema_version
+            )
+            if raw_index_schema_version != WORKER_EVIDENCE_V2:
+                raise Phase3CoordinatorError(
+                    "raw-audit index sidecar schema version is unsupported"
+                )
             assert registry is not None
             registry_evidence = registry.to_evidence()
             events = registry_evidence.get("handshake_events")
@@ -1143,17 +2138,89 @@ def _run_point(
                 if isinstance(event, Mapping)
                 and event.get("stage") == HandshakeStage.EVIDENCE_FLUSHED.value
             ]
+            raw_audit_outcome["commitment_validation_attempted"] = True
+            commitment_sha256 = phase3_worker_channel_commitment_sha256(
+                run_id=run_id,
+                point_id=point.point_id,
+                primary_evidence_bytes=ipc_bytes,
+                raw_audit_index_bytes=raw_index_ipc_bytes,
+            )
             if (
                 len(evidence_events) != 1
                 or evidence_events[0].get("evidence_sha256")
-                != sha256_hex(ipc_bytes)
+                != commitment_sha256
             ):
                 raise Phase3CoordinatorError(
-                    "evidence_flushed digest differs from worker IPC"
+                    "evidence_flushed digest differs from two-channel commitment"
                 )
+            raw_audit_outcome["ipc_digest_validated"] = True
+            raw_audit_outcome["channel_commitment_validated"] = True
+            raw_audit_outcome["commitment_validation_passed"] = True
+            _, preserved_commitment_sha256 = (
+                _preserve_phase3_worker_channel_artifacts(
+                    run=run,
+                    run_id=run_id,
+                    point_id=point.point_id,
+                    primary_evidence_bytes=ipc_bytes,
+                    raw_audit_index_bytes=raw_index_ipc_bytes,
+                )
+            )
+            if preserved_commitment_sha256 != commitment_sha256:
+                raise Phase3CoordinatorError(
+                    "preserved worker channel commitment digest differs"
+                )
+            raw_audit_outcome.update(
+                {
+                    "channel_artifacts_preserved": True,
+                    "primary_channel_artifact": TRANSPORT_PRIMARY_CHANNEL_ARTIFACT,
+                    "sidecar_channel_artifact": TRANSPORT_SIDECAR_CHANNEL_ARTIFACT,
+                    "commitment_payload_artifact": TRANSPORT_COMMITMENT_ARTIFACT,
+                    "commitment_digest_artifact": TRANSPORT_COMMITMENT_DIGEST_ARTIFACT,
+                    "commitment_sha256": commitment_sha256,
+                }
+            )
+            _validate_worker_evidence_v1(
+                evidence=evidence,
+                expected_run_id=run_id,
+                expected_point_id=point.point_id,
+                result=result,
+                cache_layout_fingerprint=cache.layout_fingerprint,
+            )
+            raw_audit_outcome["status"] = "validating_transport"
+            if raw_audit_root_fd is None or raw_audit_owner_uid is None:
+                raise Phase3CoordinatorError(
+                    "raw-audit root was not pinned before worker spawn"
+                )
+            if expected_raw_audit_operations is None:
+                raise Phase3CoordinatorError(
+                    "raw-audit operations were not pinned before worker spawn"
+                )
+            raw_audit_outcome["collection_validation_attempted"] = True
+            _ingest_worker_evidence_v2(
+                evidence=raw_index_evidence,
+                expected_run_id=run_id,
+                expected_point_id=point.point_id,
+                raw_audit_root_fd=raw_audit_root_fd,
+                raw_audit_owner_uid=raw_audit_owner_uid,
+                expected_operations=expected_raw_audit_operations,
+                run=run,
+                outcome=raw_audit_outcome,
+            )
             worker_evidence_valid = True
         except BaseException as error:
             failure_reason = f"{type(error).__name__}: {' '.join(str(error).split())}"[:1000]
+            if raw_audit_outcome["ingestion_passed"] is not True:
+                raw_audit_outcome.update(
+                    {
+                        "passed": False,
+                        "status": (
+                            "failed"
+                            if raw_audit_outcome["attempted"]
+                            else "not_attempted"
+                        ),
+                        "failure_reason": failure_reason,
+                    }
+                )
             if process is not None and process.returncode is None:
                 if registry is not None:
                     try:
@@ -1175,6 +2242,44 @@ def _run_point(
                         write_handshake_event(handshake_directory, reaped_event)
                     except ProcessSupervisionError:
                         pass
+            worker_exit_confirmed = bool(
+                process is not None
+                and (
+                    process.returncode is not None
+                    or registry is not None
+                    and registry.reaped
+                )
+            )
+            if (
+                worker_exit_confirmed
+                and execution_source_pin is not None
+                and not execution_sources_revalidated
+            ):
+                try:
+                    _revalidate_phase3_execution_sources(execution_source_pin)
+                    _validate_cache_source_join(cache, execution_source_pin)
+                    execution_sources_revalidated = True
+                    raw_audit_outcome[
+                        "execution_source_revalidated_after_worker_exit"
+                    ] = True
+                    run.write_json(
+                        "validation/execution_source_pin.after_worker_exit.json",
+                        execution_source_pin.to_dict(
+                            verification_stage="after_worker_exit"
+                        ),
+                    )
+                except BaseException as source_error:
+                    failure_reason = (
+                        f"{type(source_error).__name__}: "
+                        f"{' '.join(str(source_error).split())}"
+                    )[:1000]
+                    raw_audit_outcome.update(
+                        {
+                            "passed": False,
+                            "status": "failed",
+                            "failure_reason": failure_reason,
+                        }
+                    )
             if registry is not None and registry.reaped:
                 ownership_outcome = registry.terminal_outcome().to_dict()
             try:
@@ -1195,6 +2300,12 @@ def _run_point(
             if opened_pidfd is not None:
                 os.close(opened_pidfd)
                 opened_pidfd = None
+            if raw_audit_root_fd is not None:
+                os.close(raw_audit_root_fd)
+                raw_audit_root_fd = None
+            if ipc_parent_fd is not None:
+                os.close(ipc_parent_fd)
+                ipc_parent_fd = None
         stdout = stdout_path.read_bytes() if stdout_path.is_file() else b""
         stderr = stderr_path.read_bytes() if stderr_path.is_file() else b""
         run.write_bytes("logs/worker.stdout.txt", stdout)
@@ -1206,26 +2317,39 @@ def _run_point(
             registry_evidence["pidfd_closed_by_supervisor"] = pidfd_was_opened
             registry_evidence["process_handle_reaped_by_supervisor"] = registry.reaped
             handshake_evidence = {
-                "schema_version": "kvbench-phase3-worker-handshake-2.0.0",
+                "schema_version": PHASE3_WORKER_HANDSHAKE_EVIDENCE_SCHEMA_VERSION,
                 "run_id": run_id,
                 "events": registry_evidence["handshake_events"],
                 "terminal_outcome": ownership_outcome,
                 "evidence_flushed_required_for_owned_completion": True,
+                "zero_returncode_required_for_owned_completion": True,
+                "worker_exiting_required_for_owned_completion": False,
+                "rapid_zero_exit_after_evidence_flushed_owned_completion_allowed": True,
             }
         else:
             registry_evidence = {
-                "schema_version": "kvbench-phase3-process-registry-2.0.0",
+                "schema_version": RunOwnedProcessRegistry.SCHEMA_VERSION,
                 "registry_created": False,
                 "run_id": run_id,
                 "pidfd_supported": pidfd_supported,
                 "pidfd_closed_by_supervisor": pidfd_was_opened,
+                "owned_completion_policy": (
+                    RunOwnedProcessRegistry.OWNED_COMPLETION_POLICY
+                ),
+                "evidence_flushed_required_for_owned_completion": True,
+                "zero_returncode_required_for_owned_completion": True,
+                "worker_exiting_required_for_owned_completion": False,
+                "rapid_zero_exit_after_evidence_flushed_owned_completion_allowed": True,
             }
             handshake_evidence = {
-                "schema_version": "kvbench-phase3-worker-handshake-2.0.0",
+                "schema_version": PHASE3_WORKER_HANDSHAKE_EVIDENCE_SCHEMA_VERSION,
                 "run_id": run_id,
                 "events": [],
                 "terminal_outcome": None,
                 "evidence_flushed_required_for_owned_completion": True,
+                "zero_returncode_required_for_owned_completion": True,
+                "worker_exiting_required_for_owned_completion": False,
+                "rapid_zero_exit_after_evidence_flushed_owned_completion_allowed": True,
             }
         run.write_json("environment/process.registry.json", registry_evidence)
         run.write_json("environment/process.handshake.json", handshake_evidence)
@@ -1241,11 +2365,19 @@ def _run_point(
         run.write_json(
             "validation/process_audit_outcome.json",
             {
-                "schema_version": "kvbench-phase3-process-audit-2.0.0",
+                "schema_version": PHASE3_PROCESS_AUDIT_SCHEMA_VERSION,
                 "passed": process_audit_passed,
                 "certified_helper": "preflight/process_query.py",
                 "registry_created": registry is not None,
                 "ownership_verdict": ownership_disposition,
+                "owned_completion_basis": (
+                    None
+                    if ownership_outcome is None
+                    else ownership_outcome.get("owned_completion_basis")
+                ),
+                "owned_completion_policy": RunOwnedProcessRegistry.OWNED_COMPLETION_POLICY,
+                "worker_exiting_required_for_owned_completion": False,
+                "rapid_zero_exit_after_evidence_flushed_owned_completion_allowed": True,
                 "exclusivity_passed": exclusivity_passed,
                 "evidence_flushed": bool(
                     ownership_outcome is not None
@@ -1279,21 +2411,49 @@ def _run_point(
                 ),
             },
         )
-        run.write_json("validation/worker_result.json", result.to_dict())
+        run.write_json(
+            "validation/raw_audit_ingestion_outcome.json",
+            raw_audit_outcome,
+        )
+        final_status, final_reason = _resolve_phase3_terminal_status(
+            result=result,
+            process_audit_passed=process_audit_passed,
+            worker_evidence_valid=worker_evidence_valid,
+            raw_audit_outcome=raw_audit_outcome,
+            failure_reason=failure_reason,
+        )
+        source_result_bytes = canonical_json_bytes(result.to_dict())
+        resolved_result = _resolved_phase3_worker_result(
+            result,
+            final_status=final_status,
+            final_reason=final_reason,
+        )
+        resolved_result_bytes = canonical_json_bytes(resolved_result.to_dict())
+        run.write_json(
+            "validation/worker_terminal_resolution.json",
+            {
+                "schema_version": (
+                    "kvbench-phase3-worker-terminal-resolution-1.0.0"
+                ),
+                "source_worker_status": result.status.value,
+                "resolved_terminal_status": resolved_result.status.value,
+                "status_overridden": resolved_result.status is not result.status,
+                "resolution_reason": final_reason,
+                "source_worker_result_sha256": sha256_hex(source_result_bytes),
+                "resolved_worker_result_sha256": sha256_hex(
+                    resolved_result_bytes
+                ),
+                "source_primary_channel_preserved": evidence is not None,
+            },
+        )
+        run.write_json(
+            "validation/worker_result.json", resolved_result.to_dict()
+        )
         if evidence is not None:
             _write_runtime_artifacts(run, evidence)
             model_identity = evidence.get("model_identity")
             if isinstance(model_identity, Mapping):
                 run.write_json("validation/model_identity.json", model_identity)
-        run_evidence_accepted = process_audit_passed and worker_evidence_valid
-        final_status = (
-            result.status if run_evidence_accepted else RunStatus.ABORTED
-        )
-        final_reason = (
-            result.failure_reason
-            if run_evidence_accepted
-            else failure_reason or "run evidence validation failed"
-        )
         final = _terminal_manifest(
             initial,
             started_at=started_at,
