@@ -20,6 +20,8 @@ from kvbench.schema import (
     HardwareManifest,
     MethodConfig,
     ModelIdentity,
+    ModelIdentityV2,
+    Phase3AdmissionPlan,
     canonical_json_bytes,
 )
 
@@ -59,6 +61,8 @@ class ExampleConfigurationTests(unittest.TestCase):
             "configs/plans/graph_ab.yaml",
             "configs/plans/profiler_subset.yaml",
             "configs/plans/full_scan.yaml",
+            "configs/plans/phase3_bf16_fixed_l.yaml",
+            "configs/plans/phase3_bf16_growing.yaml",
         }
         self.assertEqual(paths, expected)
         self.assertEqual(len({fingerprint for _, fingerprint in validated}), len(validated))
@@ -66,9 +70,9 @@ class ExampleConfigurationTests(unittest.TestCase):
     def test_each_document_family_has_a_typed_model(self) -> None:
         expected_types = {
             "hardware": HardwareManifest,
-            "model": ModelIdentity,
+            "model": (ModelIdentity, ModelIdentityV2),
             "method": MethodConfig,
-            "experiment": ExperimentConfig,
+            "experiment": (ExperimentConfig, Phase3AdmissionPlan),
         }
         observed: set[str] = set()
         for path in sorted(CONFIG_ROOT.glob("*/*.yaml")):
@@ -81,7 +85,7 @@ class ExampleConfigurationTests(unittest.TestCase):
     def test_primary_model_identity_is_exactly_resolved(self) -> None:
         _, raw_model = _example(document_type="model")
         model = parse_config(raw_model)
-        self.assertIsInstance(model, ModelIdentity)
+        self.assertIsInstance(model, ModelIdentityV2)
         self.assertEqual(model.resolution.status.value, "resolved")
         self.assertEqual(model.model_id, "meta-llama/Llama-3.1-8B-Instruct")
         self.assertEqual(
