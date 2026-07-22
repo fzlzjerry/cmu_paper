@@ -408,9 +408,170 @@ def _canonical_event_bytes(event: HandshakeEvent) -> bytes:
 
 
 def _fsync_directory(directory: Path) -> None:
-    descriptor = os.open(directory, os.O_RDONLY | os.O_DIRECTORY)
+    flags = os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    descriptor = os.open(directory, flags)
     try:
         os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+
+
+def _published_file_identity(metadata: os.stat_result) -> tuple[int, ...]:
+    """Return fields that cannot change during the legitimate link transition."""
+
+    return (
+        metadata.st_dev,
+        metadata.st_ino,
+        stat.S_IFMT(metadata.st_mode),
+        stat.S_IMODE(metadata.st_mode),
+        metadata.st_uid,
+        metadata.st_gid,
+        metadata.st_size,
+        metadata.st_mtime_ns,
+    )
+
+
+def _validate_private_publication_parent(path: Path) -> Path:
+    if not path.is_absolute() or not path.name:
+        raise ProcessSupervisionError(
+            "published evidence path must be absolute and named"
+        )
+    parent = path.parent
+    try:
+        metadata = parent.lstat()
+    except OSError as error:
+        raise ProcessSupervisionError(
+            "published evidence parent is absent"
+        ) from error
+    if (
+        stat.S_ISLNK(metadata.st_mode)
+        or not stat.S_ISDIR(metadata.st_mode)
+        or metadata.st_uid != os.geteuid()
+        or stat.S_IMODE(metadata.st_mode) != 0o700
+    ):
+        raise ProcessSupervisionError(
+            "published evidence parent must be private and process-owned"
+        )
+    return parent
+
+
+def publish_bytes_no_replace(path: Path, payload: bytes) -> None:
+    """Fsync complete bytes before exclusive same-directory publication."""
+
+    if type(payload) is not bytes or not payload:
+        raise ProcessSupervisionError(
+            "published evidence payload must be nonempty bytes"
+        )
+    parent = _validate_private_publication_parent(path)
+    temporary = parent / (
+        f".{path.name}.{os.getpid()}.{os.urandom(8).hex()}.tmp"
+    )
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_CLOEXEC
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    try:
+        descriptor = os.open(temporary, flags, 0o600)
+    except OSError as error:
+        raise ProcessSupervisionError(
+            "published evidence temporary path is unavailable"
+        ) from error
+    try:
+        view = memoryview(payload)
+        while view:
+            written = os.write(descriptor, view)
+            if written <= 0:
+                raise ProcessSupervisionError(
+                    "published evidence write made no progress"
+                )
+            view = view[written:]
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+    try:
+        os.link(temporary, path, follow_symlinks=False)
+    except OSError as error:
+        raise ProcessSupervisionError(
+            "published evidence target already exists or is unsafe"
+        ) from error
+    finally:
+        try:
+            temporary.unlink()
+        except FileNotFoundError:
+            pass
+        _fsync_directory(parent)
+
+
+def read_published_bytes(path: Path, *, maximum_bytes: int) -> bytes:
+    """Read complete published bytes through one no-follow descriptor."""
+
+    if type(maximum_bytes) is not int or maximum_bytes <= 0:
+        raise ProcessSupervisionError(
+            "published evidence size limit is invalid"
+        )
+    _validate_private_publication_parent(path)
+    try:
+        before = path.lstat()
+    except FileNotFoundError:
+        raise
+    except OSError as error:
+        raise ProcessSupervisionError(
+            "published evidence cannot be inspected"
+        ) from error
+    if (
+        not stat.S_ISREG(before.st_mode)
+        or stat.S_IMODE(before.st_mode) != 0o600
+        or before.st_uid != os.geteuid()
+        or before.st_nlink not in {1, 2}
+        or before.st_size <= 0
+        or before.st_size > maximum_bytes
+    ):
+        raise ProcessSupervisionError("published evidence file is unsafe")
+    flags = os.O_RDONLY | os.O_CLOEXEC
+    if not hasattr(os, "O_NOFOLLOW"):
+        raise ProcessSupervisionError(
+            "platform lacks no-follow publication reads"
+        )
+    flags |= os.O_NOFOLLOW
+    try:
+        descriptor = os.open(path, flags)
+    except OSError as error:
+        raise ProcessSupervisionError(
+            "published evidence cannot be opened safely"
+        ) from error
+    try:
+        opened = os.fstat(descriptor)
+        if (
+            _published_file_identity(opened)
+            != _published_file_identity(before)
+            or opened.st_nlink not in {1, 2}
+        ):
+            raise ProcessSupervisionError(
+                "published evidence changed while opening"
+            )
+        chunks: list[bytes] = []
+        remaining = opened.st_size
+        while remaining:
+            chunk = os.read(descriptor, min(16 * 1024, remaining))
+            if not chunk:
+                raise ProcessSupervisionError(
+                    "published evidence was truncated"
+                )
+            chunks.append(chunk)
+            remaining -= len(chunk)
+        if os.read(descriptor, 1):
+            raise ProcessSupervisionError("published evidence grew while reading")
+        after = os.fstat(descriptor)
+        if (
+            _published_file_identity(after)
+            != _published_file_identity(opened)
+            or after.st_nlink not in {1, 2}
+        ):
+            raise ProcessSupervisionError(
+                "published evidence changed while reading"
+            )
+        return b"".join(chunks)
     finally:
         os.close(descriptor)
 
@@ -420,59 +581,15 @@ def write_handshake_event(directory: Path, event: HandshakeEvent) -> Path:
 
     if not directory.is_absolute():
         raise ProcessSupervisionError("handshake directory must be absolute")
-    try:
-        metadata = directory.lstat()
-    except OSError as error:
-        raise ProcessSupervisionError("handshake directory is absent") from error
-    if stat.S_ISLNK(metadata.st_mode) or not stat.S_ISDIR(metadata.st_mode):
-        raise ProcessSupervisionError("handshake directory is unsafe")
     target = handshake_event_path(directory, event.stage)
-    temporary = directory / f".{target.name}.{os.getpid()}.tmp"
-    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
-    if hasattr(os, "O_NOFOLLOW"):
-        flags |= os.O_NOFOLLOW
-    try:
-        descriptor = os.open(temporary, flags, 0o600)
-    except OSError as error:
-        raise ProcessSupervisionError("handshake temporary path is unavailable") from error
-    try:
-        data = _canonical_event_bytes(event)
-        view = memoryview(data)
-        while view:
-            written = os.write(descriptor, view)
-            view = view[written:]
-        os.fsync(descriptor)
-    finally:
-        os.close(descriptor)
-    try:
-        os.link(temporary, target, follow_symlinks=False)
-        _fsync_directory(directory)
-    except OSError as error:
-        raise ProcessSupervisionError("handshake event already exists or is unsafe") from error
-    finally:
-        try:
-            temporary.unlink()
-        except FileNotFoundError:
-            pass
-        _fsync_directory(directory)
+    publish_bytes_no_replace(target, _canonical_event_bytes(event))
     return target
 
 
 def read_handshake_event(path: Path) -> HandshakeEvent:
     """Read one atomically published canonical handshake event."""
 
-    try:
-        metadata = path.lstat()
-    except OSError as error:
-        raise ProcessSupervisionError("handshake event is absent") from error
-    if (
-        stat.S_ISLNK(metadata.st_mode)
-        or not stat.S_ISREG(metadata.st_mode)
-        or metadata.st_nlink != 1
-        or metadata.st_size > 16 * 1024
-    ):
-        raise ProcessSupervisionError("handshake event is unsafe")
-    raw = path.read_bytes()
+    raw = read_published_bytes(path, maximum_bytes=16 * 1024)
     if not raw.endswith(b"\n") or b"\n" in raw[:-1] or b"\r" in raw:
         raise ProcessSupervisionError("handshake event framing is invalid")
     def reject_duplicate_keys(
@@ -571,6 +688,7 @@ class OwnershipOutcome:
     worker_exiting_observed: bool
     full_handshake_observed: bool
     exclusivity_passed: bool
+    owned_completion_basis: str | None
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -585,13 +703,17 @@ class OwnershipOutcome:
             "worker_exiting_observed": self.worker_exiting_observed,
             "full_handshake_observed": self.full_handshake_observed,
             "exclusivity_passed": self.exclusivity_passed,
+            "owned_completion_basis": self.owned_completion_basis,
         }
 
 
 class RunOwnedProcessRegistry:
     """Retain worker ownership independently of procfs lifetime and polling."""
 
-    SCHEMA_VERSION = "kvbench-phase3-process-registry-2.0.0"
+    SCHEMA_VERSION = "kvbench-phase3-process-registry-3.0.0"
+    OWNED_COMPLETION_POLICY = (
+        "zero_exit_after_durable_evidence_flush_worker_exiting_optional"
+    )
 
     def __init__(
         self,
@@ -951,6 +1073,7 @@ class RunOwnedProcessRegistry:
             disposition = self._hard_disposition
             reason = self._hard_reason or "process exclusivity failed"
             exclusivity_passed = False
+            owned_completion_basis = None
         elif self._returncode == 0 and evidence_flushed:
             disposition = OwnershipDisposition.OWNED_COMPLETED
             reason = (
@@ -959,6 +1082,11 @@ class RunOwnedProcessRegistry:
                 else "registered worker completed the ordered handshake"
             )
             exclusivity_passed = True
+            owned_completion_basis = (
+                "zero_exit_after_evidence_flushed"
+                if not worker_exiting
+                else "full_ordered_handshake_zero_exit"
+            )
         else:
             disposition = OwnershipDisposition.OWNED_WORKER_FAILURE
             reason = (
@@ -967,6 +1095,7 @@ class RunOwnedProcessRegistry:
                 else f"registered worker exited with return code {self._returncode}"
             )
             exclusivity_passed = True
+            owned_completion_basis = None
         return OwnershipOutcome(
             disposition=disposition,
             reason=reason,
@@ -977,6 +1106,7 @@ class RunOwnedProcessRegistry:
             worker_exiting_observed=worker_exiting,
             full_handshake_observed=full,
             exclusivity_passed=exclusivity_passed,
+            owned_completion_basis=owned_completion_basis,
         )
 
     def to_evidence(self) -> dict[str, object]:
@@ -988,6 +1118,11 @@ class RunOwnedProcessRegistry:
         outcome = None if not self.reaped else self.terminal_outcome().to_dict()
         return {
             "schema_version": self.SCHEMA_VERSION,
+            "owned_completion_policy": self.OWNED_COMPLETION_POLICY,
+            "evidence_flushed_required_for_owned_completion": True,
+            "zero_returncode_required_for_owned_completion": True,
+            "worker_exiting_required_for_owned_completion": False,
+            "rapid_zero_exit_after_evidence_flushed_owned_completion_allowed": True,
             "identity": self._identity.to_dict(),
             "handle": self._handle_metadata.to_dict(),
             "handshake_events": events,

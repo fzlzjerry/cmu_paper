@@ -9,6 +9,7 @@ from types import SimpleNamespace
 import unittest
 from unittest import mock
 
+from kvbench.runtime import process_supervision
 from kvbench.runtime.phase3_coordinator import (
     Phase3CoordinatorError,
     _nonreaping_exit_observed,
@@ -28,6 +29,8 @@ from kvbench.runtime.process_supervision import (
     RunOwnedProcessRegistry,
     SnapshotDisposition,
     command_fingerprint,
+    publish_bytes_no_replace,
+    read_published_bytes,
     read_handshake_event,
     read_process_identity,
     write_handshake_event,
@@ -172,6 +175,10 @@ class HandshakeTests(unittest.TestCase):
         outcome = registry.terminal_outcome()
         self.assertIs(outcome.disposition, OwnershipDisposition.OWNED_COMPLETED)
         self.assertTrue(outcome.full_handshake_observed)
+        self.assertEqual(
+            outcome.owned_completion_basis,
+            "full_ordered_handshake_zero_exit",
+        )
         self.assertEqual(registry.to_evidence()["device_snapshot_count"], 0)
 
     def test_exit_before_first_poll_and_required_handshake_is_owned_failure(self) -> None:
@@ -197,6 +204,21 @@ class HandshakeTests(unittest.TestCase):
         self.assertTrue(outcome.evidence_flushed)
         self.assertFalse(outcome.worker_exiting_observed)
         self.assertFalse(outcome.full_handshake_observed)
+        self.assertEqual(
+            outcome.owned_completion_basis,
+            "zero_exit_after_evidence_flushed",
+        )
+        evidence = registry.to_evidence()
+        self.assertEqual(
+            evidence["schema_version"],
+            "kvbench-phase3-process-registry-3.0.0",
+        )
+        self.assertFalse(evidence["worker_exiting_required_for_owned_completion"])
+        self.assertTrue(
+            evidence[
+                "rapid_zero_exit_after_evidence_flushed_owned_completion_allowed"
+            ]
+        )
 
     def test_abnormal_exit_after_evidence_flush_is_owned_failure(self) -> None:
         registry = make_registry()
@@ -303,6 +325,76 @@ class HandshakePersistenceTests(unittest.TestCase):
             )
             with self.assertRaises(ProcessSupervisionError):
                 write_handshake_event(directory, event)
+
+    def test_visible_hard_link_window_is_complete_and_readable(self) -> None:
+        source = make_registry()
+        event = source.record_worker_stage(
+            HandshakeStage.WORKER_STARTED,
+            recorded_at_utc=RECORDED_AT,
+        )
+        with tempfile.TemporaryDirectory() as raw_directory:
+            directory = Path(raw_directory).resolve()
+            with mock.patch.object(
+                Path,
+                "unlink",
+                autospec=True,
+                return_value=None,
+            ):
+                path = write_handshake_event(directory, event)
+            self.assertEqual(path.stat().st_nlink, 2)
+            self.assertEqual(read_handshake_event(path), event)
+
+    def test_final_name_is_absent_during_short_complete_write(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_directory:
+            directory = Path(raw_directory).resolve()
+            target = directory / "ready.json"
+            payload = b'{"ready":true}\n'
+            original_write = process_supervision.os.write
+            observations: list[bool] = []
+
+            def short_write(descriptor: int, value: object) -> int:
+                observations.append(target.exists())
+                return original_write(descriptor, bytes(value)[:1])
+
+            with mock.patch.object(
+                process_supervision.os,
+                "write",
+                side_effect=short_write,
+            ):
+                publish_bytes_no_replace(target, payload)
+            self.assertTrue(observations)
+            self.assertFalse(any(observations))
+            self.assertEqual(
+                read_published_bytes(target, maximum_bytes=1024),
+                payload,
+            )
+
+    def test_zero_progress_write_never_publishes_final_name(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_directory:
+            directory = Path(raw_directory).resolve()
+            target = directory / "release.token"
+            with mock.patch.object(
+                process_supervision.os,
+                "write",
+                return_value=0,
+            ):
+                with self.assertRaisesRegex(
+                    ProcessSupervisionError,
+                    "made no progress",
+                ):
+                    publish_bytes_no_replace(target, b"release\n")
+            self.assertFalse(target.exists())
+
+    def test_published_reader_rejects_symlink(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_directory:
+            directory = Path(raw_directory).resolve()
+            source = directory / "source"
+            source.write_bytes(b"payload")
+            source.chmod(0o600)
+            target = directory / "target"
+            target.symlink_to(source)
+            with self.assertRaises(ProcessSupervisionError):
+                read_published_bytes(target, maximum_bytes=1024)
 
     def test_coordinator_and_worker_reconstruct_the_same_command(self) -> None:
         point = SimpleNamespace(
@@ -447,7 +539,7 @@ class DeviceProcessOwnershipTests(unittest.TestCase):
         evidence = registry.to_evidence()
         self.assertEqual(
             evidence["schema_version"],
-            "kvbench-phase3-process-registry-2.0.0",
+            "kvbench-phase3-process-registry-3.0.0",
         )
         handle = evidence["handle"]
         self.assertIsInstance(handle, dict)
