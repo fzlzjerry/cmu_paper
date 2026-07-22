@@ -342,6 +342,45 @@ class Phase3EvidenceSerializationTests(unittest.TestCase):
         )
         common_patches = {
             "_utc_now": mock.Mock(return_value="2026-07-23T00:00:00Z"),
+            "_pin_phase3_execution_sources": mock.Mock(
+                return_value=phase3_coordinator.Phase3ExecutionSourcePin(
+                    execution_git_sha="1" * 40,
+                    source_bytes_by_path=tuple(
+                        (relative, f"unit:{relative}".encode("utf-8"))
+                        for relative in (
+                            phase3_coordinator.PHASE3_EXECUTION_SOURCE_PATHS
+                        )
+                    ),
+                    source_identity_sha256=(
+                        phase3_coordinator.phase3_source_identity_sha256(
+                            {
+                                relative: sha256_hex(
+                                    f"unit:{relative}".encode("utf-8")
+                                )
+                                for relative in (
+                                    phase3_coordinator.REQUIRED_SUT_SOURCES
+                                )
+                            }
+                        )
+                    ),
+                    execution_source_identity_sha256=(
+                        phase3_coordinator._phase3_execution_source_identity_sha256(
+                            {
+                                relative: sha256_hex(
+                                    f"unit:{relative}".encode("utf-8")
+                                )
+                                for relative in phase3_coordinator.PHASE3_EXECUTION_SOURCE_PATHS
+                            }
+                        )
+                    ),
+                )
+            ),
+            "_expected_phase3_raw_audit_operations": mock.Mock(
+                return_value=()
+            ),
+            "_revalidate_phase3_execution_sources": mock.Mock(),
+            "_validate_cache_source_join": mock.Mock(),
+            "_resolved_phase3_worker_result": mock.Mock(return_value=failed_result),
             "_worker_environment": mock.Mock(
                 return_value=dict(base_environment)
             ),
@@ -406,8 +445,13 @@ class Phase3EvidenceSerializationTests(unittest.TestCase):
                     def to_evidence(self) -> dict[str, object]:
                         return {
                             "schema_version": (
-                                "kvbench-phase3-process-registry-2.0.0"
+                                "kvbench-phase3-process-registry-3.0.0"
                             ),
+                            "owned_completion_policy": (
+                                "zero_exit_after_durable_evidence_flush_"
+                                "worker_exiting_optional"
+                            ),
+                            "worker_exiting_required_for_owned_completion": False,
                             "handshake_events": [],
                             "outcome": dict(outcome),
                         }
@@ -564,6 +608,35 @@ class Phase3EvidenceSerializationTests(unittest.TestCase):
                 "process_start_time_ticks": 123456,
                 "cuda_imported": False,
             },
+        )
+        handshake = writes["environment/process.handshake.json"]
+        self.assertEqual(
+            handshake["schema_version"],
+            "kvbench-phase3-worker-handshake-3.0.0",
+        )
+        self.assertFalse(
+            handshake["worker_exiting_required_for_owned_completion"]
+        )
+        self.assertTrue(
+            handshake[
+                "rapid_zero_exit_after_evidence_flushed_owned_completion_allowed"
+            ]
+        )
+        process_audit = writes["validation/process_audit_outcome.json"]
+        self.assertEqual(
+            process_audit["schema_version"],
+            "kvbench-phase3-process-audit-3.0.0",
+        )
+        self.assertFalse(
+            process_audit["worker_exiting_required_for_owned_completion"]
+        )
+        self.assertIn(
+            "validation/execution_source_pin.before_spawn.json",
+            writes,
+        )
+        self.assertIn(
+            "validation/execution_source_pin.after_worker_exit.json",
+            writes,
         )
 
     def test_initial_manifest_uses_supplied_environment_digest(self) -> None:
