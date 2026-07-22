@@ -135,13 +135,17 @@ PHASE3_ALLOWED_PATHS = frozenset(
         "configs/plans/phase3_bf16_growing.yaml",
         "docs/blockers.md",
         "docs/decisions/0007-phase3-primary-model-and-bf16-backend.md",
+        "docs/decisions/0008-phase3-gqa-evidence-taxonomy.md",
+        "docs/decisions/0009-phase3-eager-allocation-criterion.md",
         "docs/evidence/phase3/backend-identity.md",
         "docs/evidence/phase3/g1-admission.json",
+        "docs/evidence/phase3/g1-remediation-admission.json",
         "docs/evidence/phase3/model-identity.md",
         "docs/experiment_contract.md",
         "docs/measurement_protocol.md",
         "docs/plans/phase3-bf16-baseline.md",
         "docs/phase_reports/phase3.md",
+        "docs/phase_reports/phase3-remediation.md",
         "docs/risk_register.md",
         "docs/status.md",
         "docs/tasks.md",
@@ -156,6 +160,7 @@ PHASE3_ALLOWED_PATHS = frozenset(
         "src/kvbench/schema/result.py",
         "src/kvbench/runtime/__init__.py",
         "src/kvbench/runtime/allocation.py",
+        "src/kvbench/runtime/allocation_attribution.py",
         "src/kvbench/runtime/artifacts.py",
         "src/kvbench/runtime/backend.py",
         "src/kvbench/runtime/bf16_endpoint.py",
@@ -163,13 +168,17 @@ PHASE3_ALLOWED_PATHS = frozenset(
         "src/kvbench/runtime/cuda_graph.py",
         "src/kvbench/runtime/fixed_l_runner.py",
         "src/kvbench/runtime/gqa_audit.py",
+        "src/kvbench/runtime/gqa_device_dispatch.py",
+        "src/kvbench/runtime/gqa_taxonomy.py",
         "src/kvbench/runtime/growing_context_runner.py",
         "src/kvbench/runtime/model_loader.py",
         "src/kvbench/runtime/numerical.py",
         "src/kvbench/runtime/phase3_coordinator.py",
         "src/kvbench/runtime/phase3_campaign.py",
         "src/kvbench/runtime/phase3_report.py",
+        "src/kvbench/runtime/phase3_report_publication.py",
         "src/kvbench/runtime/phase3_worker.py",
+        "src/kvbench/runtime/process_supervision.py",
         "src/kvbench/runtime/static_cache.py",
         "src/kvbench/runtime/telemetry.py",
         "src/kvbench/runtime/timing.py",
@@ -181,6 +190,13 @@ PHASE3_ALLOWED_PATHS = frozenset(
         "tests/unit/test_phase3_campaign.py",
         "tests/unit/test_phase3_report.py",
         "tests/unit/test_phase3_runtime.py",
+        "tests/unit/test_allocation_attribution.py",
+        "tests/unit/test_gqa_device_dispatch.py",
+        "tests/unit/test_gqa_taxonomy.py",
+        "tests/unit/test_phase3_report_publication.py",
+        "tests/unit/test_process_supervision.py",
+        "tests/cuda/test_phase3_allocation_attribution.py",
+        "tests/cuda/test_phase3_gqa_device_dispatch.py",
         "tests/cuda/test_phase3_runtime_cuda.py",
         "tests/cuda/test_phase3_full_model.py",
         "tests/graph/test_phase3_full_model_graph.py",
@@ -397,6 +413,15 @@ def repository_python_paths() -> list[Path]:
     if unit_tests.is_dir():
         paths.update(unit_tests.glob("test_phase2_*.py"))
         paths.update(unit_tests.glob("test_phase3_*.py"))
+        paths.update(
+            unit_tests / name
+            for name in (
+                "test_allocation_attribution.py",
+                "test_gqa_device_dispatch.py",
+                "test_gqa_taxonomy.py",
+                "test_process_supervision.py",
+            )
+        )
     cuda_tests = ROOT / "tests" / "cuda"
     if cuda_tests.is_dir():
         paths.update(cuda_tests.glob("test_phase3_*.py"))

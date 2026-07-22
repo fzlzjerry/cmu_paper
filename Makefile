@@ -18,6 +18,7 @@ PHASE3_PYTHON := .venv/bin/python
 PHASE3_SITE := $(CURDIR)/.phase3/site-packages
 PHASE3_ENV := /usr/bin/env PYTHONDONTWRITEBYTECODE=1 PYTHONNOUSERSITE=1 PYTHONPATH=$(PHASE3_SITE):src HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 HF_HUB_DISABLE_TELEMETRY=1 TOKENIZERS_PARALLELISM=false
 PHASE3_CLI := $(PHASE3_ENV) $(PHASE3_PYTHON) -m kvbench
+PHASE3_REMEDIATION_UNIT_TESTS := tests.unit.test_allocation_attribution tests.unit.test_gqa_device_dispatch tests.unit.test_gqa_taxonomy tests.unit.test_process_supervision
 
 .PHONY: bootstrap bootstrap-phase3 test checks format-check lint hot-path-check typecheck config-check
 .PHONY: provenance-check scope-check immutable-check package-lock-check
@@ -78,6 +79,7 @@ test: checks
 	@$(PHASE2_ENV) $(PHASE2_PYTHON) -m unittest discover -s tests/schema -p 'test_*.py' -v
 	@$(PHASE2_ENV) $(PHASE2_PYTHON) -m unittest discover -s tests/unit -p 'test_phase2_*.py' -v
 	@$(PHASE3_ENV) $(PHASE3_PYTHON) -m unittest discover -s tests/unit -p 'test_phase3_*.py' -v
+	@$(PHASE3_ENV) $(PHASE3_PYTHON) -m unittest $(PHASE3_REMEDIATION_UNIT_TESTS) -v
 	@$(PHASE2_VALIDATE) immutable
 
 test-cuda: phase3-package-lock-check immutable-check
