@@ -8,9 +8,9 @@ authoritative local task index until issues are created elsewhere.
 |---|---|---|---|---|
 | E00 | Hardware preflight | Phase 0 PASS | hardware manifest; native extension; PTX/JIT; Compute Sanitizer; G0 | complete: native-host G0 PASS in `e00-20260722T050632.375718Z-6442ba1f7554-02d5bd32` |
 | E01 | Repository scaffold and schemas | G0 | strict schemas; append-only writer; durable artifact policy; digest-pinned container; parity preflight | partial: Phase 2 local scaffold/contracts/writer PASS; durable storage and container-parity items remain open as B-009/B-010 |
-| E02 | BF16 static-cache baseline | E01 and container-parity G0 | reference numerical match; static allocation; GQA audit | pending |
-| E03 | Fixed-L benchmark | E02 | fixed-L and growing-context runners; timing-boundary tests | pending |
-| E04 | CUDA Graph harness | E02-E03 | capture/replay correctness; no replay allocation; eager/graph lanes | pending |
+| E02 | BF16 static-cache baseline | E01 and container-parity G0 for formal closure; Decision 0007 for Phase 3 engineering scope | reference numerical match; static allocation; GQA audit | Phase 3 engineering work preregistered; formal closure pending B-009/B-010 |
+| E03 | Fixed-L benchmark | E02; Decision 0007 permits only bounded Phase 3 admission runner | fixed-L and growing-context runners; timing-boundary tests | Phase 3 engineering work preregistered; ordinary timing closed |
+| E04 | CUDA Graph harness | E02-E03 | capture/replay correctness; no replay allocation; eager/graph lanes | Phase 3 fixed-L engineering lane preregistered |
 | E05 | TurboQuant reference lane | E00-E04 | authoritative pinned source; isolated container; golden fixtures | pending |
 | E06 | TurboQuant measurement adapter | E05 | numerical, byte, graph, path, sanitizer, smoke evidence; G2-TQ | pending |
 | E07 | KIVI reference lane | G2-TQ | pinned legacy container; rollover and K/V asymmetry fixtures | pending |
@@ -41,8 +41,10 @@ task list. E16 remains closed until its evidence is reviewed.
   claim-bearing run starts while B-009's durable-store/locator requirements
   remain open.
 - E01 task closure still requires a pinned measurement-container digest and
-  identical E00 execution inside it; B-010 keeps E02 and all later CUDA or
-  timing work closed until parity passes.
+  identical E00 execution inside it. Decision 0007 narrowly permits bounded
+  BF16 Phase 3 implementation and non-claim native-host admission evidence;
+  B-010 keeps formal E02 closure, ordinary timing, later methods, and claims
+  closed until parity passes.
 - E03 includes growing-context request validation but does not mix those
   samples with fixed-L fitting.
 - E04 owns the capture/replay harness used by M14-GRAPH-AB; that milestone runs

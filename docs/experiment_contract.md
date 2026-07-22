@@ -87,7 +87,9 @@ A claim-bearing run requires:
 - artifact-schema and experiment-contract versions.
 
 B-010 remains open: no measurement-container digest or container-parity G0 is
-currently available.
+currently available. Decision 0007 permits only bounded, explicitly non-claim
+Phase 3 `native_host_admission` engineering evidence on the certified host;
+claim-bearing and ordinary timing still require the container identity above.
 
 ## 3. Fingerprints and canonical configuration
 
@@ -290,8 +292,11 @@ CODEX_POST_PERFORMANCE_QUALITY_VALIDATION.md.
 ## 12. Admission and current claim boundary
 
 Native-host G0 remains PASS for its exact recorded fingerprint. G1 through G5
-remain NOT EVALUATED, and the full scan remains CLOSED. No method enters a
-pilot or full scan until all applicable gates pass.
+were NOT EVALUATED at Phase 2, and the full scan remains CLOSED. Decision 0007
+permits only a Phase 3 BF16 engineering G1 verdict from bounded, locally
+finalized non-claim evidence; it is not formal/unified admission and does not
+close B-009 or B-010. No method enters a pilot or full scan until all applicable
+gates pass.
 
 Phase 2 evidence can support only claims that schemas, validation, dry-run
 reconstruction, and local append-only lifecycle controls behave as tested. It

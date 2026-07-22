@@ -5,7 +5,9 @@
 - Authority: CODEX_WORKFLOW.md, AGENTS.md, the Phase 3 execution
   instruction, CODEX_POST_PERFORMANCE_QUALITY_VALIDATION.md for the quality
   lock, and Decision 0006
-- Supersedes: none
+- Supersedes: only the blanket clauses in Decisions 0002 and 0006 that closed
+  all pre-container CUDA/timing work; the narrow replacement is bounded,
+  non-claim Phase 3 `native_host_admission` on the already certified host
 - Superseded by: none
 
 ## Context
@@ -188,20 +190,40 @@ fails closed when unsupported.
     knee, HBM, capacity, model-comparison, or paper result may be derived.
 
 18. The allocation gate distinguishes immutable cache storage, predeclared
-    workspace/reserved-pool capacity, transient framework workspace, and
-    persistent growth. Cache or pointer growth, a positive persistent allocated
-    or reserved-memory delta after warmup, an unbounded/repeated peak increase,
-    or any positive graph-replay delta fails admission. Third-party transient
-    workspace observed within a stable pre-reserved pool must be measured,
-    bounded, reported as workspace, and separately judged against the
-    repository's strict no-dynamic-allocation requirement; it may not be
-    silently labeled zero.
+    workspace, allocator reservations, and allocation events. Any allocation
+    event inside a measured decode operation fails G1, including an allocation
+    served from an already reserved caching-allocator block and freed before
+    the end snapshot. A zero before/after delta or stable peak is necessary but
+    not sufficient. A separate instrumented allocation/operator audit must
+    prove that the exact eager and graph operations issue no allocation event;
+    its instrumented duration is never reported as normal timing. Outputs and
+    required workspace must be preallocated. Cache/pointer growth, a positive
+    persistent allocated or reserved-memory delta, or any graph-replay
+    allocation also fails. Observed third-party transient workspace is
+    reported honestly and makes G1 PARTIAL or FAIL; it is never accounted away
+    as an admissible measured-region allocation.
 
-19. The local Phase 2 append-only writer may hold Phase 3 non-claim evidence.
-    This does not satisfy B-009's durable-store acceptance criteria. B-009 and
-    B-010 remain open. The operator's narrow native-host authorization refines
-    their former blanket wording only for Phase 3 admission; neither formal
-    timing nor later method admission is unlocked.
+19. The local Phase 2 append-only writer may hold locally finalized,
+    checksum-valid Phase 3 non-claim engineering evidence. It is not described
+    as durably immutable and does not satisfy B-009. B-009 and B-010 remain
+    open. The operator's narrow native-host authorization replaces their former
+    blanket wording only for this Phase 3 engineering G1 verdict; E01 closure,
+    formal/container-parity admission, ordinary timing, later method admission,
+    and every claim-bearing run remain locked.
+
+20. Timed decode includes input embedding, all 32 decoder layers, final model
+    normalization, and the LM head producing one-token full-vocabulary logits
+    of shape `[batch, 1, 128256]`. Sampling, argmax/top-k, tokenizer, and text
+    decoding remain excluded. Eager, graph, the trusted reference, and future
+    same-work methods use this same endpoint.
+
+21. Backend proof is geometry- and lane-specific. Before timing each executed
+    `(batch, context, runner, graph_mode)` point, a separate untimed operator
+    audit records `_fused_sdp_choice` and the dispatched ATen attention
+    operator for prefill and decode. Graph capture records the operator it
+    captures. Any competing attention operator, warning, wrapper expansion, or
+    inability to prove forced Flash dispatch is `backend_fallback` or
+    `backend_unsupported`. Instrumented audit duration is not timing evidence.
 
 ## Rejected alternatives
 
@@ -232,8 +254,9 @@ fails closed when unsupported.
   quality validation while quality execution remains locked.
 - The backend has a fail-closed native-GQA route on SM120 and a demonstrated
   graph-capable operator path.
-- The observed eager transient-workspace behavior is an explicit G1 risk. If
-  the implemented full-model lane cannot meet the frozen allocation audit, G1
-  is PARTIAL or FAIL; the result is not reinterpreted after execution.
+- The observed eager transient allocation is an explicit G1 risk. Unless the
+  implementation eliminates every such allocation by preallocating output and
+  workspace, G1 is PARTIAL or FAIL; the result is not reinterpreted after
+  execution.
 - No custom CUDA/C++ extension is introduced, so Phase 3 does not claim
   Compute Sanitizer coverage for PyTorch's third-party kernels.

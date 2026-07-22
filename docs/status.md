@@ -12,8 +12,8 @@ requirements; and AGENTS.md. Decision 0005 records precedence.
   Phase 2 status PASS
 - Phase 0 status: PASS
 - Phase 1 remediation status: PASS
-- Next action: stop after Phase 2. Phase 3 may be proposed in a new task but
-  has not started
+- Next action: execute only the preregistered Phase 3 BF16 baseline task at
+  Decision 0007; Phase 4 remains closed
 - Active admission gate: native-host G0 PASS; container-parity G0 remains a
   later E01 requirement before E02
 - Benchmark implementation changes: none; Phase 2 adds validation contracts,
@@ -28,7 +28,8 @@ requirements; and AGENTS.md. Decision 0005 records precedence.
 - Quality execution: LOCKED; `PERFORMANCE_DATA_FROZEN` is absent
 - Quality runs or quality-only dependency installations: none
 - Full-scan admission: CLOSED
-- G1-G5: NOT EVALUATED
+- G1-G5 at entry: NOT EVALUATED; Phase 3 may evaluate only the BF16 engineering
+  G1 verdict
 
 ## Repository
 
@@ -121,10 +122,12 @@ repository.
 
 ## Next action
 
-Stop after successful Phase 2. Phase 3 may be proposed in a new task but must
-not begin automatically. Before any E02 CUDA/model work or timing, B-010 still
-requires a digest-pinned measurement container and identical container-parity
-G0. Before any claim-bearing run, B-009 still requires durable append-only
-storage and an immutable locator/publication mechanism. G1-G5 remain NOT
-EVALUATED, the full scan remains CLOSED, quality execution remains LOCKED, and
-`PERFORMANCE_DATA_FROZEN` remains absent.
+Decision 0007 and the operator's Phase 3 task now permit only bounded BF16
+implementation and non-claim `native_host_admission` engineering timing on the
+certified host. B-010 still requires a digest-pinned measurement container and
+container-parity G0 before formal E02 closure, ordinary timing, later method
+admission, or a performance claim. B-009 still requires durable append-only
+storage and an immutable locator/publication mechanism before durable/formal or
+claim-bearing evidence. Phase 3 may evaluate only its BF16 engineering G1
+verdict; G2-G5 and formal/unified admission remain NOT EVALUATED. Full Scan is
+CLOSED, quality execution is LOCKED, and `PERFORMANCE_DATA_FROZEN` is absent.

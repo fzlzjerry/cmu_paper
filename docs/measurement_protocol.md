@@ -22,8 +22,11 @@ No normal measurement begins until:
 - memory feasibility is evaluated for the complete planned grid;
 - the artifact root passes safety and append-only checks.
 
-G1 through G5 are currently NOT EVALUATED. Full scan is CLOSED. B-009 and B-010
-remain open, so this protocol is descriptive rather than executable.
+G1 through G5 were NOT EVALUATED at Phase 2 and Full Scan remains CLOSED.
+Decision 0007 narrowly makes the protocol executable for bounded BF16 Phase 3
+`native_host_admission` engineering evidence only. B-009 and B-010 remain open;
+ordinary timing, formal/unified admission, later methods, and performance
+claims remain closed.
 
 ## 2. Runner semantics
 
@@ -57,8 +60,10 @@ The following complete before warmup or measured timing:
 - logging/config serialization;
 - output/checksum fixture preparation.
 
-Any preparation that unexpectedly recurs during measurement is an execution
-path failure, not ordinary timing.
+Any preparation or allocation event that unexpectedly recurs during
+measurement is an execution-path failure, even if a caching allocator serves
+the request from an already reserved block and frees it before the end
+snapshot. Before/after equality is necessary but not proof of zero allocation.
 
 ## 4. Warmup semantics
 
@@ -171,8 +176,9 @@ the preregistered rule, often unstable, and never causes selective deletion.
 
 Nsight Systems and Nsight Compute execute only as explicit nsys or ncu run
 kinds on the preregistered subset. They use separate run IDs and artifacts.
-Profiler-instrumented duration cannot enter normal timing summaries or speedup
-calculations.
+Profiler- or audit-instrumented duration cannot enter normal timing summaries
+or speedup calculations. Phase 3 may use a separate allocation/operator audit
+control, but its duration is never a timing sample.
 
 Physical HBM traffic and r_hbm require direct supported counter evidence with
 the metric map, profiler version, kernel scope, and aggregation recorded.
@@ -256,7 +262,9 @@ LOCKED and no quality-only dependency may be installed.
 
 ## 14. Current interpretation
 
-No performance or profiler data is created by Phase 2. No timing endpoint,
-memory-capacity endpoint, r_hbm endpoint, method comparison, or quality
-endpoint is validated by this document. Native-host G0 remains the only passed
-admission gate; G1 through G5 remain NOT EVALUATED.
+No performance or profiler data was created by Phase 2. Decision 0007 permits
+only bounded native-host Phase 3 engineering timing with explicit non-claim
+fields; it does not validate an ordinary timing, memory-capacity, r_hbm, method
+comparison, or quality endpoint. Native-host G0 remains PASS. Phase 3 may
+evaluate only its BF16 engineering G1 verdict; G2-G5 and formal/unified
+admission remain NOT EVALUATED.

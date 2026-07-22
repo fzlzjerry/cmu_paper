@@ -150,7 +150,7 @@ pre-generated input tokens. The recorded historical active lengths are
 active length plus one. It never samples, performs argmax/top-k, tokenizes, or
 decodes text in the measured region.
 
-Capacity is exactly at least `L + O`; over-capacity requests fail before a
+Capacity is exactly `L + O`; over-capacity requests fail before a
 write. The timed trajectory uses the preallocated cache without reset or
 reallocation. A separate untimed deterministic replay after a fresh prefill
 records the full active-length sequence and per-step output checksums, avoiding
@@ -160,6 +160,12 @@ step records are preserved.
 Growing-context CUDA Graph behavior is intentionally not invented in Phase 3:
 the admission runner is eager only. Fixed-shape CUDA Graph support is evaluated
 by the fixed-L runner.
+
+The one warmup trajectory uses a separate cache state or is followed by reset
+and a fresh exact-L prefill outside timing. Immediately before the measured
+trajectory, the runner verifies that active historical length is exactly L and
+that every historical cache pointer and prefix checksum matches the declared
+start state. Warmup state can never leak into the measured trajectory.
 
 ## Eager and CUDA Graph execution
 
@@ -174,9 +180,15 @@ Graph capture failure is finalized as `graph_capture_failed`; replay failure is
 `graph_replay_failed`. There is no eager fallback. Eager and graph samples,
 summaries, filenames, and stability calculations remain separate.
 
+The timed endpoint begins at input embedding and includes every decoder layer,
+final normalization, and the LM head through full-vocabulary one-token logits
+`[batch, 1, 128256]`. It ends before sampling or any tensor-to-host operation.
+The same endpoint is used in eager, graph, reference checks, and later
+same-work method lanes.
+
 ## Timing boundaries and raw samples
 
-For each fixed-L run:
+For each fixed-L measured batch:
 
 1. perform 16 untimed warmup operations;
 2. take telemetry/allocation observations outside the boundary;
@@ -190,12 +202,21 @@ For each fixed-L run:
 9. retain the batch-level host total, CUDA-event total, operation count, and
    failure count.
 
-Five predeclared measured batches are retained per ordinary point. The full
-count runs even if an intermediate batch is slow. Growing-context retains its
-single exact O=16 trajectory as one batch sample because resetting/prefilling
-inside the boundary would change its semantics. Failed or incomplete
-operations are explicit and never omitted. Host-wall is primary; CUDA-event
-time is secondary. No speedup is calculated.
+Steps 2-9 repeat independently for each of the five predeclared fixed-L
+batches. Each batch has its own pre-synchronization, start records, exact 32
+operations, end event, single completion synchronization, host end, and raw
+total. The full count runs even if an intermediate batch is slow. In graph
+mode, device model work is replay-only; primary host wall time still includes
+host submission, event recording, and the terminal completion wait.
+
+For the growing runner, after the fresh exact-L start-state check: synchronize;
+start host time and the CUDA event; execute exactly 16 append/decode operations
+without per-step synchronization; record the end event; synchronize once for
+completion; and stop host time. Preserve total request-trajectory host and GPU
+time and `total / 16`, but do not present synchronized per-step timing samples.
+Per-step active lengths and checksums come only from the separate untimed
+replay. Failed or incomplete operations are explicit and never omitted.
+Host-wall is primary; CUDA-event time is secondary. No speedup is calculated.
 
 Every timing record states:
 
@@ -219,23 +240,25 @@ timed and does not alter execution.
 
 For eager and graph separately, the audit records allocated/reserved bytes
 before and after, peak bytes during the batch, allocator counters, and pointer
-stability. It fails on cache resizing, pointer changes, positive persistent
-allocated or reserved delta, monotonic repeated growth, or unexplained
-workspace. Graph replay additionally requires zero new allocation delta and a
-stable peak after capture. Predicted cache bytes must equal storage bytes
-exactly. A small declared allocator-accounting tolerance of zero bytes applies
-to persistent/cache deltas; any known transient third-party workspace is
-reported at its observed byte maximum rather than hidden by a tolerance.
+stability. Those snapshots are necessary but not sufficient. A separate
+instrumented allocation/operator control runs the exact operation outside the
+normal timing lane and must observe zero allocation events, including requests
+served from reserved caching-allocator blocks. Its duration is discarded and
+never reported as normal timing. The audit fails on any event, cache resize,
+pointer change, positive persistent allocated/reserved delta, or repeated
+growth. Graph replay additionally requires zero event and delta. Predicted
+cache bytes must equal storage bytes exactly; the tolerance is zero bytes.
 
-The direct Flash operator inspection observed a bounded transient workspace
-risk in eager mode and a batch-4 issue in an optional preallocated-output
-variant. The implementation will not use that faulty variant. G1 is not marked
-PASS if the end-to-end eager audit cannot reconcile the measured workspace
-with the frozen gate.
+The direct Flash operator inspection observed a transient allocation in eager
+mode and a batch-4 issue in an optional preallocated-output variant. The
+implementation will not use the faulty variant. Unless another correct
+preallocated-output/workspace route eliminates every event, the audit records
+the bytes and G1 is PARTIAL or FAIL; reconciliation or stable reuse cannot turn
+an event into a pass.
 
 ## GQA non-materialization audit
 
-The audit has five independent parts:
+The audit has six independent parts:
 
 1. source scan of the selected SUT modules for `repeat_kv`,
    `repeat_interleave`, `expand(...).reshape(...)`, `torch.cat`, DynamicCache,
@@ -246,6 +269,9 @@ The audit has five independent parts:
 4. allocator/operator audit for query-head-sized temporary K/V;
 5. a forced-Flash operator control comparing GQA and MHA at the same batch,
    context, head dimension, and dtype, including actual fused backend choice.
+6. an untimed dispatch control for prefill and decode at every executed
+   geometry/lane, recording `_fused_sdp_choice`, the dispatched ATen operator,
+   and the graph-captured operator where applicable.
 
 Any detected expansion, Transformers fallback, or competing backend dispatch
 finalizes the run as `gqa_materialization_detected` or `backend_fallback`.
@@ -329,6 +355,14 @@ for 20 attempted process runs if capacity and setup succeed. Every configured
 point remains in the plan after failure. Memory feasibility is checked from
 the exact formula before launch. An infeasible point is recorded as
 `capacity_infeasible` and is not replaced. No 32K-131K search point is added.
+
+The stability statistic is deliberately representative, not grid-wide. For
+each of the two `batch=1,L=4096` modes, each process contributes the median of
+its five batch-level host-time-per-operation samples. CV is 100 times the
+sample standard deviation (`n-1` denominator) of the three process medians
+divided by their arithmetic mean. A failed/incomplete process makes the
+stability point fail and is never dropped; no CV or stability conclusion is
+reported for the rest of the grid or for growing-context.
 
 ## CLI, schema, and artifact integration
 
@@ -457,9 +491,11 @@ does not begin automatically after this report.
 
 ## Gate disposition rule
 
-Only G1 is evaluated. G1 passes only when every condition in the operator's
-Phase 3 instruction and Decision 0007 passes with immutable checksum-valid
-evidence. G0 remains PASS; G2-G5 remain NOT EVALUATED; Full Scan remains CLOSED;
+Only the Phase 3 engineering G1 verdict is evaluated. G1 passes only when every
+condition in the operator's Phase 3 instruction and Decision 0007 passes with
+locally append-only, finalized, checksum-valid evidence. This is not a durable
+immutability claim and does not close B-009. G0 remains PASS; G2-G5 remain NOT
+EVALUATED; Full Scan remains CLOSED;
 quality remains LOCKED; `PERFORMANCE_DATA_FROZEN` remains absent; B-009 and
 B-010 remain OPEN. Any unresolved identity, backend, numerical, allocation,
 GQA, runner, graph, checksum, replicate, stability, fallback, substitution, or
