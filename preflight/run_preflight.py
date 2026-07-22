@@ -1098,11 +1098,27 @@ def verification_outputs_are_empty(
     return command_ok and stdout == "" and stderr == ""
 
 
+def dpkg_ownership_matches(
+    *,
+    command_ok: bool,
+    stdout: str,
+    stderr: str,
+    expected_package: str,
+    expected_path: str,
+) -> bool:
+    return (
+        command_ok
+        and stderr == ""
+        and stdout == f"{expected_package}: {expected_path}\n"
+    )
+
+
 def extract_version(tool: str, text: str) -> str | None:
     patterns = {
         "nvcc": (r"V([0-9]+(?:\.[0-9]+)+)",),
         "compute-sanitizer": (r"Version\s+([^\s]+)",),
         "cuobjdump": (r"V([0-9]+(?:\.[0-9]+)+)",),
+        "nvdisasm": (r"V([0-9]+(?:\.[0-9]+)+)",),
         "ncu": (r"Version\s+([^\s]+)", r"([0-9]{4}\.[0-9.]+)"),
         "nsys": (r"version\s+([^\s]+)",),
         "python": (r"Python\s+([^\s]+)",),
@@ -1960,6 +1976,10 @@ def main(argv: Sequence[str] | None = None) -> int:
                 "Record CUDA binary inspection version",
                 [lock_tools["cuobjdump"]["invocation_path"], "--version"],
             ),
+            "nvdisasm_version": (
+                "Record CUDA disassembler version",
+                [lock_tools["nvdisasm"]["invocation_path"], "--version"],
+            ),
             "ncu_version": (
                 "Record Nsight Compute version",
                 [lock_tools["ncu"]["invocation_path"], "--version"],
@@ -1988,6 +2008,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 "compute-sanitizer",
             ),
             "cuobjdump_version": ("cuobjdump", "cuobjdump"),
+            "nvdisasm_version": ("nvdisasm", "nvdisasm"),
             "ncu_version": ("ncu", "ncu"),
             "nsys_version": ("nsys", "nsys"),
             "cxx_version": ("c++", "c++"),
@@ -2008,6 +2029,15 @@ def main(argv: Sequence[str] | None = None) -> int:
             "dpkg_architecture",
             "Verify the native dpkg architecture",
             [lock_tools["dpkg"]["invocation_path"], "--print-architecture"],
+        )
+        recorder.run(
+            "nvdisasm_package_ownership",
+            "Verify nvdisasm package ownership",
+            [
+                lock_tools["dpkg-query"]["invocation_path"],
+                "-S",
+                lock_tools["nvdisasm"]["resolved_path"],
+            ],
         )
         recorder.run(
             "dpkg_verify_locked_files",
@@ -2297,6 +2327,23 @@ def main(argv: Sequence[str] | None = None) -> int:
             pip_payload,
         )
         dependency_errors = dependency_validation["errors"]
+        nvdisasm_owner_ok = dpkg_ownership_matches(
+            command_ok=recorder.command_ok("nvdisasm_package_ownership"),
+            stdout=recorder.command_stdout("nvdisasm_package_ownership"),
+            stderr=recorder.command_stderr("nvdisasm_package_ownership"),
+            expected_package=lock_tools["nvdisasm"]["dpkg_package"],
+            expected_path=lock_tools["nvdisasm"]["resolved_path"],
+        )
+        dependency_validation["nvdisasm_package_ownership"] = {
+            "status": "PASS" if nvdisasm_owner_ok else "FAIL",
+            "command_id": "nvdisasm_package_ownership",
+            "expected_package": lock_tools["nvdisasm"]["dpkg_package"],
+            "expected_path": lock_tools["nvdisasm"]["resolved_path"],
+        }
+        if not nvdisasm_owner_ok:
+            dependency_errors.append(
+                "nvdisasm package ownership did not exactly match the lock"
+            )
         tool_integrity_ok = {
             observation["name"]: (
                 observation["path_matches"] and observation["hash_matches"]
@@ -2454,6 +2501,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             and recorder.command_ok("python_record_integrity")
             and recorder.command_ok("dpkg_locked_versions")
             and recorder.command_ok("dpkg_architecture")
+            and recorder.command_ok("nvdisasm_package_ownership")
+            and nvdisasm_owner_ok
             and dpkg_verify_clean
             and dependency_validation["status"] == "PASS"
         )
@@ -3395,8 +3444,8 @@ def main(argv: Sequence[str] | None = None) -> int:
                 "required_toolchain_complete",
                 "PASS" if required_tool_commands_ok and software_manifest["collection_status"] == "PASS" else "FAIL",
                 reason=None if required_tool_commands_ok and software_manifest["collection_status"] == "PASS" else "locked CUDA/Python/profiler toolchain did not verify",
-                command_ids=version_ids + ("dpkg_locked_versions", "dpkg_architecture", "dpkg_verify_locked_files", "pip_check", "pip_list", "python_record_integrity"),
-                evidence_file_ids=command_file_ids(recorder, version_ids + ("dpkg_locked_versions", "dpkg_architecture", "dpkg_verify_locked_files", "pip_check", "pip_list", "python_record_integrity")) + [artifact_id(dependency_relative)],
+                command_ids=version_ids + ("dpkg_locked_versions", "dpkg_architecture", "nvdisasm_package_ownership", "dpkg_verify_locked_files", "pip_check", "pip_list", "python_record_integrity"),
+                evidence_file_ids=command_file_ids(recorder, version_ids + ("dpkg_locked_versions", "dpkg_architecture", "nvdisasm_package_ownership", "dpkg_verify_locked_files", "pip_check", "pip_list", "python_record_integrity")) + [artifact_id(dependency_relative)],
             ),
             gate_check(
                 "torch_cuda_available",

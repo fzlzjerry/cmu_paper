@@ -1147,6 +1147,47 @@ class PreflightUnitTests(unittest.TestCase):
             )
         )
 
+    def test_dpkg_ownership_and_nvdisasm_version_fail_closed(self) -> None:
+        expected_output = (
+            "cuda-nvdisasm-13-0: "
+            "/usr/local/cuda-13.0/bin/nvdisasm\n"
+        )
+        self.assertTrue(
+            run_preflight.dpkg_ownership_matches(
+                command_ok=True,
+                stdout=expected_output,
+                stderr="",
+                expected_package="cuda-nvdisasm-13-0",
+                expected_path="/usr/local/cuda-13.0/bin/nvdisasm",
+            )
+        )
+        self.assertFalse(
+            run_preflight.dpkg_ownership_matches(
+                command_ok=True,
+                stdout="other-package: /usr/local/cuda-13.0/bin/nvdisasm\n",
+                stderr="",
+                expected_package="cuda-nvdisasm-13-0",
+                expected_path="/usr/local/cuda-13.0/bin/nvdisasm",
+            )
+        )
+        self.assertFalse(
+            run_preflight.dpkg_ownership_matches(
+                command_ok=False,
+                stdout=expected_output,
+                stderr="query failed\n",
+                expected_package="cuda-nvdisasm-13-0",
+                expected_path="/usr/local/cuda-13.0/bin/nvdisasm",
+            )
+        )
+        version_output = """nvdisasm: NVIDIA (R) CUDA disassembler
+Cuda compilation tools, release 13.0, V13.0.85
+Build cuda_13.0.r13.0/compiler.36400806_0
+"""
+        self.assertEqual(
+            run_preflight.extract_version("nvdisasm", version_output),
+            "13.0.85",
+        )
+
     def test_platform_lock_exact_match_and_mismatch(self) -> None:
         system_lock = json.loads(
             (ROOT / "preflight" / "system-packages.lock.json").read_text()
@@ -1214,6 +1255,7 @@ class PreflightUnitTests(unittest.TestCase):
             "nvcc",
             "compute-sanitizer-real",
             "cuobjdump",
+            "nvdisasm",
             "ncu",
             "nsys",
             "c++",
@@ -1221,6 +1263,30 @@ class PreflightUnitTests(unittest.TestCase):
             "python",
         ):
             self.assertRegex(tools[name]["reported_version"], r"^[^\s]+$")
+        self.assertEqual(
+            next(
+                item
+                for item in system_lock["dpkg_packages"]
+                if item["name"] == "cuda-nvdisasm-13-0"
+            ),
+            {
+                "name": "cuda-nvdisasm-13-0",
+                "version": "13.0.85-1",
+                "architecture": "amd64",
+            },
+        )
+        self.assertEqual(
+            tools["nvdisasm"],
+            {
+                "name": "nvdisasm",
+                "invocation_path": "/usr/local/cuda-13.0/bin/nvdisasm",
+                "resolved_path": "/usr/local/cuda-13.0/bin/nvdisasm",
+                "dpkg_package": "cuda-nvdisasm-13-0",
+                "version": "13.0.85",
+                "reported_version": "13.0.85",
+                "sha256": "3c27bded09bd877807207b62db8186a0a9a359d10311ab6e2c885f9b418c9f41",
+            },
+        )
 
     def test_git_contract_authentication_rejects_special_flags(self) -> None:
         with tempfile.TemporaryDirectory() as raw_directory:

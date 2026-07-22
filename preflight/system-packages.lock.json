@@ -29,6 +29,7 @@
     {"name": "cuda-cudart-dev-13-0", "version": "13.0.96-1", "architecture": "amd64"},
     {"name": "cuda-culibos-dev-13-0", "version": "13.0.85-1", "architecture": "amd64"},
     {"name": "cuda-cuobjdump-13-0", "version": "13.0.85-1", "architecture": "amd64"},
+    {"name": "cuda-nvdisasm-13-0", "version": "13.0.85-1", "architecture": "amd64"},
     {"name": "cuda-driver-dev-13-0", "version": "13.0.96-1", "architecture": "amd64"},
     {"name": "cuda-nvcc-13-0", "version": "13.0.88-1", "architecture": "amd64"},
     {"name": "cuda-sanitizer-13-0", "version": "13.0.85-1", "architecture": "amd64"},
@@ -192,6 +193,15 @@
       "version": "13.0.85",
       "reported_version": "13.0.85",
       "sha256": "1763b5367167e73939c853f6c71bdec7be0ea4a1cfb6625e4c81d7c7a1f801ae"
+    },
+    {
+      "name": "nvdisasm",
+      "invocation_path": "/usr/local/cuda-13.0/bin/nvdisasm",
+      "resolved_path": "/usr/local/cuda-13.0/bin/nvdisasm",
+      "dpkg_package": "cuda-nvdisasm-13-0",
+      "version": "13.0.85",
+      "reported_version": "13.0.85",
+      "sha256": "3c27bded09bd877807207b62db8186a0a9a359d10311ab6e2c885f9b418c9f41"
     },
     {
       "name": "c++",
