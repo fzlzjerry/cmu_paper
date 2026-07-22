@@ -23,6 +23,7 @@ from typing import Any
 import warnings
 
 from kvbench.runtime.gqa_taxonomy import classify_gqa_evidence
+from kvbench.runtime.phase3_audit_operation import Phase3AuditOperationKey
 from kvbench.schema import (
     GQAVerdict,
     derive_cache_layout_fingerprint,
@@ -94,6 +95,10 @@ _EVENT_CLASSIFICATIONS = frozenset(
         "unknown_kernel",
     }
 )
+_DEVICE_LIKE_CATEGORY_RE = re.compile(
+    r"(?:cuda|gpu|kernel|memcpy|memset)",
+    flags=re.IGNORECASE,
+)
 _FORBIDDEN_SOURCE_PATTERNS = (
     ("repeat_kv", re.compile(r"\brepeat_kv\b")),
     ("repeat_interleave", re.compile(r"\brepeat_interleave\b")),
@@ -121,6 +126,32 @@ _SELECTED_SOURCE_FUNCTION_PATHS = {
 }
 
 
+def phase3_source_identity_sha256(
+    source_sha256_by_path: Mapping[str, str],
+) -> str:
+    """Derive the exact ordered identity of the three selected SUT sources."""
+
+    if set(source_sha256_by_path) != set(REQUIRED_SUT_SOURCES):
+        raise ValueError("Phase 3 source identity requires the exact SUT source set")
+    ordered: list[dict[str, str]] = []
+    for path in REQUIRED_SUT_SOURCES:
+        digest = source_sha256_by_path[path]
+        if not isinstance(digest, str) or _SHA256_RE.fullmatch(digest) is None:
+            raise ValueError("Phase 3 source identity contains an invalid digest")
+        ordered.append({"path": path, "sha256": digest})
+    raw = json.dumps(
+        {
+            "schema_version": "kvbench-phase3-sut-source-identity-1.0.0",
+            "sources": ordered,
+        },
+        allow_nan=False,
+        ensure_ascii=True,
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode("utf-8")
+    return hashlib.sha256(raw).hexdigest()
+
+
 class GQADeviceDispatchError(RuntimeError):
     """Device-dispatch evidence could not be collected or validated."""
 
@@ -142,8 +173,24 @@ def _strict_json_loads(raw: bytes) -> object:
             f"Chrome trace contains a non-finite constant: {value}"
         )
 
+    def reject_duplicate_keys(
+        pairs: list[tuple[str, object]],
+    ) -> dict[str, object]:
+        result: dict[str, object] = {}
+        for key, value in pairs:
+            if key in result:
+                raise ChromeTraceValidationError(
+                    f"Chrome trace contains duplicate key: {key}"
+                )
+            result[key] = value
+        return result
+
     try:
-        return json.loads(text, parse_constant=reject_constant)
+        return json.loads(
+            text,
+            parse_constant=reject_constant,
+            object_pairs_hook=reject_duplicate_keys,
+        )
     except ChromeTraceValidationError:
         raise
     except (json.JSONDecodeError, RecursionError) as error:
@@ -473,6 +520,66 @@ def _intervals_overlap(
         left[0] < right[1] - tolerance
         and right[0] < left[1] - tolerance
     )
+
+
+def _reject_unrecognized_device_like_in_marker_events(
+    trace_events: list[dict[str, object]],
+    *,
+    gpu_marker: Mapping[str, object],
+    isolated_host_interval: tuple[float, float],
+) -> None:
+    """Fail closed on device-looking activity hidden under a new category.
+
+    PyTorch profiler category spelling is not a proof boundary.  Known host
+    linkage categories remain allowed, but a complete event anywhere in the
+    isolated host operation whose category looks device-like (or carries an
+    explicit device/stream/context tuple) cannot be ignored merely because its
+    category is unfamiliar.  Scoping only to the GPU annotation would miss a
+    materialization kernel which precedes that annotation.
+    """
+
+    known_non_device_categories = frozenset(
+        {
+            "cpu_op",
+            "cuda_runtime",
+            "user_annotation",
+            "gpu_user_annotation",
+        }
+    )
+    explicit_device_argument_keys = frozenset(
+        {"device", "stream", "context", "graph id", "graph node id"}
+    )
+    for event in trace_events:
+        if event is gpu_marker:
+            continue
+        category = event.get("cat")
+        if not isinstance(category, str):
+            continue
+        if category in DEVICE_EVENT_CATEGORIES or category in (
+            known_non_device_categories
+        ):
+            continue
+        if event.get("ph") != "X":
+            continue
+        try:
+            interval = _complete_interval(event)
+        except ChromeTraceValidationError:
+            continue
+        if not _intervals_overlap(isolated_host_interval, interval):
+            continue
+        args = event.get("args")
+        argument_keys = frozenset(args) if isinstance(args, dict) else frozenset()
+        looks_device_like = bool(
+            _DEVICE_LIKE_CATEGORY_RE.search(category)
+            or (
+                {"stream", "context"}.issubset(argument_keys)
+                and bool(argument_keys & explicit_device_argument_keys)
+            )
+        )
+        if looks_device_like:
+            raise ChromeTraceValidationError(
+                "isolated device-like event uses an unrecognized category"
+            )
 
 
 def _copy_metadata(
@@ -831,6 +938,11 @@ def parse_scoped_chrome_cuda_events(
     gpu_interval = _complete_interval(gpu_marker)
     host_args = _event_args(host_marker)
     gpu_args = _event_args(gpu_marker)
+    _reject_unrecognized_device_like_in_marker_events(
+        trace_events,
+        gpu_marker=gpu_marker,
+        isolated_host_interval=host_interval,
+    )
     marker_external_id = _required_trace_integer(
         host_args, "External id", positive=True
     )
@@ -996,6 +1108,11 @@ def parse_scoped_chrome_cuda_graph_events(
     gpu_interval = _complete_interval(gpu_marker)
     host_args = _event_args(host_marker)
     gpu_args = _event_args(gpu_marker)
+    _reject_unrecognized_device_like_in_marker_events(
+        trace_events,
+        gpu_marker=gpu_marker,
+        isolated_host_interval=host_interval,
+    )
     marker_external_id = _required_trace_integer(
         host_args, "External id", positive=True
     )
@@ -1427,85 +1544,75 @@ class TensorShapeEvidence:
 
 @dataclass(frozen=True, slots=True)
 class Phase3DispatchPointBinding:
-    """Exact run/point and active-cache geometry for one dispatch audit."""
+    """Exact shared operation identity for one production dispatch audit."""
 
-    run_id: str
-    point_id: str
-    point_fingerprint: str
-    runner_kind: str
-    graph_mode: str
-    process_replicate: int
-    batch_size: int
-    starting_context: int
-    active_context: int
-    capacity: int
+    operation_key: Phase3AuditOperationKey
 
     def __post_init__(self) -> None:
-        require_run_id(self.run_id)
-        require_identifier(self.point_id, field_name="point_id")
-        match = _PHASE3_POINT_RE.fullmatch(self.point_id)
-        if match is None:
-            raise ValueError("point_id does not encode a Phase 3 process point")
-        observed = (
-            self.runner_kind,
-            self.graph_mode,
-            self.process_replicate,
-            self.batch_size,
-            self.starting_context,
-        )
-        expected = (
-            match.group("runner"),
-            match.group("graph"),
-            int(match.group("replicate")),
-            int(match.group("batch")),
-            int(match.group("context")),
-        )
-        if observed != expected:
-            raise ValueError("dispatch point fields differ from point_id")
-        if self.point_fingerprint != derive_phase3_point_fingerprint(self.point_id):
-            raise ValueError("dispatch point fingerprint differs from Phase 3 grid")
-        expected_capacity = self.starting_context + (
-            1 if self.runner_kind == "fixed_l" else 16
-        )
-        if self.capacity != expected_capacity:
-            raise ValueError("dispatch cache capacity differs from Phase 3 point")
-        minimum_active = self.starting_context + 1
-        maximum_active = (
-            minimum_active
-            if self.runner_kind == "fixed_l"
-            else self.starting_context + 16
-        )
-        if not minimum_active <= self.active_context <= maximum_active:
-            raise ValueError("active context is outside the Phase 3 point trajectory")
+        if type(self.operation_key) is not Phase3AuditOperationKey:
+            raise ValueError(
+                "dispatch point requires an exact Phase3AuditOperationKey"
+            )
 
     @classmethod
     def create(
         cls,
         *,
-        run_id: str,
-        point_id: str,
-        batch_size: int,
-        active_context: int,
-        capacity: int,
+        operation_key: Phase3AuditOperationKey,
     ) -> Phase3DispatchPointBinding:
-        match = _PHASE3_POINT_RE.fullmatch(point_id)
-        if match is None:
-            raise ValueError("point_id does not encode a Phase 3 process point")
-        return cls(
-            run_id=run_id,
-            point_id=point_id,
-            point_fingerprint=derive_phase3_point_fingerprint(point_id),
-            runner_kind=match.group("runner"),
-            graph_mode=match.group("graph"),
-            process_replicate=int(match.group("replicate")),
-            batch_size=batch_size,
-            starting_context=int(match.group("context")),
-            active_context=active_context,
-            capacity=capacity,
-        )
+        return cls(operation_key=operation_key)
+
+    @property
+    def run_id(self) -> str:
+        return self.operation_key.run_id
+
+    @property
+    def point_id(self) -> str:
+        return self.operation_key.point_id
+
+    @property
+    def point_fingerprint(self) -> str:
+        return self.operation_key.point_fingerprint
+
+    @property
+    def runner_kind(self) -> str:
+        return self.operation_key.runner_kind.value
+
+    @property
+    def graph_mode(self) -> str:
+        return self.operation_key.graph_mode.value
+
+    @property
+    def process_replicate(self) -> int:
+        return self.operation_key.process_replicate
+
+    @property
+    def batch_size(self) -> int:
+        return self.operation_key.batch_size
+
+    @property
+    def starting_context(self) -> int:
+        return self.operation_key.historical_context - self.operation_key.decode_step
+
+    @property
+    def active_context(self) -> int:
+        return self.operation_key.attended_context
+
+    @property
+    def capacity(self) -> int:
+        return self.operation_key.capacity
+
+    @property
+    def decode_step(self) -> int:
+        return self.operation_key.decode_step
+
+    @property
+    def operation_fingerprint_sha256(self) -> str:
+        return self.operation_key.operation_fingerprint_sha256
 
     def to_dict(self) -> dict[str, object]:
         return {
+            "operation_key": self.operation_key.to_dict(),
             "run_id": self.run_id,
             "point_id": self.point_id,
             "point_fingerprint": self.point_fingerprint,
@@ -1516,6 +1623,10 @@ class Phase3DispatchPointBinding:
             "starting_context": self.starting_context,
             "active_context": self.active_context,
             "capacity": self.capacity,
+            "decode_step": self.decode_step,
+            "operation_fingerprint_sha256": (
+                self.operation_fingerprint_sha256
+            ),
         }
 
 
@@ -3807,7 +3918,8 @@ def _geometry_bound_trace_marker(
         raise ValueError("geometry-bound dispatch role is unsupported")
     return (
         f"kvbench.phase3.geometry_dispatch.{point.run_id}."
-        f"{point.point_id}.{role}"
+        f"{point.point_id}.step{point.decode_step}."
+        f"{point.operation_fingerprint_sha256}.{role}"
     )
 
 
@@ -3845,6 +3957,19 @@ class GeometryBoundRawTraceValidationEvidence:
             self.mha_scope, expected_scope
         ):
             raise ValueError("raw validation scope differs from execution mode")
+        all_events = (*self.gqa_device_events, *self.mha_device_events)
+        if not all_events:
+            raise ValueError("raw validation device events are absent")
+        if any(type(event.device) is not int or event.device != 0 for event in all_events):
+            raise ValueError("Phase 3 raw CUDA events must bind to device zero")
+        contexts = {event.context for event in all_events}
+        if (
+            len(contexts) != 1
+            or any(type(context) is not int or context <= 0 for context in contexts)
+        ):
+            raise ValueError(
+                "Phase 3 raw CUDA events require one common positive context"
+            )
         if analyze_flash_kernel_sequence(self.gqa_device_events) != (
             self.gqa_kernel_sequence
         ):
@@ -4074,6 +4199,22 @@ class Phase3GeometryBoundGQADeviceDispatchAudit:
         }
         if fingerprints != {self.backend_identity.sha256}:
             raise ValueError("geometry-bound backend controls differ from identity")
+        operation_key = self.point.operation_key
+        if operation_key.backend_identity_sha256 != self.backend_identity.sha256:
+            raise ValueError("dispatch backend differs from operation key")
+        if (
+            operation_key.cache_layout_fingerprint
+            != cache.layout.layout_fingerprint
+        ):
+            raise ValueError("dispatch cache layout differs from operation key")
+        source_identity = phase3_source_identity_sha256(
+            {
+                item.relative_path: item.sha256
+                for item in self.source_shape.sources
+            }
+        )
+        if operation_key.source_identity_sha256 != source_identity:
+            raise ValueError("dispatch source bundle differs from operation key")
         if self.explicitly_related_families != tuple(
             sorted(set(self.explicitly_related_families))
         ):
@@ -4100,6 +4241,10 @@ class Phase3GeometryBoundGQADeviceDispatchAudit:
         ):
             raise ValueError(
                 "related families and decision-record digest must coexist"
+            )
+        if self.explicitly_related_families:
+            raise ValueError(
+                "no checksum-pinned related-family decision is approved"
             )
         if (
             self.trace_validation.execution_mode != expected_execution_mode
@@ -4212,6 +4357,1859 @@ class Phase3GeometryBoundGQADeviceDispatchAudit:
             },
             "evaluation": self.evaluation.to_dict(),
         }
+
+
+PHASE3_GEOMETRY_BOUND_DISPATCH_OBSERVATION_SCHEMA = (
+    "kvbench-phase3-geometry-bound-dispatch-observation-1.0.0"
+)
+_MAX_CANONICAL_DISPATCH_JSON_BYTES = 16 * 1024 * 1024
+_APPROVED_RELATED_FAMILY_DECISION_SHA256 = frozenset()
+
+
+def _canonical_json_bytes(payload: Mapping[str, object]) -> bytes:
+    return json.dumps(
+        dict(payload),
+        allow_nan=False,
+        ensure_ascii=True,
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode("utf-8")
+
+
+def _strict_canonical_json_object(raw: bytes, *, label: str) -> dict[str, object]:
+    """Parse one bounded, duplicate-free canonical JSON object."""
+
+    if type(raw) is not bytes or not raw:
+        raise GQADeviceDispatchError(f"{label} bytes are absent")
+    if len(raw) > _MAX_CANONICAL_DISPATCH_JSON_BYTES:
+        raise GQADeviceDispatchError(f"{label} exceeds the size limit")
+    try:
+        text = raw.decode("utf-8")
+    except UnicodeDecodeError as error:
+        raise GQADeviceDispatchError(f"{label} is not UTF-8") from error
+
+    def reject_constant(value: str) -> None:
+        raise GQADeviceDispatchError(
+            f"{label} contains a non-finite constant: {value}"
+        )
+
+    def reject_duplicate_keys(
+        pairs: list[tuple[str, object]],
+    ) -> dict[str, object]:
+        observed: dict[str, object] = {}
+        for key, value in pairs:
+            if key in observed:
+                raise GQADeviceDispatchError(
+                    f"{label} contains duplicate key: {key}"
+                )
+            observed[key] = value
+        return observed
+
+    try:
+        payload = json.loads(
+            text,
+            parse_constant=reject_constant,
+            object_pairs_hook=reject_duplicate_keys,
+        )
+    except GQADeviceDispatchError:
+        raise
+    except (json.JSONDecodeError, RecursionError) as error:
+        raise GQADeviceDispatchError(f"{label} is malformed JSON") from error
+    if type(payload) is not dict:
+        raise GQADeviceDispatchError(f"{label} must be a JSON object")
+    if _canonical_json_bytes(payload) != raw:
+        raise GQADeviceDispatchError(f"{label} bytes are not canonical")
+    return payload
+
+
+def _require_exact_json_keys(
+    payload: Mapping[str, object],
+    expected: frozenset[str],
+    *,
+    label: str,
+) -> None:
+    if frozenset(payload) != expected:
+        raise GQADeviceDispatchError(f"{label} has an unexpected field set")
+
+
+def _json_object(value: object, *, label: str) -> dict[str, object]:
+    if type(value) is not dict:
+        raise GQADeviceDispatchError(f"{label} must be an object")
+    return value
+
+
+def _json_string(value: object, *, label: str) -> str:
+    if type(value) is not str or not value:
+        raise GQADeviceDispatchError(f"{label} must be a non-empty string")
+    return value
+
+
+def _json_optional_string(value: object, *, label: str) -> str | None:
+    if value is None:
+        return None
+    return _json_string(value, label=label)
+
+
+def _json_bool(value: object, *, label: str) -> bool:
+    if type(value) is not bool:
+        raise GQADeviceDispatchError(f"{label} must be boolean")
+    return value
+
+
+def _json_integer(value: object, *, label: str, minimum: int = 0) -> int:
+    if type(value) is not int or value < minimum:
+        raise GQADeviceDispatchError(f"{label} must be an integer >= {minimum}")
+    return value
+
+
+def _json_string_tuple(value: object, *, label: str) -> tuple[str, ...]:
+    if type(value) is not list:
+        raise GQADeviceDispatchError(f"{label} must be an array")
+    result = tuple(
+        _json_string(item, label=f"{label} entry")
+        for item in value
+    )
+    return result
+
+
+def _json_integer_tuple(
+    value: object,
+    *,
+    label: str,
+    minimum: int,
+) -> tuple[int, ...]:
+    if type(value) is not list or not value:
+        raise GQADeviceDispatchError(f"{label} must be a non-empty array")
+    return tuple(
+        _json_integer(item, label=f"{label} entry", minimum=minimum)
+        for item in value
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class BackendControlObservation:
+    """Nonderived outputs of one forced-backend control."""
+
+    enabled_backends: tuple[str, ...]
+    flash_eligible: bool
+    fused_backend_name: str | None
+    rejected_control_failed: bool
+    rejected_control_error: str | None
+    rejected_control_warnings: tuple[str, ...]
+    rejected_control_synchronized: bool
+    source_build_verified: bool
+    eligibility_diagnostics: tuple[str, ...]
+
+    def __post_init__(self) -> None:
+        for field in (
+            "flash_eligible",
+            "rejected_control_failed",
+            "rejected_control_synchronized",
+            "source_build_verified",
+        ):
+            if type(getattr(self, field)) is not bool:
+                raise ValueError("backend-control observation flags must be boolean")
+        for values in (
+            self.enabled_backends,
+            self.rejected_control_warnings,
+            self.eligibility_diagnostics,
+        ):
+            if any(type(item) is not str or not item for item in values):
+                raise ValueError("backend-control strings must be non-empty")
+        for value in (self.fused_backend_name, self.rejected_control_error):
+            if value is not None and (type(value) is not str or not value):
+                raise ValueError("optional backend-control strings are invalid")
+
+    @classmethod
+    def from_evidence(
+        cls,
+        evidence: BackendControlEvidence,
+    ) -> BackendControlObservation:
+        return cls(
+            enabled_backends=evidence.enabled_backends,
+            flash_eligible=evidence.flash_eligible,
+            fused_backend_name=evidence.fused_backend_name,
+            rejected_control_failed=evidence.rejected_control_failed,
+            rejected_control_error=evidence.rejected_control_error,
+            rejected_control_warnings=evidence.rejected_control_warnings,
+            rejected_control_synchronized=(
+                evidence.rejected_control_synchronized
+            ),
+            source_build_verified=evidence.source_build_verified,
+            eligibility_diagnostics=evidence.eligibility_diagnostics,
+        )
+
+    def to_evidence(self, *, backend_identity_sha256: str) -> BackendControlEvidence:
+        return BackendControlEvidence(
+            enabled_backends=self.enabled_backends,
+            flash_eligible=self.flash_eligible,
+            fused_backend_name=self.fused_backend_name,
+            rejected_control_failed=self.rejected_control_failed,
+            rejected_control_error=self.rejected_control_error,
+            rejected_control_warnings=self.rejected_control_warnings,
+            rejected_control_synchronized=self.rejected_control_synchronized,
+            source_build_fingerprint=backend_identity_sha256,
+            source_build_verified=self.source_build_verified,
+            eligibility_diagnostics=self.eligibility_diagnostics,
+        )
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "enabled_backends": list(self.enabled_backends),
+            "flash_eligible": self.flash_eligible,
+            "fused_backend_name": self.fused_backend_name,
+            "rejected_control_failed": self.rejected_control_failed,
+            "rejected_control_error": self.rejected_control_error,
+            "rejected_control_warnings": list(self.rejected_control_warnings),
+            "rejected_control_synchronized": self.rejected_control_synchronized,
+            "source_build_verified": self.source_build_verified,
+            "eligibility_diagnostics": list(self.eligibility_diagnostics),
+        }
+
+
+def _parse_backend_control_observation(
+    value: object,
+    *,
+    label: str,
+) -> BackendControlObservation:
+    payload = _json_object(value, label=label)
+    _require_exact_json_keys(
+        payload,
+        frozenset(
+            {
+                "enabled_backends",
+                "flash_eligible",
+                "fused_backend_name",
+                "rejected_control_failed",
+                "rejected_control_error",
+                "rejected_control_warnings",
+                "rejected_control_synchronized",
+                "source_build_verified",
+                "eligibility_diagnostics",
+            }
+        ),
+        label=label,
+    )
+    return BackendControlObservation(
+        enabled_backends=_json_string_tuple(
+            payload["enabled_backends"], label=f"{label}.enabled_backends"
+        ),
+        flash_eligible=_json_bool(
+            payload["flash_eligible"], label=f"{label}.flash_eligible"
+        ),
+        fused_backend_name=_json_optional_string(
+            payload["fused_backend_name"],
+            label=f"{label}.fused_backend_name",
+        ),
+        rejected_control_failed=_json_bool(
+            payload["rejected_control_failed"],
+            label=f"{label}.rejected_control_failed",
+        ),
+        rejected_control_error=_json_optional_string(
+            payload["rejected_control_error"],
+            label=f"{label}.rejected_control_error",
+        ),
+        rejected_control_warnings=_json_string_tuple(
+            payload["rejected_control_warnings"],
+            label=f"{label}.rejected_control_warnings",
+        ),
+        rejected_control_synchronized=_json_bool(
+            payload["rejected_control_synchronized"],
+            label=f"{label}.rejected_control_synchronized",
+        ),
+        source_build_verified=_json_bool(
+            payload["source_build_verified"],
+            label=f"{label}.source_build_verified",
+        ),
+        eligibility_diagnostics=_json_string_tuple(
+            payload["eligibility_diagnostics"],
+            label=f"{label}.eligibility_diagnostics",
+        ),
+    )
+
+
+def _tensor_observation_dict(tensor: TensorShapeEvidence) -> dict[str, object]:
+    return {
+        "shape": list(tensor.shape),
+        "stride": list(tensor.stride),
+        "dtype": tensor.dtype,
+        "device": tensor.device,
+        "element_size": tensor.element_size,
+        "storage_bytes": tensor.storage_bytes,
+        "storage_offset": tensor.storage_offset,
+        "is_contiguous": tensor.is_contiguous,
+    }
+
+
+def _parse_tensor_observation(value: object, *, label: str) -> TensorShapeEvidence:
+    payload = _json_object(value, label=label)
+    _require_exact_json_keys(
+        payload,
+        frozenset(
+            {
+                "shape",
+                "stride",
+                "dtype",
+                "device",
+                "element_size",
+                "storage_bytes",
+                "storage_offset",
+                "is_contiguous",
+            }
+        ),
+        label=label,
+    )
+    return TensorShapeEvidence(
+        shape=_json_integer_tuple(
+            payload["shape"], label=f"{label}.shape", minimum=1
+        ),
+        stride=_json_integer_tuple(
+            payload["stride"], label=f"{label}.stride", minimum=0
+        ),
+        dtype=_json_string(payload["dtype"], label=f"{label}.dtype"),
+        device=_json_string(payload["device"], label=f"{label}.device"),
+        element_size=_json_integer(
+            payload["element_size"], label=f"{label}.element_size", minimum=1
+        ),
+        storage_bytes=_json_integer(
+            payload["storage_bytes"], label=f"{label}.storage_bytes", minimum=1
+        ),
+        storage_offset=_json_integer(
+            payload["storage_offset"],
+            label=f"{label}.storage_offset",
+            minimum=0,
+        ),
+        is_contiguous=_json_bool(
+            payload["is_contiguous"], label=f"{label}.is_contiguous"
+        ),
+    )
+
+
+def canonical_phase3_geometry_bound_dispatch_audit_bytes(
+    audit: Phase3GeometryBoundGQADeviceDispatchAudit,
+) -> bytes:
+    """Serialize a fully validated derived audit without presentation whitespace."""
+
+    if type(audit) is not Phase3GeometryBoundGQADeviceDispatchAudit:
+        raise TypeError("audit must be Phase3GeometryBoundGQADeviceDispatchAudit")
+    return _canonical_json_bytes(audit.to_dict())
+
+
+@dataclass(frozen=True, slots=True)
+class Phase3GeometryBoundDispatchObservation:
+    """Minimal raw observations that cannot be recovered from retained bytes."""
+
+    schema_version: str
+    operation_fingerprint_sha256: str
+    derived_audit_sha256: str
+    gqa_warmup_count: int
+    mha_warmup_count: int
+    gqa_trace_relative_path: str
+    mha_trace_relative_path: str
+    gqa_backend: BackendControlObservation
+    mha_backend: BackendControlObservation
+    gqa_query: TensorShapeEvidence
+    gqa_output: TensorShapeEvidence
+    cache_key_backing: TensorShapeEvidence
+    cache_value_backing: TensorShapeEvidence
+    cache_key_view: TensorShapeEvidence
+    cache_value_view: TensorShapeEvidence
+    mha_query: TensorShapeEvidence
+    mha_key: TensorShapeEvidence
+    mha_value: TensorShapeEvidence
+    mha_output: TensorShapeEvidence
+    cache_workspace_bytes: int
+    cache_layer_index: int
+    cache_key_backing_storage_ptr: int
+    cache_value_backing_storage_ptr: int
+    cache_key_view_storage_ptr: int
+    cache_value_view_storage_ptr: int
+    explicitly_related_families: tuple[tuple[str, str], ...]
+    related_family_policy_sha256: str | None
+
+    def __post_init__(self) -> None:
+        if self.schema_version != PHASE3_GEOMETRY_BOUND_DISPATCH_OBSERVATION_SCHEMA:
+            raise ValueError("dispatch observation schema differs")
+        for digest in (
+            self.operation_fingerprint_sha256,
+            self.derived_audit_sha256,
+        ):
+            if _SHA256_RE.fullmatch(digest) is None:
+                raise ValueError("dispatch observation SHA-256 is invalid")
+        for count in (self.gqa_warmup_count, self.mha_warmup_count):
+            _positive_integer(count, "warmup_count")
+        expected_names = (
+            (self.gqa_trace_relative_path, "gqa.geometry.chrome.json"),
+            (self.mha_trace_relative_path, "mha.geometry.chrome.json"),
+        )
+        for relative_path, expected_name in expected_names:
+            path = PurePosixPath(relative_path)
+            if (
+                not relative_path
+                or path.is_absolute()
+                or "." in path.parts
+                or ".." in path.parts
+                or path.name != expected_name
+            ):
+                raise ValueError("dispatch observation trace path is invalid")
+        if self.gqa_trace_relative_path == self.mha_trace_relative_path:
+            raise ValueError("dispatch observation trace paths alias")
+        if type(self.gqa_backend) is not BackendControlObservation or type(
+            self.mha_backend
+        ) is not BackendControlObservation:
+            raise ValueError("dispatch backend observations have the wrong type")
+        tensors = (
+            self.gqa_query,
+            self.gqa_output,
+            self.cache_key_backing,
+            self.cache_value_backing,
+            self.cache_key_view,
+            self.cache_value_view,
+            self.mha_query,
+            self.mha_key,
+            self.mha_value,
+            self.mha_output,
+        )
+        if any(type(tensor) is not TensorShapeEvidence for tensor in tensors):
+            raise ValueError("dispatch tensor observations have the wrong type")
+        if any(tensor.device != "cuda:0" for tensor in tensors):
+            raise ValueError("dispatch tensor observations must bind to cuda:0")
+        if (
+            type(self.cache_workspace_bytes) is not int
+            or self.cache_workspace_bytes < 0
+            or type(self.cache_layer_index) is not int
+            or not 0 <= self.cache_layer_index < PHASE3_NUM_LAYERS
+        ):
+            raise ValueError("dispatch cache scalar observation is invalid")
+        pointers = (
+            self.cache_key_backing_storage_ptr,
+            self.cache_value_backing_storage_ptr,
+            self.cache_key_view_storage_ptr,
+            self.cache_value_view_storage_ptr,
+        )
+        for pointer in pointers:
+            _positive_integer(pointer, "cache_storage_pointer")
+        if (
+            self.cache_key_backing_storage_ptr
+            != self.cache_key_view_storage_ptr
+            or self.cache_value_backing_storage_ptr
+            != self.cache_value_view_storage_ptr
+            or self.cache_key_backing_storage_ptr
+            == self.cache_value_backing_storage_ptr
+        ):
+            raise ValueError("dispatch cache storage pointers are not bound")
+        if self.explicitly_related_families != tuple(
+            sorted(set(self.explicitly_related_families))
+        ):
+            raise ValueError("dispatch related-family pairs are not canonical")
+        if any(
+            type(pair) is not tuple
+            or len(pair) != 2
+            or any(type(item) is not str or not item for item in pair)
+            for pair in self.explicitly_related_families
+        ):
+            raise ValueError("dispatch related-family pair is malformed")
+        allowed_pairs = set(PHASE3_FLASH_RELATED_FAMILIES)
+        if any(
+            pair not in allowed_pairs and (pair[1], pair[0]) not in allowed_pairs
+            for pair in self.explicitly_related_families
+        ):
+            raise ValueError("dispatch related-family pair is unsupported")
+        if self.related_family_policy_sha256 is not None and (
+            _SHA256_RE.fullmatch(self.related_family_policy_sha256) is None
+        ):
+            raise ValueError("dispatch related-family decision SHA-256 is invalid")
+        if bool(self.explicitly_related_families) != bool(
+            self.related_family_policy_sha256
+        ):
+            raise ValueError(
+                "dispatch related families and decision digest must coexist"
+            )
+
+    @classmethod
+    def from_audit(
+        cls,
+        audit: Phase3GeometryBoundGQADeviceDispatchAudit,
+    ) -> Phase3GeometryBoundDispatchObservation:
+        if type(audit) is not Phase3GeometryBoundGQADeviceDispatchAudit:
+            raise TypeError("audit must be Phase3GeometryBoundGQADeviceDispatchAudit")
+        if audit.gqa.raw_trace is None or audit.mha.raw_trace is None:
+            raise GQADeviceDispatchError("dispatch audit raw trace metadata is absent")
+        cache = audit.source_shape.cache
+        audit_raw = canonical_phase3_geometry_bound_dispatch_audit_bytes(audit)
+        return cls(
+            schema_version=PHASE3_GEOMETRY_BOUND_DISPATCH_OBSERVATION_SCHEMA,
+            operation_fingerprint_sha256=(
+                audit.point.operation_fingerprint_sha256
+            ),
+            derived_audit_sha256=hashlib.sha256(audit_raw).hexdigest(),
+            gqa_warmup_count=audit.gqa.warmup_count,
+            mha_warmup_count=audit.mha.warmup_count,
+            gqa_trace_relative_path=audit.gqa.raw_trace.relative_path,
+            mha_trace_relative_path=audit.mha.raw_trace.relative_path,
+            gqa_backend=BackendControlObservation.from_evidence(
+                audit.gqa.backend
+            ),
+            mha_backend=BackendControlObservation.from_evidence(
+                audit.mha.backend
+            ),
+            gqa_query=audit.source_shape.gqa_query,
+            gqa_output=audit.source_shape.gqa_output,
+            cache_key_backing=cache.key_backing,
+            cache_value_backing=cache.value_backing,
+            cache_key_view=cache.key_view,
+            cache_value_view=cache.value_view,
+            mha_query=audit.source_shape.mha_query,
+            mha_key=audit.source_shape.mha_key,
+            mha_value=audit.source_shape.mha_value,
+            mha_output=audit.source_shape.mha_output,
+            cache_workspace_bytes=cache.layout.workspace_bytes,
+            cache_layer_index=cache.layer_index,
+            cache_key_backing_storage_ptr=cache.key_backing_storage_ptr,
+            cache_value_backing_storage_ptr=cache.value_backing_storage_ptr,
+            cache_key_view_storage_ptr=cache.key_view_storage_ptr,
+            cache_value_view_storage_ptr=cache.value_view_storage_ptr,
+            explicitly_related_families=audit.explicitly_related_families,
+            related_family_policy_sha256=audit.related_family_policy_sha256,
+        )
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "schema_version": self.schema_version,
+            "operation_fingerprint_sha256": (
+                self.operation_fingerprint_sha256
+            ),
+            "derived_audit_sha256": self.derived_audit_sha256,
+            "warmup_counts": {
+                "gqa": self.gqa_warmup_count,
+                "mha_control": self.mha_warmup_count,
+            },
+            "trace_relative_paths": {
+                "gqa": self.gqa_trace_relative_path,
+                "mha_control": self.mha_trace_relative_path,
+            },
+            "backend_controls": {
+                "gqa": self.gqa_backend.to_dict(),
+                "mha_control": self.mha_backend.to_dict(),
+            },
+            "tensor_observations": {
+                "gqa_query": _tensor_observation_dict(self.gqa_query),
+                "gqa_output": _tensor_observation_dict(self.gqa_output),
+                "cache_key_backing": _tensor_observation_dict(
+                    self.cache_key_backing
+                ),
+                "cache_value_backing": _tensor_observation_dict(
+                    self.cache_value_backing
+                ),
+                "cache_key_view": _tensor_observation_dict(self.cache_key_view),
+                "cache_value_view": _tensor_observation_dict(
+                    self.cache_value_view
+                ),
+                "mha_query": _tensor_observation_dict(self.mha_query),
+                "mha_key": _tensor_observation_dict(self.mha_key),
+                "mha_value": _tensor_observation_dict(self.mha_value),
+                "mha_output": _tensor_observation_dict(self.mha_output),
+            },
+            "cache_observation": {
+                "workspace_bytes": self.cache_workspace_bytes,
+                "layer_index": self.cache_layer_index,
+                "storage_pointers": {
+                    "key_backing": self.cache_key_backing_storage_ptr,
+                    "value_backing": self.cache_value_backing_storage_ptr,
+                    "key_view": self.cache_key_view_storage_ptr,
+                    "value_view": self.cache_value_view_storage_ptr,
+                },
+            },
+            "kernel_family_policy": {
+                "explicitly_related_pairs": [
+                    list(pair) for pair in self.explicitly_related_families
+                ],
+                "decision_record_sha256": self.related_family_policy_sha256,
+            },
+        }
+
+    def canonical_bytes(self) -> bytes:
+        return _canonical_json_bytes(self.to_dict())
+
+
+def phase3_geometry_bound_dispatch_observation_bytes(
+    audit: Phase3GeometryBoundGQADeviceDispatchAudit,
+) -> bytes:
+    """Create the canonical nonderived-observation artifact for one audit."""
+
+    return Phase3GeometryBoundDispatchObservation.from_audit(
+        audit
+    ).canonical_bytes()
+
+
+def phase3_geometry_bound_dispatch_evidence_bytes(
+    audit: Phase3GeometryBoundGQADeviceDispatchAudit,
+) -> bytes:
+    """Return the single formal ``b011_audit`` raw evidence artifact.
+
+    This artifact is the canonical nonderived observation envelope.  The
+    derived audit is deliberately not a second required raw file: validation
+    regenerates it and compares its SHA-256 with the digest in this envelope.
+    """
+
+    return phase3_geometry_bound_dispatch_observation_bytes(audit)
+
+
+def _parse_related_family_pairs(value: object) -> tuple[tuple[str, str], ...]:
+    if type(value) is not list:
+        raise GQADeviceDispatchError(
+            "dispatch observation related-family pairs must be an array"
+        )
+    pairs: list[tuple[str, str]] = []
+    for raw_pair in value:
+        if type(raw_pair) is not list or len(raw_pair) != 2:
+            raise GQADeviceDispatchError(
+                "dispatch observation related-family pair is malformed"
+            )
+        pairs.append(
+            (
+                _json_string(raw_pair[0], label="related family"),
+                _json_string(raw_pair[1], label="related family"),
+            )
+        )
+    return tuple(pairs)
+
+
+def parse_phase3_geometry_bound_dispatch_observation_bytes(
+    raw: bytes,
+) -> Phase3GeometryBoundDispatchObservation:
+    """Strictly parse canonical, duplicate-free raw observation bytes."""
+
+    payload = _strict_canonical_json_object(
+        raw,
+        label="Phase 3 dispatch observation",
+    )
+    _require_exact_json_keys(
+        payload,
+        frozenset(
+            {
+                "schema_version",
+                "operation_fingerprint_sha256",
+                "derived_audit_sha256",
+                "warmup_counts",
+                "trace_relative_paths",
+                "backend_controls",
+                "tensor_observations",
+                "cache_observation",
+                "kernel_family_policy",
+            }
+        ),
+        label="Phase 3 dispatch observation",
+    )
+    warmups = _json_object(payload["warmup_counts"], label="warmup_counts")
+    paths = _json_object(
+        payload["trace_relative_paths"], label="trace_relative_paths"
+    )
+    backends = _json_object(
+        payload["backend_controls"], label="backend_controls"
+    )
+    tensors = _json_object(
+        payload["tensor_observations"], label="tensor_observations"
+    )
+    cache = _json_object(
+        payload["cache_observation"], label="cache_observation"
+    )
+    policy = _json_object(
+        payload["kernel_family_policy"], label="kernel_family_policy"
+    )
+    _require_exact_json_keys(
+        warmups, frozenset({"gqa", "mha_control"}), label="warmup_counts"
+    )
+    _require_exact_json_keys(
+        paths,
+        frozenset({"gqa", "mha_control"}),
+        label="trace_relative_paths",
+    )
+    _require_exact_json_keys(
+        backends,
+        frozenset({"gqa", "mha_control"}),
+        label="backend_controls",
+    )
+    tensor_names = frozenset(
+        {
+            "gqa_query",
+            "gqa_output",
+            "cache_key_backing",
+            "cache_value_backing",
+            "cache_key_view",
+            "cache_value_view",
+            "mha_query",
+            "mha_key",
+            "mha_value",
+            "mha_output",
+        }
+    )
+    _require_exact_json_keys(tensors, tensor_names, label="tensor_observations")
+    _require_exact_json_keys(
+        cache,
+        frozenset({"workspace_bytes", "layer_index", "storage_pointers"}),
+        label="cache_observation",
+    )
+    pointers = _json_object(
+        cache["storage_pointers"], label="cache_observation.storage_pointers"
+    )
+    _require_exact_json_keys(
+        pointers,
+        frozenset({"key_backing", "value_backing", "key_view", "value_view"}),
+        label="cache_observation.storage_pointers",
+    )
+    _require_exact_json_keys(
+        policy,
+        frozenset({"explicitly_related_pairs", "decision_record_sha256"}),
+        label="kernel_family_policy",
+    )
+    try:
+        return Phase3GeometryBoundDispatchObservation(
+            schema_version=_json_string(
+                payload["schema_version"], label="schema_version"
+            ),
+            operation_fingerprint_sha256=_json_string(
+                payload["operation_fingerprint_sha256"],
+                label="operation_fingerprint_sha256",
+            ),
+            derived_audit_sha256=_json_string(
+                payload["derived_audit_sha256"],
+                label="derived_audit_sha256",
+            ),
+            gqa_warmup_count=_json_integer(
+                warmups["gqa"], label="warmup_counts.gqa", minimum=1
+            ),
+            mha_warmup_count=_json_integer(
+                warmups["mha_control"],
+                label="warmup_counts.mha_control",
+                minimum=1,
+            ),
+            gqa_trace_relative_path=_json_string(
+                paths["gqa"], label="trace_relative_paths.gqa"
+            ),
+            mha_trace_relative_path=_json_string(
+                paths["mha_control"],
+                label="trace_relative_paths.mha_control",
+            ),
+            gqa_backend=_parse_backend_control_observation(
+                backends["gqa"], label="backend_controls.gqa"
+            ),
+            mha_backend=_parse_backend_control_observation(
+                backends["mha_control"],
+                label="backend_controls.mha_control",
+            ),
+            gqa_query=_parse_tensor_observation(
+                tensors["gqa_query"], label="tensor_observations.gqa_query"
+            ),
+            gqa_output=_parse_tensor_observation(
+                tensors["gqa_output"], label="tensor_observations.gqa_output"
+            ),
+            cache_key_backing=_parse_tensor_observation(
+                tensors["cache_key_backing"],
+                label="tensor_observations.cache_key_backing",
+            ),
+            cache_value_backing=_parse_tensor_observation(
+                tensors["cache_value_backing"],
+                label="tensor_observations.cache_value_backing",
+            ),
+            cache_key_view=_parse_tensor_observation(
+                tensors["cache_key_view"],
+                label="tensor_observations.cache_key_view",
+            ),
+            cache_value_view=_parse_tensor_observation(
+                tensors["cache_value_view"],
+                label="tensor_observations.cache_value_view",
+            ),
+            mha_query=_parse_tensor_observation(
+                tensors["mha_query"], label="tensor_observations.mha_query"
+            ),
+            mha_key=_parse_tensor_observation(
+                tensors["mha_key"], label="tensor_observations.mha_key"
+            ),
+            mha_value=_parse_tensor_observation(
+                tensors["mha_value"], label="tensor_observations.mha_value"
+            ),
+            mha_output=_parse_tensor_observation(
+                tensors["mha_output"], label="tensor_observations.mha_output"
+            ),
+            cache_workspace_bytes=_json_integer(
+                cache["workspace_bytes"],
+                label="cache_observation.workspace_bytes",
+                minimum=0,
+            ),
+            cache_layer_index=_json_integer(
+                cache["layer_index"],
+                label="cache_observation.layer_index",
+                minimum=0,
+            ),
+            cache_key_backing_storage_ptr=_json_integer(
+                pointers["key_backing"],
+                label="cache_observation.storage_pointers.key_backing",
+                minimum=1,
+            ),
+            cache_value_backing_storage_ptr=_json_integer(
+                pointers["value_backing"],
+                label="cache_observation.storage_pointers.value_backing",
+                minimum=1,
+            ),
+            cache_key_view_storage_ptr=_json_integer(
+                pointers["key_view"],
+                label="cache_observation.storage_pointers.key_view",
+                minimum=1,
+            ),
+            cache_value_view_storage_ptr=_json_integer(
+                pointers["value_view"],
+                label="cache_observation.storage_pointers.value_view",
+                minimum=1,
+            ),
+            explicitly_related_families=_parse_related_family_pairs(
+                policy["explicitly_related_pairs"]
+            ),
+            related_family_policy_sha256=_json_optional_string(
+                policy["decision_record_sha256"],
+                label="kernel_family_policy.decision_record_sha256",
+            ),
+        )
+    except (TypeError, ValueError) as error:
+        raise GQADeviceDispatchError(
+            "Phase 3 dispatch observation is invalid"
+        ) from error
+
+
+def _validate_related_family_decision_raw(
+    observation: Phase3GeometryBoundDispatchObservation,
+    related_family_decision_raw: bytes | None,
+) -> None:
+    if not observation.explicitly_related_families:
+        if related_family_decision_raw is not None:
+            raise GQADeviceDispatchError(
+                "related-family decision bytes exist without a requested policy"
+            )
+        return
+    if related_family_decision_raw is None:
+        raise GQADeviceDispatchError(
+            "related-family policy lacks exact decision-record bytes"
+        )
+    decision = _strict_canonical_json_object(
+        related_family_decision_raw,
+        label="related-family decision",
+    )
+    _require_exact_json_keys(
+        decision,
+        frozenset(
+            {
+                "schema_version",
+                "scope",
+                "approved",
+                "explicitly_related_pairs",
+            }
+        ),
+        label="related-family decision",
+    )
+    decision_pairs = _parse_related_family_pairs(
+        decision["explicitly_related_pairs"]
+    )
+    if (
+        decision["schema_version"]
+        != "kvbench-phase3-related-kernel-family-decision-1.0.0"
+        or decision["scope"] != "phase3_geometry_bound_dispatch"
+        or type(decision["approved"]) is not bool
+        or decision["approved"] is not True
+        or decision_pairs != observation.explicitly_related_families
+    ):
+        raise GQADeviceDispatchError(
+            "related-family decision does not approve the exact policy"
+        )
+    digest = hashlib.sha256(related_family_decision_raw).hexdigest()
+    if digest != observation.related_family_policy_sha256:
+        raise GQADeviceDispatchError(
+            "related-family decision digest differs from observation"
+        )
+    if digest not in _APPROVED_RELATED_FAMILY_DECISION_SHA256:
+        raise GQADeviceDispatchError(
+            "related-family decision is not checksum-approved by this build"
+        )
+
+
+def revalidate_phase3_geometry_bound_dispatch_audit_from_raw(
+    *,
+    observation_raw: bytes,
+    operation_key: Phase3AuditOperationKey,
+    gqa_raw: bytes,
+    mha_raw: bytes,
+    backend_identity_raw: bytes,
+    source_bytes_by_path: Mapping[str, bytes],
+    audit_raw: bytes | None = None,
+    related_family_decision_raw: bytes | None = None,
+) -> Phase3GeometryBoundGQADeviceDispatchAudit:
+    """Rebuild an audit exclusively from canonical observations and raw bytes.
+
+    The optional serialized audit supplies no trusted verdict, boolean, parsed
+    event, source finding, or shape result.  The formal single-file contract
+    stores ``observation_raw`` as ``b011_audit``; the derived audit is regenerated
+    and its SHA-256 must match the digest recorded there.  ``audit_raw`` exists
+    only for callers that also want exact equality with a presentation artifact.
+    """
+
+    if type(operation_key) is not Phase3AuditOperationKey:
+        raise TypeError("operation_key must be Phase3AuditOperationKey")
+    for label, raw in (
+        ("GQA dispatch trace", gqa_raw),
+        ("MHA dispatch trace", mha_raw),
+        ("backend identity", backend_identity_raw),
+    ):
+        if type(raw) is not bytes or not raw:
+            raise GQADeviceDispatchError(f"{label} bytes are absent")
+    if audit_raw is not None:
+        _strict_canonical_json_object(
+            audit_raw,
+            label="derived dispatch audit",
+        )
+    observation = parse_phase3_geometry_bound_dispatch_observation_bytes(
+        observation_raw
+    )
+    if (
+        observation.operation_fingerprint_sha256
+        != operation_key.operation_fingerprint_sha256
+    ):
+        raise GQADeviceDispatchError(
+            "dispatch observation differs from the supplied operation key"
+        )
+    if audit_raw is not None and hashlib.sha256(audit_raw).hexdigest() != (
+        observation.derived_audit_sha256
+    ):
+        raise GQADeviceDispatchError(
+            "derived dispatch audit differs from the recorded SHA-256"
+        )
+    _validate_related_family_decision_raw(
+        observation,
+        related_family_decision_raw,
+    )
+
+    backend_payload = _strict_canonical_json_object(
+        backend_identity_raw,
+        label="backend identity",
+    )
+    try:
+        backend_identity = BackendIdentityEvidence.from_payload(backend_payload)
+    except (TypeError, ValueError) as error:
+        raise GQADeviceDispatchError("backend identity is invalid") from error
+    if backend_identity.canonical_json.encode("utf-8") != backend_identity_raw:
+        raise GQADeviceDispatchError("backend identity bytes changed on rebuild")
+    if operation_key.backend_identity_sha256 != backend_identity.sha256:
+        raise GQADeviceDispatchError(
+            "backend identity differs from the operation key"
+        )
+
+    if not isinstance(source_bytes_by_path, Mapping) or set(
+        source_bytes_by_path
+    ) != set(REQUIRED_SUT_SOURCES):
+        raise GQADeviceDispatchError("raw source bundle paths are incomplete")
+    retained_source_bytes: dict[str, bytes] = {}
+    for path in REQUIRED_SUT_SOURCES:
+        raw = source_bytes_by_path[path]
+        if type(raw) is not bytes or not raw:
+            raise GQADeviceDispatchError(
+                "raw source bundle contains absent or non-byte content"
+            )
+        retained_source_bytes[path] = raw
+    try:
+        sources = tuple(
+            source_file_evidence_from_bytes(path, retained_source_bytes[path])
+            for path in REQUIRED_SUT_SOURCES
+        )
+        source_identity = phase3_source_identity_sha256(
+            {source.relative_path: source.sha256 for source in sources}
+        )
+    except (TypeError, ValueError) as error:
+        raise GQADeviceDispatchError("raw source bundle is invalid") from error
+    if operation_key.source_identity_sha256 != source_identity:
+        raise GQADeviceDispatchError(
+            "raw source bundle differs from the operation key"
+        )
+
+    point = Phase3DispatchPointBinding.create(operation_key=operation_key)
+    static_cache_source = next(
+        source
+        for source in sources
+        if source.relative_path == REQUIRED_SUT_SOURCES[2]
+    )
+    try:
+        cache_layout = StaticCacheLayoutEvidence.create(
+            batch_size=operation_key.batch_size,
+            capacity=operation_key.capacity,
+            device="cuda:0",
+            workspace_bytes=observation.cache_workspace_bytes,
+            implementation_sha256=static_cache_source.sha256,
+            layout_fingerprint=operation_key.cache_layout_fingerprint,
+        )
+        cache = StaticCacheViewBindingEvidence(
+            layout=cache_layout,
+            layer_index=observation.cache_layer_index,
+            active_context=operation_key.attended_context,
+            key_backing=observation.cache_key_backing,
+            value_backing=observation.cache_value_backing,
+            key_view=observation.cache_key_view,
+            value_view=observation.cache_value_view,
+            key_backing_storage_ptr=(
+                observation.cache_key_backing_storage_ptr
+            ),
+            value_backing_storage_ptr=(
+                observation.cache_value_backing_storage_ptr
+            ),
+            key_view_storage_ptr=observation.cache_key_view_storage_ptr,
+            value_view_storage_ptr=observation.cache_value_view_storage_ptr,
+            key_view_shares_backing_storage=(
+                observation.cache_key_view_storage_ptr
+                == observation.cache_key_backing_storage_ptr
+            ),
+            value_view_shares_backing_storage=(
+                observation.cache_value_view_storage_ptr
+                == observation.cache_value_backing_storage_ptr
+            ),
+            key_value_backing_storages_distinct=(
+                observation.cache_key_backing_storage_ptr
+                != observation.cache_value_backing_storage_ptr
+            ),
+        )
+    except (TypeError, ValueError) as error:
+        raise GQADeviceDispatchError(
+            "cache observation differs from operation/source identity"
+        ) from error
+
+    execution_mode = operation_key.dispatch_execution_mode
+    gqa_artifact = RawTraceArtifact(
+        relative_path=observation.gqa_trace_relative_path,
+        sha256=hashlib.sha256(gqa_raw).hexdigest(),
+        size_bytes=len(gqa_raw),
+        execution_mode=execution_mode,
+    )
+    mha_artifact = RawTraceArtifact(
+        relative_path=observation.mha_trace_relative_path,
+        sha256=hashlib.sha256(mha_raw).hexdigest(),
+        size_bytes=len(mha_raw),
+        execution_mode=execution_mode,
+    )
+    try:
+        trace_validation = revalidate_geometry_bound_raw_traces(
+            point=point,
+            gqa_artifact=gqa_artifact,
+            mha_artifact=mha_artifact,
+            gqa_raw=gqa_raw,
+            mha_raw=mha_raw,
+        )
+    except (TypeError, ValueError) as error:
+        raise GQADeviceDispatchError(
+            "raw dispatch traces do not satisfy the Phase 3 binding"
+        ) from error
+
+    def rebuild_control(
+        *,
+        role: str,
+        warmup_count: int,
+        backend: BackendControlObservation,
+        artifact: RawTraceArtifact,
+        scope: TraceScopeEvidence | CUDAGraphTraceScopeEvidence,
+        events: tuple[CUDADeviceEvent, ...],
+    ) -> DispatchControlEvidence:
+        return DispatchControlEvidence(
+            role=role,
+            batch_size=operation_key.batch_size,
+            context_length=operation_key.attended_context,
+            query_length=1,
+            num_query_heads=PHASE3_NUM_QUERY_HEADS,
+            num_kv_heads=(
+                PHASE3_NUM_KV_HEADS
+                if role == "gqa"
+                else PHASE3_NUM_QUERY_HEADS
+            ),
+            head_dim=PHASE3_HEAD_DIM,
+            dtype=PHASE3_DTYPE,
+            dtype_bytes=PHASE3_DTYPE_BYTES,
+            is_causal=False,
+            warmup_count=warmup_count,
+            backend=backend.to_evidence(
+                backend_identity_sha256=backend_identity.sha256
+            ),
+            raw_trace=artifact,
+            trace_scope=scope,
+            device_events=events,
+            execution_mode=execution_mode,
+        )
+
+    try:
+        gqa = rebuild_control(
+            role="gqa",
+            warmup_count=observation.gqa_warmup_count,
+            backend=observation.gqa_backend,
+            artifact=gqa_artifact,
+            scope=trace_validation.gqa_scope,
+            events=trace_validation.gqa_device_events,
+        )
+        mha = rebuild_control(
+            role="mha_control",
+            warmup_count=observation.mha_warmup_count,
+            backend=observation.mha_backend,
+            artifact=mha_artifact,
+            scope=trace_validation.mha_scope,
+            events=trace_validation.mha_device_events,
+        )
+        source_shape = GeometryBoundSourceShapeEvidence(
+            sources=sources,
+            gqa_query=observation.gqa_query,
+            gqa_output=observation.gqa_output,
+            cache=cache,
+            mha_query=observation.mha_query,
+            mha_key=observation.mha_key,
+            mha_value=observation.mha_value,
+            mha_output=observation.mha_output,
+        )
+        evaluation = evaluate_geometry_bound_gqa_device_dispatch(
+            point=point,
+            gqa=gqa,
+            mha=mha,
+            gqa_sequence=trace_validation.gqa_kernel_sequence,
+            mha_sequence=trace_validation.mha_kernel_sequence,
+            source_shape=source_shape,
+            explicitly_related_families=set(
+                observation.explicitly_related_families
+            ),
+        )
+        rebuilt = Phase3GeometryBoundGQADeviceDispatchAudit(
+            point=point,
+            backend_identity=backend_identity,
+            gqa=gqa,
+            mha=mha,
+            source_shape=source_shape,
+            gqa_kernel_sequence=trace_validation.gqa_kernel_sequence,
+            mha_kernel_sequence=trace_validation.mha_kernel_sequence,
+            trace_validation=trace_validation,
+            explicitly_related_families=(
+                observation.explicitly_related_families
+            ),
+            related_family_policy_sha256=(
+                observation.related_family_policy_sha256
+            ),
+            evaluation=evaluation,
+        )
+    except (TypeError, ValueError) as error:
+        raise GQADeviceDispatchError(
+            "raw observations cannot reconstruct a valid dispatch audit"
+        ) from error
+
+    rebuilt_raw = canonical_phase3_geometry_bound_dispatch_audit_bytes(rebuilt)
+    if hashlib.sha256(rebuilt_raw).hexdigest() != (
+        observation.derived_audit_sha256
+    ):
+        raise GQADeviceDispatchError(
+            "reconstructed dispatch audit differs from recorded SHA-256"
+        )
+    if audit_raw is not None and rebuilt_raw != audit_raw:
+        raise GQADeviceDispatchError(
+            "serialized derived fields differ from raw-derived dispatch audit"
+        )
+    return rebuilt
+
+
+def revalidate_phase3_geometry_bound_dispatch_evidence_from_raw(
+    *,
+    b011_audit_raw: bytes,
+    operation_key: Phase3AuditOperationKey,
+    gqa_raw: bytes,
+    mha_raw: bytes,
+    backend_identity_raw: bytes,
+    source_bytes_by_path: Mapping[str, bytes],
+    related_family_decision_raw: bytes | None = None,
+) -> Phase3GeometryBoundGQADeviceDispatchAudit:
+    """Revalidate the formal one-file ``b011_audit`` observation artifact."""
+
+    return revalidate_phase3_geometry_bound_dispatch_audit_from_raw(
+        observation_raw=b011_audit_raw,
+        operation_key=operation_key,
+        gqa_raw=gqa_raw,
+        mha_raw=mha_raw,
+        backend_identity_raw=backend_identity_raw,
+        source_bytes_by_path=source_bytes_by_path,
+        related_family_decision_raw=related_family_decision_raw,
+    )
+
+
+_PHASE3_ALLOCATION_JOIN_CLASSES = frozenset(
+    {
+        "cache_growth",
+        "gqa_expansion",
+        "context_scaled_workspace",
+        "fixed_output",
+        "fixed_shared_activation",
+        "framework_bookkeeping",
+        "audit_instrumentation",
+        "unknown",
+    }
+)
+
+
+@dataclass(frozen=True, slots=True)
+class Phase3AllocationJoinEventFact:
+    """One raw-replayed allocation lifetime used by the GQA join."""
+
+    event_index: int
+    event_class: str
+    requested_bytes: int
+    allocated_block_bytes: int | None
+    triggered_segment_alloc: bool
+
+    def __post_init__(self) -> None:
+        if type(self.event_index) is not int or self.event_index < 0:
+            raise ValueError("allocation join event index is invalid")
+        if self.event_class not in _PHASE3_ALLOCATION_JOIN_CLASSES:
+            raise ValueError("allocation join event class is unsupported")
+        _positive_integer(self.requested_bytes, "allocation_requested_bytes")
+        if self.allocated_block_bytes is not None:
+            _positive_integer(
+                self.allocated_block_bytes,
+                "allocation_block_bytes",
+            )
+        if type(self.triggered_segment_alloc) is not bool:
+            raise ValueError("allocation segment flag must be boolean")
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "event_index": self.event_index,
+            "event_class": self.event_class,
+            "requested_bytes": self.requested_bytes,
+            "allocated_block_bytes": self.allocated_block_bytes,
+            "triggered_segment_alloc": self.triggered_segment_alloc,
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class Phase3AllocationTensorJoinFact:
+    """One exact declared tensor reconstructed from the raw witness."""
+
+    tensor_index: int
+    role: str
+    shape: tuple[int, ...]
+    storage_bytes: int
+
+    def __post_init__(self) -> None:
+        if type(self.tensor_index) is not int or self.tensor_index < 0:
+            raise ValueError("allocation tensor index is invalid")
+        if type(self.role) is not str or not self.role:
+            raise ValueError("allocation tensor role is invalid")
+        require_identifier(self.role, field_name="allocation_tensor_role")
+        if (
+            type(self.shape) is not tuple
+            or not self.shape
+            or any(type(item) is not int or item <= 0 for item in self.shape)
+        ):
+            raise ValueError("allocation tensor shape is invalid")
+        _positive_integer(self.storage_bytes, "allocation_tensor_storage_bytes")
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "tensor_index": self.tensor_index,
+            "role": self.role,
+            "shape": list(self.shape),
+            "storage_bytes": self.storage_bytes,
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class Phase3AllocationRawEvidence:
+    """The complete canonical B-012 evidence set for one operation.
+
+    These are bytes, not a serialized validation result.  The B-011 join
+    replays them through Task C's semantic validator before deriving any
+    allocation fact.
+    """
+
+    snapshot_raw: bytes
+    trace_raw: bytes
+    memory_stats_before_raw: bytes
+    memory_stats_after_raw: bytes
+    memory_accounting_before_raw: bytes
+    memory_accounting_after_raw: bytes
+    operation_witness_raw: bytes
+    audit_raw: bytes
+    audit_sha256_ledger_raw: bytes
+
+    def __post_init__(self) -> None:
+        for name in (
+            "snapshot_raw",
+            "trace_raw",
+            "memory_stats_before_raw",
+            "memory_stats_after_raw",
+            "memory_accounting_before_raw",
+            "memory_accounting_after_raw",
+            "operation_witness_raw",
+            "audit_raw",
+            "audit_sha256_ledger_raw",
+        ):
+            value = getattr(self, name)
+            if type(value) is not bytes or not value:
+                raise ValueError(
+                    "allocation raw evidence contains absent/non-byte content"
+                )
+
+
+@dataclass(frozen=True, slots=True, init=False)
+class Phase3AllocationJoinFacts:
+    """Raw-bound, nonboolean facts emitted by independent Task C replay.
+
+    Construction hashes the exact canonical allocation audit and allocator
+    trace.  The class intentionally has no public generated initializer and no
+    ``passed``/``allocation_verified`` input.
+    """
+
+    operation_key: Phase3AuditOperationKey
+    production_binding_sha256: str
+    allocation_audit_sha256: str
+    allocator_trace_sha256: str
+    expected_allocator_trace_sha256: str
+    gqa_dispatch_trace_sha256: str
+    mha_dispatch_trace_sha256: str
+    dispatch_trace_validation_sha256: str
+    semantic_failure_reasons: tuple[str, ...]
+    trace_integrity_errors: tuple[str, ...]
+    criterion_id: str
+    criterion_failure_reasons: tuple[str, ...]
+    criterion_allocation_event_count: int
+    criterion_class_counts: tuple[tuple[str, int], ...]
+    allocation_events: tuple[Phase3AllocationJoinEventFact, ...]
+    method_tensors: tuple[Phase3AllocationTensorJoinFact, ...]
+    evidence_sha256: str
+
+    def __post_init__(self) -> None:
+        if type(self.operation_key) is not Phase3AuditOperationKey:
+            raise ValueError("allocation join operation key is invalid")
+        for digest in (
+            self.production_binding_sha256,
+            self.allocation_audit_sha256,
+            self.allocator_trace_sha256,
+            self.expected_allocator_trace_sha256,
+            self.gqa_dispatch_trace_sha256,
+            self.mha_dispatch_trace_sha256,
+            self.dispatch_trace_validation_sha256,
+            self.evidence_sha256,
+        ):
+            if type(digest) is not str or _SHA256_RE.fullmatch(digest) is None:
+                raise ValueError("allocation join digest is invalid")
+        for reasons in (
+            self.semantic_failure_reasons,
+            self.trace_integrity_errors,
+            self.criterion_failure_reasons,
+        ):
+            if (
+                type(reasons) is not tuple
+                or reasons != tuple(dict.fromkeys(reasons))
+                or any(type(item) is not str or not item for item in reasons)
+            ):
+                raise ValueError("allocation join reasons are not canonical")
+        if type(self.criterion_id) is not str or not self.criterion_id:
+            raise ValueError("allocation join criterion ID is invalid")
+        if (
+            type(self.criterion_allocation_event_count) is not int
+            or self.criterion_allocation_event_count < 0
+            or self.criterion_allocation_event_count
+            != len(self.allocation_events)
+        ):
+            raise ValueError("allocation join event count is inconsistent")
+        if any(
+            type(event) is not Phase3AllocationJoinEventFact
+            for event in self.allocation_events
+        ) or tuple(event.event_index for event in self.allocation_events) != tuple(
+            range(len(self.allocation_events))
+        ):
+            raise ValueError("allocation join events are not canonical")
+        observed_counts: dict[str, int] = {}
+        for event in self.allocation_events:
+            observed_counts[event.event_class] = (
+                observed_counts.get(event.event_class, 0) + 1
+            )
+        expected_counts = tuple(sorted(observed_counts.items()))
+        if self.criterion_class_counts != expected_counts:
+            raise ValueError("allocation join class counts are inconsistent")
+        if (
+            not self.method_tensors
+            or any(
+                type(tensor) is not Phase3AllocationTensorJoinFact
+                for tensor in self.method_tensors
+            )
+            or tuple(tensor.tensor_index for tensor in self.method_tensors)
+            != tuple(range(len(self.method_tensors)))
+        ):
+            raise ValueError("allocation tensor inventory is not canonical")
+        if self.evidence_sha256 != self._derive_sha256():
+            raise ValueError("allocation join evidence SHA-256 differs")
+
+    def _payload(self) -> dict[str, object]:
+        return {
+            "schema_version": "kvbench-phase3-allocation-gqa-join-facts-1.0.0",
+            "operation_key": self.operation_key.to_dict(),
+            "production_binding_sha256": self.production_binding_sha256,
+            "allocation_audit_sha256": self.allocation_audit_sha256,
+            "allocator_trace_sha256": self.allocator_trace_sha256,
+            "expected_allocator_trace_sha256": (
+                self.expected_allocator_trace_sha256
+            ),
+            "gqa_dispatch_trace_sha256": self.gqa_dispatch_trace_sha256,
+            "mha_dispatch_trace_sha256": self.mha_dispatch_trace_sha256,
+            "dispatch_trace_validation_sha256": (
+                self.dispatch_trace_validation_sha256
+            ),
+            "semantic_failure_reasons": list(self.semantic_failure_reasons),
+            "trace_integrity_errors": list(self.trace_integrity_errors),
+            "criterion_id": self.criterion_id,
+            "criterion_failure_reasons": list(
+                self.criterion_failure_reasons
+            ),
+            "criterion_allocation_event_count": (
+                self.criterion_allocation_event_count
+            ),
+            "criterion_class_counts": {
+                key: value for key, value in self.criterion_class_counts
+            },
+            "allocation_events": [
+                event.to_dict() for event in self.allocation_events
+            ],
+            "method_tensors": [
+                tensor.to_dict() for tensor in self.method_tensors
+            ],
+        }
+
+    def _derive_sha256(self) -> str:
+        return hashlib.sha256(_canonical_json_bytes(self._payload())).hexdigest()
+
+    @classmethod
+    def from_raw_evidence(
+        cls,
+        *,
+        operation_key: Phase3AuditOperationKey,
+        production_binding: object,
+        raw_evidence: Phase3AllocationRawEvidence,
+        gqa_dispatch_trace_sha256: str,
+        mha_dispatch_trace_sha256: str,
+        dispatch_trace_validation_sha256: str,
+    ) -> Phase3AllocationJoinFacts:
+        """Derive join facts by replaying every canonical B-012 raw file."""
+
+        if type(operation_key) is not Phase3AuditOperationKey:
+            raise TypeError("operation_key must be Phase3AuditOperationKey")
+        if type(raw_evidence) is not Phase3AllocationRawEvidence:
+            raise TypeError("raw_evidence must be Phase3AllocationRawEvidence")
+        allocation_module = importlib.import_module(
+            "kvbench.runtime.allocation_attribution"
+        )
+        production_binding_type = allocation_module.ProductionAllocationBinding
+        if type(production_binding) is not production_binding_type:
+            raise TypeError(
+                "production_binding must be ProductionAllocationBinding"
+            )
+        if production_binding.operation_key != operation_key:
+            raise GQADeviceDispatchError(
+                "allocation binding differs from the joined operation key"
+            )
+        allocation_audit = _strict_canonical_json_object(
+            raw_evidence.audit_raw,
+            label="allocation audit",
+        )
+        if (
+            allocation_audit.get("schema_version")
+            != allocation_module.PHASE3_ALLOCATION_AUDIT_SCHEMA_VERSION
+            or allocation_audit.get("run_kind") != "allocation_audit"
+            or allocation_audit.get("evidence_status") != "complete"
+            or allocation_audit.get("operation_key")
+            != operation_key.to_dict()
+        ):
+            raise GQADeviceDispatchError(
+                "allocation audit is not a complete formal operation envelope"
+            )
+        raw_files = allocation_audit.get("raw_files")
+        if type(raw_files) is not dict:
+            raise GQADeviceDispatchError(
+                "allocation audit lacks its exact raw-file index"
+            )
+        expected_raw_file_keys = frozenset(
+            {
+                "snapshot_file",
+                "snapshot_sha256",
+                "trace_file",
+                "trace_sha256",
+                "memory_stats_before_file",
+                "memory_stats_before_sha256",
+                "memory_stats_after_file",
+                "memory_stats_after_sha256",
+                "memory_accounting_before_file",
+                "memory_accounting_before_sha256",
+                "memory_accounting_after_file",
+                "memory_accounting_after_sha256",
+                "operation_witness_file",
+                "operation_witness_sha256",
+                "audit_file",
+                "audit_sha256_file",
+            }
+        )
+        _require_exact_json_keys(
+            raw_files,
+            expected_raw_file_keys,
+            label="allocation audit raw_files",
+        )
+        try:
+            files = allocation_module.RawAllocatorEvidenceFiles(
+                **raw_files,
+                audit_sha256=hashlib.sha256(raw_evidence.audit_raw).hexdigest(),
+            )
+        except (
+            TypeError,
+            ValueError,
+            allocation_module.AllocationAttributionError,
+        ) as error:
+            raise GQADeviceDispatchError(
+                "allocation audit raw-file index is invalid"
+            ) from error
+        expected_ledger = (
+            f"{files.audit_sha256}  {files.audit_file}\n".encode("ascii")
+        )
+        if raw_evidence.audit_sha256_ledger_raw != expected_ledger:
+            raise GQADeviceDispatchError(
+                "allocation audit SHA-256 ledger differs from exact audit bytes"
+            )
+
+        payload_by_name = {
+            files.snapshot_file: raw_evidence.snapshot_raw,
+            files.trace_file: raw_evidence.trace_raw,
+            files.memory_stats_before_file: (
+                raw_evidence.memory_stats_before_raw
+            ),
+            files.memory_stats_after_file: raw_evidence.memory_stats_after_raw,
+            files.memory_accounting_before_file: (
+                raw_evidence.memory_accounting_before_raw
+            ),
+            files.memory_accounting_after_file: (
+                raw_evidence.memory_accounting_after_raw
+            ),
+            files.operation_witness_file: raw_evidence.operation_witness_raw,
+            files.audit_file: raw_evidence.audit_raw,
+            files.audit_sha256_file: raw_evidence.audit_sha256_ledger_raw,
+        }
+        if len(payload_by_name) != 9:
+            raise GQADeviceDispatchError(
+                "allocation raw-file index contains aliased filenames"
+            )
+        with tempfile.TemporaryDirectory(
+            prefix="kvbench-phase3-allocation-replay-",
+            dir="/tmp",
+        ) as temporary:
+            temporary_path = Path(temporary)
+            os.chmod(temporary_path, 0o700)
+            for filename, raw in payload_by_name.items():
+                descriptor = os.open(
+                    temporary_path / filename,
+                    os.O_WRONLY
+                    | os.O_CREAT
+                    | os.O_EXCL
+                    | os.O_CLOEXEC
+                    | os.O_NOFOLLOW,
+                    0o600,
+                )
+                try:
+                    view = memoryview(raw)
+                    while view:
+                        written = os.write(descriptor, view)
+                        if written <= 0:
+                            raise OSError("short allocation replay write")
+                        view = view[written:]
+                    os.fsync(descriptor)
+                finally:
+                    os.close(descriptor)
+            semantic = (
+                allocation_module.validate_preserved_allocator_evidence_semantically(
+                    temporary_path,
+                    files,
+                    production_binding=production_binding,
+                )
+            )
+        if (
+            semantic.attribution is None
+            or semantic.criterion is None
+            or semantic.memory is None
+        ):
+            raise GQADeviceDispatchError(
+                "complete B-012 raw evidence could not be semantically replayed"
+            )
+        attribution = semantic.attribution
+        criterion = semantic.criterion
+        expected_trace_sha256 = attribution.expected_trace_sha256
+        if (
+            type(expected_trace_sha256) is not str
+            or _SHA256_RE.fullmatch(expected_trace_sha256) is None
+        ):
+            raise GQADeviceDispatchError(
+                "semantic allocation replay lacks an expected trace digest"
+            )
+        if attribution.trace_sha256 != hashlib.sha256(
+            raw_evidence.trace_raw
+        ).hexdigest():
+            raise GQADeviceDispatchError(
+                "semantic allocation replay differs from exact trace bytes"
+            )
+        try:
+            witness_payload = _strict_canonical_json_object(
+                raw_evidence.operation_witness_raw,
+                label="allocation operation witness",
+            )
+            witness = allocation_module.OperationWitnessEvidence.from_mapping(
+                witness_payload
+            )
+        except (
+            TypeError,
+            ValueError,
+            allocation_module.AllocationAttributionError,
+        ) as error:
+            raise GQADeviceDispatchError(
+                "allocation operation witness cannot be reconstructed"
+            ) from error
+        if witness.operation_key != operation_key:
+            raise GQADeviceDispatchError(
+                "allocation witness differs from the joined operation key"
+            )
+
+        allocation_events = tuple(
+            Phase3AllocationJoinEventFact(
+                event_index=index,
+                event_class=allocation.event_class.value,
+                requested_bytes=allocation.requested_bytes,
+                allocated_block_bytes=allocation.allocated_block_bytes,
+                triggered_segment_alloc=allocation.triggered_segment_alloc,
+            )
+            for index, allocation in enumerate(attribution.allocations)
+        )
+        cache_shape = witness.reference_before.key_shape
+        cache_storage_bytes = math.prod(cache_shape) * PHASE3_DTYPE_BYTES
+        output_shape = witness.reference_output.shape
+        output_storage_bytes = math.prod(output_shape) * PHASE3_DTYPE_BYTES
+        method_tensors = (
+            Phase3AllocationTensorJoinFact(
+                tensor_index=0,
+                role="native_kv_cache_key",
+                shape=cache_shape,
+                storage_bytes=cache_storage_bytes,
+            ),
+            Phase3AllocationTensorJoinFact(
+                tensor_index=1,
+                role="native_kv_cache_value",
+                shape=witness.reference_before.value_shape,
+                storage_bytes=cache_storage_bytes,
+            ),
+            Phase3AllocationTensorJoinFact(
+                tensor_index=2,
+                role="decode_logits",
+                shape=output_shape,
+                storage_bytes=output_storage_bytes,
+            ),
+        )
+
+        instance = object.__new__(cls)
+        values: dict[str, object] = {
+            "operation_key": operation_key,
+            "production_binding_sha256": production_binding.identity_sha256,
+            "allocation_audit_sha256": hashlib.sha256(
+                raw_evidence.audit_raw
+            ).hexdigest(),
+            "allocator_trace_sha256": attribution.trace_sha256,
+            "expected_allocator_trace_sha256": expected_trace_sha256,
+            "gqa_dispatch_trace_sha256": gqa_dispatch_trace_sha256,
+            "mha_dispatch_trace_sha256": mha_dispatch_trace_sha256,
+            "dispatch_trace_validation_sha256": (
+                dispatch_trace_validation_sha256
+            ),
+            "semantic_failure_reasons": tuple(semantic.failure_reasons),
+            "trace_integrity_errors": tuple(attribution.integrity_errors),
+            "criterion_id": criterion.criterion_id,
+            "criterion_failure_reasons": tuple(criterion.failure_reasons),
+            "criterion_allocation_event_count": criterion.allocation_event_count,
+            "criterion_class_counts": tuple(
+                sorted(criterion.class_counts.items())
+            ),
+            "allocation_events": allocation_events,
+            "method_tensors": method_tensors,
+            "evidence_sha256": "0" * 64,
+        }
+        for name, value in values.items():
+            object.__setattr__(instance, name, value)
+        object.__setattr__(instance, "evidence_sha256", instance._derive_sha256())
+        instance.__post_init__()
+        return instance
+
+    def to_dict(self) -> dict[str, object]:
+        return {**self._payload(), "evidence_sha256": self.evidence_sha256}
+
+
+def combine_phase3_geometry_bound_gqa_allocation_verdict(
+    *,
+    dispatch_audit: Phase3GeometryBoundGQADeviceDispatchAudit,
+    allocation_facts: Phase3AllocationJoinFacts,
+) -> GQAProofEvaluation:
+    """Join independently replayed dispatch/allocation evidence fail closed."""
+
+    if type(dispatch_audit) is not Phase3GeometryBoundGQADeviceDispatchAudit:
+        raise TypeError(
+            "dispatch_audit must be Phase3GeometryBoundGQADeviceDispatchAudit"
+        )
+    if type(allocation_facts) is not Phase3AllocationJoinFacts:
+        raise TypeError("allocation_facts must be Phase3AllocationJoinFacts")
+    if allocation_facts.evidence_sha256 != allocation_facts._derive_sha256():
+        raise GQADeviceDispatchError("allocation join facts were mutated")
+    operation_key = dispatch_audit.point.operation_key
+    if allocation_facts.operation_key != operation_key:
+        raise GQADeviceDispatchError(
+            "dispatch/allocation operation keys differ"
+        )
+    if dispatch_audit.gqa.raw_trace is None or dispatch_audit.mha.raw_trace is None:
+        raise GQADeviceDispatchError("dispatch trace identities are absent")
+    expected_trace_binding = (
+        dispatch_audit.gqa.raw_trace.sha256,
+        dispatch_audit.mha.raw_trace.sha256,
+        dispatch_audit.trace_validation.evidence_sha256,
+    )
+    observed_trace_binding = (
+        allocation_facts.gqa_dispatch_trace_sha256,
+        allocation_facts.mha_dispatch_trace_sha256,
+        allocation_facts.dispatch_trace_validation_sha256,
+    )
+    if observed_trace_binding != expected_trace_binding:
+        raise GQADeviceDispatchError(
+            "allocation facts are not bound to the exact dispatch traces"
+        )
+
+    dispatch = evaluate_geometry_bound_gqa_device_dispatch(
+        point=dispatch_audit.point,
+        gqa=dispatch_audit.gqa,
+        mha=dispatch_audit.mha,
+        gqa_sequence=dispatch_audit.gqa_kernel_sequence,
+        mha_sequence=dispatch_audit.mha_kernel_sequence,
+        source_shape=dispatch_audit.source_shape,
+        explicitly_related_families=set(
+            dispatch_audit.explicitly_related_families
+        ),
+    )
+    expanded_single = dispatch_audit.gqa.byte_evidence.expanded_kv_bytes // 2
+    expanded_combined = dispatch_audit.gqa.byte_evidence.expanded_kv_bytes
+    expanded_sizes = {expanded_single, expanded_combined}
+    expected_expanded_shape = (
+        operation_key.batch_size,
+        PHASE3_NUM_QUERY_HEADS,
+        operation_key.attended_context,
+        PHASE3_HEAD_DIM,
+    )
+    allocation_positive: list[str] = []
+    for event in allocation_facts.allocation_events:
+        if event.event_class == "gqa_expansion":
+            allocation_positive.append(
+                "allocation_event:gqa_expansion:"
+                f"{event.event_index}:{event.requested_bytes}"
+            )
+        for size_kind, size in (
+            ("requested", event.requested_bytes),
+            ("allocated_block", event.allocated_block_bytes),
+        ):
+            if size in expanded_sizes:
+                allocation_positive.append(
+                    "allocation_expanded_kv_size:"
+                    f"{event.event_index}:{size_kind}:{size}"
+                )
+    for tensor in allocation_facts.method_tensors:
+        if tensor.storage_bytes in expanded_sizes:
+            allocation_positive.append(
+                "tensor_expanded_kv_size:"
+                f"{tensor.role}:{tensor.storage_bytes}"
+            )
+        if tensor.shape == expected_expanded_shape:
+            allocation_positive.append(
+                "tensor_expanded_kv_shape:" + tensor.role
+            )
+    positive = tuple(
+        dict.fromkeys(
+            (*dispatch.positive_materialization_evidence, *allocation_positive)
+        )
+    )
+
+    expected_criterion_id = (
+        "phase3_graph_zero_allocation_v1"
+        if operation_key.allocation_execution_mode == "cuda_graph"
+        else "phase3_eager_attributed_ephemeral_v1"
+    )
+    allocation_failures: list[str] = []
+    if (
+        allocation_facts.allocator_trace_sha256
+        != allocation_facts.expected_allocator_trace_sha256
+    ):
+        allocation_failures.append("allocator_trace_sha256_mismatch")
+    allocation_failures.extend(
+        "semantic:" + reason
+        for reason in allocation_facts.semantic_failure_reasons
+    )
+    allocation_failures.extend(
+        "trace_integrity:" + reason
+        for reason in allocation_facts.trace_integrity_errors
+    )
+    allocation_failures.extend(
+        "criterion:" + reason
+        for reason in allocation_facts.criterion_failure_reasons
+    )
+    if any(
+        event.triggered_segment_alloc
+        for event in allocation_facts.allocation_events
+    ):
+        allocation_failures.append("segment_alloc_detected")
+    if allocation_facts.criterion_id != expected_criterion_id:
+        allocation_failures.append("allocation_criterion_id_mismatch")
+    if (
+        operation_key.allocation_execution_mode == "cuda_graph"
+        and allocation_facts.allocation_events
+    ):
+        allocation_failures.append("graph_allocation_event_detected")
+    if allocation_positive:
+        allocation_failures.append("expanded_gqa_allocation_or_tensor_detected")
+    allocation_verified = not allocation_failures
+
+    verdict = classify_gqa_evidence(
+        materialization_evidence=bool(positive),
+        dispatch_verified=dispatch.dispatch_verified,
+        no_replication_kernel_verified=(
+            dispatch.no_replication_kernel_verified
+        ),
+        allocation_verified=allocation_verified,
+        source_verified=dispatch.source_verified,
+        shape_verified=dispatch.shape_verified,
+    )
+    reasons: list[str] = []
+    if positive:
+        reasons.append("positive materialization evidence exists")
+    if not dispatch.dispatch_verified:
+        reasons.append("device dispatch is not fully verified")
+    if not dispatch.no_replication_kernel_verified:
+        reasons.append("no-preceding-materialization proof is incomplete")
+    if not dispatch.source_verified:
+        reasons.append("source proof is incomplete")
+    if not dispatch.shape_verified:
+        reasons.append("shape and storage proof is incomplete")
+    reasons.extend(allocation_failures)
+    if not allocation_verified:
+        reasons.append("allocation-size proof is incomplete")
+    return GQAProofEvaluation(
+        verdict=verdict,
+        dispatch_verified=dispatch.dispatch_verified,
+        no_replication_kernel_verified=(
+            dispatch.no_replication_kernel_verified
+        ),
+        allocation_verified=allocation_verified,
+        source_verified=dispatch.source_verified,
+        shape_verified=dispatch.shape_verified,
+        family_comparison=dispatch.family_comparison,
+        positive_materialization_evidence=positive,
+        reasons=tuple(dict.fromkeys(reasons)),
+    )
 
 
 def revalidate_phase3_geometry_bound_dispatch_audit(
@@ -4509,10 +6507,7 @@ def collect_gqa_mha_device_dispatch(
 
 def collect_phase3_geometry_bound_gqa_mha_device_dispatch(
     *,
-    run_id: str,
-    point_id: str,
-    active_context: int,
-    cache_capacity: int,
+    operation_key: Phase3AuditOperationKey,
     cache_layout_fingerprint: str,
     cache_workspace_bytes: int,
     cache_layer_index: int,
@@ -4541,8 +6536,11 @@ def collect_phase3_geometry_bound_gqa_mha_device_dispatch(
     combined non-materialization verdict can become verified.
     """
 
-    _positive_integer(active_context, "active_context")
-    _positive_integer(cache_capacity, "cache_capacity")
+    if type(operation_key) is not Phase3AuditOperationKey:
+        raise TypeError("operation_key must be Phase3AuditOperationKey")
+    point = Phase3DispatchPointBinding.create(operation_key=operation_key)
+    active_context = point.active_context
+    cache_capacity = point.capacity
     _positive_integer(warmup_count, "warmup_count")
     if not isinstance(is_causal, bool):
         raise TypeError("is_causal must be boolean")
@@ -4576,6 +6574,10 @@ def collect_phase3_geometry_bound_gqa_mha_device_dispatch(
     if bool(related_families) != bool(related_family_policy_sha256):
         raise ValueError(
             "related families and decision-record digest must coexist"
+        )
+    if related_families:
+        raise ValueError(
+            "no checksum-pinned related-family decision is approved"
         )
     relative_root = PurePosixPath(artifact_relative_root)
     if (
@@ -4614,13 +6616,16 @@ def collect_phase3_geometry_bound_gqa_mha_device_dispatch(
         or gqa_query.device != mha_query.device
     ):
         raise GQADeviceDispatchError("geometry-bound held constants differ")
-    point = Phase3DispatchPointBinding.create(
-        run_id=run_id,
-        point_id=point_id,
-        batch_size=int(gqa_query.shape[0]),
-        active_context=active_context,
-        capacity=cache_capacity,
-    )
+    if mha_query is not gqa_query or int(mha_query.data_ptr()) != int(
+        gqa_query.data_ptr()
+    ):
+        raise GQADeviceDispatchError(
+            "GQA/MHA controls must share the exact query tensor"
+        )
+    if int(gqa_query.shape[0]) != point.batch_size:
+        raise GQADeviceDispatchError(
+            "geometry-bound query batch differs from operation key"
+        )
     execution_mode = (
         CUDA_GRAPH_REPLAY_EXECUTION_MODE
         if point.graph_mode == "cuda_graph"
