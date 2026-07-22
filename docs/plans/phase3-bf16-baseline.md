@@ -27,7 +27,7 @@ The baseline uses only:
 - model/tokenizer repository: `meta-llama/Llama-3.1-8B-Instruct`
 - immutable revision: `0e9e39f249a16976918f6564b8830bc894c89659`
 - local source after acquisition:
-  `/home/rockrock/.cache/huggingface/hub/models--meta-llama--Llama-3.1-8B-Instruct/snapshots/0e9e39f249a16976918f6564b8830bc894c89659`
+  `/root/.cache/huggingface/hub/models--meta-llama--Llama-3.1-8B-Instruct/snapshots/0e9e39f249a16976918f6564b8830bc894c89659`
 - loader/reference: Transformers 4.57.6, wheel SHA-256
   `4c9e9de11333ddfe5114bc872c9f370509198acf0b87a832a0ab9458e2bd0550`
 - network policy during execution: local files only
@@ -36,6 +36,7 @@ Frozen hashes:
 
 | Artifact | SHA-256 |
 |---|---|
+| `LICENSE` | `64e1b2889b7892e6bbe7a7ed5bfe6ff793c61f9d584345f8f41cf9f5cb30a369` |
 | `config.json` | `29e4c210b0d6ac178b16b2a255a568bdb23b581e50ca1ef6a6d071dd85704e6e` |
 | `generation_config.json` | `189fb0c0d7fd8a527db217c0a60a0e013f0394cd8800f9697a666a9e75e5f7fd` |
 | `model.safetensors.index.json` | `146776fce3f6db1103aa6f249e65ee5544c5923ce6f971b092eee79aa6e5d37b` |
@@ -54,8 +55,9 @@ high-frequency factor 4, low-frequency factor 1, original context 8192, and
 theta 500000. This exact checkpoint and tokenizer are reserved for later
 quality validation; no quality benchmark executes in Phase 3.
 
-The acquisition stage must validate every hash before B-004 is marked
-resolved. A missing file, access failure, or mismatch records
+The acquisition stage validated every hash and an offline full-checkpoint load,
+as recorded in `docs/evidence/phase3/model-identity.md`; B-004 is resolved. A
+future missing file, access failure, or mismatch records
 `model_access_blocked` or `model_identity_unresolved`; no base-model or other
 checkpoint fallback is permitted. Weights remain outside Git.
 

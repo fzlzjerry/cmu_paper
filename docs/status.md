@@ -8,16 +8,17 @@ requirements; and AGENTS.md. Decision 0005 records precedence.
 
 ## Current state
 
-- Current phase: Phase 2 repository scaffold and experiment contracts complete;
-  Phase 2 status PASS
+- Current phase: Phase 3 identity resolution complete; BF16 baseline
+  implementation is next. Phase 2 status remains PASS.
 - Phase 0 status: PASS
 - Phase 1 remediation status: PASS
 - Next action: execute only the preregistered Phase 3 BF16 baseline task at
   Decision 0007; Phase 4 remains closed
 - Active admission gate: native-host G0 PASS; container-parity G0 remains a
   later E01 requirement before E02
-- Benchmark implementation changes: none; Phase 2 adds validation contracts,
-  not a model, cache, decode runner, CUDA kernel, or timing path
+- Benchmark implementation changes: none yet; the exact Phase 3 model and
+  tokenizer identity is locally verified, but no cache, decode runner, CUDA
+  kernel, or timing path has been implemented at this checkpoint
 - CUDA builds or executions: the new formal E00 run passed extension build,
   native execution, forced PTX/JIT, numerical golden, CUDA Graph, allocation,
   SASS/PTX inspection, and all required Compute Sanitizer lanes
@@ -43,7 +44,7 @@ protocol was preregistered at 6535a6f6a4e5caa53213e917e9fcf8fc9c0f0190,
 and the exact `cuda-nvdisasm-13-0=13.0.85-1` package/tool identity was locked at
 6442ba1f7554ea0ebf0b3bb1a920c94567cab689. New formal run
 `e00-20260722T050632.375718Z-6442ba1f7554-02d5bd32` finalized as immutable PASS
-evidence. B-001 and B-002 are resolved; B-009 and B-010 remain open. No remote
+evidence. B-001, B-002, and B-004 are resolved; B-009 and B-010 remain open. No remote
 is configured.
 
 Phase 2 adds a dependency-free strict schema package, 11 versioned contract
@@ -99,7 +100,7 @@ repository.
 | Phase 0 repository/input audit | PASS | literature manifests; method notes; source lock; decision, risks, blockers, tasks |
 | G0 native-host hardware certification | PASS | `docs/evidence/e00/e00-20260722T050632.375718Z-6442ba1f7554-02d5bd32/`; prior immutable FAIL retained |
 | Phase 2 repository/contracts/tooling | PASS | strict schemas and examples; fail-closed CLI; append-only local writer; 54 Phase 2 tests; repository checks |
-| G1 BF16 baseline | NOT EVALUATED | requires G0 and E01-E04 |
+| G1 BF16 baseline | NOT EVALUATED | exact checkpoint/tokenizer resolved; implementation and bounded admission remain |
 | G2-TQ | NOT EVALUATED | requires E05-E06 |
 | G2-KIVI | NOT EVALUATED | requires E07-E08 |
 | G2-KVQ | NOT EVALUATED | requires E09-E11 |

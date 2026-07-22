@@ -73,6 +73,8 @@ fails closed when unsupported.
      `79e3e522635f3171300913bb421464a87de6222182a0570b9b2ccba2a964b2b4`
    - `tokenizer_config.json` SHA-256:
      `177c7b61e616fecb84c17ce0591acb92c6c4d60e9ac5ababfb940ff23bbcd424`
+   - `LICENSE` SHA-256:
+     `64e1b2889b7892e6bbe7a7ed5bfe6ff793c61f9d584345f8f41cf9f5cb30a369`
 
 4. The expected weight-shard SHA-256 values, in index order, are:
 
@@ -248,8 +250,9 @@ fails closed when unsupported.
 
 ## Consequences
 
-- B-004 can be resolved only after every downloaded byte matches this record
-  and deterministic local loading passes.
+- B-004 is resolved: every downloaded byte matches this record and deterministic
+  offline local loading passed on 2026-07-22. The evidence is recorded in
+  `docs/evidence/phase3/model-identity.md`.
 - The baseline can share exact checkpoint/tokenizer identity with later
   quality validation while quality execution remains locked.
 - The backend has a fail-closed native-GQA route on SM120 and a demonstrated

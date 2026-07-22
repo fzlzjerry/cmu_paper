@@ -78,15 +78,24 @@ class ExampleConfigurationTests(unittest.TestCase):
             observed.add(document_type)
         self.assertEqual(observed, set(expected_types))
 
-    def test_unresolved_identities_are_explicit_not_invented(self) -> None:
+    def test_primary_model_identity_is_exactly_resolved(self) -> None:
         _, raw_model = _example(document_type="model")
         model = parse_config(raw_model)
         self.assertIsInstance(model, ModelIdentity)
-        self.assertEqual(model.resolution.status.value, "unresolved")
-        self.assertIsNone(model.model_id)
-        self.assertIsNone(model.revision)
-        self.assertIsNone(model.config_sha256)
-        self.assertIsNone(model.geometry)
+        self.assertEqual(model.resolution.status.value, "resolved")
+        self.assertEqual(model.model_id, "meta-llama/Llama-3.1-8B-Instruct")
+        self.assertEqual(
+            model.revision, "0e9e39f249a16976918f6564b8830bc894c89659"
+        )
+        self.assertEqual(
+            model.config_sha256,
+            "29e4c210b0d6ac178b16b2a255a568bdb23b581e50ca1ef6a6d071dd85704e6e",
+        )
+        self.assertIsNotNone(model.geometry)
+        assert model.geometry is not None
+        self.assertEqual(model.geometry.num_query_heads, 32)
+        self.assertEqual(model.geometry.num_kv_heads, 8)
+        self.assertEqual(model.geometry.max_context_length, 131072)
 
 
 class StrictConfigurationTests(unittest.TestCase):
