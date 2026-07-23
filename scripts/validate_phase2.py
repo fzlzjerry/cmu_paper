@@ -268,6 +268,10 @@ HOT_PATH_FUNCTIONS = {
         "decode",
     },
     "src/kvbench/runtime/cuda_graph.py": {"replay"},
+    "src/kvbench/runtime/phase3_endpoint_audit.py": {
+        "fixed_step",
+        "growing_step",
+    },
     "src/kvbench/runtime/fixed_l_runner.py": {
         "eager_operation",
     },

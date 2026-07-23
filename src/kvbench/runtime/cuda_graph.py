@@ -96,11 +96,15 @@ def capture_fixed_graph(
     warmup_steps: int = 3,
     device: Any | None = None,
 ) -> CapturedFixedGraph:
-    """Warm on a side stream, capture once, and retain static output storage."""
+    """Optionally warm, capture once, and retain static output storage."""
 
     torch = _torch()
-    if isinstance(warmup_steps, bool) or warmup_steps <= 0:
-        raise ValueError("warmup_steps must be a positive integer")
+    if (
+        isinstance(warmup_steps, bool)
+        or not isinstance(warmup_steps, int)
+        or warmup_steps < 0
+    ):
+        raise ValueError("warmup_steps must be a nonnegative integer")
     selected = torch.device(
         f"cuda:{torch.cuda.current_device()}" if device is None else device
     )
