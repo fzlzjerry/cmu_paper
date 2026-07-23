@@ -65,6 +65,7 @@ from kvbench.schema import (
     ClaimClass,
     ConfigSourceKind,
     GateDisposition,
+    GQAVerdict,
     MeasurementScope,
     MethodConfigFingerprint,
     Phase3CommandSpec,
@@ -915,6 +916,7 @@ def _raw_audit_ingestion_outcome() -> dict[str, Any]:
         "collection_completion_passed": False,
         "semantic_validation_attempted": False,
         "semantic_validation_passed": False,
+        "semantic_operations": [],
         "scientific_completion_passed": False,
         "terminal_eligible": False,
         "status": "not_attempted",
@@ -1012,6 +1014,410 @@ def _validate_worker_evidence_v1(
             raise Phase3CoordinatorError("runtime cache fingerprint differs")
 
 
+
+def _replay_phase3_raw_audit_semantics(
+    *,
+    index: Phase3RawAuditRunIndex,
+    retained: Mapping[str, bytes],
+    execution_source_pin: Phase3ExecutionSourcePin,
+    backend_identity: BF16BackendIdentity,
+    outcome: dict[str, Any],
+) -> None:
+    """Independently derive every B-011/B-012 verdict from retained bytes."""
+
+    from kvbench.runtime.allocation_attribution import (
+        PHASE3_BACKEND_IDENTITY,
+        SplitKCompositeRawInputs,
+        build_phase3_production_allocation_binding,
+    )
+    from kvbench.runtime.gqa_device_dispatch import (
+        Phase3AllocationJoinFacts,
+        Phase3AllocationRawEvidence,
+        combine_phase3_geometry_bound_gqa_allocation_verdict,
+        revalidate_phase3_geometry_bound_dispatch_evidence_from_raw,
+    )
+    from kvbench.runtime.phase3_allocator_controls import (
+        verify_phase3_paired_allocator_controls,
+    )
+
+    if type(execution_source_pin) is not Phase3ExecutionSourcePin:
+        raise Phase3CoordinatorError(
+            "semantic replay requires the pinned execution sources"
+        )
+    if type(backend_identity) is not BF16BackendIdentity:
+        raise Phase3CoordinatorError(
+            "semantic replay requires the frozen backend identity"
+        )
+    outcome["collection_validation_passed"] = True
+    completed = all(
+        record.status == RAW_AUDIT_STATUS_COMPLETED
+        for record in index.records
+    )
+    outcome["collection_completion_passed"] = completed
+    if not completed:
+        outcome.update(
+            {
+                "passed": False,
+                "semantic_validation_pending": False,
+                "scientific_completion_passed": False,
+                "terminal_eligible": False,
+                "status": "ingested_failed_evidence",
+            }
+        )
+        return
+
+    source_bytes = dict(execution_source_pin.source_bytes_by_path)
+    sut_sources = {
+        relative: source_bytes[relative]
+        for relative in REQUIRED_SUT_SOURCES
+    }
+    backend_raw = canonical_json_bytes(backend_identity.to_dict())
+    if backend_raw.decode("utf-8") != PHASE3_BACKEND_IDENTITY:
+        raise Phase3CoordinatorError(
+            "semantic replay backend identities differ"
+        )
+
+    outcome["semantic_validation_attempted"] = True
+    semantic_operations: list[dict[str, Any]] = []
+    dispatch_digests: list[str] = []
+    allocation_digests: list[str] = []
+    output_digests: list[str] = []
+    output_finite: list[bool] = []
+    historical_predecessors: list[str] = []
+    destination_digests: list[str] = []
+    provenance_raw: bytes | None = None
+
+    required_bundle_keys = {
+        "snapshot",
+        "memory_stats_before",
+        "memory_stats_after",
+        "memory_accounting_before",
+        "memory_accounting_after",
+        "operation_witness",
+        "gqa_allocator_control",
+        "mha_allocator_control",
+        "audit_sha256_ledger",
+    }
+    for record in index.records:
+        by_kind = {
+            declaration.kind: retained[declaration.path]
+            for declaration in record.files
+        }
+        try:
+            b011_raw = by_kind["b011_audit"]
+            gqa_raw = by_kind["b011_gqa_chrome_trace"]
+            mha_raw = by_kind["b011_mha_chrome_trace"]
+            allocation_audit_raw = by_kind["b012_allocation_audit"]
+            allocation_bundle_raw = by_kind["b012_allocator_snapshot"]
+            allocation_trace_raw = by_kind["b012_allocator_trace"]
+        except KeyError as error:
+            raise Phase3CoordinatorError(
+                "completed raw audit operation lacks a required file kind"
+            ) from error
+
+        bundle = _parse_canonical_json(
+            allocation_bundle_raw + b"\n",
+            maximum_bytes=len(allocation_bundle_raw) + 1,
+            label="reduced allocator evidence bundle",
+        )
+        if set(bundle) != required_bundle_keys:
+            raise Phase3CoordinatorError(
+                "reduced allocator evidence bundle has the wrong fields"
+            )
+        ledger = bundle["audit_sha256_ledger"]
+        witness = bundle["operation_witness"]
+        gqa_allocator_raw = canonical_json_bytes(
+            bundle["gqa_allocator_control"]
+        )
+        mha_allocator_raw = canonical_json_bytes(
+            bundle["mha_allocator_control"]
+        )
+        if type(ledger) is not str or not isinstance(witness, Mapping):
+            raise Phase3CoordinatorError(
+                "reduced allocator evidence bundle is malformed"
+            )
+        try:
+            allocation_raw = Phase3AllocationRawEvidence(
+                snapshot_raw=canonical_json_bytes(bundle["snapshot"]),
+                trace_raw=allocation_trace_raw,
+                memory_stats_before_raw=canonical_json_bytes(
+                    bundle["memory_stats_before"]
+                ),
+                memory_stats_after_raw=canonical_json_bytes(
+                    bundle["memory_stats_after"]
+                ),
+                memory_accounting_before_raw=canonical_json_bytes(
+                    bundle["memory_accounting_before"]
+                ),
+                memory_accounting_after_raw=canonical_json_bytes(
+                    bundle["memory_accounting_after"]
+                ),
+                operation_witness_raw=canonical_json_bytes(witness),
+                audit_raw=allocation_audit_raw,
+                audit_sha256_ledger_raw=ledger.encode("ascii"),
+            )
+        except (TypeError, UnicodeEncodeError, ValueError) as error:
+            raise Phase3CoordinatorError(
+                "reduced allocator evidence cannot reconstruct raw bytes"
+            ) from error
+
+        operation_key = record.operation
+        dispatch = (
+            revalidate_phase3_geometry_bound_dispatch_evidence_from_raw(
+                b011_audit_raw=b011_raw,
+                operation_key=operation_key,
+                gqa_raw=gqa_raw,
+                mha_raw=mha_raw,
+                backend_identity_raw=backend_raw,
+                source_bytes_by_path=sut_sources,
+            )
+        )
+        assert dispatch.gqa.raw_trace is not None
+        assert dispatch.mha.raw_trace is not None
+        paired = verify_phase3_paired_allocator_controls(
+            gqa_raw=gqa_allocator_raw,
+            mha_control_raw=mha_allocator_raw,
+            operation_key=operation_key,
+            gqa_dispatch_trace_raw=gqa_raw,
+            mha_dispatch_trace_raw=mha_raw,
+        )
+        if not paired.passed:
+            raise Phase3CoordinatorError(
+                "raw paired allocator controls did not verify"
+            )
+        split_k_inputs = SplitKCompositeRawInputs.from_raw_bytes(
+            gqa_dispatch_trace=gqa_raw,
+            mha_dispatch_trace=mha_raw,
+            gqa_allocator_control=gqa_allocator_raw,
+            mha_allocator_control=mha_allocator_raw,
+            split_k_pair_multiplicity=(
+                paired.split_k_pair_multiplicity
+            ),
+        )
+        production_binding = build_phase3_production_allocation_binding(
+            operation_key=operation_key,
+            backend_identity=PHASE3_BACKEND_IDENTITY,
+            split_k_raw_inputs=split_k_inputs,
+        )
+        allocation_facts = Phase3AllocationJoinFacts.from_raw_evidence(
+            operation_key=operation_key,
+            production_binding=production_binding,
+            raw_evidence=allocation_raw,
+            gqa_dispatch_trace_sha256=dispatch.gqa.raw_trace.sha256,
+            mha_dispatch_trace_sha256=dispatch.mha.raw_trace.sha256,
+            dispatch_trace_validation_sha256=(
+                dispatch.trace_validation.evidence_sha256
+            ),
+        )
+        combined = combine_phase3_geometry_bound_gqa_allocation_verdict(
+            dispatch_audit=dispatch,
+            allocation_facts=allocation_facts,
+        )
+
+        measured_output = witness.get("measured_output")
+        measured_after = witness.get("measured_after")
+        measured_before = witness.get("measured_before")
+        if (
+            not isinstance(measured_output, Mapping)
+            or not isinstance(measured_after, Mapping)
+            or not isinstance(measured_before, Mapping)
+            or type(measured_output.get("sha256")) is not str
+            or type(measured_output.get("finite")) is not bool
+            or type(
+                measured_after.get("destination_slot_sha256")
+            ) is not str
+            or type(
+                measured_before.get("historical_prefix_sha256")
+            ) is not str
+        ):
+            raise Phase3CoordinatorError(
+                "allocator witness lacks session-chain observations"
+            )
+        dispatch_digest = sha256_hex(b011_raw)
+        allocation_digest = sha256_hex(allocation_audit_raw)
+        dispatch_digests.append(dispatch_digest)
+        allocation_digests.append(allocation_digest)
+        output_digests.append(measured_output["sha256"])
+        output_finite.append(measured_output["finite"])
+        historical_predecessors.append(
+            measured_before["historical_prefix_sha256"]
+        )
+        destination_digests.append(
+            measured_after["destination_slot_sha256"]
+        )
+        semantic_operations.append(
+            {
+                "operation_fingerprint_sha256": (
+                    operation_key.operation_fingerprint_sha256
+                ),
+                "dispatch_audit_sha256": dispatch_digest,
+                "allocation_audit_sha256": allocation_digest,
+                "gqa_verdict": combined.verdict.value,
+                "gqa_reasons": list(combined.reasons),
+                "device_kernel_families": {
+                    "gqa": dispatch.gqa_kernel_sequence.family,
+                    "mha_control": dispatch.mha_kernel_sequence.family,
+                },
+                "allocation_criterion_id": (
+                    allocation_facts.criterion_id
+                ),
+                "allocation_event_count": (
+                    allocation_facts.criterion_allocation_event_count
+                ),
+                "allocation_class_counts": dict(
+                    allocation_facts.criterion_class_counts
+                ),
+                "allocation_failure_reasons": list(
+                    allocation_facts.criterion_failure_reasons
+                ),
+                "allocation_join_sha256": (
+                    allocation_facts.evidence_sha256
+                ),
+                "paired_allocator_control_sha256": {
+                    "gqa": sha256_hex(gqa_allocator_raw),
+                    "mha_control": sha256_hex(mha_allocator_raw),
+                },
+                "split_k_pair_multiplicity": [
+                    {
+                        "num_splits": splits,
+                        "pair_count": count,
+                    }
+                    for splits, count in (
+                        paired.split_k_pair_multiplicity
+                    )
+                ],
+            }
+        )
+        if (
+            combined.verdict
+            is not GQAVerdict.NONMATERIALIZATION_VERIFIED
+        ):
+            outcome["semantic_operations"] = semantic_operations
+            raise Phase3CoordinatorError(
+                "raw-derived GQA non-materialization did not verify"
+            )
+        if record.operation.decode_step == 0:
+            provenance_raw = by_kind.get(
+                "phase3_session_provenance"
+            )
+
+    if provenance_raw is None:
+        raise Phase3CoordinatorError(
+            "completed raw audit run lacks session provenance"
+        )
+    provenance = _parse_canonical_json(
+        provenance_raw + b"\n",
+        maximum_bytes=len(provenance_raw) + 1,
+        label="Phase 3 session provenance",
+    )
+    expected_provenance_keys = {
+        "schema_version",
+        "receipt_sha256",
+        "cache_pointers",
+        "cache_layout_fingerprint",
+        "operation_fingerprints",
+        "dispatch_audit_sha256",
+        "allocation_audit_sha256",
+        "audit_output_sha256",
+        "audit_output_finite",
+        "graph_retained",
+        "prefix_sha256",
+        "history_chain_sha256",
+    }
+    receipt_sha256 = provenance.get("receipt_sha256")
+    cache_pointers = provenance.get("cache_pointers")
+    prefix_sha256 = provenance.get("prefix_sha256")
+    if (
+        set(provenance) != expected_provenance_keys
+        or provenance.get("schema_version")
+        != "kvbench-phase3-endpoint-session-1.0.0"
+        or type(receipt_sha256) is not str
+        or len(receipt_sha256) != 64
+        or any(
+            character not in "0123456789abcdef"
+            for character in receipt_sha256
+        )
+        or not isinstance(cache_pointers, Mapping)
+        or set(cache_pointers)
+        != {
+            "keys_data_ptr",
+            "values_data_ptr",
+            "keys_storage_ptr",
+            "values_storage_ptr",
+        }
+        or any(
+            type(value) is not int or value <= 0
+            for value in cache_pointers.values()
+        )
+        or provenance.get("cache_layout_fingerprint")
+        != index.records[0].operation.cache_layout_fingerprint
+        or provenance.get("operation_fingerprints")
+        != [
+            record.operation.operation_fingerprint_sha256
+            for record in index.records
+        ]
+        or provenance.get("dispatch_audit_sha256")
+        != dispatch_digests
+        or provenance.get("allocation_audit_sha256")
+        != allocation_digests
+        or provenance.get("audit_output_sha256") != output_digests
+        or provenance.get("audit_output_finite") != output_finite
+        or output_finite != [True] * len(index.records)
+        or provenance.get("graph_retained")
+        is not (
+            index.records[0].operation.graph_mode.value
+            == "cuda_graph"
+        )
+        or type(prefix_sha256) is not str
+        or len(prefix_sha256) != 64
+    ):
+        raise Phase3CoordinatorError(
+            "session provenance differs from raw-derived operation evidence"
+        )
+
+    chain = prefix_sha256
+    for predecessor, destination in zip(
+        historical_predecessors,
+        destination_digests,
+        strict=True,
+    ):
+        if predecessor != chain:
+            raise Phase3CoordinatorError(
+                "allocator witness history chain is discontinuous"
+            )
+        chain = hashlib.sha256(
+            f"{chain}:{destination}".encode("ascii")
+        ).hexdigest()
+    if provenance.get("history_chain_sha256") != chain:
+        raise Phase3CoordinatorError(
+            "session provenance history chain differs"
+        )
+
+    outcome["semantic_operations"] = semantic_operations
+    terminal_eligible = bool(
+        outcome.get("process_audit_passed") is True
+        and outcome.get("commitment_validation_passed") is True
+        and outcome.get(
+            "execution_source_revalidated_after_worker_exit"
+        )
+        is True
+    )
+    outcome.update(
+        {
+            "passed": terminal_eligible,
+            "semantic_validation_passed": True,
+            "semantic_validation_pending": False,
+            "scientific_completion_passed": True,
+            "terminal_eligible": terminal_eligible,
+            "status": (
+                "validated"
+                if terminal_eligible
+                else "semantic_validated_transport_incomplete"
+            ),
+            "failure_reason": None,
+        }
+    )
+
 def _ingest_worker_evidence_v2(
     *,
     evidence: Mapping[str, Any],
@@ -1022,6 +1428,8 @@ def _ingest_worker_evidence_v2(
     expected_operations: tuple[Phase3AuditOperationKey, ...],
     run: Any,
     outcome: dict[str, Any],
+    execution_source_pin: Phase3ExecutionSourcePin | None = None,
+    backend_identity: BF16BackendIdentity | None = None,
 ) -> Phase3RawAuditRunIndex:
     """Validate the minimal v2 envelope and append its pinned raw bytes once."""
 
@@ -1118,6 +1526,40 @@ def _ingest_worker_evidence_v2(
             "failure_reason": None,
         }
     )
+    if (execution_source_pin is None) != (backend_identity is None):
+        raise Phase3CoordinatorError(
+            "semantic replay inputs are incomplete"
+        )
+    if execution_source_pin is not None and backend_identity is not None:
+        try:
+            _replay_phase3_raw_audit_semantics(
+                index=index,
+                retained=retained,
+                execution_source_pin=execution_source_pin,
+                backend_identity=backend_identity,
+                outcome=outcome,
+            )
+        except BaseException as error:
+            failure_reason = (
+                f"{type(error).__name__}: "
+                f"{' '.join(str(error).split())}"
+            )[:1000]
+            outcome.update(
+                {
+                    "passed": False,
+                    "semantic_validation_pending": False,
+                    "semantic_validation_passed": False,
+                    "scientific_completion_passed": False,
+                    "terminal_eligible": False,
+                    "status": "semantic_validation_failed",
+                    "failure_reason": failure_reason,
+                }
+            )
+            if isinstance(error, Phase3CoordinatorError):
+                raise
+            raise Phase3CoordinatorError(
+                "raw-audit semantic replay failed"
+            ) from error
     return index
 
 
@@ -2428,6 +2870,8 @@ def _run_point(
                 expected_operations=expected_raw_audit_operations,
                 run=run,
                 outcome=raw_audit_outcome,
+                execution_source_pin=execution_source_pin,
+                backend_identity=backend,
             )
             worker_evidence_valid = True
         except BaseException as error:

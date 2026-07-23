@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import gc
+import hashlib
 import importlib
 import json
 import os
 from pathlib import Path
 import stat
 import sys
+import tempfile
 import time
 import traceback
 from typing import Any
@@ -27,6 +29,12 @@ from kvbench.runtime.process_supervision import (
 )
 from kvbench.runtime.phase3_audit_operation import Phase3AuditOperationKey
 from kvbench.runtime.phase3_raw_audit_evidence import (
+    PHASE3_RAW_AUDIT_OPERATION_SCHEMA_VERSION,
+    PHASE3_RAW_AUDIT_SESSION_PROVENANCE_KIND,
+    RAW_AUDIT_STATUS_COMPLETED,
+    RAW_AUDIT_STATUS_FAILED,
+    Phase3RawAuditFile,
+    Phase3RawAuditOperationRecord,
     Phase3RawAuditRunIndex,
     parse_phase3_raw_audit_run_index_bytes,
 )
@@ -40,6 +48,7 @@ from kvbench.runtime.phase3_worker_channels import (
     require_phase3_raw_audit_measurement_admission,
 )
 from kvbench.schema import (
+    GQAVerdict,
     GraphMode,
     Phase3WorkerResult,
     RunStatus,
@@ -566,22 +575,6 @@ def _deterministic_ids(
     return (values + offset) % 120_000 + 1_000
 
 
-def _gqa_passed(runtime: dict[str, Any]) -> bool:
-    source = runtime["gqa_source"]
-    geometry = runtime["gqa_cache_geometry"]
-    operators = runtime.get("gqa_operators", [runtime.get("gqa_operator")])
-    return bool(
-        source["passed"]
-        and geometry["uses_kv_head_geometry"]
-        and not geometry["query_head_storage_detected"]
-        and operators
-        and all(item is not None and item["passed"] for item in operators)
-        and runtime["mha_control"]["passed"]
-        and runtime["backend"]["backend_name"] == "FLASH_ATTENTION"
-        and runtime["prefill_backend"]["backend_name"] == "FLASH_ATTENTION"
-    )
-
-
 def _classify_runtime(
     *,
     point: Any,
@@ -604,20 +597,47 @@ def _classify_runtime(
         ):
             return RunStatus.GRAPH_REPLAY_FAILED, "runner graph replay evidence failed"
     if point.runner_kind is RunnerKind.FIXED_L:
-        if not runtime["historical_cache_unchanged"] or not runtime["cache_pointers_stable"]:
-            return RunStatus.STATE_DRIFT_DETECTED, "fixed-L cache state drift detected"
-    elif not runtime["cache_pointers_stable"]:
-        return RunStatus.STATE_DRIFT_DETECTED, "growing cache pointer drift detected"
+        if (
+            not runtime["historical_cache_unchanged"]
+            or not runtime["cache_pointers_stable"]
+        ):
+            return (
+                RunStatus.STATE_DRIFT_DETECTED,
+                "fixed-L cache state drift detected",
+            )
+        expected_audits = 1
+    else:
+        if (
+            not runtime["historical_cache_unchanged"]
+            or not runtime["cache_pointers_stable"]
+        ):
+            return (
+                RunStatus.STATE_DRIFT_DETECTED,
+                "growing cache state drift detected",
+            )
+        expected_audits = point.output_steps
     if not runtime["output_finite"]:
-        return RunStatus.NUMERICAL_FAILED, "actual admission output was non-finite"
-    if not _gqa_passed(runtime):
-        return RunStatus.GQA_MATERIALIZATION_DETECTED, "GQA non-materialization audit failed"
-    if "error" in runtime["telemetry_before"] or "error" in runtime["telemetry_after"]:
-        return RunStatus.RUNTIME_FAILED, "required telemetry snapshot unavailable"
-    if not runtime["allocation"]["passed"]:
-        return RunStatus.ALLOCATION_FAILED, (
-            runtime["allocation"].get("failure_reason")
-            or "measured-region allocation audit failed"
+        return (
+            RunStatus.NUMERICAL_FAILED,
+            "actual admission output was non-finite",
+        )
+    if (
+        runtime.get("audit_evidence_source")
+        != "checksum_bound_raw_audit_index"
+        or runtime.get("audit_operation_count") != expected_audits
+        or runtime.get("session_state") != "measured"
+    ):
+        return (
+            RunStatus.RUNTIME_FAILED,
+            "runner did not consume the admitted endpoint session",
+        )
+    if (
+        "error" in runtime["telemetry_before"]
+        or "error" in runtime["telemetry_after"]
+    ):
+        return (
+            RunStatus.RUNTIME_FAILED,
+            "required telemetry snapshot unavailable",
         )
     return RunStatus.COMPLETED, None
 
@@ -685,23 +705,616 @@ def _phase3_raw_audit_producer_bindings(
     prefix_input_ids: Any,
     decode_input_ids: Any,
 ) -> tuple[
-    tuple[Phase3AuditOperationKey, RawAuditOperationProducer],
-    ...,
+    Any,
+    tuple[
+        tuple[Phase3AuditOperationKey, RawAuditOperationProducer],
+        ...,
+    ],
 ]:
-    """Return production producer bindings supplied by endpoint integration."""
+    """Build one endpoint session and its concrete raw-audit producers."""
 
-    del (
-        expected_operations,
-        torch,
-        device,
-        loaded,
-        point,
-        prefix_input_ids,
-        decode_input_ids,
+    from kvbench.runtime.allocation_attribution import (
+        PHASE3_BACKEND_IDENTITY,
+        SplitKCompositeRawInputs,
+        build_phase3_production_allocation_binding,
+        collect_cuda_allocation_attribution,
     )
-    raise WorkerProtocolError(
-        "production Phase 3 raw-audit producer API is not installed"
+    from kvbench.runtime.backend import backend_identity
+    from kvbench.runtime.gqa_device_dispatch import (
+        REQUIRED_SUT_SOURCES,
+        Phase3AllocationJoinFacts,
+        Phase3AllocationRawEvidence,
+        collect_phase3_geometry_bound_gqa_mha_device_dispatch,
+        combine_phase3_geometry_bound_gqa_allocation_verdict,
+        phase3_geometry_bound_dispatch_evidence_bytes,
     )
+    from kvbench.runtime.phase3_allocator_controls import (
+        collect_phase3_paired_allocator_controls,
+        verify_phase3_paired_allocator_controls,
+    )
+    from kvbench.runtime.phase3_endpoint_audit import (
+        build_phase3_endpoint_session,
+    )
+
+    del point
+    session = build_phase3_endpoint_session(
+        loaded=loaded,
+        operation_keys=expected_operations,
+        prefix_input_ids=prefix_input_ids,
+        decode_input_ids=decode_input_ids,
+    )
+    repository_root = Path(PHASE3_REPOSITORY_ROOT)
+    source_paths = tuple(Path(item) for item in REQUIRED_SUT_SOURCES)
+    runtime_backend_raw = canonical_json_bytes(backend_identity())
+    if runtime_backend_raw.decode("utf-8") != PHASE3_BACKEND_IDENTITY:
+        raise WorkerProtocolError(
+            "allocation and dispatch backend identities differ"
+        )
+
+    built_records: dict[str, Phase3RawAuditOperationRecord] = {}
+    collection_root: Path | None = None
+    collection_complete = False
+
+    def canonical_object(raw: bytes, *, label: str) -> object:
+        try:
+            value = json.loads(raw.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError) as error:
+            raise WorkerProtocolError(
+                f"{label} is not canonical JSON"
+            ) from error
+        if canonical_json_bytes(value) != raw:
+            raise WorkerProtocolError(f"{label} is not canonical JSON")
+        return value
+
+    def publish_file(
+        *,
+        root: Path,
+        step: int,
+        filename: str,
+        kind: str,
+        payload: bytes,
+    ) -> Phase3RawAuditFile:
+        step_directory = root / f"step-{step:04d}"
+        if not step_directory.exists():
+            step_directory.mkdir(mode=0o700)
+        target = step_directory / filename
+        try:
+            publish_bytes_no_replace(target, payload)
+        except ProcessSupervisionError as error:
+            raise WorkerProtocolError(
+                "raw-audit file publication failed"
+            ) from error
+        return Phase3RawAuditFile.from_bytes(
+            path=target.relative_to(root).as_posix(),
+            kind=kind,
+            payload=payload,
+        )
+
+    def allocation_raw_evidence(
+        staging: Path,
+        collected: Any,
+        *,
+        gqa_allocator_control_raw: bytes,
+        mha_allocator_control_raw: bytes,
+    ) -> tuple[Phase3AllocationRawEvidence, bytes]:
+        files = collected.raw_files
+
+        def read(name: str) -> bytes:
+            payload = (staging / name).read_bytes()
+            if not payload:
+                raise WorkerProtocolError(
+                    "allocator evidence file is empty"
+                )
+            return payload
+
+        snapshot_raw = read(files.snapshot_file)
+        trace_raw = read(files.trace_file)
+        stats_before_raw = read(files.memory_stats_before_file)
+        stats_after_raw = read(files.memory_stats_after_file)
+        accounting_before_raw = read(files.memory_accounting_before_file)
+        accounting_after_raw = read(files.memory_accounting_after_file)
+        witness_raw = read(files.operation_witness_file)
+        audit_raw = read(files.audit_file)
+        ledger_raw = read(files.audit_sha256_file)
+        evidence = Phase3AllocationRawEvidence(
+            snapshot_raw=snapshot_raw,
+            trace_raw=trace_raw,
+            memory_stats_before_raw=stats_before_raw,
+            memory_stats_after_raw=stats_after_raw,
+            memory_accounting_before_raw=accounting_before_raw,
+            memory_accounting_after_raw=accounting_after_raw,
+            operation_witness_raw=witness_raw,
+            audit_raw=audit_raw,
+            audit_sha256_ledger_raw=ledger_raw,
+        )
+        bundle = canonical_json_bytes(
+            {
+                "snapshot": canonical_object(
+                    snapshot_raw,
+                    label="allocator snapshot",
+                ),
+                "memory_stats_before": canonical_object(
+                    stats_before_raw,
+                    label="allocator memory stats before",
+                ),
+                "memory_stats_after": canonical_object(
+                    stats_after_raw,
+                    label="allocator memory stats after",
+                ),
+                "memory_accounting_before": canonical_object(
+                    accounting_before_raw,
+                    label="allocator accounting before",
+                ),
+                "memory_accounting_after": canonical_object(
+                    accounting_after_raw,
+                    label="allocator accounting after",
+                ),
+                "operation_witness": canonical_object(
+                    witness_raw,
+                    label="allocator operation witness",
+                ),
+                "gqa_allocator_control": canonical_object(
+                    gqa_allocator_control_raw,
+                    label="GQA allocator control",
+                ),
+                "mha_allocator_control": canonical_object(
+                    mha_allocator_control_raw,
+                    label="MHA allocator control",
+                ),
+                "audit_sha256_ledger": ledger_raw.decode("ascii"),
+            }
+        )
+        return evidence, bundle
+
+    def preserve_partial_files(
+        *,
+        root: Path,
+        step: int,
+        directories: tuple[tuple[str, Path], ...],
+        error: BaseException,
+        existing: list[Phase3RawAuditFile],
+    ) -> tuple[Phase3RawAuditFile, ...]:
+        declarations = list(existing)
+        step_directory = root / f"step-{step:04d}"
+        if not step_directory.exists():
+            step_directory.mkdir(mode=0o700)
+        partial_directory = step_directory / "partial"
+        if not partial_directory.exists():
+            partial_directory.mkdir(mode=0o700)
+        counter = 0
+        for label, directory in directories:
+            if not directory.is_dir():
+                continue
+            for source in sorted(directory.rglob("*")):
+                if not source.is_file():
+                    continue
+                payload = source.read_bytes()
+                if not payload:
+                    continue
+                filename = f"{counter:03d}-{label}-{source.name}"
+                target = partial_directory / filename
+                publish_bytes_no_replace(target, payload)
+                declarations.append(
+                    Phase3RawAuditFile.from_bytes(
+                        path=target.relative_to(root).as_posix(),
+                        kind=f"partial_{counter:03d}",
+                        payload=payload,
+                    )
+                )
+                counter += 1
+        error_payload = canonical_json_bytes(
+            {
+                "error_type": type(error).__name__,
+                "reason": _safe_reason(error),
+                "step": step,
+            }
+        )
+        error_target = partial_directory / "error.json"
+        publish_bytes_no_replace(error_target, error_payload)
+        declarations.append(
+            Phase3RawAuditFile.from_bytes(
+                path=error_target.relative_to(root).as_posix(),
+                kind="partial_error",
+                payload=error_payload,
+            )
+        )
+        return tuple(
+            sorted(
+                declarations,
+                key=lambda item: (item.kind, item.path),
+            )
+        )
+
+    def collect_step(
+        root: Path,
+        step: int,
+    ) -> Phase3RawAuditOperationRecord:
+        operation_key = expected_operations[step]
+        declarations: list[Phase3RawAuditFile] = []
+        with tempfile.TemporaryDirectory(
+            prefix=f"kvbench-phase3-dispatch-{step:04d}-",
+            dir="/tmp",
+        ) as dispatch_name, tempfile.TemporaryDirectory(
+            prefix=f"kvbench-phase3-allocation-{step:04d}-",
+            dir="/tmp",
+        ) as allocation_name:
+            dispatch_directory = Path(dispatch_name)
+            allocation_directory = Path(allocation_name)
+            os.chmod(dispatch_directory, 0o700)
+            os.chmod(allocation_directory, 0o700)
+            try:
+                audit_call = session.audit_call(step)
+                gqa_key, gqa_value = session.gqa_cache_views(step)
+                query = torch.zeros(
+                    (
+                        operation_key.batch_size,
+                        32,
+                        1,
+                        128,
+                    ),
+                    dtype=torch.bfloat16,
+                    device=device,
+                )
+                mha_key = torch.zeros(
+                    (
+                        operation_key.batch_size,
+                        32,
+                        operation_key.attended_context,
+                        128,
+                    ),
+                    dtype=torch.bfloat16,
+                    device=device,
+                )
+                mha_value = torch.zeros_like(mha_key)
+                dispatch_audit = (
+                    collect_phase3_geometry_bound_gqa_mha_device_dispatch(
+                        operation_key=operation_key,
+                        cache_layout_fingerprint=(
+                            session.cache.layout_fingerprint()
+                        ),
+                        cache_workspace_bytes=session.cache.workspace_bytes,
+                        cache_layer_index=0,
+                        cache_key_backing=session.cache.keys,
+                        cache_value_backing=session.cache.values,
+                        gqa_query=query,
+                        gqa_key_view=gqa_key,
+                        gqa_value_view=gqa_value,
+                        mha_query=query,
+                        mha_key=mha_key,
+                        mha_value=mha_value,
+                        output_directory=dispatch_directory,
+                        artifact_relative_root=f"step-{step:04d}",
+                        source_root=repository_root,
+                        source_paths=source_paths,
+                        is_causal=False,
+                        scale=128**-0.5,
+                        warmup_count=3,
+                    )
+                )
+                b011_raw = (
+                    phase3_geometry_bound_dispatch_evidence_bytes(
+                        dispatch_audit
+                    )
+                )
+                (dispatch_directory / "dispatch-audit.json").write_bytes(
+                    b011_raw
+                )
+                gqa_trace_raw = (
+                    dispatch_directory
+                    / "gqa.geometry.chrome.json"
+                ).read_bytes()
+                mha_trace_raw = (
+                    dispatch_directory
+                    / "mha.geometry.chrome.json"
+                ).read_bytes()
+                gqa_allocator_raw, mha_allocator_raw = (
+                    collect_phase3_paired_allocator_controls(
+                        operation_key=operation_key,
+                        query=query,
+                        gqa_key=gqa_key,
+                        gqa_value=gqa_value,
+                        mha_key=mha_key,
+                        mha_value=mha_value,
+                        gqa_dispatch_trace_raw=gqa_trace_raw,
+                        mha_dispatch_trace_raw=mha_trace_raw,
+                    )
+                )
+                paired = verify_phase3_paired_allocator_controls(
+                    gqa_raw=gqa_allocator_raw,
+                    mha_control_raw=mha_allocator_raw,
+                    operation_key=operation_key,
+                    gqa_dispatch_trace_raw=gqa_trace_raw,
+                    mha_dispatch_trace_raw=mha_trace_raw,
+                )
+                if not paired.passed:
+                    raise WorkerProtocolError(
+                        "paired allocator controls did not verify"
+                    )
+                (
+                    dispatch_directory / "gqa.allocator-control.json"
+                ).write_bytes(gqa_allocator_raw)
+                (
+                    dispatch_directory / "mha.allocator-control.json"
+                ).write_bytes(mha_allocator_raw)
+                split_k_inputs = SplitKCompositeRawInputs.from_raw_bytes(
+                    gqa_dispatch_trace=gqa_trace_raw,
+                    mha_dispatch_trace=mha_trace_raw,
+                    gqa_allocator_control=gqa_allocator_raw,
+                    mha_allocator_control=mha_allocator_raw,
+                    split_k_pair_multiplicity=(
+                        paired.split_k_pair_multiplicity
+                    ),
+                )
+                del query, mha_key, mha_value, gqa_key, gqa_value
+                gc.collect()
+                torch.cuda.synchronize(device=device)
+
+                production_binding = (
+                    build_phase3_production_allocation_binding(
+                        operation_key=operation_key,
+                        backend_identity=PHASE3_BACKEND_IDENTITY,
+                        split_k_raw_inputs=split_k_inputs,
+                    )
+                )
+                collected = collect_cuda_allocation_attribution(
+                    audit_call.operation,
+                    production_binding=production_binding,
+                    staging_directory=allocation_directory,
+                    operation_witness=audit_call.operation_witness,
+                    warmup_operation=audit_call.warmup_operation,
+                    prepare_operation=audit_call.prepare_operation,
+                    device=device,
+                )
+                raw_allocation, allocation_bundle = (
+                    allocation_raw_evidence(
+                        allocation_directory,
+                        collected,
+                        gqa_allocator_control_raw=gqa_allocator_raw,
+                        mha_allocator_control_raw=mha_allocator_raw,
+                    )
+                )
+                facts = Phase3AllocationJoinFacts.from_raw_evidence(
+                    operation_key=operation_key,
+                    production_binding=production_binding,
+                    raw_evidence=raw_allocation,
+                    gqa_dispatch_trace_sha256=(
+                        dispatch_audit.gqa.raw_trace.sha256
+                    ),
+                    mha_dispatch_trace_sha256=(
+                        dispatch_audit.mha.raw_trace.sha256
+                    ),
+                    dispatch_trace_validation_sha256=(
+                        dispatch_audit.trace_validation.evidence_sha256
+                    ),
+                )
+                combined = (
+                    combine_phase3_geometry_bound_gqa_allocation_verdict(
+                        dispatch_audit=dispatch_audit,
+                        allocation_facts=facts,
+                    )
+                )
+                if (
+                    combined.verdict
+                    is not GQAVerdict.NONMATERIALIZATION_VERIFIED
+                ):
+                    raise WorkerProtocolError(
+                        "combined GQA evidence did not verify"
+                    )
+                measured_output = (
+                    collected.operation_witness.measured_output
+                )
+                if measured_output is None:
+                    raise WorkerProtocolError(
+                        "allocation audit lacks measured output witness"
+                    )
+                allocation_audit_raw = raw_allocation.audit_raw
+                session.record_audit(
+                    step,
+                    dispatch_audit_sha256=hashlib.sha256(
+                        b011_raw
+                    ).hexdigest(),
+                    allocation_audit_sha256=hashlib.sha256(
+                        allocation_audit_raw
+                    ).hexdigest(),
+                    destination_slot_sha256=(
+                        collected.operation_witness.measured_after
+                        .destination_slot_sha256
+                    ),
+                    output_sha256=measured_output.sha256,
+                    output_finite=measured_output.finite,
+                    locally_verified=True,
+                )
+                payloads = (
+                    (
+                        "b011_audit",
+                        "dispatch-audit.json",
+                        b011_raw,
+                    ),
+                    (
+                        "b011_gqa_chrome_trace",
+                        "gqa.geometry.chrome.json",
+                        gqa_trace_raw,
+                    ),
+                    (
+                        "b011_mha_chrome_trace",
+                        "mha.geometry.chrome.json",
+                        mha_trace_raw,
+                    ),
+                    (
+                        "b012_allocation_audit",
+                        "allocation-audit.json",
+                        allocation_audit_raw,
+                    ),
+                    (
+                        "b012_allocator_snapshot",
+                        "allocator-evidence.json",
+                        allocation_bundle,
+                    ),
+                    (
+                        "b012_allocator_trace",
+                        "allocator-trace.json",
+                        raw_allocation.trace_raw,
+                    ),
+                )
+                for kind, filename, payload in payloads:
+                    declarations.append(
+                        publish_file(
+                            root=root,
+                            step=step,
+                            filename=filename,
+                            kind=kind,
+                            payload=payload,
+                        )
+                    )
+                return Phase3RawAuditOperationRecord(
+                    schema_version=(
+                        PHASE3_RAW_AUDIT_OPERATION_SCHEMA_VERSION
+                    ),
+                    operation=operation_key,
+                    status=RAW_AUDIT_STATUS_COMPLETED,
+                    failure_reason=None,
+                    files=tuple(
+                        sorted(
+                            declarations,
+                            key=lambda item: (item.kind, item.path),
+                        )
+                    ),
+                )
+            except BaseException as error:
+                partial = preserve_partial_files(
+                    root=root,
+                    step=step,
+                    directories=(
+                        ("dispatch", dispatch_directory),
+                        ("allocation", allocation_directory),
+                    ),
+                    error=error,
+                    existing=declarations,
+                )
+                return Phase3RawAuditOperationRecord(
+                    schema_version=(
+                        PHASE3_RAW_AUDIT_OPERATION_SCHEMA_VERSION
+                    ),
+                    operation=operation_key,
+                    status=RAW_AUDIT_STATUS_FAILED,
+                    failure_reason="operation_audit_failed",
+                    files=partial,
+                )
+
+    def collect_all(root: Path) -> None:
+        nonlocal collection_root, collection_complete
+        if collection_complete:
+            if root != collection_root:
+                raise WorkerProtocolError(
+                    "raw-audit producer root changed"
+                )
+            return
+        collection_root = root
+        failed = False
+        for step, operation in enumerate(expected_operations):
+            record = collect_step(root, step)
+            built_records[
+                operation.operation_fingerprint_sha256
+            ] = record
+            if record.status == RAW_AUDIT_STATUS_FAILED:
+                failed = True
+                break
+        if failed:
+            collection_complete = True
+            return
+
+        def release_audit_buffers() -> None:
+            gc.collect()
+            torch.cuda.synchronize(device=device)
+
+        try:
+            session.finish_audits(
+                release_audit_buffers=release_audit_buffers
+            )
+            provenance_raw = canonical_json_bytes(
+                session.provenance_payload()
+            )
+            provenance_file = publish_file(
+                root=root,
+                step=0,
+                filename="session-provenance.json",
+                kind=PHASE3_RAW_AUDIT_SESSION_PROVENANCE_KIND,
+                payload=provenance_raw,
+            )
+            first = expected_operations[0]
+            first_record = built_records[
+                first.operation_fingerprint_sha256
+            ]
+            built_records[
+                first.operation_fingerprint_sha256
+            ] = Phase3RawAuditOperationRecord(
+                schema_version=(
+                    PHASE3_RAW_AUDIT_OPERATION_SCHEMA_VERSION
+                ),
+                operation=first,
+                status=RAW_AUDIT_STATUS_COMPLETED,
+                failure_reason=None,
+                files=tuple(
+                    sorted(
+                        (*first_record.files, provenance_file),
+                        key=lambda item: (item.kind, item.path),
+                    )
+                ),
+            )
+        except BaseException as error:
+            last = expected_operations[-1]
+            last_record = built_records[
+                last.operation_fingerprint_sha256
+            ]
+            failure_file = publish_file(
+                root=root,
+                step=last.decode_step,
+                filename="session-finalization-failure.json",
+                kind="partial_session_finalization_error",
+                payload=canonical_json_bytes(
+                    {
+                        "error_type": type(error).__name__,
+                        "reason": _safe_reason(error),
+                    }
+                ),
+            )
+            built_records[
+                last.operation_fingerprint_sha256
+            ] = Phase3RawAuditOperationRecord(
+                schema_version=(
+                    PHASE3_RAW_AUDIT_OPERATION_SCHEMA_VERSION
+                ),
+                operation=last,
+                status=RAW_AUDIT_STATUS_FAILED,
+                failure_reason="session_finalization_failed",
+                files=tuple(
+                    sorted(
+                        (*last_record.files, failure_file),
+                        key=lambda item: (item.kind, item.path),
+                    )
+                ),
+            )
+        collection_complete = True
+
+    def producer(
+        operation: Phase3AuditOperationKey,
+        root: Path,
+    ) -> Phase3RawAuditOperationRecord:
+        collect_all(root)
+        try:
+            return built_records[
+                operation.operation_fingerprint_sha256
+            ]
+        except KeyError as error:
+            raise WorkerProtocolError(
+                "raw-audit producer record is unavailable"
+            ) from error
+
+    bindings = tuple(
+        (operation, producer)
+        for operation in expected_operations
+    )
+    return session, bindings
 
 
 def _collect_and_register_phase3_raw_audits(
@@ -780,6 +1393,7 @@ def execute_worker(
         torch.cuda.init()
         _emit_worker_stage(HandshakeStage.CUDA_CONTEXT_CREATED)
 
+        from kvbench.runtime.backend import forced_flash_execution
         from kvbench.runtime.cuda_graph import validate_full_model_fixed_graph
         from kvbench.runtime.fixed_l_runner import run_fixed_l
         from kvbench.runtime.growing_context_runner import run_growing_context
@@ -846,46 +1460,42 @@ def execute_worker(
                 offset=50_000,
                 device=device,
             )
-        evidence["stage"] = "collecting_raw_audits"
-        producer_bindings = _phase3_raw_audit_producer_bindings(
-            expected_operations=raw_audit_operations,
-            torch=torch,
-            device=device,
-            loaded=loaded,
-            point=point,
-            prefix_input_ids=prefix,
-            decode_input_ids=decode_input_ids,
-        )
-        _collect_and_register_phase3_raw_audits(
-            expected_operations=raw_audit_operations,
-            raw_audit_root=raw_audit_root,
-            producer_bindings=producer_bindings,
-        )
+        with torch.inference_mode(), forced_flash_execution():
+            evidence["stage"] = "collecting_raw_audits"
+            session, producer_bindings = (
+                _phase3_raw_audit_producer_bindings(
+                    expected_operations=raw_audit_operations,
+                    torch=torch,
+                    device=device,
+                    loaded=loaded,
+                    point=point,
+                    prefix_input_ids=prefix,
+                    decode_input_ids=decode_input_ids,
+                )
+            )
+            _collect_and_register_phase3_raw_audits(
+                expected_operations=raw_audit_operations,
+                raw_audit_root=raw_audit_root,
+                producer_bindings=producer_bindings,
+            )
 
-        evidence["stage"] = "running_point"
-        _emit_worker_stage(HandshakeStage.MEASUREMENT_STARTED)
-        try:
-            if point.runner_kind is RunnerKind.FIXED_L:
-                result = run_fixed_l(
-                    loaded.model,
-                    prefix,
-                    decode_input_ids,
-                    context_length=point.context_length,
-                    graph_mode=point.graph_mode.value,
-                    warmup_steps=bundle.plan.measurement.warmup_count,
-                    measured_steps=bundle.plan.measurement.measured_count,
-                    measured_batches=bundle.plan.measurement.measured_batches,
-                )
-            else:
-                result = run_growing_context(
-                    loaded.model,
-                    prefix,
-                    decode_input_ids,
-                    starting_context=point.context_length,
-                    warmup_trajectories=bundle.plan.measurement.warmup_count,
-                )
-        finally:
-            _emit_worker_stage(HandshakeStage.MEASUREMENT_FINISHED)
+            evidence["stage"] = "running_point"
+            _emit_worker_stage(HandshakeStage.MEASUREMENT_STARTED)
+            try:
+                if point.runner_kind is RunnerKind.FIXED_L:
+                    result = run_fixed_l(
+                        session,
+                        measured_steps=(
+                            bundle.plan.measurement.measured_count
+                        ),
+                        measured_batches=(
+                            bundle.plan.measurement.measured_batches
+                        ),
+                    )
+                else:
+                    result = run_growing_context(session)
+            finally:
+                _emit_worker_stage(HandshakeStage.MEASUREMENT_FINISHED)
         runtime = result.to_dict()
         evidence["runtime"] = runtime
         completed_operations = (

@@ -14,6 +14,10 @@ import importlib
 import json
 from typing import Any
 
+from kvbench.runtime.allocation import (
+    MemorySnapshot,
+    capture_cuda_memory_snapshot,
+)
 from kvbench.runtime.allocation_attribution import (
     OperationCacheStateWitness,
     OperationWitnessCallbacks,
@@ -24,6 +28,11 @@ from kvbench.runtime.cuda_graph import CapturedFixedGraph, capture_fixed_graph
 from kvbench.runtime.model_loader import (
     LoadedFrozenModel,
     validate_loaded_frozen_model_receipt,
+)
+from kvbench.runtime.numerical import (
+    NumericalComparison,
+    compare_tensors_untimed,
+    tensor_sha256_untimed,
 )
 from kvbench.runtime.phase3_audit_operation import (
     Phase3AuditOperationKey,
@@ -174,8 +183,12 @@ class Phase3EndpointSession:
         decode_input_ids: Any,
         endpoint: BF16DecodeEndpoint,
         cache: BF16StaticCache,
+        model_memory: MemorySnapshot,
+        cache_memory: MemorySnapshot,
         fixed_operation: Callable[[], Any] | None,
         graph: CapturedFixedGraph | None,
+        graph_evidence: Mapping[str, object] | None,
+        eager_graph_comparison: NumericalComparison | None,
         growing_operations: tuple[Callable[[], Any], ...],
         reset_growing: Callable[[], None] | None,
         fixed_destination_backup: tuple[Any, Any] | None,
@@ -187,6 +200,12 @@ class Phase3EndpointSession:
         self.decode_input_ids = decode_input_ids
         self.endpoint = endpoint
         self.cache = cache
+        self.model_memory = model_memory
+        self.cache_memory = cache_memory
+        self.graph_evidence = (
+            None if graph_evidence is None else dict(graph_evidence)
+        )
+        self.eager_graph_comparison = eager_graph_comparison
         self.receipt_sha256 = _require_sha256(
             loaded.receipt.receipt_sha256,
             "loaded model receipt",
@@ -200,6 +219,7 @@ class Phase3EndpointSession:
         self._prefix_sha256 = prefix_sha256
         self._history_chain_sha256 = prefix_sha256
         self._audit_references: dict[int, tuple[str, str]] = {}
+        self._audit_outputs: dict[int, tuple[str, bool]] = {}
         self._next_audit_step = 0
         self._state = "warmed"
         self._measurement_started = False
@@ -215,6 +235,26 @@ class Phase3EndpointSession:
     @property
     def expected_audit_count(self) -> int:
         return len(self.operation_keys)
+
+    @property
+    def historical_prefix_sha256(self) -> str:
+        return self._prefix_sha256
+
+    def current_historical_prefix_sha256(self) -> str:
+        first = self.operation_keys[0]
+        return _cache_pair_sha256(
+            self.cache,
+            start=0,
+            length=first.historical_context - first.decode_step,
+        )
+
+    def audit_output(self, step: int) -> tuple[str, bool]:
+        try:
+            return self._audit_outputs[step]
+        except KeyError as error:
+            raise Phase3EndpointAuditError(
+                "endpoint audit output is unavailable"
+            ) from error
 
     def gqa_cache_views(self, step: int) -> tuple[Any, Any]:
         key = self._operation_key(step)
@@ -328,6 +368,8 @@ class Phase3EndpointSession:
         dispatch_audit_sha256: str,
         allocation_audit_sha256: str,
         destination_slot_sha256: str,
+        output_sha256: str,
+        output_finite: bool,
         locally_verified: bool,
     ) -> None:
         """Gate timing locally; the coordinator still replays raw bytes."""
@@ -340,6 +382,12 @@ class Phase3EndpointSession:
         self._audit_references[step] = (
             _require_sha256(dispatch_audit_sha256, "dispatch audit"),
             _require_sha256(allocation_audit_sha256, "allocation audit"),
+        )
+        if type(output_finite) is not bool:
+            raise Phase3EndpointAuditError("audit output finite flag is invalid")
+        self._audit_outputs[step] = (
+            _require_sha256(output_sha256, "audit output"),
+            output_finite,
         )
         destination = _require_sha256(
             destination_slot_sha256,
@@ -357,6 +405,7 @@ class Phase3EndpointSession:
             self._state != "auditing"
             or self._next_audit_step != len(self.operation_keys)
             or len(self._audit_references) != len(self.operation_keys)
+            or len(self._audit_outputs) != len(self.operation_keys)
         ):
             raise Phase3EndpointAuditError("endpoint audit set is incomplete")
         first = self.operation_keys[0]
@@ -442,6 +491,14 @@ class Phase3EndpointSession:
                 self._audit_references[step][1]
                 for step in range(len(self.operation_keys))
             ],
+            "audit_output_sha256": [
+                self._audit_outputs[step][0]
+                for step in range(len(self.operation_keys))
+            ],
+            "audit_output_finite": [
+                self._audit_outputs[step][1]
+                for step in range(len(self.operation_keys))
+            ],
             "graph_retained": self._graph is not None,
             "prefix_sha256": self._prefix_sha256,
             "history_chain_sha256": self._history_chain_sha256,
@@ -482,6 +539,10 @@ def build_phase3_endpoint_session(
         * (_HEAD_DIM // 2)
         * _DTYPE_BYTES
     )
+    model_memory = capture_cuda_memory_snapshot(
+        "model_baseline",
+        device=prefix_input_ids.device,
+    )
     cache = BF16StaticCache(
         num_layers=_LAYERS,
         batch_size=first.batch_size,
@@ -490,6 +551,10 @@ def build_phase3_endpoint_session(
         head_dim=_HEAD_DIM,
         device=prefix_input_ids.device,
         workspace_bytes=workspace_bytes,
+    )
+    cache_memory = capture_cuda_memory_snapshot(
+        "post_cache_allocation",
+        device=prefix_input_ids.device,
     )
     if cache.layout_fingerprint() != first.cache_layout_fingerprint:
         raise Phase3EndpointAuditError(
@@ -523,6 +588,8 @@ def build_phase3_endpoint_session(
     fixed_operation: Callable[[], Any] | None = None
     growing_operations: tuple[Callable[[], Any], ...] = ()
     graph: CapturedFixedGraph | None = None
+    graph_evidence: dict[str, object] | None = None
+    eager_graph_comparison: NumericalComparison | None = None
     backup: tuple[Any, Any] | None = None
     endpoint.prefill(prefix_input_ids)
     if first.runner_kind is RunnerKind.FIXED_L:
@@ -532,19 +599,44 @@ def build_phase3_endpoint_session(
             return endpoint.decode(tokens[0], positions[0], rope[0])
 
         fixed_operation = fixed_step
+        last_warmup_output: Any | None = None
         for _ in range(PHASE3_ENDPOINT_WARMUP_OPERATIONS):
-            fixed_step()
+            last_warmup_output = fixed_step()
+        if last_warmup_output is None:
+            raise Phase3EndpointAuditError("fixed warmup produced no output")
         destination = (
             cache.keys[:, :, :, starting_context : starting_context + 1, :],
             cache.values[:, :, :, starting_context : starting_context + 1, :],
         )
         backup = (destination[0].clone(), destination[1].clone())
         if first.graph_mode is GraphMode.CUDA_GRAPH:
+            torch.cuda.synchronize(device=cache.device)
+            eager_reference = last_warmup_output.detach().cpu().clone()
             graph = capture_fixed_graph(
                 fixed_step,
                 warmup_steps=0,
                 device=cache.device,
             )
+            graph.replay()
+            torch.cuda.synchronize(device=cache.device)
+            first_replay = graph.output.detach().cpu().clone()
+            graph.replay()
+            torch.cuda.synchronize(device=cache.device)
+            second_replay = graph.output.detach().cpu().clone()
+            eager_graph_comparison = compare_tensors_untimed(
+                first_replay,
+                eager_reference,
+                atol=0.02,
+                rtol=0.02,
+            )
+            graph_evidence = {
+                **graph.to_dict(),
+                "consecutive_replay_outputs_exact": bool(
+                    torch.equal(first_replay, second_replay)
+                ),
+                "first_replay_checksum": tensor_sha256_untimed(first_replay),
+                "second_replay_checksum": tensor_sha256_untimed(second_replay),
+            }
             destination[0].copy_(backup[0])
             destination[1].copy_(backup[1])
     else:
@@ -575,8 +667,12 @@ def build_phase3_endpoint_session(
         decode_input_ids=decode_input_ids,
         endpoint=endpoint,
         cache=cache,
+        model_memory=model_memory,
+        cache_memory=cache_memory,
         fixed_operation=fixed_operation,
         graph=graph,
+        graph_evidence=graph_evidence,
+        eager_graph_comparison=eager_graph_comparison,
         growing_operations=growing_operations,
         reset_growing=(
             reset_growing

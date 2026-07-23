@@ -204,13 +204,15 @@ class Phase3RawAuditOperationRecord(StrictModel):
             if self.failure_reason is not None:
                 raise ValueError("completed raw audit operation has a failure reason")
             expected_kinds = REQUIRED_COMPLETED_RAW_AUDIT_FILE_KINDS
-            if self.operation.decode_step == 0:
-                expected_kinds = tuple(
-                    sorted(
-                        (*expected_kinds, PHASE3_RAW_AUDIT_SESSION_PROVENANCE_KIND)
-                    )
+            expected_with_provenance = tuple(
+                sorted(
+                    (*expected_kinds, PHASE3_RAW_AUDIT_SESSION_PROVENANCE_KIND)
                 )
-            if kinds != expected_kinds:
+            )
+            allowed_kinds = {expected_kinds}
+            if self.operation.decode_step == 0:
+                allowed_kinds.add(expected_with_provenance)
+            if kinds not in allowed_kinds:
                 raise ValueError(
                     "completed raw audit operation file set is incomplete"
                 )
@@ -267,6 +269,31 @@ class Phase3RawAuditRunIndex(StrictModel):
                 raise ValueError(
                     "every operation after a raw audit failure must be unattempted"
                 )
+
+        provenance_records = tuple(
+            record
+            for record in self.records
+            if any(
+                item.kind == PHASE3_RAW_AUDIT_SESSION_PROVENANCE_KIND
+                for item in record.files
+            )
+        )
+        all_completed = all(
+            record.status == RAW_AUDIT_STATUS_COMPLETED
+            for record in self.records
+        )
+        if all_completed:
+            if (
+                len(provenance_records) != 1
+                or provenance_records[0] is not self.records[0]
+            ):
+                raise ValueError(
+                    "completed raw audit run requires one step-zero provenance file"
+                )
+        elif provenance_records:
+            raise ValueError(
+                "failed raw audit run cannot claim complete session provenance"
+            )
 
         declared = tuple(
             item
