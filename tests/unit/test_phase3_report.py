@@ -335,6 +335,12 @@ class ImmutableReportBundleTests(unittest.TestCase):
                     "all_checksums_valid": True,
                     "all_sources_immutable": True,
                 },
+            ), mock.patch(
+                "kvbench.runtime.phase3_report_publication._select_report_id",
+                return_value=(
+                    "phase3-g1-20260723t010116000000z-"
+                    "457123b1-a00016"
+                ),
             ):
                 result = write_phase3_g1_report(
                     fixed,

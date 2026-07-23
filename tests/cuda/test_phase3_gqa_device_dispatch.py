@@ -10,16 +10,258 @@ import unittest
 
 import torch
 
+from kvbench.runtime.phase3_allocator_controls import (
+    collect_phase3_paired_allocator_controls,
+    verify_phase3_paired_allocator_controls,
+)
+from kvbench.runtime.backend import backend_identity
 from kvbench.runtime.gqa_device_dispatch import (
+    CUDA_GRAPH_REPLAY_EXECUTION_MODE,
     FLASH_FORWARD_FAMILY,
     MATERIALIZATION_CLASSIFICATIONS,
     collect_gqa_mha_device_dispatch,
+    collect_phase3_geometry_bound_gqa_mha_device_dispatch,
+    phase3_source_identity_sha256,
+    revalidate_phase3_geometry_bound_dispatch_audit,
 )
-from kvbench.schema import GQAVerdict
+from kvbench.runtime.phase3_audit_operation import Phase3AuditOperationKey
+from kvbench.runtime.static_cache import BF16StaticCache
+from kvbench.schema import GQAVerdict, GraphMode, RunnerKind
+from kvbench.schema.phase3 import (
+    PHASE3_FIXED_PLAN_PATH,
+    PHASE3_HARDWARE_FINGERPRINT,
+    PHASE3_MODEL_FINGERPRINT,
+    PHASE3_PLAN_FINGERPRINTS,
+    PHASE3_SOFTWARE_FINGERPRINT,
+    Phase3ProcessPoint,
+)
+
+
+def _operation_key(
+    *,
+    graph_mode: GraphMode,
+    run_id: str,
+    cache_layout_fingerprint: str,
+    repository_root: Path,
+) -> Phase3AuditOperationKey:
+    point = Phase3ProcessPoint(
+        point_id=f"fixed_l-b1-l128-{graph_mode.value}-r1",
+        runner_kind=RunnerKind.FIXED_L,
+        graph_mode=graph_mode,
+        batch_size=1,
+        context_length=128,
+        output_steps=1,
+        process_replicate=1,
+        stability_member=False,
+    )
+    backend_payload = backend_identity()
+    backend_raw = json.dumps(
+        backend_payload,
+        allow_nan=False,
+        ensure_ascii=True,
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode("utf-8")
+    source_hashes = {
+        path: hashlib.sha256((repository_root / path).read_bytes()).hexdigest()
+        for path in (
+            "src/kvbench/runtime/backend.py",
+            "src/kvbench/runtime/bf16_endpoint.py",
+            "src/kvbench/runtime/static_cache.py",
+        )
+    }
+    return Phase3AuditOperationKey.from_point(
+        run_id=run_id,
+        point=point,
+        decode_step=0,
+        cache_layout_fingerprint=cache_layout_fingerprint,
+        execution_git_sha="5" * 40,
+        plan_fingerprint=PHASE3_PLAN_FINGERPRINTS[PHASE3_FIXED_PLAN_PATH],
+        hardware_identity_sha256=PHASE3_HARDWARE_FINGERPRINT,
+        software_identity_sha256=PHASE3_SOFTWARE_FINGERPRINT,
+        model_identity_sha256=PHASE3_MODEL_FINGERPRINT,
+        backend_identity_sha256=hashlib.sha256(backend_raw).hexdigest(),
+        source_identity_sha256=phase3_source_identity_sha256(source_hashes),
+    )
 
 
 @unittest.skipUnless(torch.cuda.is_available(), "CUDA is required")
 class Phase3GQADeviceDispatchCudaTests(unittest.TestCase):
+    def _collect_paired_allocator_control(
+        self,
+        *,
+        graph_mode: GraphMode,
+    ) -> tuple[object, object, Path]:
+        device = torch.device("cuda:0")
+        generator = torch.Generator(device=device).manual_seed(20260722)
+        batch_size = 1
+        starting_context = 128
+        active_context = starting_context + 1
+        capacity = active_context
+        workspace_bytes = 32 * batch_size * (32 + 8) * 1 * 64 * 2
+        cache = BF16StaticCache(
+            num_layers=32,
+            batch_size=batch_size,
+            num_kv_heads=8,
+            capacity=capacity,
+            head_dim=128,
+            device=device,
+            workspace_bytes=workspace_bytes,
+        )
+        query = torch.randn(
+            (batch_size, 32, 1, 128),
+            dtype=torch.bfloat16,
+            device=device,
+            generator=generator,
+        )
+        gqa_key = cache.keys[0, :, :, :active_context, :]
+        gqa_value = cache.values[0, :, :, :active_context, :]
+        mha_key = torch.randn(
+            (batch_size, 32, active_context, 128),
+            dtype=torch.bfloat16,
+            device=device,
+            generator=generator,
+        )
+        mha_value = torch.randn_like(mha_key, generator=generator)
+        repository_root = Path(__file__).resolve().parents[2]
+        output_directory = Path(
+            tempfile.mkdtemp(
+                prefix=(
+                    "kvbench-phase3-paired-allocator-"
+                    f"{graph_mode.value}-"
+                ),
+                dir="/tmp",
+            )
+        )
+        operation_key = _operation_key(
+            graph_mode=graph_mode,
+            run_id=f"phase3-b011-b012-{graph_mode.value}-control",
+            cache_layout_fingerprint=cache.layout_fingerprint(),
+            repository_root=repository_root,
+        )
+        dispatch = collect_phase3_geometry_bound_gqa_mha_device_dispatch(
+            operation_key=operation_key,
+            cache_layout_fingerprint=cache.layout_fingerprint(),
+            cache_workspace_bytes=workspace_bytes,
+            cache_layer_index=0,
+            cache_key_backing=cache.keys,
+            cache_value_backing=cache.values,
+            gqa_query=query,
+            gqa_key_view=gqa_key,
+            gqa_value_view=gqa_value,
+            mha_query=query,
+            mha_key=mha_key,
+            mha_value=mha_value,
+            output_directory=output_directory,
+            artifact_relative_root=(
+                f"dispatch/{graph_mode.value}-allocator-traces"
+            ),
+            source_root=repository_root,
+            source_paths=tuple(
+                Path(item)
+                for item in (
+                    "src/kvbench/runtime/backend.py",
+                    "src/kvbench/runtime/bf16_endpoint.py",
+                    "src/kvbench/runtime/static_cache.py",
+                )
+            ),
+            is_causal=False,
+            scale=128**-0.5,
+            warmup_count=3,
+        )
+        (output_directory / "dispatch-audit.json").write_text(
+            json.dumps(dispatch.to_dict(), indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+        gqa_trace_raw = (
+            output_directory / "gqa.geometry.chrome.json"
+        ).read_bytes()
+        mha_trace_raw = (
+            output_directory / "mha.geometry.chrome.json"
+        ).read_bytes()
+        gqa_raw, mha_raw = collect_phase3_paired_allocator_controls(
+            operation_key=operation_key,
+            query=query,
+            gqa_key=gqa_key,
+            gqa_value=gqa_value,
+            mha_key=mha_key,
+            mha_value=mha_value,
+            gqa_dispatch_trace_raw=gqa_trace_raw,
+            mha_dispatch_trace_raw=mha_trace_raw,
+        )
+        (output_directory / "gqa.allocator-control.json").write_bytes(gqa_raw)
+        (output_directory / "mha.allocator-control.json").write_bytes(mha_raw)
+        verification = verify_phase3_paired_allocator_controls(
+            gqa_raw=gqa_raw,
+            mha_control_raw=mha_raw,
+            operation_key=operation_key,
+            gqa_dispatch_trace_raw=gqa_trace_raw,
+            mha_dispatch_trace_raw=mha_trace_raw,
+        )
+        return dispatch, verification, output_directory
+
+    def test_paired_allocator_controls_eager_and_graph(self) -> None:
+        forbidden_formulas = {
+            "expanded_kv",
+            "native_or_context_kv",
+            "context_scaled_unknown",
+            "unknown",
+        }
+        for graph_mode in (GraphMode.EAGER, GraphMode.CUDA_GRAPH):
+            with self.subTest(graph_mode=graph_mode.value):
+                dispatch, verification, output_directory = (
+                    self._collect_paired_allocator_control(
+                        graph_mode=graph_mode
+                    )
+                )
+                print(f"preserved_paired_allocator_control={output_directory}")
+                self.assertTrue(dispatch.evaluation.dispatch_verified)
+                expected_mode = (
+                    "eager"
+                    if graph_mode is GraphMode.EAGER
+                    else CUDA_GRAPH_REPLAY_EXECUTION_MODE
+                )
+                self.assertEqual(dispatch.gqa.execution_mode, expected_mode)
+                self.assertEqual(dispatch.mha.execution_mode, expected_mode)
+                repository_root = Path(__file__).resolve().parents[2]
+                source_bytes = {
+                    path: (repository_root / path).read_bytes()
+                    for path in (
+                        "src/kvbench/runtime/backend.py",
+                        "src/kvbench/runtime/bf16_endpoint.py",
+                        "src/kvbench/runtime/static_cache.py",
+                    )
+                }
+                rebuilt = revalidate_phase3_geometry_bound_dispatch_audit(
+                    dispatch,
+                    gqa_raw=(
+                        output_directory / "gqa.geometry.chrome.json"
+                    ).read_bytes(),
+                    mha_raw=(
+                        output_directory / "mha.geometry.chrome.json"
+                    ).read_bytes(),
+                    backend_identity_raw=(
+                        dispatch.backend_identity.canonical_json.encode("utf-8")
+                    ),
+                    source_bytes_by_path=source_bytes,
+                )
+                self.assertEqual(rebuilt, dispatch)
+                self.assertTrue(
+                    verification.passed,
+                    verification.failure_reasons,
+                )
+                for replay in (verification.gqa, verification.mha_control):
+                    self.assertEqual(replay.failure_reasons, ())
+                    self.assertFalse(
+                        forbidden_formulas.intersection(
+                            fact.formula_id
+                            for fact in replay.allocation_facts
+                        )
+                    )
+                if graph_mode is GraphMode.CUDA_GRAPH:
+                    self.assertFalse(verification.gqa.allocation_facts)
+                    self.assertFalse(verification.mha_control.allocation_facts)
+
     def test_public_flash_gqa_and_mha_controls_expose_device_kernels(self) -> None:
         device = torch.device("cuda:0")
         generator = torch.Generator(device=device).manual_seed(20260722)

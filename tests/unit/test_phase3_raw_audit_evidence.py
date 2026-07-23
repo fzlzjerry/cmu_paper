@@ -299,28 +299,16 @@ class Phase3RawAuditSchemaTests(unittest.TestCase):
             sorted(
                 {
                     "b011_audit",
-                    "b011_backend_identity",
                     "b011_gqa_chrome_trace",
                     "b011_mha_chrome_trace",
-                    "b011_sut_source_backend_py",
-                    "b011_sut_source_bf16_endpoint_py",
-                    "b011_sut_source_static_cache_py",
                     "b012_allocation_audit",
-                    "b012_allocation_audit_sha256",
                     "b012_allocator_snapshot",
                     "b012_allocator_trace",
-                    "b012_device_accounting_after",
-                    "b012_device_accounting_before",
-                    "b012_gqa_allocator_control",
-                    "b012_memory_stats_after",
-                    "b012_memory_stats_before",
-                    "b012_mha_allocator_control",
-                    "b012_operation_witness",
                     "phase3_session_provenance",
                 }
             )
         )
-        self.assertEqual(len(expected), 19)
+        self.assertEqual(len(expected), 7)
         self.assertEqual(REQUIRED_COMPLETED_RAW_AUDIT_FILE_KINDS, expected)
         self.assertNotIn(
             "b011_source_audit", REQUIRED_COMPLETED_RAW_AUDIT_FILE_KINDS

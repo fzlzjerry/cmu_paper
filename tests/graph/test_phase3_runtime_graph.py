@@ -18,7 +18,7 @@ class Phase3GraphRuntimeTests(unittest.TestCase):
         def operation() -> torch.Tensor:
             return value.mul_(1.0001)
 
-        captured = capture_fixed_graph(operation, warmup_steps=3, device="cuda:0")
+        captured = capture_fixed_graph(operation, warmup_steps=0, device="cuda:0")
         pointer = captured.output_data_ptr
         first = captured.replay()
         torch.cuda.synchronize()

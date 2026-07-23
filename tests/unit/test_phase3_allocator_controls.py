@@ -551,6 +551,35 @@ class AllocatorControlCanonicalSchemaTests(unittest.TestCase):
                 canonical_phase3_allocator_control_bytes(payload)
             )
 
+    def test_output_accepts_only_singleton_equivalent_contiguous_stride(
+        self,
+    ) -> None:
+        key = operation_key()
+        payload = json.loads(
+            observation_bytes(role="gqa", key=key, trace=successful_trace())
+        )
+        output = payload["output_metadata"]
+        output["stride"][2] = 4096
+        parsed = parse_phase3_allocator_control_bytes(
+            canonical_phase3_allocator_control_bytes(payload)
+        )
+        self.assertEqual(parsed.output.stride, (4096, 128, 4096, 1))
+        self.assertTrue(parsed.output.is_contiguous)
+
+        noncontiguous = json.loads(
+            observation_bytes(role="gqa", key=key, trace=successful_trace())
+        )
+        bad_output = noncontiguous["output_metadata"]
+        bad_output["stride"][1] = 127
+        bad_output["is_contiguous"] = False
+        with self.assertRaisesRegex(
+            Phase3AllocatorControlError,
+            "output layout is not canonical",
+        ):
+            parse_phase3_allocator_control_bytes(
+                canonical_phase3_allocator_control_bytes(noncontiguous)
+            )
+
     def test_tensor_storage_alias_is_rejected(self) -> None:
         key = operation_key()
         payload = json.loads(
