@@ -948,7 +948,10 @@ def _validate_frozen_observation(
             "allocator-control query layout is not canonical"
         )
     if (
-        observation.output.stride != canonical_query_stride
+        not _strides_are_contiguous(
+            observation.output.shape,
+            observation.output.stride,
+        )
         or observation.output.storage_offset != 0
         or observation.output.storage_bytes
         != observation.output.logical_bytes
