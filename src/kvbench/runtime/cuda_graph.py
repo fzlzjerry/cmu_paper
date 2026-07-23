@@ -7,6 +7,8 @@ from dataclasses import dataclass
 import importlib
 from typing import Any
 
+from kvbench.adapters import KVCacheMethod
+
 
 _TORCH: Any | None = None
 
@@ -141,6 +143,7 @@ def validate_full_model_fixed_graph(
     prefix_input_ids: Any,
     current_input_ids: Any,
     *,
+    method: KVCacheMethod | None = None,
     atol: float = 0.02,
     rtol: float = 0.02,
 ) -> FullModelGraphValidation:
@@ -156,6 +159,10 @@ def validate_full_model_fixed_graph(
     if prefix_input_ids.device != current_input_ids.device:
         raise ValueError("full-model graph input devices differ")
 
+    from kvbench.adapters import (
+        build_method_adapter,
+        declared_bf16_runtime_context,
+    )
     from kvbench.runtime.allocation import audit_cuda_allocations
     from kvbench.runtime.backend import forced_flash_execution
     from kvbench.runtime.bf16_endpoint import BF16DecodeEndpoint
@@ -164,7 +171,6 @@ def validate_full_model_fixed_graph(
         compare_tensors_untimed,
         tensor_sha256_untimed,
     )
-    from kvbench.runtime.static_cache import BF16StaticCache
 
     config = model.config
     num_layers = int(config.num_hidden_layers)
@@ -174,16 +180,19 @@ def validate_full_model_fixed_graph(
     workspace_bytes = (
         num_layers * batch * (query_heads + kv_heads) * (head_dim // 2) * 2
     )
-    cache = BF16StaticCache(
-        num_layers=num_layers,
+    adapter = method
+    if adapter is None:
+        adapter = build_method_adapter(
+            "bf16",
+            declared_bf16_runtime_context(model),
+        )
+    cache = adapter.allocate(
         batch_size=batch,
-        num_kv_heads=kv_heads,
         capacity=prefix_length + 1,
-        head_dim=head_dim,
         device=prefix_input_ids.device,
         workspace_bytes=workspace_bytes,
     )
-    endpoint = BF16DecodeEndpoint(model, cache)
+    endpoint = BF16DecodeEndpoint(model, cache, adapter)
     with torch.inference_mode(), forced_flash_execution():
         endpoint.prefill(prefix_input_ids)
         cache.prepare_fixed(prefix_length)

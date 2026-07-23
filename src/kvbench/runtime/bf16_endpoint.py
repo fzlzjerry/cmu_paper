@@ -5,7 +5,7 @@ from __future__ import annotations
 import importlib
 from typing import Any
 
-from kvbench.runtime.backend import flash_attention_forward
+from kvbench.adapters import KVCacheMethod
 from kvbench.runtime.static_cache import BF16StaticCache, CacheStateError
 
 
@@ -53,10 +53,16 @@ def rotate_half_in_place(
 class BF16DecodeEndpoint:
     """Embedding-through-LM-head endpoint with static cache and prepared RoPE."""
 
-    def __init__(self, model: Any, cache: BF16StaticCache) -> None:
+    def __init__(
+        self,
+        model: Any,
+        cache: BF16StaticCache,
+        method: KVCacheMethod,
+    ) -> None:
         torch = _torch()
         self.model = model
         self.cache = cache
+        self.method = method
         config = model.config
         self.num_layers = int(config.num_hidden_layers)
         self.num_query_heads = int(config.num_attention_heads)
@@ -137,20 +143,28 @@ class BF16DecodeEndpoint:
             key_scratch = torch.empty_like(key[..., : self.head_dim // 2])
         rotate_half_in_place(query, cos, sin, query_scratch)
         rotate_half_in_place(key, cos, sin, key_scratch)
-        cached_key, cached_value = self.cache.update(
-            key,
-            value,
-            int(attention.layer_idx),
-            {"cache_position": cache_position},
-        )
-        output, _ = flash_attention_forward(
+        if measured_decode:
+            cached_key, cached_value = self.method.append_decode(
+                self.cache,
+                key,
+                value,
+                int(attention.layer_idx),
+                cache_position,
+            )
+        else:
+            cached_key, cached_value = self.method.store_prefill(
+                self.cache,
+                key,
+                value,
+                int(attention.layer_idx),
+                cache_position,
+            )
+        output = self.method.decode_attention(
             attention,
             query,
             cached_key,
             cached_value,
-            None,
-            float(attention.scaling),
-            dropout=0.0,
+            scaling=float(attention.scaling),
         )
         output = output.reshape(*input_shape, -1).contiguous()
         return attention.o_proj(output)

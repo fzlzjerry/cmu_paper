@@ -8,6 +8,8 @@ import importlib
 import json
 from typing import Any
 
+from kvbench.adapters import KVCacheMethod
+
 
 _TORCH: Any | None = None
 FULL_MODEL_ATOL = 0.125
@@ -234,6 +236,7 @@ def validate_full_model_reference(
     prefix_input_ids: Any,
     decode_input_ids: Any,
     *,
+    method: KVCacheMethod | None = None,
     atol: float = FULL_MODEL_ATOL,
     rtol: float = FULL_MODEL_RTOL,
 ) -> FullModelReferenceResult:
@@ -309,9 +312,12 @@ def validate_full_model_reference(
     if not restored:
         raise RuntimeError("model attention implementation was not restored")
 
+    from kvbench.adapters import (
+        build_method_adapter,
+        declared_bf16_runtime_context,
+    )
     from kvbench.runtime.backend import forced_flash_execution
     from kvbench.runtime.bf16_endpoint import BF16DecodeEndpoint
-    from kvbench.runtime.static_cache import BF16StaticCache
 
     config = model.config
     num_layers = int(config.num_hidden_layers)
@@ -322,16 +328,19 @@ def validate_full_model_reference(
         num_layers * batch * (query_heads + kv_heads) * (head_dim // 2) * 2
     )
 
-    fixed_cache = BF16StaticCache(
-        num_layers=num_layers,
+    adapter = method
+    if adapter is None:
+        adapter = build_method_adapter(
+            "bf16",
+            declared_bf16_runtime_context(model),
+        )
+    fixed_cache = adapter.allocate(
         batch_size=batch,
-        num_kv_heads=kv_heads,
         capacity=prefix_length + 1,
-        head_dim=head_dim,
         device=prefix_input_ids.device,
         workspace_bytes=workspace_bytes,
     )
-    fixed_endpoint = BF16DecodeEndpoint(model, fixed_cache)
+    fixed_endpoint = BF16DecodeEndpoint(model, fixed_cache, adapter)
     fixed_outputs: list[Any] = []
     with torch.inference_mode(), forced_flash_execution():
         fixed_endpoint.prefill(prefix_input_ids)
@@ -366,16 +375,13 @@ def validate_full_model_reference(
             historical_length=prefix_length,
         )
 
-    growing_cache = BF16StaticCache(
-        num_layers=num_layers,
+    growing_cache = adapter.allocate(
         batch_size=batch,
-        num_kv_heads=kv_heads,
         capacity=prefix_length + steps,
-        head_dim=head_dim,
         device=prefix_input_ids.device,
         workspace_bytes=workspace_bytes,
     )
-    growing_endpoint = BF16DecodeEndpoint(model, growing_cache)
+    growing_endpoint = BF16DecodeEndpoint(model, growing_cache, adapter)
     growing_outputs: list[Any] = []
     with torch.inference_mode(), forced_flash_execution():
         growing_endpoint.prefill(prefix_input_ids)

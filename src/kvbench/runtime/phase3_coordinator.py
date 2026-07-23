@@ -17,6 +17,11 @@ import subprocess
 import tempfile
 import time
 from typing import Any, Mapping
+from kvbench.adapters import (
+    MethodRuntimeContext,
+    build_method_adapter,
+)
+
 
 from kvbench.config import REPOSITORY_ROOT, ExperimentBundle, load_phase3_admission_bundle
 from kvbench.errors import KVBenchError, SchemaValidationError
@@ -2173,6 +2178,23 @@ def _initial_manifest(
         bundle.methods[0],
         "bf16",
     )
+    adapter = build_method_adapter(
+        bundle.methods[0],
+        MethodRuntimeContext(
+            model_id=bundle.model.model_id,
+            model_revision=bundle.model.revision,
+            backend_id=backend.backend_id,
+            backend_fingerprint=backend.fingerprint(),
+            num_layers=bundle.model.geometry.num_hidden_layers,
+            num_query_heads=bundle.model.geometry.num_query_heads,
+            num_kv_heads=bundle.model.geometry.num_kv_heads,
+            head_dim=bundle.model.geometry.head_dim,
+        ),
+    )
+    adapter_config_fingerprint = adapter.config_fingerprint(
+        cache.layout_fingerprint
+    )
+
     command = Phase3CommandSpec(
         schema_version=Phase3CommandSpec.SCHEMA_VERSION,
         argv=_worker_argv(plan_path, point, run_id),
@@ -2224,6 +2246,7 @@ def _initial_manifest(
         "method": "bf16",
         "method_config_id": "bf16",
         "method_config_fingerprint": method_fingerprint.to_dict(),
+        "adapter_config_fingerprint": adapter_config_fingerprint,
         "contract_fingerprint": PHASE3_CONTRACT_FINGERPRINT,
         "measurement_protocol_fingerprint": (
             PHASE3_MEASUREMENT_PROTOCOL_FINGERPRINT

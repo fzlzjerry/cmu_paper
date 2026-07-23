@@ -48,6 +48,15 @@ from kvbench.schema.config import (
     TurboQuantParameters,
     VariantRole,
 )
+from kvbench.schema.method_admission import (
+    MethodAdmissionBackendIdentity,
+    MethodAdmissionCheckResult,
+    MethodAdmissionEvidenceReference,
+    MethodAdmissionGates,
+    MethodAdmissionModelIdentity,
+    MethodAdmissionReport,
+)
+
 from kvbench.schema.result import (
     ArtifactEntry,
     ArtifactInventory,
@@ -129,6 +138,12 @@ __all__ = [
     "MeasurementCountUnit",
     "MeasurementScope",
     "LifecycleRecord",
+    "MethodAdmissionBackendIdentity",
+    "MethodAdmissionCheckResult",
+    "MethodAdmissionEvidenceReference",
+    "MethodAdmissionGates",
+    "MethodAdmissionModelIdentity",
+    "MethodAdmissionReport",
     "MethodConfig",
     "MethodConfigFingerprint",
     "MethodImplementation",

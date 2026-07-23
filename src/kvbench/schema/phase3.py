@@ -1239,6 +1239,7 @@ class Phase3RunManifest(StrictModel):
     command: Phase3CommandSpec
     inventory_path: str | None
     failure_reason: str | None
+    adapter_config_fingerprint: str | None = None
 
     SCHEMA_VERSION: ClassVar[str] = "kvbench-phase3-run-manifest-1.0.0"
     ARTIFACT_SCHEMA_VERSION: ClassVar[str] = "kvbench-artifacts-1.0.0"
@@ -1268,6 +1269,11 @@ class Phase3RunManifest(StrictModel):
             (self.backend_fingerprint, "backend_fingerprint"),
         ):
             require_sha256(value, field_name=name)
+        if self.adapter_config_fingerprint is not None:
+            require_sha256(
+                self.adapter_config_fingerprint,
+                field_name="adapter_config_fingerprint",
+            )
         for value, name in (
             (self.hardware_id, "hardware_id"),
             (self.e00_run_id, "e00_run_id"),

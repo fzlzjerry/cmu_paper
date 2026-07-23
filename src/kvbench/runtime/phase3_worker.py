@@ -718,6 +718,7 @@ def _phase3_raw_audit_producer_bindings(
     point: Any,
     prefix_input_ids: Any,
     decode_input_ids: Any,
+    method_config: Any = "bf16",
 ) -> tuple[
     Any,
     tuple[
@@ -756,6 +757,7 @@ def _phase3_raw_audit_producer_bindings(
         operation_keys=expected_operations,
         prefix_input_ids=prefix_input_ids,
         decode_input_ids=decode_input_ids,
+        method_config=method_config,
     )
     repository_root = Path(PHASE3_REPOSITORY_ROOT)
     source_paths = tuple(Path(item) for item in REQUIRED_SUT_SOURCES)
@@ -1489,6 +1491,7 @@ def execute_worker(
                     device=device,
                     loaded=loaded,
                     point=point,
+                    method_config=bundle.methods[0],
                     prefix_input_ids=prefix,
                     decode_input_ids=decode_input_ids,
                 )

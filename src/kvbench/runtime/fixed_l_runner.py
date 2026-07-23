@@ -11,7 +11,6 @@ from kvbench.runtime.allocation import (
     capture_cuda_memory_snapshot,
 )
 from kvbench.runtime.backend import forced_flash_execution
-from kvbench.runtime.gqa_audit import audit_cache_geometry
 from kvbench.runtime.numerical import (
     NumericalComparison,
     tensor_sha256_untimed,
@@ -50,6 +49,8 @@ class FixedLRunResult:
     cache_pointers_stable: bool
     cache_accounting: dict[str, int]
     cache_layout_fingerprint: str
+    adapter_config_fingerprint: str
+    cache_byte_breakdown: dict[str, int]
     timing: TimingResult
     memory_evidence: NormalTimingMemoryEvidence
     gqa_cache_geometry: dict[str, Any]
@@ -75,6 +76,8 @@ class FixedLRunResult:
             "cache_pointers_stable": self.cache_pointers_stable,
             "cache_accounting": self.cache_accounting,
             "cache_layout_fingerprint": self.cache_layout_fingerprint,
+            "adapter_config_fingerprint": self.adapter_config_fingerprint,
+            "cache_byte_breakdown": self.cache_byte_breakdown,
             "timing": self.timing.to_dict(),
             "timing_skipped_reason": None,
             "allocation": None,
@@ -146,9 +149,8 @@ def run_fixed_l(
     ):
         raise FixedLRunnerError("fixed-L session is not admitted")
     torch = _torch()
-    cache = session.cache
-    device = cache.device
-    pointers_before = cache.pointers()
+    device = session.cache_device
+    pointers_before = session.current_cache_pointers()
     history_before = session.historical_prefix_sha256
     setup_memory = capture_cuda_memory_snapshot(
         "post_setup",
@@ -184,7 +186,7 @@ def run_fixed_l(
             "fixed-L measured output differs from its admitted audit output"
         )
     history_after = session.current_historical_prefix_sha256()
-    pointers_after = cache.pointers()
+    pointers_after = session.current_cache_pointers()
     session.mark_measured()
     telemetry_interval = (
         None
@@ -195,7 +197,7 @@ def run_fixed_l(
             telemetry_after_snapshot,
         )
     )
-    accounting = cache.accounting().to_dict()
+    accounting = session.method_cache_accounting()
     accounting["model_baseline_allocated_bytes"] = (
         session.model_memory.allocated_bytes
     )
@@ -219,13 +221,12 @@ def run_fixed_l(
         historical_cache_unchanged=history_before == history_after,
         cache_pointers_stable=pointers_before == pointers_after,
         cache_accounting=accounting,
-        cache_layout_fingerprint=cache.layout_fingerprint(),
+        cache_layout_fingerprint=session.cache_layout_fingerprint(),
+        adapter_config_fingerprint=session.adapter_config_fingerprint,
+        cache_byte_breakdown=session.method_byte_breakdown(),
         timing=timing,
         memory_evidence=memory_evidence,
-        gqa_cache_geometry=audit_cache_geometry(
-            cache,
-            num_query_heads=32,
-        ),
+        gqa_cache_geometry=session.gqa_cache_geometry(),
         graph=(
             None
             if session.graph_evidence is None

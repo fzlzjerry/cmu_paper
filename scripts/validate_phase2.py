@@ -31,6 +31,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"
 PHASE2_ENTRY_COMMIT = "aba70be8220972c068c6fbeac279d54e34cddbde"
 PHASE2_FINAL_COMMIT = "c16139b0f365eaa052b17cff2fd19c1d4c62a4d1"
+PHASE4_ENTRY_COMMIT = "a3a56e45354ac93ab3c25f82a82e8e6096b513b9"
 QUALITY_COMMIT = "6535a6f6a4e5caa53213e917e9fcf8fc9c0f0190"
 ENVIRONMENT_COMMIT = "6442ba1f7554ea0ebf0b3bb1a920c94567cab689"
 EVIDENCE_COMMIT = "aba70be8220972c068c6fbeac279d54e34cddbde"
@@ -223,6 +224,47 @@ PHASE3_ALLOWED_PATHS = frozenset(
         "tests/graph/test_phase3_runtime_graph.py",
     }
 )
+PHASE4_ALLOWED_PATHS = frozenset(
+    {
+        "Makefile",
+        "docs/blockers.md",
+        "docs/plans/phase4-common-adapter.md",
+        "docs/phase_reports/phase4.md",
+        "docs/risk_register.md",
+        "docs/status.md",
+        "docs/tasks.md",
+        "docs/evidence/phase4/method-admission.json",
+        "docs/evidence/phase4/smoke-index.json",
+        "scripts/validate_phase2.py",
+        "src/kvbench/adapters/__init__.py",
+        "src/kvbench/adapters/base.py",
+        "src/kvbench/adapters/bf16.py",
+        "src/kvbench/adapters/factory.py",
+        "src/kvbench/runtime/bf16_endpoint.py",
+        "src/kvbench/runtime/cuda_graph.py",
+        "src/kvbench/runtime/fixed_l_runner.py",
+        "src/kvbench/runtime/growing_context_runner.py",
+        "src/kvbench/runtime/method_harness.py",
+        "src/kvbench/runtime/numerical.py",
+        "src/kvbench/runtime/phase3_coordinator.py",
+        "src/kvbench/runtime/phase3_endpoint_audit.py",
+        "src/kvbench/runtime/phase3_worker.py",
+        "src/kvbench/runtime/phase4_smoke.py",
+        "src/kvbench/schema/__init__.py",
+        "src/kvbench/schema/method_admission.py",
+        "src/kvbench/schema/phase3.py",
+        "tests/schema/test_method_admission.py",
+        "tests/cuda/test_phase3_full_model.py",
+        "tests/cuda/test_phase4_adapter_cuda.py",
+        "tests/graph/test_phase3_full_model_graph.py",
+        "tests/graph/test_phase4_adapter_graph.py",
+        "tests/unit/test_phase3_endpoint_audit.py",
+        "tests/unit/test_phase3_runtime.py",
+        "tests/unit/test_phase4_adapter.py",
+        "tests/unit/test_phase4_governance.py",
+    }
+)
+
 RAW_RESULT_SUFFIXES = {
     ".bin",
     ".cc",
@@ -260,6 +302,11 @@ PHASE3_EXTERNAL_IMPORTS = {
     "src/kvbench/runtime/timing.py": {"torch"},
 }
 HOT_PATH_FUNCTIONS = {
+    "src/kvbench/adapters/bf16.py": {
+        "store_prefill",
+        "append_decode",
+        "decode_attention",
+    },
     "src/kvbench/runtime/backend.py": {
         "flash_attention_forward",
     },
@@ -410,6 +457,23 @@ def historical_phase2_paths() -> set[str]:
 def current_phase3_paths() -> set[str]:
     changed = git_paths(
         ("diff", "--name-only", "-z", PHASE2_FINAL_COMMIT, "--")
+    )
+    untracked = git_paths(
+        ("ls-files", "--others", "--exclude-standard", "-z", "--")
+    )
+    return changed | untracked
+
+def historical_phase3_paths() -> set[str]:
+    return git_paths(
+        (
+            "diff", "--name-only", "-z", PHASE2_FINAL_COMMIT, PHASE4_ENTRY_COMMIT, "--"
+        )
+    )
+
+
+def current_phase4_paths() -> set[str]:
+    changed = git_paths(
+        ("diff", "--name-only", "-z", PHASE4_ENTRY_COMMIT, "--")
     )
     untracked = git_paths(
         ("ls-files", "--others", "--exclude-standard", "-z", "--")
@@ -1359,6 +1423,10 @@ def check_scope() -> int:
             "the accepted Phase 2 final commit is not an ancestor of HEAD"
         )
     historical = historical_phase2_paths()
+    if not commit_is_ancestor(PHASE4_ENTRY_COMMIT):
+        errors.append(
+            "the accepted Phase 4 entry commit is not an ancestor of HEAD"
+        )
     historical_unexpected = sorted(
         historical - PHASE2_ALLOWED_PATHS
     )
@@ -1367,23 +1435,29 @@ def check_scope() -> int:
             "historical files outside the approved Phase 2 plan: "
             f"{historical_unexpected!r}"
         )
-    changed = current_phase3_paths()
-    unexpected = sorted(changed - PHASE3_ALLOWED_PATHS)
-    if unexpected:
+    phase3 = historical_phase3_paths()
+    phase3_unexpected = sorted(phase3 - PHASE3_ALLOWED_PATHS)
+    if phase3_unexpected:
         errors.append(
-            f"files outside the approved Phase 3 plan: {unexpected!r}"
+            f"files outside the approved Phase 3 plan: {phase3_unexpected!r}"
+        )
+    changed = current_phase4_paths()
+    phase4_unexpected = sorted(changed - PHASE4_ALLOWED_PATHS)
+    if phase4_unexpected:
+        errors.append(
+            f"files outside the approved Phase 4 plan: {phase4_unexpected!r}"
         )
     for relative in sorted(changed):
         if relative.startswith("docs/evidence/e00/"):
             errors.append(f"immutable E00 evidence changed: {relative}")
         if relative in QUALITY_PROTOCOL_HASHES:
             errors.append(
-                f"quality protocol changed during Phase 3: {relative}"
+                f"quality protocol changed during Phase 4: {relative}"
             )
         if Path(relative).suffix in RAW_RESULT_SUFFIXES:
             errors.append(
                 f"forbidden binary, kernel, model, or profiler artifact "
-                f"in Phase 3 scope: {relative}"
+                f"in Phase 4 scope: {relative}"
             )
         if relative.startswith(
             (
@@ -1395,7 +1469,7 @@ def check_scope() -> int:
             )
         ):
             errors.append(
-                f"forbidden result tree in Phase 3 scope: {relative}"
+                f"forbidden result tree in Phase 4 scope: {relative}"
             )
     e00_changes = git_paths(
         (
@@ -1429,7 +1503,6 @@ def check_scope() -> int:
                 )
     errors.extend(validate_phase3_artifact_root())
     forbidden_modules = (
-        "src/kvbench/adapters",
         "src/kvbench/methods/turboquant",
         "src/kvbench/methods/kivi",
         "src/kvbench/methods/kvquant",
@@ -1437,7 +1510,7 @@ def check_scope() -> int:
     for relative in forbidden_modules:
         if (ROOT / relative).exists():
             errors.append(
-                f"Phase 4+ implementation exists in Phase 3 scope: {relative}"
+                f"Phase 5 method implementation exists in Phase 4: {relative}"
             )
     return report("scope", errors)
 

@@ -14,6 +14,12 @@ import importlib
 import json
 from typing import Any
 
+from kvbench.adapters import (
+    KVCacheMethod,
+    MethodRuntimeContext,
+    build_method_adapter,
+)
+from kvbench.runtime.backend import BACKEND_IDENTITY
 from kvbench.runtime.allocation import (
     MemorySnapshot,
     capture_cuda_memory_snapshot,
@@ -27,6 +33,8 @@ from kvbench.runtime.bf16_endpoint import BF16DecodeEndpoint
 from kvbench.runtime.cuda_graph import CapturedFixedGraph, capture_fixed_graph
 from kvbench.runtime.model_loader import (
     LoadedFrozenModel,
+    MODEL_ID,
+    MODEL_REVISION,
     validate_loaded_frozen_model_receipt,
 )
 from kvbench.runtime.numerical import (
@@ -39,7 +47,7 @@ from kvbench.runtime.phase3_audit_operation import (
     validate_phase3_audit_operation_set,
 )
 from kvbench.runtime.static_cache import BF16StaticCache
-from kvbench.schema import GraphMode, RunnerKind
+from kvbench.schema import GraphMode, MethodConfig, RunnerKind
 
 
 PHASE3_ENDPOINT_SESSION_SCHEMA_VERSION = (
@@ -183,6 +191,8 @@ class Phase3EndpointSession:
         decode_input_ids: Any,
         endpoint: BF16DecodeEndpoint,
         cache: BF16StaticCache,
+        method: KVCacheMethod,
+        adapter_config_fingerprint: str,
         model_memory: MemorySnapshot,
         cache_memory: MemorySnapshot,
         fixed_operation: Callable[[], Any] | None,
@@ -200,6 +210,11 @@ class Phase3EndpointSession:
         self.decode_input_ids = decode_input_ids
         self.endpoint = endpoint
         self.cache = cache
+        self.method = method
+        self.adapter_config_fingerprint = _require_sha256(
+            adapter_config_fingerprint,
+            "adapter config fingerprint",
+        )
         self.model_memory = model_memory
         self.cache_memory = cache_memory
         self.graph_evidence = (
@@ -239,6 +254,37 @@ class Phase3EndpointSession:
     @property
     def historical_prefix_sha256(self) -> str:
         return self._prefix_sha256
+
+    @property
+    def cache_device(self) -> Any:
+        return self.cache.device
+
+    @property
+    def active_context(self) -> int:
+        return int(self.cache.active_context)
+
+    def current_cache_pointers(self) -> dict[str, int]:
+        return self.cache.pointers()
+
+    def method_cache_accounting(self) -> dict[str, int]:
+        accounting = self.cache.accounting().to_dict()
+        if self.method.allocated_bytes(self.cache) != accounting["allocated_bytes"]:
+            raise Phase3EndpointAuditError("method and cache bytes differ")
+        return accounting
+
+    def method_byte_breakdown(self) -> dict[str, int]:
+        return dict(sorted(self.method.byte_breakdown(self.cache).items()))
+
+    def cache_layout_fingerprint(self) -> str:
+        return self.cache.layout_fingerprint()
+
+    def gqa_cache_geometry(self) -> dict[str, Any]:
+        from kvbench.runtime.gqa_audit import audit_cache_geometry
+
+        return audit_cache_geometry(
+            self.cache,
+            num_query_heads=_QUERY_HEADS,
+        )
 
     def current_historical_prefix_sha256(self) -> str:
         first = self.operation_keys[0]
@@ -477,6 +523,9 @@ class Phase3EndpointSession:
             raise Phase3EndpointAuditError("session provenance is not complete")
         return {
             "schema_version": PHASE3_ENDPOINT_SESSION_SCHEMA_VERSION,
+            "method_name": self.method.name,
+            "adapter_version": self.method.adapter_version,
+            "adapter_config_fingerprint": self.adapter_config_fingerprint,
             "receipt_sha256": self.receipt_sha256,
             "cache_pointers": dict(self.cache_pointers),
             "cache_layout_fingerprint": self.cache.layout_fingerprint(),
@@ -511,12 +560,27 @@ def build_phase3_endpoint_session(
     operation_keys: tuple[Phase3AuditOperationKey, ...],
     prefix_input_ids: Any,
     decode_input_ids: Any,
+    method_config: MethodConfig | str = "bf16",
 ) -> Phase3EndpointSession:
     """Build, prefill, warm exactly once, and retain one production session."""
 
     validate_loaded_frozen_model_receipt(loaded)
     keys = validate_phase3_audit_operation_set(operation_keys)
     first = keys[0]
+    method = build_method_adapter(
+        method_config,
+        MethodRuntimeContext(
+            model_id=MODEL_ID,
+            model_revision=MODEL_REVISION,
+            backend_id=str(BACKEND_IDENTITY["backend_id"]),
+            backend_fingerprint=first.backend_identity_sha256,
+            num_layers=_LAYERS,
+            num_query_heads=_QUERY_HEADS,
+            num_kv_heads=_KV_HEADS,
+            head_dim=_HEAD_DIM,
+        ),
+    )
+
     expected_steps = 1 if first.runner_kind is RunnerKind.FIXED_L else 16
     if len(keys) != expected_steps:
         raise Phase3EndpointAuditError("operation set has the wrong run length")
@@ -543,15 +607,14 @@ def build_phase3_endpoint_session(
         "model_baseline",
         device=prefix_input_ids.device,
     )
-    cache = BF16StaticCache(
-        num_layers=_LAYERS,
+    cache = method.allocate(
         batch_size=first.batch_size,
-        num_kv_heads=_KV_HEADS,
         capacity=first.capacity,
-        head_dim=_HEAD_DIM,
         device=prefix_input_ids.device,
         workspace_bytes=workspace_bytes,
     )
+    if type(cache) is not BF16StaticCache:
+        raise Phase3EndpointAuditError("Phase 3 requires BF16 static cache state")
     cache_memory = capture_cuda_memory_snapshot(
         "post_cache_allocation",
         device=prefix_input_ids.device,
@@ -561,7 +624,10 @@ def build_phase3_endpoint_session(
             "endpoint cache differs from the operation key"
         )
     cache.initialize_deterministic()
-    endpoint = BF16DecodeEndpoint(loaded.model, cache)
+    adapter_config_fingerprint = method.config_fingerprint(
+        cache.layout_fingerprint()
+    )
+    endpoint = BF16DecodeEndpoint(loaded.model, cache, method)
     starting_context = int(prefix_input_ids.shape[1])
     positions = tuple(
         torch.tensor(
@@ -667,6 +733,8 @@ def build_phase3_endpoint_session(
         decode_input_ids=decode_input_ids,
         endpoint=endpoint,
         cache=cache,
+        method=method,
+        adapter_config_fingerprint=adapter_config_fingerprint,
         model_memory=model_memory,
         cache_memory=cache_memory,
         fixed_operation=fixed_operation,
