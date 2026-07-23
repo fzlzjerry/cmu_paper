@@ -1363,7 +1363,13 @@ def validate_phase3_artifact_root() -> list[str]:
             path.name
             for path in artifacts.iterdir()
             if path.name
-            not in {"README.md", "phase3", "phase3_campaigns", "phase3_reports"}
+            not in {
+                "README.md",
+                "phase3",
+                "phase3_campaigns",
+                "phase3_reports",
+                "phase4_smoke",
+            }
         )
         if unexpected:
             errors.append(
