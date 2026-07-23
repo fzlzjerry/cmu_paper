@@ -383,6 +383,55 @@ class Phase3RawAuditSchemaTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             Phase3RawAuditRunIndex.create((record,))
 
+    def test_run_index_accepts_exact_bound_and_rejects_one_byte_over(
+        self,
+    ) -> None:
+        operation = operation_key(fixed_point(), 0)
+
+        def index_with_total(total_size: int) -> Phase3RawAuditRunIndex:
+            sizes = (
+                MAX_RAW_AUDIT_FILE_SIZE_BYTES,
+                MAX_RAW_AUDIT_FILE_SIZE_BYTES,
+                MAX_RAW_AUDIT_FILE_SIZE_BYTES,
+                MAX_RAW_AUDIT_FILE_SIZE_BYTES,
+                total_size - 4 * MAX_RAW_AUDIT_FILE_SIZE_BYTES,
+            )
+            files = tuple(
+                Phase3RawAuditFile(
+                    schema_version=PHASE3_RAW_AUDIT_FILE_SCHEMA_VERSION,
+                    path=f"partial/{ordinal}.bin",
+                    kind=f"partial_{ordinal}",
+                    sha256=hashlib.sha256(
+                        f"partial-{ordinal}".encode("ascii")
+                    ).hexdigest(),
+                    size_bytes=size,
+                )
+                for ordinal, size in enumerate(sizes)
+            )
+            record = Phase3RawAuditOperationRecord(
+                schema_version=PHASE3_RAW_AUDIT_OPERATION_SCHEMA_VERSION,
+                operation=operation,
+                status=RAW_AUDIT_STATUS_FAILED,
+                failure_reason="producer_failed",
+                files=files,
+            )
+            return Phase3RawAuditRunIndex.create((record,))
+
+        self.assertEqual(
+            sum(
+                item.size_bytes
+                for item in index_with_total(
+                    MAX_RAW_AUDIT_RUN_SIZE_BYTES
+                ).records[0].files
+            ),
+            MAX_RAW_AUDIT_RUN_SIZE_BYTES,
+        )
+        with self.assertRaisesRegex(
+            ValueError,
+            "raw audit run size exceeds the hard limit",
+        ):
+            index_with_total(MAX_RAW_AUDIT_RUN_SIZE_BYTES + 1)
+
     def test_strict_parser_rejects_missing_unknown_and_wrong_types(self) -> None:
         index = Phase3RawAuditRunIndex.create(
             (completed_record(operation_key(fixed_point(), 0)),)

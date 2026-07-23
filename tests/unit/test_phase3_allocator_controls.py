@@ -1042,8 +1042,38 @@ class PairedAllocatorControlVerificationTests(unittest.TestCase):
         )
         self.assertFalse(result.passed)
         self.assertIn(
-            "split_k_control_formula_or_multiplicity_mismatch",
+            "mha_control:eager_split_k_pair_duplicate",
             result.failure_reasons,
+        )
+
+    def test_geometry_specific_split_counts_pass_independently(self) -> None:
+        key = operation_key()
+        result = verify_phase3_paired_allocator_controls(
+            gqa_raw=observation_bytes(
+                role="gqa",
+                key=key,
+                trace=eager_trace(split_sizes=(180224, 1408)),
+            ),
+            mha_control_raw=observation_bytes(
+                role="mha_control",
+                key=key,
+                trace=eager_trace(split_sizes=(81920, 640)),
+            ),
+            operation_key=key,
+            gqa_dispatch_trace_raw=GQA_DISPATCH_RAW,
+            mha_dispatch_trace_raw=MHA_DISPATCH_RAW,
+        )
+        self.assertTrue(result.passed, result.failure_reasons)
+        self.assertEqual(result.split_k_pair_multiplicity, ((11, 1),))
+        self.assertEqual(
+            tuple(
+                (fact.formula_id, fact.num_splits)
+                for fact in result.mha_control.split_k_facts
+            ),
+            (
+                ("flash_split_k_output_accumulator", 5),
+                ("flash_split_k_lse", 5),
+            ),
         )
 
 

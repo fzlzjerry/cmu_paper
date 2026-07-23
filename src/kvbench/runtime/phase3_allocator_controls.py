@@ -1671,13 +1671,16 @@ def _held_constants(geometry: AllocatorControlGeometry) -> tuple[object, ...]:
     )
 
 
-def _formula_counter(
+def _non_split_formula_counter(
     replay: Phase3AllocatorControlReplay,
-) -> Counter[tuple[str, int | None, int]]:
+) -> Counter[tuple[str, int]]:
     return Counter(
-        (fact.formula_id, fact.num_splits, fact.requested_bytes)
+        (fact.formula_id, fact.requested_bytes)
         for fact in replay.allocation_facts
-        if fact.formula_id != AllocationClass.UNKNOWN.value
+        if (
+            fact.formula_id != AllocationClass.UNKNOWN.value
+            and fact.formula_id not in _EAGER_SPLIT_FORMULAS
+        )
     )
 
 
@@ -1689,7 +1692,7 @@ def verify_phase3_paired_allocator_controls(
     gqa_dispatch_trace_raw: bytes,
     mha_dispatch_trace_raw: bytes,
 ) -> Phase3PairedAllocatorControlVerification:
-    """Verify geometry, query identity, and exact split-K formula pairing."""
+    """Verify held constants and each geometry's exact split-K formula pair."""
 
     gqa = replay_phase3_allocator_control(
         gqa_raw,
@@ -1736,64 +1739,49 @@ def verify_phase3_paired_allocator_controls(
             f"{prefix}:{reason}" for reason in replay.failure_reasons
         )
 
-    gqa_split = Counter(
-        (fact.formula_id, fact.num_splits, fact.requested_bytes)
-        for fact in gqa.split_k_facts
-    )
-    mha_split = Counter(
-        (fact.formula_id, fact.num_splits, fact.requested_bytes)
-        for fact in mha.split_k_facts
-    )
-    if gqa_split != mha_split:
-        reasons.append("split_k_control_formula_or_multiplicity_mismatch")
-    split_values = sorted(
-        {
-            fact.num_splits
-            for fact in (*gqa.split_k_facts, *mha.split_k_facts)
-            if fact.num_splits is not None
-        }
-    )
-    multiplicities: list[tuple[int, int]] = []
-    for splits in split_values:
-        output_count = sum(
-            1
-            for fact in gqa.split_k_facts
-            if fact.formula_id == "flash_split_k_output_accumulator"
-            and fact.num_splits == splits
+    def split_pair_multiplicity(
+        prefix: str,
+        replay: Phase3AllocatorControlReplay,
+    ) -> tuple[tuple[int, int], ...]:
+        multiplicities: list[tuple[int, int]] = []
+        split_values = sorted(
+            {
+                fact.num_splits
+                for fact in replay.split_k_facts
+                if fact.num_splits is not None
+            }
         )
-        lse_count = sum(
-            1
-            for fact in gqa.split_k_facts
-            if fact.formula_id == "flash_split_k_lse"
-            and fact.num_splits == splits
-        )
-        if output_count <= 0 or output_count != lse_count:
-            reasons.append("gqa_split_k_output_lse_pair_mismatch")
-        mha_output_count = sum(
-            1
-            for fact in mha.split_k_facts
-            if fact.formula_id == "flash_split_k_output_accumulator"
-            and fact.num_splits == splits
-        )
-        mha_lse_count = sum(
-            1
-            for fact in mha.split_k_facts
-            if fact.formula_id == "flash_split_k_lse"
-            and fact.num_splits == splits
-        )
-        if (
-            mha_output_count <= 0
-            or mha_output_count != mha_lse_count
-            or mha_output_count != output_count
-        ):
-            reasons.append("mha_split_k_output_lse_pair_mismatch")
-        multiplicities.append((splits, output_count))
-    if _formula_counter(gqa) != _formula_counter(mha):
-        reasons.append("allocator_control_known_formula_mismatch")
+        for splits in split_values:
+            output_count = sum(
+                1
+                for fact in replay.split_k_facts
+                if fact.formula_id
+                == "flash_split_k_output_accumulator"
+                and fact.num_splits == splits
+            )
+            lse_count = sum(
+                1
+                for fact in replay.split_k_facts
+                if fact.formula_id == "flash_split_k_lse"
+                and fact.num_splits == splits
+            )
+            if output_count <= 0 or output_count != lse_count:
+                reasons.append(
+                    f"{prefix}_split_k_output_lse_pair_mismatch"
+                )
+            multiplicities.append((splits, output_count))
+        return tuple(multiplicities)
+
+    gqa_multiplicities = split_pair_multiplicity("gqa", gqa)
+    split_pair_multiplicity("mha_control", mha)
+    if _non_split_formula_counter(gqa) != _non_split_formula_counter(mha):
+        reasons.append("allocator_control_non_split_formula_mismatch")
     return Phase3PairedAllocatorControlVerification(
         gqa=gqa,
         mha_control=mha,
-        split_k_pair_multiplicity=tuple(multiplicities),
+        # The production endpoint is GQA, so its independently verified split
+        # count is the one bound into production allocation replay.
+        split_k_pair_multiplicity=gqa_multiplicities,
         failure_reasons=tuple(dict.fromkeys(reasons)),
     )
 

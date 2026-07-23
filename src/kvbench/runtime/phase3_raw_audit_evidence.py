@@ -74,7 +74,10 @@ REQUIRED_COMPLETED_RAW_AUDIT_FILE_KINDS = tuple(
 )
 
 MAX_RAW_AUDIT_FILE_SIZE_BYTES = 256 * 1024 * 1024
-MAX_RAW_AUDIT_RUN_SIZE_BYTES = 1024 * 1024 * 1024
+# Decision 0014 binds the run envelope to the frozen maximum of sixteen
+# operations and the observed worst-case per-operation bundle, rounded up to
+# 72 MiB.  The independent per-file and file-count limits remain unchanged.
+MAX_RAW_AUDIT_RUN_SIZE_BYTES = 16 * 72 * 1024 * 1024
 MAX_RAW_AUDIT_RUN_INDEX_SIZE_BYTES = 16 * 1024 * 1024
 MAX_RAW_AUDIT_FILES_PER_RUN = 512
 PHASE3_RAW_AUDIT_EXPECTED_RUN_COUNT = 20

@@ -8,6 +8,7 @@ import importlib
 import json
 import os
 from pathlib import Path
+import re
 import stat
 import sys
 import tempfile
@@ -216,6 +217,19 @@ def _safe_reason(error: BaseException) -> str:
     if not text:
         text = type(error).__name__
     return f"{type(error).__name__}: {text}"[:MAX_REASON_CHARACTERS]
+
+
+def _raw_audit_failure_reason(
+    error: BaseException,
+    *,
+    prefix: str,
+) -> str:
+    """Preserve the producer exception as a bounded machine-readable reason."""
+
+    raw = f"{type(error).__name__}:{str(error)}".lower()
+    detail = re.sub(r"[^a-z0-9_.:-]+", ".", raw).strip(".:")
+    candidate = f"{prefix}:{detail}" if detail else prefix
+    return candidate[:256].rstrip(".:")
 
 
 def _exclusive_write(path: Path, data: bytes) -> None:
@@ -1197,7 +1211,10 @@ def _phase3_raw_audit_producer_bindings(
                     ),
                     operation=operation_key,
                     status=RAW_AUDIT_STATUS_FAILED,
-                    failure_reason="operation_audit_failed",
+                    failure_reason=_raw_audit_failure_reason(
+                        error,
+                        prefix="operation_audit_failed",
+                    ),
                     files=partial,
                 )
 
@@ -1286,7 +1303,10 @@ def _phase3_raw_audit_producer_bindings(
                 ),
                 operation=last,
                 status=RAW_AUDIT_STATUS_FAILED,
-                failure_reason="session_finalization_failed",
+                failure_reason=_raw_audit_failure_reason(
+                    error,
+                    prefix="session_finalization_failed",
+                ),
                 files=tuple(
                     sorted(
                         (*last_record.files, failure_file),

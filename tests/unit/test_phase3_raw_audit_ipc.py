@@ -290,6 +290,20 @@ def _ingest(
 
 
 class Phase3RawAuditProducerRegistryTests(unittest.TestCase):
+    def test_failure_reason_preserves_bounded_producer_exception(self) -> None:
+        reason = phase3_worker._raw_audit_failure_reason(
+            phase3_worker.WorkerProtocolError(
+                "paired allocator controls did not verify"
+            ),
+            prefix="operation_audit_failed",
+        )
+        self.assertEqual(
+            reason,
+            "operation_audit_failed:workerprotocolerror:"
+            "paired.allocator.controls.did.not.verify",
+        )
+        self.assertLessEqual(len(reason), 256)
+
     def test_operation_plan_round_trip_and_canonical_rejection(self) -> None:
         operations = tuple(
             record.operation for record in _completed_index().records
@@ -478,7 +492,7 @@ class Phase3RawAuditProducerRegistryTests(unittest.TestCase):
         )
         with self.assertRaisesRegex(
             Phase3RawAuditProducerError,
-            "did not complete before measurement",
+            "decode step 0: collector_failed",
         ):
             require_phase3_raw_audit_measurement_admission(
                 index,

@@ -378,10 +378,17 @@ def require_phase3_raw_audit_measurement_admission(
         raise Phase3RawAuditProducerError(
             "raw-audit run index differs from the trusted operation plan"
         )
-    if any(
-        record.status != RAW_AUDIT_STATUS_COMPLETED
-        for record in index.records
-    ):
+    failed = next(
+        (
+            record
+            for record in index.records
+            if record.status != RAW_AUDIT_STATUS_COMPLETED
+        ),
+        None,
+    )
+    if failed is not None:
         raise Phase3RawAuditProducerError(
-            "raw-audit collection did not complete before measurement"
+            "raw-audit collection failed before measurement at "
+            f"decode step {failed.operation.decode_step}: "
+            f"{failed.failure_reason}"
         )
