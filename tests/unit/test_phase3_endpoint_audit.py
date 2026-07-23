@@ -71,6 +71,14 @@ class _Graph:
         self.replay_calls += 1
         return self.output
 
+    def to_dict(self) -> dict[str, int | bool]:
+        return {
+            "captured": True,
+            "output_data_ptr": int(self.output.data_ptr()),
+            "capture_stream_id": 1,
+            "fallback": False,
+        }
+
 
 def _point(*, growing: bool, graph: bool = False) -> Phase3ProcessPoint:
     runner = RunnerKind.GROWING_CONTEXT if growing else RunnerKind.FIXED_L
@@ -159,9 +167,20 @@ class Phase3EndpointSessionTests(unittest.TestCase):
                 return_value=_DIGEST,
             ),
             mock.patch(
+                "kvbench.runtime.phase3_endpoint_audit."
+                "capture_cuda_memory_snapshot",
+                return_value=SimpleNamespace(allocated_bytes=0),
+            ),
+            mock.patch(
                 "kvbench.runtime.phase3_endpoint_audit.capture_fixed_graph",
                 side_effect=capture,
             ) as capture_mock,
+            mock.patch(
+                "kvbench.runtime.phase3_endpoint_audit."
+                "tensor_sha256_untimed",
+                return_value="c" * 64,
+            ),
+            mock.patch("torch.cuda.synchronize"),
         ):
             session = build_phase3_endpoint_session(
                 loaded=_loaded(),
@@ -207,6 +226,11 @@ class Phase3EndpointSessionTests(unittest.TestCase):
                 return_value=_DIGEST,
             ),
             mock.patch(
+                "kvbench.runtime.phase3_endpoint_audit."
+                "capture_cuda_memory_snapshot",
+                return_value=SimpleNamespace(allocated_bytes=0),
+            ),
+            mock.patch(
                 "kvbench.runtime.phase3_endpoint_audit.capture_fixed_graph"
             ) as capture_mock,
         ):
@@ -222,6 +246,8 @@ class Phase3EndpointSessionTests(unittest.TestCase):
                 dispatch_audit_sha256="7" * 64,
                 allocation_audit_sha256="8" * 64,
                 destination_slot_sha256="9" * 64,
+                output_sha256="c" * 64,
+                output_finite=True,
                 locally_verified=True,
             )
             session.finish_audits(
@@ -256,6 +282,11 @@ class Phase3EndpointSessionTests(unittest.TestCase):
                 "kvbench.runtime.phase3_endpoint_audit._cache_pair_sha256",
                 return_value=_DIGEST,
             ),
+            mock.patch(
+                "kvbench.runtime.phase3_endpoint_audit."
+                "capture_cuda_memory_snapshot",
+                return_value=SimpleNamespace(allocated_bytes=0),
+            ),
         ):
             session = build_phase3_endpoint_session(
                 loaded=_loaded(),
@@ -280,6 +311,8 @@ class Phase3EndpointSessionTests(unittest.TestCase):
                     dispatch_audit_sha256="7" * 64,
                     allocation_audit_sha256="8" * 64,
                     destination_slot_sha256=f"{step:064x}",
+                    output_sha256=f"{step + 1:064x}",
+                    output_finite=True,
                     locally_verified=True,
                 )
             session.finish_audits(release_audit_buffers=lambda: None)

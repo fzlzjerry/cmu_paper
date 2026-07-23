@@ -60,8 +60,15 @@ from kvbench.runtime.gqa_device_dispatch import (
 from kvbench.runtime import allocation_attribution as allocation_module
 from kvbench.runtime.allocation_attribution import (
     PHASE3_BACKEND_IDENTITY,
+    ProductionAllocationBinding,
+    SplitKCompositeRawInputs,
     build_phase3_production_allocation_binding,
     collect_cuda_allocation_attribution,
+    cuda_allocator_rounded_minimum,
+    instantiate_decision_0009_production_rules,
+)
+from kvbench.runtime.phase3_allocator_controls import (
+    verify_phase3_paired_allocator_controls,
 )
 from kvbench.runtime.phase3_audit_operation import Phase3AuditOperationKey
 from kvbench.schema import (
@@ -789,6 +796,152 @@ def raw_replay_fixture(
     }
 
 
+def paired_allocator_raw_evidence(
+    fixture: dict[str, object],
+) -> tuple[bytes, bytes, SplitKCompositeRawInputs]:
+    from tests.unit.test_phase3_allocator_controls import (
+        observation_bytes,
+        successful_trace,
+    )
+
+    operation = fixture["operation_key"]
+    gqa_dispatch = fixture["gqa_raw"]
+    mha_dispatch = fixture["mha_raw"]
+    if not isinstance(operation, Phase3AuditOperationKey):
+        raise AssertionError("fixture operation key has the wrong type")
+    if not isinstance(gqa_dispatch, bytes) or not isinstance(
+        mha_dispatch, bytes
+    ):
+        raise AssertionError("fixture dispatch traces have the wrong type")
+    control_trace = successful_trace()
+    gqa_allocator = observation_bytes(
+        role="gqa",
+        key=operation,
+        trace=control_trace,
+        dispatch_raw=gqa_dispatch,
+    )
+    mha_allocator = observation_bytes(
+        role="mha_control",
+        key=operation,
+        trace=control_trace,
+        dispatch_raw=mha_dispatch,
+    )
+    paired = verify_phase3_paired_allocator_controls(
+        gqa_raw=gqa_allocator,
+        mha_control_raw=mha_allocator,
+        operation_key=operation,
+        gqa_dispatch_trace_raw=gqa_dispatch,
+        mha_dispatch_trace_raw=mha_dispatch,
+    )
+    if not paired.passed:
+        raise AssertionError(
+            "synthetic paired allocator controls failed: "
+            + ", ".join(paired.failure_reasons)
+        )
+    split_inputs = SplitKCompositeRawInputs.from_raw_bytes(
+        gqa_dispatch_trace=gqa_dispatch,
+        mha_dispatch_trace=mha_dispatch,
+        gqa_allocator_control=gqa_allocator,
+        mha_allocator_control=mha_allocator,
+        split_k_pair_multiplicity=paired.split_k_pair_multiplicity,
+    )
+    return gqa_allocator, mha_allocator, split_inputs
+
+
+def production_endpoint_trace(
+    binding: ProductionAllocationBinding,
+) -> list[dict[str, object]]:
+    rules = instantiate_decision_0009_production_rules(binding)
+    trace: list[dict[str, object]] = []
+    next_address = 0x100000
+
+    def append_lifetime(
+        size: int,
+        *,
+        python_stack: list[dict[str, object]],
+        cpp_stack: list[dict[str, object]],
+    ) -> None:
+        nonlocal next_address
+        trace.extend(
+            alloc_lifetime(
+                size,
+                address=next_address,
+                stream=7,
+                python_stack=python_stack,
+                cpp_stack=cpp_stack,
+                allocated_block_size=cuda_allocator_rounded_minimum(size),
+            )
+        )
+        next_address += 0x100000
+
+    for policy in rules.permitted_allocation_policies:
+        size = next(iter(policy.allowed_requested_bytes))
+        python_stack = [
+            {
+                "name": selector.function_name,
+                "filename": f"/source/{selector.source_suffix}",
+                "line": 10,
+            }
+            for selector in policy.required_python_frames
+        ]
+        cpp_stack = [
+            {
+                "name": selector.function_name,
+                "filename": f"/source/{selector.source_suffix}",
+                "line": 20,
+            }
+            for selector in policy.required_cpp_frames
+        ]
+        for _ in range(policy.exact_count):
+            append_lifetime(
+                size,
+                python_stack=python_stack,
+                cpp_stack=cpp_stack,
+            )
+
+    raw_inputs = binding.split_k_raw_inputs
+    if raw_inputs is None:
+        raise AssertionError("eager production binding lacks split-K inputs")
+    split_cpp_stack = [
+        {
+            "name": name,
+            "filename": "/source/flash_api.cpp",
+            "line": 30 + index,
+        }
+        for index, name in enumerate(
+            allocation_module.FLASH_SPLIT_K_CPP_MARKERS
+        )
+    ]
+    split_python_stack = [
+        {
+            "name": "flash_attention_forward",
+            "filename": "/source/src/kvbench/runtime/backend.py",
+            "line": 40,
+        }
+    ]
+    for splits, control_pair_count in raw_inputs.split_k_pair_multiplicity:
+        if control_pair_count != 1:
+            raise AssertionError("control fixture must contain one split-K pair")
+        for _ in range(allocation_module.PHASE3_LAYER_COUNT):
+            append_lifetime(
+                binding.geometry.flash_split_k_output_accumulator_bytes(splits),
+                python_stack=split_python_stack,
+                cpp_stack=split_cpp_stack,
+            )
+            append_lifetime(
+                binding.geometry.flash_split_k_lse_bytes(splits),
+                python_stack=split_python_stack,
+                cpp_stack=split_cpp_stack,
+            )
+
+    allocations = [event for event in trace if event["action"] == "alloc"]
+    if len(allocations) != 1_066:
+        raise AssertionError("source-backed fixture allocation count drifted")
+    if sum(int(event["size"]) for event in allocations) != 10_960_908:
+        raise AssertionError("source-backed fixture requested bytes drifted")
+    return trace
+
+
 def allocation_raw_evidence(
     fixture: dict[str, object],
     *,
@@ -798,42 +951,55 @@ def allocation_raw_evidence(
     selected_operation = fixture["operation_key"]
     if not isinstance(selected_operation, Phase3AuditOperationKey):
         raise AssertionError("fixture operation key has the wrong type")
+    _, _, split_inputs = paired_allocator_raw_evidence(fixture)
     binding = build_phase3_production_allocation_binding(
         operation_key=selected_operation,
         backend_identity=PHASE3_BACKEND_IDENTITY,
+        split_k_raw_inputs=split_inputs,
     )
+    endpoint_trace = production_endpoint_trace(binding)
     fake = _FakeTorch()
     harness = _FakeOperationHarness(binding)
-    injected = False
+    recorded = False
 
     def operation() -> object:
-        nonlocal injected
-        if (
-            injected_allocation_bytes is not None
-            and fake.cuda.memory.recording
-            and not injected
-        ):
-            injected = True
-            fake.cuda.memory.snapshot["device_traces"][0].extend(
-                alloc_lifetime(
-                    injected_allocation_bytes,
-                    address=0xA000,
-                    stream=0,
-                    allocated_block_size=injected_allocation_bytes,
+        nonlocal recorded
+        if fake.cuda.memory.recording and not recorded:
+            recorded = True
+            recorded_trace = list(endpoint_trace)
+            if injected_allocation_bytes is not None:
+                recorded_trace.extend(
+                    alloc_lifetime(
+                        injected_allocation_bytes,
+                        address=0x900000000,
+                        stream=0,
+                        allocated_block_size=cuda_allocator_rounded_minimum(
+                            injected_allocation_bytes
+                        ),
+                    )
                 )
+            fake.cuda.memory.snapshot["device_traces"][0].extend(
+                recorded_trace
+            )
+            allocations = [
+                event
+                for event in recorded_trace
+                if event["action"] == "alloc"
+            ]
+            requested_bytes = sum(
+                int(event["size"]) for event in allocations
+            )
+            block_bytes = sum(
+                int(event["allocated_block_size"]) for event in allocations
             )
             fake.cuda.stats.update(
                 {
-                    "allocation.all.allocated": 1,
-                    "requested_bytes.all.allocated": (
-                        injected_allocation_bytes
-                    ),
-                    "allocated_bytes.all.allocated": (
-                        injected_allocation_bytes
-                    ),
-                    "allocation.all.freed": 1,
-                    "requested_bytes.all.freed": injected_allocation_bytes,
-                    "allocated_bytes.all.freed": injected_allocation_bytes,
+                    "allocation.all.allocated": len(allocations),
+                    "requested_bytes.all.allocated": requested_bytes,
+                    "allocated_bytes.all.allocated": block_bytes,
+                    "allocation.all.freed": len(allocations),
+                    "requested_bytes.all.freed": requested_bytes,
+                    "allocated_bytes.all.freed": block_bytes,
                 }
             )
         return harness.operation()
@@ -2479,11 +2645,12 @@ class GeometryBoundAllocationJoinTests(unittest.TestCase):
             fixture,
             injected_allocation_bytes=expanded_single,
         )
-        self.assertEqual(len(facts.allocation_events), 1)
-        self.assertEqual(
-            facts.allocation_events[0].requested_bytes,
-            expanded_single,
-        )
+        expanded_events = [
+            event
+            for event in facts.allocation_events
+            if event.requested_bytes == expanded_single
+        ]
+        self.assertEqual(len(expanded_events), 1)
         result = combine_phase3_geometry_bound_gqa_allocation_verdict(
             dispatch_audit=audit,
             allocation_facts=facts,

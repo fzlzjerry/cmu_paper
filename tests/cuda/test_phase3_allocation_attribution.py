@@ -16,6 +16,7 @@ from kvbench.runtime.allocation_attribution import (
     OperationWitnessCallbacks,
     PHASE3_BACKEND_IDENTITY,
     ProductionAllocationBinding,
+    SplitKCompositeRawInputs,
     build_phase3_production_allocation_binding,
     capture_output_witness_d2h,
     collect_cuda_allocation_attribution,
@@ -70,9 +71,21 @@ def _binding(*, execution_mode: str) -> ProductionAllocationBinding:
         ).hexdigest(),
         source_identity_sha256="5" * 64,
     )
+    split_inputs = (
+        SplitKCompositeRawInputs.from_raw_bytes(
+            gqa_dispatch_trace=b"gqa-dispatch-control",
+            mha_dispatch_trace=b"mha-dispatch-control",
+            gqa_allocator_control=b"gqa-allocator-control",
+            mha_allocator_control=b"mha-allocator-control",
+            split_k_pair_multiplicity=((2, 1),),
+        )
+        if execution_mode == "eager"
+        else None
+    )
     return build_phase3_production_allocation_binding(
         operation_key=operation_key,
         backend_identity=PHASE3_BACKEND_IDENTITY,
+        split_k_raw_inputs=split_inputs,
     )
 
 
@@ -223,7 +236,7 @@ class Phase3AllocationAttributionCudaTests(unittest.TestCase):
         value = torch.randn_like(key)
         return query, key, value
 
-    def test_warmed_eager_flash_evidence_fails_closed_without_catalog_policy(
+    def test_isolated_attention_is_rejected_as_not_the_full_endpoint(
         self,
     ) -> None:
         binding = _binding(execution_mode="eager")

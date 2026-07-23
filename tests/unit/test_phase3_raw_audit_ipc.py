@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import copy
 import dataclasses
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -13,6 +14,10 @@ import unittest
 from unittest import mock
 
 from kvbench.runtime import phase3_coordinator, phase3_worker
+from kvbench.runtime.gqa_device_dispatch import (
+    REQUIRED_SUT_SOURCES,
+    phase3_source_identity_sha256,
+)
 from kvbench.runtime.phase3_audit_operation import Phase3AuditOperationKey
 from kvbench.runtime.phase3_coordinator import (
     MAX_IPC_BYTES,
@@ -70,10 +75,16 @@ from kvbench.schema import (
     sha256_hex,
 )
 from kvbench.schema.phase3 import (
+    BF16BackendIdentity,
     PHASE3_FIXED_PLAN_PATH,
     PHASE3_GROWING_PLAN_PATH,
     PHASE3_PLAN_FINGERPRINTS,
     Phase3ProcessPoint,
+)
+from tests.unit.test_phase3_gqa_device_dispatch_geometry import (
+    allocation_raw_evidence,
+    paired_allocator_raw_evidence,
+    raw_replay_fixture,
 )
 
 
@@ -816,6 +827,233 @@ class Phase3RawAuditIPCSecureIngestionTests(unittest.TestCase):
                 ingest.assert_not_called()
         finally:
             os.close(descriptor)
+
+
+class Phase3CoordinatorSemanticReplayTests(unittest.TestCase):
+    def test_coordinator_rederives_verified_b011_b012_from_reduced_raw_files(
+        self,
+    ) -> None:
+        fixture = raw_replay_fixture(production_allocation_identity=True)
+        operation = fixture["operation_key"]
+        self.assertIsInstance(operation, Phase3AuditOperationKey)
+        gqa_allocator, mha_allocator, _ = paired_allocator_raw_evidence(
+            fixture
+        )
+        _, allocation = allocation_raw_evidence(fixture)
+        witness = json.loads(
+            allocation.operation_witness_raw.decode("utf-8")
+        )
+        measured_before = witness["measured_before"]
+        measured_after = witness["measured_after"]
+        measured_output = witness["measured_output"]
+        prefix_sha256 = measured_before["historical_prefix_sha256"]
+        history_chain_sha256 = hashlib.sha256(
+            (
+                f"{prefix_sha256}:"
+                f"{measured_after['destination_slot_sha256']}"
+            ).encode("ascii")
+        ).hexdigest()
+
+        bundle = canonical_json_bytes(
+            {
+                "snapshot": json.loads(
+                    allocation.snapshot_raw.decode("utf-8")
+                ),
+                "memory_stats_before": json.loads(
+                    allocation.memory_stats_before_raw.decode("utf-8")
+                ),
+                "memory_stats_after": json.loads(
+                    allocation.memory_stats_after_raw.decode("utf-8")
+                ),
+                "memory_accounting_before": json.loads(
+                    allocation.memory_accounting_before_raw.decode("utf-8")
+                ),
+                "memory_accounting_after": json.loads(
+                    allocation.memory_accounting_after_raw.decode("utf-8")
+                ),
+                "operation_witness": witness,
+                "gqa_allocator_control": json.loads(
+                    gqa_allocator.decode("utf-8")
+                ),
+                "mha_allocator_control": json.loads(
+                    mha_allocator.decode("utf-8")
+                ),
+                "audit_sha256_ledger": (
+                    allocation.audit_sha256_ledger_raw.decode("ascii")
+                ),
+            }
+        )
+        b011_raw = fixture["observation_raw"]
+        gqa_raw = fixture["gqa_raw"]
+        mha_raw = fixture["mha_raw"]
+        self.assertIsInstance(b011_raw, bytes)
+        self.assertIsInstance(gqa_raw, bytes)
+        self.assertIsInstance(mha_raw, bytes)
+        dispatch_sha256 = sha256_hex(b011_raw)
+        allocation_sha256 = sha256_hex(allocation.audit_raw)
+        provenance = canonical_json_bytes(
+            {
+                "schema_version": (
+                    "kvbench-phase3-endpoint-session-1.0.0"
+                ),
+                "receipt_sha256": "a" * 64,
+                "cache_pointers": {
+                    "keys_data_ptr": measured_before["key_data_ptr"],
+                    "values_data_ptr": measured_before["value_data_ptr"],
+                    "keys_storage_ptr": measured_before["key_data_ptr"],
+                    "values_storage_ptr": measured_before["value_data_ptr"],
+                },
+                "cache_layout_fingerprint": (
+                    operation.cache_layout_fingerprint
+                ),
+                "operation_fingerprints": [
+                    operation.operation_fingerprint_sha256
+                ],
+                "dispatch_audit_sha256": [dispatch_sha256],
+                "allocation_audit_sha256": [allocation_sha256],
+                "audit_output_sha256": [measured_output["sha256"]],
+                "audit_output_finite": [measured_output["finite"]],
+                "graph_retained": False,
+                "prefix_sha256": prefix_sha256,
+                "history_chain_sha256": history_chain_sha256,
+            }
+        )
+        payloads = {
+            "b011_audit": ("dispatch-audit.json", b011_raw),
+            "b011_gqa_chrome_trace": (
+                "gqa.geometry.chrome.json",
+                gqa_raw,
+            ),
+            "b011_mha_chrome_trace": (
+                "mha.geometry.chrome.json",
+                mha_raw,
+            ),
+            "b012_allocation_audit": (
+                "allocation-audit.json",
+                allocation.audit_raw,
+            ),
+            "b012_allocator_snapshot": (
+                "allocator-evidence.json",
+                bundle,
+            ),
+            "b012_allocator_trace": (
+                "allocator-trace.json",
+                allocation.trace_raw,
+            ),
+            PHASE3_RAW_AUDIT_SESSION_PROVENANCE_KIND: (
+                "session-provenance.json",
+                provenance,
+            ),
+        }
+
+        with tempfile.TemporaryDirectory(
+            prefix="kvbench-phase3-semantic-replay-"
+        ) as directory:
+            root = Path(directory)
+            root.chmod(0o700)
+            descriptor, owner_uid = _open_private_raw_audit_root(root)
+            step = root / "step-0000"
+            step.mkdir(mode=0o700)
+            declarations: list[Phase3RawAuditFile] = []
+            for kind, (filename, payload) in sorted(payloads.items()):
+                target = step / filename
+                target.write_bytes(payload)
+                declarations.append(
+                    Phase3RawAuditFile.from_bytes(
+                        path=f"step-0000/{filename}",
+                        kind=kind,
+                        payload=payload,
+                    )
+                )
+            record = Phase3RawAuditOperationRecord(
+                schema_version=(
+                    PHASE3_RAW_AUDIT_OPERATION_SCHEMA_VERSION
+                ),
+                operation=operation,
+                status=RAW_AUDIT_STATUS_COMPLETED,
+                failure_reason=None,
+                files=tuple(
+                    sorted(
+                        declarations,
+                        key=lambda item: (item.kind, item.path),
+                    )
+                ),
+            )
+            raw_index = Phase3RawAuditRunIndex.create((record,))
+            try:
+                raw_sources = fixture["source_bytes_by_path"]
+                self.assertIsInstance(raw_sources, dict)
+                source_bytes = {
+                    relative: (
+                        raw_sources[relative]
+                        if relative in REQUIRED_SUT_SOURCES
+                        else f"fixture:{relative}\n".encode("utf-8")
+                    )
+                    for relative in (
+                        phase3_coordinator.PHASE3_EXECUTION_SOURCE_PATHS
+                    )
+                }
+                source_digests = {
+                    relative: sha256_hex(payload)
+                    for relative, payload in source_bytes.items()
+                }
+                pin = Phase3ExecutionSourcePin(
+                    execution_git_sha=operation.execution_git_sha,
+                    source_bytes_by_path=tuple(source_bytes.items()),
+                    source_identity_sha256=phase3_source_identity_sha256(
+                        {
+                            relative: source_digests[relative]
+                            for relative in REQUIRED_SUT_SOURCES
+                        }
+                    ),
+                    execution_source_identity_sha256=(
+                        phase3_coordinator
+                        ._phase3_execution_source_identity_sha256(
+                            source_digests
+                        )
+                    ),
+                )
+                backend_raw = fixture["backend_identity_raw"]
+                self.assertIsInstance(backend_raw, bytes)
+                backend = BF16BackendIdentity.from_dict(
+                    json.loads(backend_raw.decode("utf-8"))
+                )
+                outcome = _raw_audit_ingestion_outcome()
+                outcome.update(
+                    {
+                        "process_audit_passed": True,
+                        "commitment_validation_passed": True,
+                        (
+                            "execution_source_revalidated_after_worker_exit"
+                        ): True,
+                    }
+                )
+                _ingest_worker_evidence_v2(
+                    evidence=build_phase3_worker_evidence_v2(
+                        raw_index
+                    ),
+                    expected_run_id=operation.run_id,
+                    expected_point_id=operation.point_id,
+                    raw_audit_root_fd=descriptor,
+                    raw_audit_owner_uid=owner_uid,
+                    expected_operations=(operation,),
+                    run=CapturingRun(),
+                    outcome=outcome,
+                    execution_source_pin=pin,
+                    backend_identity=backend,
+                )
+            finally:
+                os.close(descriptor)
+
+        self.assertIs(outcome["semantic_validation_passed"], True)
+        self.assertIs(outcome["scientific_completion_passed"], True)
+        self.assertIs(outcome["terminal_eligible"], True)
+        self.assertIs(outcome["passed"], True)
+        self.assertEqual(outcome["status"], "validated")
+        self.assertEqual(
+            outcome["semantic_operations"][0]["gqa_verdict"],
+            "gqa_nonmaterialization_verified",
+        )
 
 
 class Phase3ExecutionSourcePinTests(unittest.TestCase):

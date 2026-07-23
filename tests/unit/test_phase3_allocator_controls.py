@@ -319,9 +319,12 @@ def observation_bytes(
     trace: list[dict[str, object]],
     query_pointer: int = QUERY_POINTER,
     query_sha256: str = "a" * 64,
+    dispatch_raw: bytes | None = None,
 ) -> bytes:
     kv_heads = 8 if role == "gqa" else 32
-    dispatch = GQA_DISPATCH_RAW if role == "gqa" else MHA_DISPATCH_RAW
+    dispatch = (
+        GQA_DISPATCH_RAW if role == "gqa" else MHA_DISPATCH_RAW
+    ) if dispatch_raw is None else dispatch_raw
     stats_before, stats_after = stats_for(trace)
     snapshot: dict[str, object] = {"device_traces": [trace]}
     graph = key.dispatch_execution_mode == "cuda_graph_replay"

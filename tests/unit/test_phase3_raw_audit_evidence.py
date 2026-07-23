@@ -233,10 +233,11 @@ def completed_record(
     operation: Phase3AuditOperationKey,
     *,
     root: Path | None = None,
+    include_provenance: bool = True,
 ) -> Phase3RawAuditOperationRecord:
     prefix = f"step-{operation.decode_step:04d}"
     kinds = REQUIRED_COMPLETED_RAW_AUDIT_FILE_KINDS
-    if operation.decode_step == 0:
+    if operation.decode_step == 0 and include_provenance:
         kinds = tuple(
             sorted((*kinds, PHASE3_RAW_AUDIT_SESSION_PROVENANCE_KIND))
         )
@@ -434,7 +435,11 @@ class Phase3RawAuditSchemaTests(unittest.TestCase):
                 operation=operation,
                 status=RAW_AUDIT_STATUS_COMPLETED,
                 failure_reason=None,
-                files=complete.files[:-1],
+                files=tuple(
+                    item
+                    for item in complete.files
+                    if item.kind != "b012_allocator_trace"
+                ),
             )
         extra = file_declaration(
             path="step-0000/unexpected.json",
@@ -522,7 +527,7 @@ class Phase3RawAuditSchemaTests(unittest.TestCase):
         point = growing_point()
         keys = tuple(operation_key(point, step) for step in range(16))
         valid = (
-            completed_record(keys[0]),
+            completed_record(keys[0], include_provenance=False),
             failed_record(keys[1]),
             *(unattempted_record(key) for key in keys[2:]),
         )
@@ -736,7 +741,12 @@ class Phase3RawAuditSecureIngestionTests(unittest.TestCase):
         point = growing_point()
         keys = tuple(operation_key(point, step) for step in range(16))
         completed = tuple(
-            completed_record(keys[step], root=self.root) for step in range(3)
+            completed_record(
+                keys[step],
+                root=self.root,
+                include_provenance=False,
+            )
+            for step in range(3)
         )
         partials = (
             (

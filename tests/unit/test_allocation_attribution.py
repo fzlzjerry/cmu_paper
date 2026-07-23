@@ -194,11 +194,12 @@ def framework_policy(*, count: int = 1) -> AllocationClassPolicy:
 
 
 def split_raw_inputs() -> SplitKCompositeRawInputs:
-    return SplitKCompositeRawInputs(
-        gqa_dispatch_trace_sha256="a" * 64,
-        mha_dispatch_trace_sha256="b" * 64,
-        gqa_allocator_control_sha256="c" * 64,
-        mha_allocator_control_sha256="d" * 64,
+    return SplitKCompositeRawInputs.from_raw_bytes(
+        gqa_dispatch_trace=b"gqa-dispatch",
+        mha_dispatch_trace=b"mha-dispatch",
+        gqa_allocator_control=b"gqa-allocator",
+        mha_allocator_control=b"mha-allocator",
+        split_k_pair_multiplicity=((2, 1),),
     )
 
 
@@ -273,6 +274,8 @@ def production_binding(
     process_replicate: int = 1,
     split_k_raw_inputs: SplitKCompositeRawInputs | None = None,
 ) -> ProductionAllocationBinding:
+    if split_k_raw_inputs is None and execution_mode == "eager":
+        split_k_raw_inputs = split_raw_inputs()
     return build_phase3_production_allocation_binding(
         operation_key=audit_operation_key(
             run_id=run_id,
@@ -621,7 +624,7 @@ def split_cpp_stack() -> list[dict[str, Any]]:
             "line": 2,
         },
         {
-            "name": "at::_flash_attention_forward_no_dropout_inplace",
+            "name": "at::native::_scaled_dot_product_flash_attention_cuda",
             "filename": "attention.cu",
             "line": 3,
         },
@@ -1580,9 +1583,59 @@ class ProductionPolicyTrustTests(unittest.TestCase):
             production.failure_reasons,
         )
 
-    def test_production_zero_event_point_is_deterministically_bound(self) -> None:
+    def test_exact_flash_output_policy_precedes_partial_split_heuristic(
+        self,
+    ) -> None:
         binding = production_binding(execution_mode="eager")
-        self.assertIsNone(binding.split_k_raw_inputs)
+        rules = instantiate_decision_0009_production_rules(binding)
+        trace = alloc_lifetime(
+            binding.geometry.output_bytes,
+            python_stack=[
+                {
+                    "name": "flash_attention_forward",
+                    "filename": "/workspace/src/kvbench/runtime/backend.py",
+                }
+            ],
+            cpp_stack=[
+                {
+                    "name": "pytorch_flash::mha_fwd",
+                    "filename": "flash_api.cpp",
+                },
+                {
+                    "name": (
+                        "at::native::_scaled_dot_product_flash_attention_cuda"
+                    ),
+                    "filename": "attention.cu",
+                },
+                {
+                    "name": (
+                        "torch::autograd::"
+                        "THPVariable_scaled_dot_product_attention"
+                        "(_object*, _object*, _object*)"
+                    ),
+                    "filename": "python_nn_functions.cpp",
+                },
+            ],
+            allocated_block_size=binding.geometry.output_bytes,
+        )
+        parsed = attribution(
+            trace,
+            selected_geometry=binding.geometry,
+            rules=rules,
+            backend_identity=binding.backend_identity,
+        )
+        item = parsed.allocations[0]
+        self.assertEqual(
+            item.event_class, AllocationClass.FIXED_SHARED_ACTIVATION
+        )
+        self.assertEqual(
+            item.policy_id,
+            "phase3_decision_0013_flash_output_v1",
+        )
+
+    def test_production_zero_event_point_fails_catalog_bounds(self) -> None:
+        binding = production_binding(execution_mode="eager")
+        self.assertIsNotNone(binding.split_k_raw_inputs)
         rules = instantiate_decision_0009_production_rules(binding)
         parsed = attribution(
             [],
@@ -1595,20 +1648,28 @@ class ProductionPolicyTrustTests(unittest.TestCase):
             zero_memory(),
             production_binding=binding,
         )
-        self.assertTrue(result.passed, result.failure_reasons)
+        self.assertFalse(result.passed)
+        self.assertIn(
+            "allocation_policy_count_bound_failed:"
+            "phase3_decision_0013_embedding_hidden_v1",
+            result.failure_reasons,
+        )
+        self.assertIn(
+            "flash_split_k_workspace_pair_missing",
+            result.failure_reasons,
+        )
         self.assertEqual(
             result.criterion_id,
             "phase3_eager_attributed_ephemeral_v1",
         )
 
-    def test_split_k_raw_inputs_are_optional_until_catalog_enables_them(
-        self,
-    ) -> None:
+    def test_split_k_raw_inputs_are_required_by_catalog(self) -> None:
         raw = SplitKCompositeRawInputs.from_raw_bytes(
             gqa_dispatch_trace=b"gqa-dispatch",
             mha_dispatch_trace=b"mha-dispatch",
             gqa_allocator_control=b"gqa-allocator",
             mha_allocator_control=b"mha-allocator",
+            split_k_pair_multiplicity=((2, 1),),
         )
         self.assertTrue(raw.raw_bytes_verified)
         self.assertIsNotNone(raw.raw_composite_sha256)
@@ -1634,6 +1695,17 @@ class ProductionPolicyTrustTests(unittest.TestCase):
         )
         self.assertEqual(binding.geometry.operation_output_width, 128_256)
         self.assertEqual(binding.geometry.operation_output_dtype_bytes, 2)
+        with self.assertRaisesRegex(
+            AllocationAttributionError,
+            "production_binding_split_k_raw_unverified",
+        ):
+            build_phase3_production_allocation_binding(
+                operation_key=audit_operation_key(
+                    run_id="missing-split-input-test",
+                    execution_mode="eager",
+                ),
+                backend_identity=PHASE3_BACKEND_IDENTITY,
+            )
 
     def test_production_binding_tamper_and_non_grid_point_are_rejected(self) -> None:
         binding = production_binding(execution_mode="eager")
@@ -2530,8 +2602,10 @@ class AllocationCollectorTests(unittest.TestCase):
                 self.assertTrue(result.prepare_completed)
                 self.assertEqual(result.prepare_attempt_count, 2)
                 self.assertEqual(result.prepare_completion_count, 2)
-                self.assertTrue(
-                    result.criterion.passed,
+                self.assertFalse(result.criterion.passed)
+                self.assertIn(
+                    "allocation_policy_count_bound_failed:"
+                    "phase3_decision_0013_embedding_hidden_v1",
                     result.criterion.failure_reasons,
                 )
         finally:

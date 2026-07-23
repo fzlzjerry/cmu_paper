@@ -2,14 +2,122 @@
 
 from __future__ import annotations
 
+import hashlib
+from pathlib import Path
+import tempfile
 import unittest
 
 import torch
 
-from kvbench.runtime.fixed_l_runner import run_fixed_l
-from kvbench.runtime.growing_context_runner import run_growing_context
+from kvbench.runtime.backend import backend_identity, forced_flash_execution
+from kvbench.runtime.gqa_device_dispatch import REQUIRED_SUT_SOURCES
 from kvbench.runtime.model_loader import load_frozen_model
 from kvbench.runtime.numerical import validate_full_model_reference
+from kvbench.runtime.phase3_coordinator import (
+    _cache_identity,
+    _expected_phase3_raw_audit_operations,
+)
+from kvbench.runtime.phase3_raw_audit_evidence import (
+    PHASE3_RAW_AUDIT_SESSION_PROVENANCE_KIND,
+    RAW_AUDIT_STATUS_COMPLETED,
+    REQUIRED_COMPLETED_RAW_AUDIT_FILE_KINDS,
+    Phase3RawAuditOperationRecord,
+)
+from kvbench.runtime.phase3_worker import (
+    _phase3_raw_audit_producer_bindings,
+)
+from kvbench.schema import GraphMode, RunnerKind
+from kvbench.schema.phase3 import (
+    BF16BackendIdentity,
+    Phase3ProcessPoint,
+)
+
+
+def collect_exact_endpoint_audit(
+    loaded: object,
+    *,
+    graph_mode: GraphMode,
+) -> tuple[object, Phase3RawAuditOperationRecord, Path]:
+    """Run one exact B=1, L=128 endpoint audit without normal timing."""
+
+    repository_root = Path(__file__).resolve().parents[2]
+    point = Phase3ProcessPoint(
+        point_id=f"fixed_l-b1-l128-{graph_mode.value}-r1",
+        runner_kind=RunnerKind.FIXED_L,
+        graph_mode=graph_mode,
+        batch_size=1,
+        context_length=128,
+        output_steps=1,
+        process_replicate=1,
+        stability_member=False,
+    )
+    source_hashes = {
+        relative: hashlib.sha256(
+            (repository_root / relative).read_bytes()
+        ).hexdigest()
+        for relative in REQUIRED_SUT_SOURCES
+    }
+    cache = _cache_identity(
+        point,
+        implementation_sha256=source_hashes[
+            "src/kvbench/runtime/static_cache.py"
+        ],
+    )
+    backend = BF16BackendIdentity.from_dict(backend_identity())
+    operations = _expected_phase3_raw_audit_operations(
+        point=point,
+        run_id=(
+            "phase3-remediation-endpoint-"
+            f"{graph_mode.value}-control"
+        ),
+        git_sha="5" * 40,
+        cache=cache,
+        backend=backend,
+        source_sha256_by_path=source_hashes,
+    )
+    device = torch.device("cuda:0")
+    prefix = torch.arange(
+        1_000,
+        1_128,
+        dtype=torch.long,
+        device=device,
+    ).unsqueeze(0)
+    decode = torch.tensor([[6_000]], dtype=torch.long, device=device)
+    evidence_root = Path(
+        tempfile.mkdtemp(
+            prefix=(
+                "kvbench-phase3-endpoint-audit-"
+                f"{graph_mode.value}-"
+            ),
+            dir="/tmp",
+        )
+    )
+    with torch.inference_mode(), forced_flash_execution():
+        session, bindings = _phase3_raw_audit_producer_bindings(
+            expected_operations=operations,
+            torch=torch,
+            device=device,
+            loaded=loaded,
+            point=point,
+            prefix_input_ids=prefix,
+            decode_input_ids=decode,
+        )
+        operation, producer = bindings[0]
+        record = producer(operation, evidence_root)
+    if record.status != RAW_AUDIT_STATUS_COMPLETED:
+        details = []
+        for declared in record.files:
+            if "error" in declared.kind:
+                details.append(
+                    (evidence_root / declared.path).read_text(
+                        encoding="utf-8"
+                    ).strip()
+                )
+        raise AssertionError(
+            "exact endpoint audit failed; "
+            f"evidence={evidence_root}; details={details}"
+        )
+    return session, record, evidence_root
 
 
 @unittest.skipUnless(torch.cuda.is_available(), "CUDA is required")
@@ -17,6 +125,7 @@ class Phase3FullModelReferenceTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         loaded = load_frozen_model(device="cuda:0")
+        cls.loaded = loaded
         cls.model = loaded.model
         cls.tokenizer = loaded.tokenizer
         cls.identity = loaded.identity
@@ -57,53 +166,22 @@ class Phase3FullModelReferenceTests(unittest.TestCase):
         self.assertFalse(serialized["timing_collected"])
         self.assertFalse(serialized["performance_claim_eligible"])
 
-    def test_exact_model_eager_runners_fail_closed_before_normal_timing(
+    def test_exact_endpoint_eager_audit_admits_without_normal_timing(
         self,
     ) -> None:
-        prefix = torch.arange(
-            5_000,
-            5_008,
-            dtype=torch.long,
-            device="cuda:0",
-        ).unsqueeze(0)
-        current = torch.tensor([[6_000]], dtype=torch.long, device="cuda:0")
-        fixed = run_fixed_l(
-            self.model,
-            prefix,
-            current,
-            context_length=8,
-            graph_mode="eager",
-            warmup_steps=1,
-            measured_steps=1,
-            measured_batches=1,
+        session, record, evidence_root = collect_exact_endpoint_audit(
+            self.loaded,
+            graph_mode=GraphMode.EAGER,
         )
-        self.assertFalse(fixed.allocation.passed)
-        self.assertIsNone(fixed.timing)
-        self.assertIsNotNone(fixed.timing_skipped_reason)
-        self.assertFalse(fixed.memory_evidence.timing_executed)
-        self.assertTrue(fixed.historical_cache_unchanged)
-        self.assertTrue(fixed.output_finite)
+        print(f"preserved_endpoint_audit={evidence_root}")
+        self.assertEqual(session.state, "ready")
+        self.assertEqual(
+            {item.kind for item in record.files},
+            set(REQUIRED_COMPLETED_RAW_AUDIT_FILE_KINDS)
+            | {PHASE3_RAW_AUDIT_SESSION_PROVENANCE_KIND},
+        )
+        self.assertFalse(session.provenance_payload()["graph_retained"])
 
-        decode = torch.arange(
-            7_000,
-            7_003,
-            dtype=torch.long,
-            device="cuda:0",
-        ).unsqueeze(0)
-        growing = run_growing_context(
-            self.model,
-            prefix,
-            decode,
-            starting_context=8,
-            warmup_trajectories=1,
-        )
-        self.assertFalse(growing.allocation.passed)
-        self.assertIsNone(growing.timing)
-        self.assertIsNotNone(growing.timing_skipped_reason)
-        self.assertFalse(growing.memory_evidence.timing_executed)
-        self.assertEqual(growing.active_lengths, (8, 9, 10))
-        self.assertTrue(growing.cache_pointers_stable)
-        self.assertTrue(growing.output_finite)
 
 
 if __name__ == "__main__":
