@@ -8,15 +8,15 @@ requirements; and AGENTS.md. Decision 0005 records precedence.
 
 ## Current state
 
-- Current phase: Phase 3 remains G1 FAIL. Both post-B-016 campaigns completed,
-  but immutable report `phase3-g1-20260723t123322160580z-9def265a-08dc69`
-  failed on B-017's report-only raw-evidence join. Phase 2 remains PASS; Phase 4 is closed.
+- Current phase: Phase 3 native-host BF16 G1 PASS. Immutable report
+  `phase3-g1-20260723t132609515797z-7f72c95f-f31ccb` independently replays
+  the unchanged post-B-016 campaigns and passes all 20 criteria. Phase 2
+  remains PASS; formal E02 remains blocked by B-009/B-010; Phase 4 is closed.
 - Phase 0 status: PASS
 - Phase 1 remediation status: PASS
-- Next action: implement the minimal reporting-only B-017 fix, make the report
-  independently replay the consolidated raw B-011/B-012 evidence, rerun all
-  admission tests, and publish a new no-replace report from the same immutable
-  campaigns; do not rerun campaign points for this reporting defect
+- Next action: preserve the complete Phase 3 evidence set. Phase 4 may be
+  proposed only in a separate new task; no later method, pilot, Full Scan, or
+  quality execution is authorized by this status update
 - Active admission gate: native-host G0 PASS; container-parity G0 remains a
   later E01 requirement before E02
 - Benchmark implementation changes: exact BF16 static cache, fixed-L and
@@ -32,16 +32,18 @@ requirements; and AGENTS.md. Decision 0005 records precedence.
   only an untimed diagnostic. Execution SHA
   `9def265ab613cde7a06b0e51850f066d0564d635` then preserved two complete new
   campaigns with 20/20 completed runs and immutable FAIL report
-  `phase3-g1-20260723t123322160580z-9def265a-08dc69`. The report has a valid
-  COMPLETE-last lifecycle but does not consume the consolidated raw audit
-  contract (B-017). No performance-profiler or quality evidence was produced.
+  `phase3-g1-20260723t123322160580z-9def265a-08dc69`. Reporting-only commit
+  `7f72c95f9932c608f9bd68f1971d6e86378596a2` then published immutable PASS
+  report `phase3-g1-20260723t132609515797z-7f72c95f-f31ccb` from those same
+  source runs without executing timing. No performance-profiler or quality
+  evidence was produced.
 - Scientific performance claims: none
 - Quality protocol: preregistered by Decision 0005 before any performance or
   quality result
 - Quality execution: LOCKED; `PERFORMANCE_DATA_FROZEN` is absent
 - Quality runs or quality-only dependency installations: none
 - Full-scan admission: CLOSED
-- Gate state: G0 PASS; BF16 G1 FAIL; G2-G5 NOT EVALUATED
+- Gate state: G0 PASS; native-host BF16 G1 PASS; G2-G5 NOT EVALUATED
 
 ## Phase 3 remediation attempt
 
@@ -209,6 +211,46 @@ may be rerun to repair it. Quality execution remains LOCKED,
 `PERFORMANCE_DATA_FROZEN` remains absent, Full Scan remains CLOSED, and pilot
 and Phase 4 remain unstarted.
 
+## Phase 3 B-017 reporting-only closure
+
+Starting from clean HEAD `9c517ceeec1f9d0587be709166e62cdeca4d6831`, the
+original report retained SHA-256
+`060a88283f083e281692a2c471d279da9bfc635e0f513e2dca588ed729d85c7d`,
+the B-017 FAIL report retained SHA-256
+`db044273f681bb66f5578c4c19327497302c903f1b4409a08b7b582a2d47ba07`,
+and every entry checksum remained unchanged.
+
+Reporting-only commit `7f72c95f9932c608f9bd68f1971d6e86378596a2`
+reuses the existing coordinator raw replay. It reconstructs the execution-SHA
+source pin, binds each sidecar to its canonical index, binds every operation
+key and declared raw file digest to the selected run, and derives report facts
+from local raw replay rather than serialized worker `passed` booleans. The
+legacy derivation remains generator-SHA-bound so every older immutable report
+still validates under its original semantics. Targeted tests cover local
+pass/worker-fail, local-fail/worker-pass, missing files, tampered files, and a
+mismatched sidecar/index.
+
+Before publication, `make checks`, `make test` (38 schema, 31 Phase 2, 226
+Phase 3, and 167 remediation-control tests), `make test-cuda` (14/14), and
+`make test-graph` (3/3) passed. The tree was clean at the report-generator SHA.
+No campaign, performance timing, pilot, quality evaluation, Full Scan, or
+Phase 4 work ran.
+
+The append-only publisher reused exactly the complete fixed-L campaign
+`phase3-20260723t112051327159z-9def265a-aa9c5e` and growing-context campaign
+`phase3-20260723t121325332843z-9def265a-8fbf6a`. It created no new run and did
+not modify any source run. New no-replace report
+`phase3-g1-20260723t132609515797z-7f72c95f-f31ccb` has SHA-256
+`c29aef1d9f22b328201599b3e6cdf9efe7c069e78abaf6b37bc3cb12931414c9`.
+Independent validation returns `valid=true` with no errors; its ledger passes,
+all 20 criteria are PASS, and no payload is newer than `COMPLETE`.
+
+The resulting gate state is G0 PASS, native-host BF16 G1 PASS, G2-G5 NOT
+EVALUATED, and Full Scan CLOSED. B-011, B-012, and B-017 are resolved. B-009
+and B-010 still block formal E02 closure, later method execution, ordinary
+timing, and every performance claim. Quality execution remains LOCKED and
+`PERFORMANCE_DATA_FROZEN` remains absent.
+
 ## Repository
 
 The initial non-Git workspace contained three operator-provided inputs but no
@@ -298,12 +340,12 @@ repository.
 | Phase 0 repository/input audit | PASS | literature manifests; method notes; source lock; decision, risks, blockers, tasks |
 | G0 native-host hardware certification | PASS | `docs/evidence/e00/e00-20260722T050632.375718Z-6442ba1f7554-02d5bd32/`; prior immutable FAIL retained |
 | Phase 2 repository/contracts/tooling | PASS | strict schemas and examples; fail-closed CLI; append-only local writer; 54 Phase 2 tests; repository checks |
-| G1 BF16 baseline | FAIL | Both post-B-016 campaigns completed 20/20 runs and campaign-side raw replay passed 80/80 operations. Immutable report `phase3-g1-20260723t123322160580z-9def265a-08dc69` remains FAIL because B-017 disconnects five criteria from the consolidated raw evidence. |
+| G1 BF16 baseline | PASS | Native-host report `phase3-g1-20260723t132609515797z-7f72c95f-f31ccb` independently replays the unchanged 20 runs and 80 operations and passes all 20 criteria. Formal E02 remains blocked by B-009/B-010. |
 | G2-TQ | NOT EVALUATED | requires E05-E06 |
 | G2-KIVI | NOT EVALUATED | requires E07-E08 |
 | G2-KVQ | NOT EVALUATED | requires E09-E11 |
 | G1-G5 unified admission | NOT EVALUATED | requires E12 |
-| Pilot/full-scan gates | CLOSED / NOT EVALUATED | BF16 G1 failed; no method admitted; graph timing is non-claim admission evidence only |
+| Pilot/full-scan gates | CLOSED / NOT EVALUATED | No pilot or later method is authorized in Phase 3; native-host timing remains non-claim admission evidence only |
 | Post-performance quality validation | LOCKED | Decision 0005; `PERFORMANCE_DATA_FROZEN` absent |
 
 ## Phase 0 acceptance
@@ -321,14 +363,11 @@ repository.
 
 ## Next action
 
-Phase 3 remains G1 FAIL. B-013 through B-016 are resolved without changing the
-frozen process, numerical, allocation, graph, measured-region, or experiment
-contracts. Both required campaigns are complete and immutable. The exact next
-action is a reporting-only B-017 change that independently replays each
-consolidated raw B-011/B-012 bundle, adds targeted tamper/missing-evidence tests,
-runs every admission test, and publishes a new no-replace report from the same
-campaigns only if those gates pass. Do not rerun any campaign point for this
-reporting defect.
+Phase 3 native-host BF16 G1 is PASS. B-011 through B-017 are resolved without
+changing the frozen process, numerical, allocation, graph, measured-region, or
+experiment contracts. Both campaigns, all 20 runs, every failed report, and
+the new PASS report are immutable. Phase 4 may be proposed only in a separate
+new task; this record does not authorize it.
 B-010 still requires a digest-pinned measurement container and container-parity
 G0 before formal E02 closure, ordinary timing, later method admission, or a
 performance claim. B-009 still requires durable append-only storage and an

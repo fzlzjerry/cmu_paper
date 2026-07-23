@@ -17,17 +17,17 @@
   ],
   "execution_git_sha": "9def265ab613cde7a06b0e51850f066d0564d635",
   "full_report": {
-    "checksum_ledger_file_sha256": "df7385e301cc309cfb6627c56b484a50f75aad8e21fd45d9a285bb1cdeb19aca",
-    "path": "artifacts/phase3_reports/phase3-g1-20260723t123322160580z-9def265a-08dc69/report.json",
-    "report_id": "phase3-g1-20260723t123322160580z-9def265a-08dc69",
-    "sha256": "db044273f681bb66f5578c4c19327497302c903f1b4409a08b7b582a2d47ba07",
+    "checksum_ledger_file_sha256": "2d42ff3f517b3626442a9dc3d2d1fa6e4f4de01926c1f02547c76637765a44b5",
+    "path": "artifacts/phase3_reports/phase3-g1-20260723t132609515797z-7f72c95f-f31ccb/report.json",
+    "report_id": "phase3-g1-20260723t132609515797z-7f72c95f-f31ccb",
+    "sha256": "c29aef1d9f22b328201599b3e6cdf9efe7c069e78abaf6b37bc3cb12931414c9",
     "stability_artifacts": [
       {
-        "path": "artifacts/phase3_reports/phase3-g1-20260723t123322160580z-9def265a-08dc69/stability/eager.json",
+        "path": "artifacts/phase3_reports/phase3-g1-20260723t132609515797z-7f72c95f-f31ccb/stability/eager.json",
         "sha256": "149acf9bedfce0d650b310e64d2922c71013fb972734aa873bbee24aeeb1f868"
       },
       {
-        "path": "artifacts/phase3_reports/phase3-g1-20260723t123322160580z-9def265a-08dc69/stability/cuda_graph.json",
+        "path": "artifacts/phase3_reports/phase3-g1-20260723t132609515797z-7f72c95f-f31ccb/stability/cuda_graph.json",
         "sha256": "bec9273e882ffd8324908b7d003989c8e78186f0cff88929565f2a379a29226c"
       }
     ],
@@ -38,7 +38,7 @@
   "gates": {
     "full_scan": "CLOSED",
     "g0": "PASS",
-    "g1": "FAIL",
+    "g1": "PASS",
     "g2": "NOT_EVALUATED",
     "g3": "NOT_EVALUATED",
     "g4": "NOT_EVALUATED",
@@ -52,10 +52,10 @@
     "quality_execution": "locked",
     "quality_status": "unvalidated"
   },
-  "report_generator_git_sha": "9def265ab613cde7a06b0e51850f066d0564d635",
+  "report_generator_git_sha": "7f72c95f9932c608f9bd68f1971d6e86378596a2",
   "run_status_counts": {
     "completed": 20
   },
   "schema_version": "kvbench-phase3-g1-evidence-index-1.0.0",
-  "status": "FAIL"
+  "status": "PASS"
 }

@@ -247,3 +247,53 @@ Scan CLOSED. Quality execution remains LOCKED, no quality benchmark ran,
 `performance_claim_eligible=false`, and
 `measurement_scope=native_host_admission`. No speedup, knee, HBM, compression,
 capacity, or quality claim is made.
+
+## Final Phase 3 remediation closure (2026-07-23)
+
+This section is a forward-only addendum. It does not alter the original FAIL
+report, any failed remediation report, campaign, or run.
+
+Execution SHA `9def265ab613cde7a06b0e51850f066d0564d635` produced the
+complete fixed-L campaign
+`phase3-20260723t112051327159z-9def265a-aa9c5e` and complete growing-context
+campaign `phase3-20260723t121325332843z-9def265a-8fbf6a`: 20/20 runs completed,
+with no failure, abort, capacity exclusion, omitted point, or selective rerun.
+All source runs and both campaign records remain unchanged and checksum-valid.
+
+Reporting-only commit `7f72c95f9932c608f9bd68f1971d6e86378596a2`
+resolved B-017 without executing a campaign. The report generator now
+reconstructs execution-SHA source bytes, binds the canonical worker sidecar to
+the retained raw index, binds every operation key and declared raw file
+checksum to its source run, and invokes the existing coordinator semantic
+replay. Serialized worker verdict booleans are not admission inputs. Older
+reports retain their original generator-SHA-bound derivation.
+
+Targeted missing, tampered, mismatched, and contradictory-evidence tests pass.
+Before publication, `make checks`, `make test` (38 schema, 31 Phase 2, 226
+Phase 3, 167 remediation controls), `make test-cuda` (14/14), and
+`make test-graph` (3/3) passed. No campaign, performance timing, profiler,
+pilot, quality evaluation, Full Scan, or Phase 4 work ran.
+
+The append-only publisher created no-replace report
+`phase3-g1-20260723t132609515797z-7f72c95f-f31ccb`, report SHA-256
+`c29aef1d9f22b328201599b3e6cdf9efe7c069e78abaf6b37bc3cb12931414c9`
+and checksum-ledger-file SHA-256
+`2d42ff3f517b3626442a9dc3d2d1fa6e4f4de01926c1f02547c76637765a44b5`.
+Independent validation returns `valid=true` with no errors. Every report
+ledger entry matches, no payload is newer than `COMPLETE`, and the source-run
+index was revalidated before publication.
+
+All 20 G1 criteria PASS. The report independently replays all 80 raw operation
+bundles: all derive `gqa_nonmaterialization_verified`; all 72 eager operations
+pass `phase3_eager_attributed_ephemeral_v1` with no allocation failure reason;
+all 8 graph operations pass `phase3_graph_zero_allocation_v1` with zero events.
+The exact model/backend identities, numerical controls, cache geometry,
+fixed/growing runners, eager/graph lanes, independent replicates, stability,
+process ownership, checksums, and immutability criteria also PASS.
+
+The final native-host gate state is G0 PASS, BF16 G1 PASS, G2-G5 NOT EVALUATED,
+and Full Scan CLOSED. B-011, B-012, and B-017 are resolved. B-009 and B-010
+remain open, so this does not establish formal E02 closure or authorize later
+methods, ordinary timing, pilot, claims, or Phase 4. Quality execution remains
+LOCKED, `PERFORMANCE_DATA_FROZEN` is absent, and no speedup, knee, HBM,
+compression, capacity, or quality claim is made.
