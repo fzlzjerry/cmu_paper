@@ -8,9 +8,9 @@ authoritative local task index until issues are created elsewhere.
 |---|---|---|---|---|
 | E00 | Hardware preflight | Phase 0 PASS | hardware manifest; native extension; PTX/JIT; Compute Sanitizer; G0 | complete: native-host G0 PASS in `e00-20260722T050632.375718Z-6442ba1f7554-02d5bd32` |
 | E01 | Repository scaffold and schemas | G0 | strict schemas; append-only writer; durable artifact policy; digest-pinned container; parity preflight | partial: Phase 2 local scaffold/contracts/writer PASS; durable storage and container-parity items remain open as B-009/B-010 |
-| E02 | BF16 static-cache baseline | E01 and container-parity G0 for formal closure; Decision 0007 for Phase 3 engineering scope | reference numerical match; static allocation; GQA audit | Phase 3 remains engineering G1 FAIL. B-013 through B-016 are resolved with passing admission controls; B-011/B-012 still require two new complete campaigns, while formal B-009/B-010 remain open. |
-| E03 | Fixed-L benchmark | E02; Decision 0007 permits only bounded Phase 3 admission runner | fixed-L and growing-context runners; timing-boundary tests | The B-015 fixed-L campaign attempted all 16 frozen points once with new IDs, preserving 13 completed and 3 aborted runs. The stop condition prevented growing; no selective rerun occurred and ordinary timing remains closed. |
-| E04 | CUDA Graph harness | E02-E03 | capture/replay correctness; no replay allocation; eager/graph lanes | Decision 0015 resolves the asynchronous host/GPU parser boundary while strengthening correlation/out-of-scope rejection. Actual long graph and strict-zero-allocation controls pass; campaign-wide G1 evidence is still pending. |
+| E02 | BF16 static-cache baseline | E01 and container-parity G0 for formal closure; Decision 0007 for Phase 3 engineering scope | reference numerical match; static allocation; GQA audit | Phase 3 remains engineering G1 FAIL. Both complete post-B-016 campaigns passed campaign-side raw replay for all 80 B-011/B-012 operations, but B-017 prevents the G1 report from consuming that evidence; formal B-009/B-010 also remain open. |
+| E03 | Fixed-L benchmark | E02; Decision 0007 permits only bounded Phase 3 admission runner | fixed-L and growing-context runners; timing-boundary tests | Execution SHA `9def265ab613cde7a06b0e51850f066d0564d635` completed all 16 fixed-L and all 4 growing-context runs with new IDs, no abort/failure, no unattempted point, and no selective rerun. The results remain non-claim admission evidence. |
+| E04 | CUDA Graph harness | E02-E03 | capture/replay correctness; no replay allocation; eager/graph lanes | Decision 0015 resolves the asynchronous host/GPU parser boundary while strengthening correlation/out-of-scope rejection. All 8 graph operations in the complete fixed-L campaign passed strict zero allocation; report integration remains blocked by B-017. |
 | E05 | TurboQuant reference lane | E00-E04 | authoritative pinned source; isolated container; golden fixtures | pending |
 | E06 | TurboQuant measurement adapter | E05 | numerical, byte, graph, path, sanitizer, smoke evidence; G2-TQ | pending |
 | E07 | KIVI reference lane | G2-TQ | pinned legacy container; rollover and K/V asymmetry fixtures | pending |
@@ -18,7 +18,7 @@ authoritative local task index until issues are created elsewhere.
 | E09 | KVQuant calibration | G2-KIVI | frozen dataset/revision/seed/cap/artifacts/checksums | pending |
 | E10 | KVQuant reference lane | E09 | dense/sparse/sink fixtures for 4/3/2-bit and cap cases | pending |
 | E11 | KVQuant measurement adapter | E10 | fixed sparse buffers; byte breakdown; graph/path tests; G2-KVQ | pending |
-| E12 | Admission gates | E02-E11 | machine-readable G1-G5 report for every main configuration | Original and second-remediation FAIL reports remain immutable. B-016 remediation admission passes; two entirely new campaigns and a new independently validated G1 report remain pending. |
+| E12 | Admission gates | E02-E11 | machine-readable G1-G5 report for every main configuration | Both new campaigns are complete and immutable. New report `phase3-g1-20260723t123322160580z-9def265a-08dc69` independently validates but remains FAIL because B-017 disconnects five G1 criteria from the consolidated raw-audit evidence. |
 | E13 | Pilot scan | E12 PASS | immutable randomized samples; QC; provisional knees; pilot gate | pending |
 | E14 | Nsight Systems integration | E13 | nsys-only runs around knees; launch/sync/kernel evidence | pending |
 | E15 | Nsight Compute integration | E13 | current-SM metric discovery; measured traffic; ncu-only runs | pending |
@@ -51,10 +51,10 @@ task list. E16 remains closed until its evidence is reviewed.
   only after pilot admission and keeps method/cache/backend/shape fixed.
 - E12 includes an operator-level MHA control with identical head dimension and
   no GQA repetition.
-- B-013 through B-016 are resolved with passing controls. Phase 3 failures
-  B-011/B-012 require a new clean Git SHA and entirely new complete bounded
-  campaigns. Existing completed, failed, and aborted runs remain immutable;
-  selective reruns are prohibited.
+- B-013 through B-016 are resolved and both required campaigns are complete.
+  B-011/B-012 have complete raw campaign coverage but remain open because of
+  B-017's report-only rederivation defect. Preserve every run/report; do not
+  rerun campaign points to repair reporting code.
 - E13 and E16 use blocked randomization and retain every failed, unstable, and
   capacity-infeasible point with a machine-readable reason.
 - E14/E15 must set run_kind to nsys or ncu; only run_kind=timing enters latency
