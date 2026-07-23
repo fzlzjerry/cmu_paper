@@ -1494,6 +1494,93 @@ class GeometryBoundKernelSequenceTests(unittest.TestCase):
                         marker=marker,
                     )
 
+    def test_graph_parser_accepts_gpu_completion_after_host_return(self) -> None:
+        marker = "kvbench.phase3.geometry.graph-async-completion"
+        payload = json.loads(graph_launch_trace(marker).decode("utf-8"))
+        host = next(
+            item
+            for item in payload["traceEvents"]
+            if item.get("cat") == "user_annotation"
+        )
+        host["dur"] = 20.0
+        parsed = parse_scoped_chrome_cuda_graph_events(
+            json.dumps(payload).encode("utf-8"),
+            marker=marker,
+        )
+        self.assertEqual(parsed.scope.runtime_correlations, (43,))
+        self.assertEqual(len(parsed.device_events), 1)
+
+    def test_graph_parser_rejects_async_correlated_event_outside_gpu_marker(
+        self,
+    ) -> None:
+        marker = "kvbench.phase3.geometry.graph-async-outside"
+        payload = json.loads(graph_launch_trace(marker).decode("utf-8"))
+        host = next(
+            item
+            for item in payload["traceEvents"]
+            if item.get("cat") == "user_annotation"
+        )
+        host["dur"] = 20.0
+        original = next(
+            item
+            for item in payload["traceEvents"]
+            if item.get("cat") == "kernel"
+        )
+        outside = json.loads(json.dumps(original))
+        outside["ts"] = 23.0
+        outside["dur"] = 0.25
+        outside["args"]["graph node id"] = 8589934593
+        payload["traceEvents"].append(outside)
+        with self.assertRaisesRegex(
+            ChromeTraceValidationError,
+            "graph-launch-correlated",
+        ):
+            parse_scoped_chrome_cuda_graph_events(
+                json.dumps(payload).encode("utf-8"),
+                marker=marker,
+            )
+
+    def test_graph_parser_rejects_unknown_gpu_event_after_host_return(
+        self,
+    ) -> None:
+        marker = "kvbench.phase3.geometry.graph-async-unknown"
+        payload = json.loads(graph_launch_trace(marker).decode("utf-8"))
+        host = next(
+            item
+            for item in payload["traceEvents"]
+            if item.get("cat") == "user_annotation"
+        )
+        gpu = next(
+            item
+            for item in payload["traceEvents"]
+            if item.get("cat") == "gpu_user_annotation"
+        )
+        host["dur"] = 20.0
+        gpu["dur"] = 5.0
+        payload["traceEvents"].append(
+            {
+                "ph": "X",
+                "cat": "cuda_kernel_v2",
+                "name": "hidden_async_device_activity",
+                "ts": 21.25,
+                "dur": 0.25,
+                "args": {
+                    "stream": 7,
+                    "correlation": 43,
+                    "device": 0,
+                    "context": 1,
+                },
+            }
+        )
+        with self.assertRaisesRegex(
+            ChromeTraceValidationError,
+            "unrecognized category",
+        ):
+            parse_scoped_chrome_cuda_graph_events(
+                json.dumps(payload).encode("utf-8"),
+                marker=marker,
+            )
+
     def test_graph_parser_rejects_mixed_duplicate_and_out_of_scope_nodes(
         self,
     ) -> None:

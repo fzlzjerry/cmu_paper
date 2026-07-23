@@ -14,13 +14,15 @@ from kvbench.runtime.phase3_allocator_controls import (
     collect_phase3_paired_allocator_controls,
     verify_phase3_paired_allocator_controls,
 )
-from kvbench.runtime.backend import backend_identity
+from kvbench.runtime.backend import backend_identity, forced_flash_execution
 from kvbench.runtime.gqa_device_dispatch import (
     CUDA_GRAPH_REPLAY_EXECUTION_MODE,
     FLASH_FORWARD_FAMILY,
     MATERIALIZATION_CLASSIFICATIONS,
     collect_gqa_mha_device_dispatch,
     collect_phase3_geometry_bound_gqa_mha_device_dispatch,
+    collect_torch_profiler_trace,
+    parse_scoped_chrome_cuda_graph_events,
     phase3_source_identity_sha256,
     revalidate_phase3_geometry_bound_dispatch_audit,
 )
@@ -358,6 +360,72 @@ class Phase3GQADeviceDispatchCudaTests(unittest.TestCase):
         rendered = json.dumps(payload, sort_keys=True)
         for forbidden in ('"latency"', '"duration"', '"wall_time_ms"'):
             self.assertNotIn(forbidden, rendered)
+
+    def test_long_graph_control_allows_async_gpu_completion(self) -> None:
+        device = torch.device("cuda:0")
+        generator = torch.Generator(device=device).manual_seed(20260723)
+        query = torch.randn(
+            (1, 32, 1, 128),
+            dtype=torch.bfloat16,
+            device=device,
+            generator=generator,
+        )
+        key = torch.randn(
+            (1, 32, 16_385, 128),
+            dtype=torch.bfloat16,
+            device=device,
+            generator=generator,
+        )
+        value = torch.randn_like(key, generator=generator)
+        marker = "kvbench.phase3.b016.long-mha-graph-control"
+
+        def operation() -> torch.Tensor:
+            with forced_flash_execution():
+                return torch.nn.functional.scaled_dot_product_attention(
+                    query,
+                    key,
+                    value,
+                    attn_mask=None,
+                    dropout_p=0.0,
+                    is_causal=False,
+                    scale=128**-0.5,
+                    enable_gqa=True,
+                )
+
+        with tempfile.TemporaryDirectory(
+            prefix="kvbench-phase3-b016-long-graph-",
+            dir="/tmp",
+        ) as directory:
+            trace_path = Path(directory) / "mha.geometry.chrome.json"
+            artifact = collect_torch_profiler_trace(
+                operation,
+                trace_path,
+                artifact_relative_path=trace_path.name,
+                marker=marker,
+                warmup_count=3,
+                device=device,
+                execution_mode=CUDA_GRAPH_REPLAY_EXECUTION_MODE,
+            )
+            raw = trace_path.read_bytes()
+            parsed = parse_scoped_chrome_cuda_graph_events(
+                raw,
+                marker=marker,
+            )
+            self.assertEqual(hashlib.sha256(raw).hexdigest(), artifact.sha256)
+            self.assertEqual(len(raw), artifact.size_bytes)
+            self.assertTrue(parsed.device_events)
+            self.assertTrue(
+                all(
+                    event.classification == "flash_attention"
+                    for event in parsed.device_events
+                )
+            )
+            self.assertFalse(
+                any(
+                    event.classification in MATERIALIZATION_CLASSIFICATIONS
+                    for event in parsed.device_events
+                )
+            )
 
 
 if __name__ == "__main__":

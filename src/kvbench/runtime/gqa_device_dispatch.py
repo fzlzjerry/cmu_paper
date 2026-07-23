@@ -532,10 +532,11 @@ def _reject_unrecognized_device_like_in_marker_events(
 
     PyTorch profiler category spelling is not a proof boundary.  Known host
     linkage categories remain allowed, but a complete event anywhere in the
-    isolated host operation whose category looks device-like (or carries an
-    explicit device/stream/context tuple) cannot be ignored merely because its
-    category is unfamiliar.  Scoping only to the GPU annotation would miss a
-    materialization kernel which precedes that annotation.
+    isolated host launch or its asynchronous GPU annotation whose category
+    looks device-like (or carries an explicit device/stream/context tuple)
+    cannot be ignored merely because its category is unfamiliar.  Scoping only
+    to either interval would miss preceding host-scoped activity or GPU work
+    which completes after the host launch returns.
     """
 
     known_non_device_categories = frozenset(
@@ -549,6 +550,7 @@ def _reject_unrecognized_device_like_in_marker_events(
     explicit_device_argument_keys = frozenset(
         {"device", "stream", "context", "graph id", "graph node id"}
     )
+    gpu_interval = _complete_interval(gpu_marker)
     for event in trace_events:
         if event is gpu_marker:
             continue
@@ -565,7 +567,10 @@ def _reject_unrecognized_device_like_in_marker_events(
             interval = _complete_interval(event)
         except ChromeTraceValidationError:
             continue
-        if not _intervals_overlap(isolated_host_interval, interval):
+        if not (
+            _intervals_overlap(isolated_host_interval, interval)
+            or _intervals_overlap(gpu_interval, interval)
+        ):
             continue
         args = event.get("args")
         argument_keys = frozenset(args) if isinstance(args, dict) else frozenset()
@@ -1121,10 +1126,6 @@ def parse_scoped_chrome_cuda_graph_events(
         != marker_external_id
     ):
         raise ChromeTraceValidationError("graph host/GPU marker IDs differ")
-    if not _interval_contains(host_interval, gpu_interval):
-        raise ChromeTraceValidationError(
-            "graph GPU marker is not contained by its host marker"
-        )
     cpu_pid = _trace_integer(host_marker, "pid")
     cpu_tid = _trace_integer(host_marker, "tid")
     gpu_stream = _trace_integer(gpu_marker, "tid")
@@ -1164,11 +1165,15 @@ def parse_scoped_chrome_cuda_graph_events(
         interval = (candidate.timestamp, candidate.timestamp + candidate.duration)
         within_gpu_marker = _interval_contains(gpu_interval, interval)
         overlaps_host_marker = _intervals_overlap(host_interval, interval)
-        if not within_gpu_marker and overlaps_host_marker:
-            raise ChromeTraceValidationError(
-                "host-overlapping graph device event is outside the GPU marker"
-            )
         if not within_gpu_marker:
+            if candidate.correlation_id == launch_correlation:
+                raise ChromeTraceValidationError(
+                    "graph-launch-correlated device event is outside the GPU marker"
+                )
+            if overlaps_host_marker:
+                raise ChromeTraceValidationError(
+                    "host-overlapping graph device event is outside the GPU marker"
+                )
             continue
         if candidate.correlation_id != launch_correlation:
             raise ChromeTraceValidationError(
