@@ -10,7 +10,7 @@ authoritative local task index until issues are created elsewhere.
 | E01 | Repository scaffold and schemas | G0 | strict schemas; append-only writer; durable artifact policy; digest-pinned container; parity preflight | partial: Phase 2 local scaffold/contracts/writer PASS; durable storage and container-parity items remain open as B-009/B-010 |
 | E02 | BF16 static-cache baseline | E01 and container-parity G0 for formal closure; Decision 0007 for Phase 3 engineering scope | reference numerical match; static allocation; GQA audit | Native-host engineering G1 PASS in independently validated immutable report `phase3-g1-20260723t132609515797z-7f72c95f-f31ccb`. All 20 criteria pass from the unchanged complete campaigns and raw audit bundles. Formal E02 closure remains blocked by B-009/B-010. |
 | E03 | Fixed-L benchmark | E02; Decision 0007 permits only bounded Phase 3 admission runner | fixed-L and growing-context runners; timing-boundary tests | Execution SHA `9def265ab613cde7a06b0e51850f066d0564d635` completed all 16 fixed-L and all 4 growing-context runs with new IDs, no abort/failure, no unattempted point, and no selective rerun. The results remain non-claim admission evidence. |
-| E04 | CUDA Graph harness | E02-E03 | capture/replay correctness; no replay allocation; eager/graph lanes | Native-host BF16 harness admitted: Decision 0015 preserves asynchronous launch correlation and all 8 graph operations independently replay strict zero allocation. The new G1 report passes capture/replay, numerical agreement, and graph-allocation criteria. Later methods require their own G2 evidence and remain unstarted. |
+| E04 | Common cache-method and CUDA Graph harness | E02-E03 | stable method protocol; correctness/allocation/path facades; capture/replay correctness; no replay allocation | complete for Phase 4 BF16 at `0cf160caa532c7cac23275c8a14fd8694789a86f`; `docs/evidence/phase4/method-admission.json` validates. Later methods require their own reference lanes and G2 evidence and remain unstarted. |
 | E05 | TurboQuant reference lane | E00-E04 | authoritative pinned source; isolated container; golden fixtures | pending |
 | E06 | TurboQuant measurement adapter | E05 | numerical, byte, graph, path, sanitizer, smoke evidence; G2-TQ | pending |
 | E07 | KIVI reference lane | G2-TQ | pinned legacy container; rollover and K/V asymmetry fixtures | pending |
@@ -49,6 +49,9 @@ task list. E16 remains closed until its evidence is reviewed.
   samples with fixed-L fitting.
 - E04 owns the capture/replay harness used by M14-GRAPH-AB; that milestone runs
   only after pilot admission and keeps method/cache/backend/shape fixed.
+- Phase 4 adds only the BF16 adapter/factory and reusable admission facades.
+  TurboQuant, KIVI, KVQuant, reference lanes, pilot, profiler, Full Scan, and
+  quality execution remain unstarted and unauthorized.
 - E12 includes an operator-level MHA control with identical head dimension and
   no GQA repetition.
 - B-011 through B-017 are resolved for native-host BF16 G1. The reporting-only

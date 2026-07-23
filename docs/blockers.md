@@ -1,18 +1,20 @@
 # Blockers
 
-Last updated: 2026-07-23.
+Last updated: 2026-07-24.
 
 ## Current disposition
 
-Phase 2 remains PASS. Native-host Phase 3 BF16 G1 is PASS in immutable report
+Phase 2 remains PASS, native-host Phase 3 BF16 G1 remains PASS, and the Phase 4
+common BF16 adapter is PASS. The immutable Phase 3 report
 `phase3-g1-20260723t132609515797z-7f72c95f-f31ccb`, SHA-256
 `c29aef1d9f22b328201599b3e6cdf9efe7c069e78abaf6b37bc3cb12931414c9`.
-It independently replays all 80 consolidated raw B-011/B-012 operation
+The report independently replays all 80 consolidated raw B-011/B-012 operation
 bundles from the unchanged 20-run campaigns. Every earlier failed report,
 campaign, and run remains immutable. B-011 through B-017 are resolved without
-a silent fallback or weakened scientific gate. B-009 and B-010 remain open
-and still block formal/unified admission, later method execution, ordinary
-timing, and every performance claim.
+a silent fallback or weakened scientific gate. Phase 4 does not close or
+weaken B-009 or B-010; both remain open and still block formal/unified
+admission, Phase 5 method execution, ordinary timing, and every performance
+claim.
 
 | ID | Blocking condition | Blocks | Evidence / next action | Status |
 |---|---|---|---|---|
@@ -33,3 +35,11 @@ timing, and every performance claim.
 | B-015 | Fifteen second-remediation workers aborted before measurement because raw-audit production did not complete; two exposed the old 1 GiB run bound and thirteen hid their lower producer cause. Untimed worst-case diagnostics preserved `WorkerProtocolError: paired allocator controls did not verify`, proved geometry-specific GQA=11/MHA=5 split counts, measured the 16-step bundle, and supported Decision 0014's 1,152 MiB envelope. The new fixed-L campaign had no size-bound or generic-wrapper failure, and every new producer failure retained its exact decode step and `ChromeTraceValidationError` cause. | Complete B-011/B-012 coverage, BF16 G1, Phase 4, every later baseline comparison. | Resolved by commit `52f41ce9d9be4edc07a833e00fe3404fbfa80b89`; retain the hard-bound/+1-byte, geometry-specific split, and exception-preservation tests. | resolved 2026-07-23 |
 | B-016 | Three B-015 fixed-L graph controls (`B1/L16384`, `B4/L4096`, and `B4/L16384`) aborted before measurement with preserved `ChromeTraceValidationError: graph GPU marker is not contained by its host marker`. Decision 0015's untimed `B1/L16384` diagnostic reproduced the exact error: the host contained the unique asynchronous `cudaGraphLaunch`, while the valid MHA GPU range extended 150.023 microseconds past host return. In-memory removal of only that invalid relation recovered the exact two correlated Flash split-K nodes. | Complete B-011/B-012 graph coverage, BF16 G1, the growing campaign, Phase 4, and every later baseline comparison. | Resolved by commit `e7219e0dd714149e3eea783ce7a8602c4bf9bc54`: allow asynchronous GPU completion while retaining and strengthening launch-correlation, stream, External-ID, graph/node, unknown-category, kernel-family, and materialization checks. Deterministic parser tests, the real `B1/L16385` CUDA control, `make checks`, `make test`, `make test-cuda` (14/14), and `make test-graph` (3/3) pass. Retain these controls in both new complete campaigns. | resolved 2026-07-23 |
 | B-017 | Immutable report `phase3-g1-20260723t123322160580z-9def265a-08dc69` remains valid FAIL evidence for the former legacy-summary/raw-bundle disconnect. | BF16 G1, B-011/B-012 closure, Phase 4, every later method baseline comparison. | Commit `7f72c95f9932c608f9bd68f1971d6e86378596a2` binds report behavior to its recorded generator SHA, reuses coordinator raw replay, rejects missing/tampered/mismatched evidence, ignores serialized worker `passed` booleans, and derives the five criteria from raw bytes. `make checks`, `make test`, `make test-cuda` (14/14), and `make test-graph` (3/3) pass. New no-replace report `phase3-g1-20260723t132609515797z-7f72c95f-f31ccb` independently validates PASS with no errors; the two campaigns and 20 source runs were not rerun or modified. | resolved 2026-07-23 |
+
+## Phase 4 disposition
+
+The adapter boundary adds no new blocker and closes none. Its report and three
+functional smoke records remain local, checksum-bound, non-claim evidence.
+B-009 still requires durable append-only publication, and B-010 still requires
+a digest-pinned measurement container with parity G0 before Phase 5 execution
+or any formal performance work.

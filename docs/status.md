@@ -1,6 +1,6 @@
 # Project status
 
-Last updated: 2026-07-23
+Last updated: 2026-07-24
 Authoritative contracts: CODEX_WORKFLOW.md for active performance engineering;
 CODEX_POST_PERFORMANCE_QUALITY_VALIDATION.md for post-performance quality
 scheduling; CODEX_QUALITY_EVALUATION_ADDENDUM.md for non-conflicting quality
@@ -8,21 +8,23 @@ requirements; and AGENTS.md. Decision 0005 records precedence.
 
 ## Current state
 
-- Current phase: Phase 3 native-host BF16 G1 PASS. Immutable report
+- Current phase: Phase 4 common BF16 adapter PASS. Immutable Phase 3 report
   `phase3-g1-20260723t132609515797z-7f72c95f-f31ccb` independently replays
-  the unchanged post-B-016 campaigns and passes all 20 criteria. Phase 2
-  remains PASS; formal E02 remains blocked by B-009/B-010; Phase 4 is closed.
+  the unchanged post-B-016 campaigns and passes all 20 criteria. The Phase 4
+  adapter delegates to that implementation; formal E02 remains blocked by
+  B-009/B-010 and Phase 5 is closed.
 - Phase 0 status: PASS
 - Phase 1 remediation status: PASS
-- Next action: preserve the complete Phase 3 evidence set. Phase 4 may be
-  proposed only in a separate new task; no later method, pilot, Full Scan, or
-  quality execution is authorized by this status update
+- Next action: preserve the complete Phase 3 and Phase 4 evidence sets. Phase 5
+  TurboQuant Reference Lane may be proposed only in a separate new task; no
+  quantized method, pilot, Full Scan, or quality execution is authorized here
 - Active admission gate: native-host G0 PASS; container-parity G0 remains a
   later E01 requirement before E02
 - Benchmark implementation changes: exact BF16 static cache, fixed-L and
   growing-context runners, eager and CUDA Graph lanes, timing, allocation,
   telemetry, campaign lifecycle, and source-backed G1 reporting are
-  implemented; no custom CUDA/C++ extension was introduced
+  implemented. Phase 4 adds only a thin method adapter, explicit BF16-only
+  factory, shared audit facades, and a strict admission report schema
 - CUDA builds or executions: the new formal E00 run passed extension build,
   native execution, forced PTX/JIT, numerical golden, CUDA Graph, allocation,
   SASS/PTX inspection, and all required Compute Sanitizer lanes
@@ -35,8 +37,10 @@ requirements; and AGENTS.md. Decision 0005 records precedence.
   `phase3-g1-20260723t123322160580z-9def265a-08dc69`. Reporting-only commit
   `7f72c95f9932c608f9bd68f1971d6e86378596a2` then published immutable PASS
   report `phase3-g1-20260723t132609515797z-7f72c95f-f31ccb` from those same
-  source runs without executing timing. No performance-profiler or quality
-  evidence was produced.
+  source runs without executing timing. Phase 4 produced exactly three
+  checksum-bound functional smoke records at B=1/L=128; they contain no
+  latency, independent timing replicates, or formal performance data. No
+  profiler campaign or quality evidence was produced.
 - Scientific performance claims: none
 - Quality protocol: preregistered by Decision 0005 before any performance or
   quality result
@@ -44,6 +48,21 @@ requirements; and AGENTS.md. Decision 0005 records precedence.
 - Quality runs or quality-only dependency installations: none
 - Full-scan admission: CLOSED
 - Gate state: G0 PASS; native-host BF16 G1 PASS; G2-G5 NOT EVALUATED
+
+## Phase 4 common adapter
+
+Clean implementation SHA `0cf160caa532c7cac23275c8a14fd8694789a86f`
+places the existing BF16 static-cache and forced-Flash path behind the small
+`KVCacheMethod` protocol. Fixed-L and growing-context runners now consume the
+common session facade without changing timing boundaries or scientific
+semantics. Quantized methods remain `phase_not_implemented`.
+
+`make test`, `make test-cuda` (15/15), and `make test-graph` (4/4) passed.
+The three bounded functional smokes passed with new run IDs and valid checksum
+ledgers. The strict report at `docs/evidence/phase4/method-admission.json`
+retains G0/G1 PASS, G2-G5 NOT EVALUATED, Full Scan CLOSED, quality LOCKED,
+B-009/B-010 OPEN, and native-host non-claim status. No decision record was
+needed because delegation was mechanical and changed no experiment semantics.
 
 ## Phase 3 remediation attempt
 
@@ -341,11 +360,12 @@ repository.
 | G0 native-host hardware certification | PASS | `docs/evidence/e00/e00-20260722T050632.375718Z-6442ba1f7554-02d5bd32/`; prior immutable FAIL retained |
 | Phase 2 repository/contracts/tooling | PASS | strict schemas and examples; fail-closed CLI; append-only local writer; 54 Phase 2 tests; repository checks |
 | G1 BF16 baseline | PASS | Native-host report `phase3-g1-20260723t132609515797z-7f72c95f-f31ccb` independently replays the unchanged 20 runs and 80 operations and passes all 20 criteria. Formal E02 remains blocked by B-009/B-010. |
+| Phase 4 common method adapter | PASS | BF16 delegates through `KVCacheMethod`; fixed-L/growing, allocation, graph, and path checks pass; `docs/evidence/phase4/method-admission.json`; no quantized method implemented |
 | G2-TQ | NOT EVALUATED | requires E05-E06 |
 | G2-KIVI | NOT EVALUATED | requires E07-E08 |
 | G2-KVQ | NOT EVALUATED | requires E09-E11 |
 | G1-G5 unified admission | NOT EVALUATED | requires E12 |
-| Pilot/full-scan gates | CLOSED / NOT EVALUATED | No pilot or later method is authorized in Phase 3; native-host timing remains non-claim admission evidence only |
+| Pilot/full-scan gates | CLOSED / NOT EVALUATED | No pilot or Phase 5 method is authorized; native-host evidence remains non-claim admission evidence only |
 | Post-performance quality validation | LOCKED | Decision 0005; `PERFORMANCE_DATA_FROZEN` absent |
 
 ## Phase 0 acceptance
@@ -363,13 +383,12 @@ repository.
 
 ## Next action
 
-Phase 3 native-host BF16 G1 is PASS. B-011 through B-017 are resolved without
-changing the frozen process, numerical, allocation, graph, measured-region, or
-experiment contracts. Both campaigns, all 20 runs, every failed report, and
-the new PASS report are immutable. Phase 4 may be proposed only in a separate
-new task; this record does not authorize it.
+Phase 4 is PASS for the common BF16 adapter boundary only. The Phase 3
+campaigns, all 20 runs, every failed report, and the PASS report remain
+unchanged. Phase 5 TurboQuant Reference Lane may be proposed only in a separate
+new task; this record does not authorize it or any other quantized method.
 B-010 still requires a digest-pinned measurement container and container-parity
-G0 before formal E02 closure, ordinary timing, later method admission, or a
+G0 before formal E02 closure, ordinary timing, Phase 5 execution, or a
 performance claim. B-009 still requires durable append-only storage and an
 immutable locator/publication mechanism. G2-G5 remain NOT EVALUATED, Full Scan
 is CLOSED, quality execution is LOCKED, and `PERFORMANCE_DATA_FROZEN` is absent.
