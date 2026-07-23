@@ -55,6 +55,7 @@ RAW_AUDIT_OPERATION_STATUSES = (
     RAW_AUDIT_STATUS_FAILED,
     RAW_AUDIT_STATUS_NOT_ATTEMPTED,
 )
+PHASE3_RAW_AUDIT_SESSION_PROVENANCE_KIND = "phase3_session_provenance"
 
 # Completed operations have an exact, closed file-kind set.  Failed operations
 # may declare any canonical subset plus additional machine-readable partial
@@ -68,7 +69,6 @@ REQUIRED_COMPLETED_RAW_AUDIT_FILE_KINDS = tuple(
             "b012_allocation_audit",
             "b012_allocator_snapshot",
             "b012_allocator_trace",
-            "phase3_session_provenance",
         }
     )
 )
@@ -203,8 +203,17 @@ class Phase3RawAuditOperationRecord(StrictModel):
         if self.status == RAW_AUDIT_STATUS_COMPLETED:
             if self.failure_reason is not None:
                 raise ValueError("completed raw audit operation has a failure reason")
-            if kinds != REQUIRED_COMPLETED_RAW_AUDIT_FILE_KINDS:
-                raise ValueError("completed raw audit operation file set is incomplete")
+            expected_kinds = REQUIRED_COMPLETED_RAW_AUDIT_FILE_KINDS
+            if self.operation.decode_step == 0:
+                expected_kinds = tuple(
+                    sorted(
+                        (*expected_kinds, PHASE3_RAW_AUDIT_SESSION_PROVENANCE_KIND)
+                    )
+                )
+            if kinds != expected_kinds:
+                raise ValueError(
+                    "completed raw audit operation file set is incomplete"
+                )
             if any(item.size_bytes == 0 for item in self.files):
                 raise ValueError("completed raw audit operation has an empty file")
         elif self.status == RAW_AUDIT_STATUS_FAILED:
