@@ -581,6 +581,29 @@ class CoordinatorOwnershipJoinTests(unittest.TestCase):
             SnapshotDisposition.OWNED_ONLY.value,
         )
 
+    def test_live_registered_compute_apps_pmon_race_is_owned(self) -> None:
+        registry = make_registry()
+        verdict = _registry_snapshot_verdict(
+            process_snapshot(
+                unknown=(process_record(),),
+                errors=(
+                    "compute_apps GPU GPU-unit-0001 PID 432362 "
+                    "has no pmon process type",
+                ),
+                query_exit_code=2,
+            ),
+            registry,
+            terminal_resolution_allowed=False,
+        )
+
+        self.assertTrue(verdict["passed"])
+        self.assertFalse(verdict["query_evidence_hard_failure"])
+        self.assertFalse(verdict["terminal_registered_process_resolution"])
+        self.assertEqual(
+            verdict["registry_verdict"]["disposition"],
+            SnapshotDisposition.OWNED_ONLY.value,
+        )
+
     def test_terminal_stale_registered_row_is_owned(self) -> None:
         registry = make_registry()
         record_through(registry, HandshakeStage.EVIDENCE_FLUSHED)
@@ -631,15 +654,22 @@ class CoordinatorOwnershipJoinTests(unittest.TestCase):
         self.assertFalse(outcome.exclusivity_passed)
 
     def test_pid_reuse_and_foreign_coexistence_remain_hard_failures(self) -> None:
+        pmon_race_error = (
+            "compute_apps GPU GPU-unit-0001 PID 432362 "
+            "has no pmon process type",
+        )
         reused_registry = make_registry()
         reused = _registry_snapshot_verdict(
             process_snapshot(
-                foreign=(process_record(start_time_ticks=10973360),),
+                unknown=(process_record(start_time_ticks=10973360),),
+                errors=pmon_race_error,
+                query_exit_code=2,
             ),
             reused_registry,
-            terminal_resolution_allowed=True,
+            terminal_resolution_allowed=False,
         )
         self.assertFalse(reused["passed"])
+        self.assertTrue(reused["query_evidence_hard_failure"])
         self.assertEqual(
             reused["registry_verdict"]["disposition"],
             SnapshotDisposition.PID_REUSE_DETECTED.value,
@@ -648,15 +678,18 @@ class CoordinatorOwnershipJoinTests(unittest.TestCase):
         foreign_registry = make_registry()
         coexistence = _registry_snapshot_verdict(
             process_snapshot(
+                unknown=(process_record(),),
                 foreign=(
-                    process_record(),
                     process_record(pid=777777, start_time_ticks=900),
                 ),
+                errors=pmon_race_error,
+                query_exit_code=2,
             ),
             foreign_registry,
-            terminal_resolution_allowed=True,
+            terminal_resolution_allowed=False,
         )
         self.assertFalse(coexistence["passed"])
+        self.assertTrue(coexistence["query_evidence_hard_failure"])
         self.assertEqual(
             coexistence["registry_verdict"]["disposition"],
             SnapshotDisposition.FOREIGN_PROCESS_DETECTED.value,

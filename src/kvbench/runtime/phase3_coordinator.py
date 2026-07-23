@@ -1975,34 +1975,51 @@ def _registry_snapshot_verdict(
             "GPU process ownership join failed"
         )
         raise Phase3CoordinatorError("GPU process ownership join failed") from error
-    temporal_errors_owned = bool(
+    registered_pmon_gap_error = (
+        f"compute_apps GPU {registered.gpu_uuid} "
+        f"PID {registered.process.pid} has no pmon process type"
+    )
+    registered_proc_unavailable_prefix = (
+        f"cannot read /proc/{registered.process.pid}/stat"
+    )
+    registered_query_race_owned = bool(
         errors
-        and terminal_resolution_allowed
         and snapshot.get("query_exit_code") == 2
         and verdict.disposition is SnapshotDisposition.OWNED_ONLY
+        and registered_pmon_gap_error in errors
         and all(
-            (
-                "has no pmon process type" in error
-                and f"PID {registered.process.pid}" in error
+            error == registered_pmon_gap_error
+            or (
+                terminal_resolution_allowed
+                and error.startswith(registered_proc_unavailable_prefix)
             )
-            or f"cannot read /proc/{registered.process.pid}/stat" in error
+            for error in errors
+        )
+    )
+    terminal_resolution_used = bool(
+        registered_query_race_owned
+        and terminal_resolution_allowed
+        and any(
+            error.startswith(registered_proc_unavailable_prefix)
             for error in errors
         )
     )
     query_exit_code = snapshot.get("query_exit_code")
     clean_query = query_exit_code == 0 and errors == []
-    query_evidence_hard_failure = not clean_query and not temporal_errors_owned
+    query_evidence_hard_failure = (
+        not clean_query and not registered_query_race_owned
+    )
     if query_evidence_hard_failure:
         registry.note_unverified_device_evidence(
-            "GPU process query failed outside exact terminal worker resolution"
+            "GPU process query failed outside exact registered worker resolution"
         )
     passed = bool(
         not verdict.hard_failure
-        and (clean_query or temporal_errors_owned)
+        and (clean_query or registered_query_race_owned)
     )
     return {
         "passed": passed,
-        "terminal_registered_process_resolution": temporal_errors_owned,
+        "terminal_registered_process_resolution": terminal_resolution_used,
         "query_evidence_hard_failure": query_evidence_hard_failure,
         "registry_verdict": verdict.to_dict(),
         "raw_query_exit_code": query_exit_code,
