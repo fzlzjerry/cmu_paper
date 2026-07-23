@@ -48,6 +48,8 @@ from kvbench.runtime.process_supervision import (
     DeviceProcessObservation,
     HandshakeStage,
     OwnershipDisposition,
+    ProcessIdentity,
+    ProcessIdentityUnavailable,
     ProcessSupervisionError,
     RunOwnedProcessRegistry,
     SnapshotDisposition,
@@ -191,6 +193,9 @@ PHASE3_EXECUTION_SOURCE_PATHS = (
     "src/kvbench/schema/result.py",
     "src/kvbench/validation.py",
 )
+PHASE3_WORKER_TERMINATION_SCHEMA_VERSION = (
+    "kvbench-phase3-worker-termination-1.0.0"
+)
 TRANSPORT_PRIMARY_CHANNEL_ARTIFACT = (
     "raw/transport/primary_worker_evidence.v1.jsonl"
 )
@@ -212,6 +217,10 @@ READY_NOT_OBSERVED_V2 = {
 
 class Phase3CoordinatorError(RuntimeError):
     """Campaign coordination failed before a trustworthy worker result."""
+
+
+class Phase3WorkerTerminationUnresolved(Phase3CoordinatorError):
+    """A failed run was preserved, but its spawned worker was not resolved."""
 
 
 def _phase3_execution_source_identity_sha256(
@@ -1263,20 +1272,191 @@ def _wait_for_ready(
     raise Phase3CoordinatorError("worker readiness timed out")
 
 
-def _terminate_worker(process: subprocess.Popen[bytes]) -> int:
+def _wait_for_registered_exit_observation(
+    registry: RunOwnedProcessRegistry,
+    *,
+    timeout_seconds: float,
+) -> bool:
+    """Wait for pidfd/waitid WNOWAIT readiness without reaping the child."""
+
+    if not isinstance(timeout_seconds, (int, float)) or isinstance(
+        timeout_seconds, bool
+    ) or timeout_seconds <= 0:
+        raise ValueError("registered-worker exit timeout is invalid")
+    deadline = time.monotonic() + float(timeout_seconds)
+    while True:
+        if _nonreaping_exit_observed(registry):
+            return True
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return False
+        time.sleep(min(0.05, remaining))
+
+
+def _send_owned_process_signal(
+    process: subprocess.Popen[bytes],
+    requested_signal: int,
+    *,
+    pidfd: int | None,
+    expected_identity: ProcessIdentity | None,
+    ownership_label: str,
+) -> bool:
+    """Signal a still-owned process without trusting a reusable PID alone."""
+
+    signal_name = signal.Signals(requested_signal).name
+    pidfd_sender = getattr(signal, "pidfd_send_signal", None)
+    if pidfd is not None and callable(pidfd_sender):
+        try:
+            pidfd_sender(pidfd, requested_signal)
+        except ProcessLookupError:
+            return False
+        except OSError as error:
+            raise Phase3CoordinatorError(
+                f"{ownership_label} pidfd {signal_name} failed"
+            ) from error
+        return True
+    if expected_identity is None:
+        raise Phase3CoordinatorError(
+            f"{ownership_label} lacks a stable identity before {signal_name}"
+        )
+    if process.pid != expected_identity.pid:
+        raise Phase3CoordinatorError(
+            f"{ownership_label} process handle PID differs before {signal_name}"
+        )
+    try:
+        current_identity = read_process_identity(process.pid)
+    except ProcessIdentityUnavailable:
+        return False
+    if current_identity != expected_identity:
+        raise Phase3CoordinatorError(
+            f"{ownership_label} identity changed before {signal_name}"
+        )
+    try:
+        os.killpg(process.pid, requested_signal)
+    except ProcessLookupError:
+        return False
+    except OSError as error:
+        raise Phase3CoordinatorError(
+            f"{ownership_label} process-group {signal_name} failed"
+        ) from error
+    return True
+
+
+def _signal_registered_worker(
+    process: subprocess.Popen[bytes],
+    registry: RunOwnedProcessRegistry,
+    requested_signal: int,
+) -> bool:
+    """Signal the registered identity, recording disappearance without reuse."""
+
+    sent = _send_owned_process_signal(
+        process,
+        requested_signal,
+        pidfd=registry.pidfd,
+        expected_identity=registry.identity.process,
+        ownership_label="registered worker",
+    )
+    if not sent:
+        registry.note_exit_observed()
+    return sent
+
+
+def _reap_registered_worker(
+    process: subprocess.Popen[bytes],
+    registry: RunOwnedProcessRegistry,
+    *,
+    timeout_seconds: float,
+) -> tuple[int, Any]:
+    """Perform the sole process.wait only after a non-reaping exit observation."""
+
+    if not registry.exit_observed:
+        raise Phase3CoordinatorError(
+            "registered worker cannot be waited before non-reaping exit observation"
+        )
+    if registry.reaped:
+        raise Phase3CoordinatorError("registered worker was already reaped")
+    try:
+        returncode = process.wait(timeout=timeout_seconds)
+    except subprocess.TimeoutExpired as error:
+        raise Phase3CoordinatorError(
+            "registered worker wait timed out after exit observation"
+        ) from error
+    try:
+        event = registry.record_supervisor_reaped(
+            returncode,
+            recorded_at_utc=_utc_now(),
+        )
+    except ProcessSupervisionError as error:
+        raise Phase3CoordinatorError(
+            "registered worker reap evidence could not be recorded"
+        ) from error
+    return returncode, event
+
+
+def _terminate_registered_worker(
+    process: subprocess.Popen[bytes],
+    registry: RunOwnedProcessRegistry,
+    *,
+    handshake_directory: Path | None = None,
+) -> tuple[int, Any]:
+    """Request TERM/KILL, observe without reaping, then reap exactly once."""
+
+    if registry.reaped:
+        raise Phase3CoordinatorError("registered worker was already reaped")
+    _signal_registered_worker(process, registry, signal.SIGTERM)
+    if not _wait_for_registered_exit_observation(
+        registry,
+        timeout_seconds=10.0,
+    ):
+        _signal_registered_worker(process, registry, signal.SIGKILL)
+        if not _wait_for_registered_exit_observation(
+            registry,
+            timeout_seconds=10.0,
+        ):
+            raise Phase3CoordinatorError(
+                "registered worker exit was not observed after SIGKILL"
+            )
+    if handshake_directory is not None:
+        try:
+            registry.refresh_handshake_directory(handshake_directory)
+        except ProcessSupervisionError:
+            # Ownership reaping must still complete; malformed stages remain
+            # absent and therefore produce an owned-worker failure verdict.
+            pass
+    return _reap_registered_worker(
+        process,
+        registry,
+        timeout_seconds=10.0,
+    )
+
+
+def _terminate_unregistered_worker(
+    process: subprocess.Popen[bytes],
+    *,
+    pidfd: int | None = None,
+    expected_identity: ProcessIdentity | None = None,
+) -> int:
+    """Clean up a pre-registration child without trusting its PID alone."""
+
     if process.returncode is not None:
         return process.returncode
-    try:
-        os.killpg(process.pid, signal.SIGTERM)
-    except ProcessLookupError:
-        pass
+    _send_owned_process_signal(
+        process,
+        signal.SIGTERM,
+        pidfd=pidfd,
+        expected_identity=expected_identity,
+        ownership_label="unregistered worker",
+    )
     try:
         return process.wait(timeout=10)
     except subprocess.TimeoutExpired:
-        try:
-            os.killpg(process.pid, signal.SIGKILL)
-        except ProcessLookupError:
-            pass
+        _send_owned_process_signal(
+            process,
+            signal.SIGKILL,
+            pidfd=pidfd,
+            expected_identity=expected_identity,
+            ownership_label="unregistered worker",
+        )
         return process.wait(timeout=10)
 
 
@@ -1868,6 +2048,7 @@ def _run_point(
         result: Phase3WorkerResult | None = None
         evidence: dict[str, Any] | None = None
         process: subprocess.Popen[bytes] | None = None
+        spawned_process_identity: ProcessIdentity | None = None
         registry: RunOwnedProcessRegistry | None = None
         pidfd_supported = hasattr(os, "pidfd_open")
         opened_pidfd: int | None = None
@@ -1885,6 +2066,20 @@ def _run_point(
         process_audit_passed = False
         worker_evidence_valid = False
         execution_sources_revalidated = False
+        worker_termination: dict[str, Any] = {
+            "schema_version": PHASE3_WORKER_TERMINATION_SCHEMA_VERSION,
+            "run_id": run_id,
+            "required": False,
+            "registered": None,
+            "resolved": True,
+            "disposition": "not_required",
+            "returncode": None,
+            "failure_reason": None,
+            "source_revalidation_attempted_after_resolution": False,
+            "source_revalidated_after_resolution": False,
+            "pidfd_closed_after_resolution": None,
+            "pidfd_closed_after_source_revalidation_attempt": None,
+        }
         try:
             raw_audit_outcome.update(
                 {
@@ -1919,12 +2114,20 @@ def _run_point(
                     stderr=stderr_handle,
                     start_new_session=True,
                 )
+                worker_termination.update(
+                    {
+                        "required": True,
+                        "registered": False,
+                        "resolved": False,
+                        "disposition": "spawned_registration_pending",
+                    }
+                )
                 pidfd_supported, opened_pidfd = _pidfd_open(process.pid)
                 pidfd_was_opened = opened_pidfd is not None
                 try:
-                    process_identity = read_process_identity(process.pid)
+                    spawned_process_identity = read_process_identity(process.pid)
                     registry = RunOwnedProcessRegistry.register_spawn(
-                        process_identity=process_identity,
+                        process_identity=spawned_process_identity,
                         expected_supervisor_pid=os.getpid(),
                         process_handle=process,
                         pidfd_supported=pidfd_supported,
@@ -1933,6 +2136,12 @@ def _run_point(
                         gpu_uuid=PHASE3_GPU_UUID,
                         spawned_at_utc=_utc_now(),
                         expected_command_fingerprint=expected_command_fingerprint,
+                    )
+                    worker_termination.update(
+                        {
+                            "registered": True,
+                            "disposition": "registered_running",
+                        }
                     )
                 except ProcessSupervisionError as error:
                     raise Phase3CoordinatorError(
@@ -2017,15 +2226,29 @@ def _run_point(
                     "monitoring_stopped_before_worker_exit": False,
                 }
                 registry.refresh_handshake_directory(handshake_directory)
-                returncode = process.wait(timeout=WORKER_TIMEOUT_SECONDS)
-                reaped_event = registry.record_supervisor_reaped(
-                    returncode,
-                    recorded_at_utc=_utc_now(),
+                returncode, reaped_event = _reap_registered_worker(
+                    process,
+                    registry,
+                    timeout_seconds=WORKER_TIMEOUT_SECONDS,
+                )
+                worker_termination.update(
+                    {
+                        "resolved": True,
+                        "disposition": "registered_reaped",
+                        "returncode": returncode,
+                        "failure_reason": None,
+                    }
                 )
                 write_handshake_event(handshake_directory, reaped_event)
+                worker_termination[
+                    "source_revalidation_attempted_after_resolution"
+                ] = True
                 _revalidate_phase3_execution_sources(execution_source_pin)
                 _validate_cache_source_join(cache, execution_source_pin)
                 execution_sources_revalidated = True
+                worker_termination[
+                    "source_revalidated_after_resolution"
+                ] = True
                 raw_audit_outcome[
                     "execution_source_revalidated_after_worker_exit"
                 ] = True
@@ -2227,23 +2450,125 @@ def _run_point(
                         registry.refresh_handshake_directory(handshake_directory)
                     except ProcessSupervisionError:
                         pass
-                returncode = _terminate_worker(process)
-                if registry is not None and not registry.reaped:
-                    registry.note_exit_observed()
                     try:
-                        registry.refresh_handshake_directory(handshake_directory)
-                    except ProcessSupervisionError:
-                        pass
-                    reaped_event = registry.record_supervisor_reaped(
-                        returncode,
-                        recorded_at_utc=_utc_now(),
-                    )
+                        _, reaped_event = _terminate_registered_worker(
+                            process,
+                            registry,
+                            handshake_directory=handshake_directory,
+                        )
+                    except BaseException as termination_error:
+                        worker_termination.update(
+                            {
+                                "registered": True,
+                                "resolved": False,
+                                "disposition": (
+                                    "registered_termination_unresolved"
+                                ),
+                                "returncode": process.returncode,
+                                "failure_reason": (
+                                    f"{type(termination_error).__name__}: "
+                                    f"{' '.join(str(termination_error).split())}"
+                                )[:1000],
+                            }
+                        )
+                        failure_reason = (
+                            f"{type(termination_error).__name__}: "
+                            f"{' '.join(str(termination_error).split())}"
+                        )[:1000]
+                        raw_audit_outcome.update(
+                            {
+                                "passed": False,
+                                "status": "failed",
+                                "failure_reason": failure_reason,
+                            }
+                        )
+                    else:
+                        worker_termination.update(
+                            {
+                                "registered": True,
+                                "resolved": True,
+                                "disposition": "registered_terminated_reaped",
+                                "returncode": process.returncode,
+                                "failure_reason": None,
+                            }
+                        )
+                        try:
+                            registry.refresh_handshake_directory(
+                                handshake_directory
+                            )
+                        except ProcessSupervisionError:
+                            pass
+                        try:
+                            write_handshake_event(
+                                handshake_directory, reaped_event
+                            )
+                        except ProcessSupervisionError:
+                            pass
+                else:
                     try:
-                        write_handshake_event(handshake_directory, reaped_event)
-                    except ProcessSupervisionError:
-                        pass
+                        unregistered_returncode = _terminate_unregistered_worker(
+                            process,
+                            pidfd=opened_pidfd,
+                            expected_identity=spawned_process_identity,
+                        )
+                    except BaseException as termination_error:
+                        worker_termination.update(
+                            {
+                                "registered": False,
+                                "resolved": False,
+                                "disposition": (
+                                    "unregistered_termination_unresolved"
+                                ),
+                                "returncode": process.returncode,
+                                "failure_reason": (
+                                    f"{type(termination_error).__name__}: "
+                                    f"{' '.join(str(termination_error).split())}"
+                                )[:1000],
+                            }
+                        )
+                        failure_reason = (
+                            f"{type(termination_error).__name__}: "
+                            f"{' '.join(str(termination_error).split())}"
+                        )[:1000]
+                        raw_audit_outcome.update(
+                            {
+                                "passed": False,
+                                "status": "failed",
+                                "failure_reason": failure_reason,
+                            }
+                        )
+                    else:
+                        worker_termination.update(
+                            {
+                                "registered": False,
+                                "resolved": True,
+                                "disposition": "unregistered_terminated_reaped",
+                                "returncode": unregistered_returncode,
+                                "failure_reason": None,
+                            }
+                        )
+            elif (
+                process is not None
+                and registry is not None
+                and process.returncode is not None
+                and not registry.reaped
+            ):
+                failure_reason = (
+                    "Phase3CoordinatorError: registered worker process handle "
+                    "was reaped before non-reaping exit ownership was recorded"
+                )
+                worker_termination.update(
+                    {
+                        "registered": True,
+                        "resolved": False,
+                        "disposition": "registered_reap_unverified",
+                        "returncode": process.returncode,
+                        "failure_reason": failure_reason,
+                    }
+                )
             worker_exit_confirmed = bool(
                 process is not None
+                and worker_termination["resolved"] is True
                 and (
                     process.returncode is not None
                     or registry is not None
@@ -2256,9 +2581,15 @@ def _run_point(
                 and not execution_sources_revalidated
             ):
                 try:
+                    worker_termination[
+                        "source_revalidation_attempted_after_resolution"
+                    ] = True
                     _revalidate_phase3_execution_sources(execution_source_pin)
                     _validate_cache_source_join(cache, execution_source_pin)
                     execution_sources_revalidated = True
+                    worker_termination[
+                        "source_revalidated_after_resolution"
+                    ] = True
                     raw_audit_outcome[
                         "execution_source_revalidated_after_worker_exit"
                     ] = True
@@ -2298,6 +2629,16 @@ def _run_point(
             )
         finally:
             if opened_pidfd is not None:
+                worker_termination["pidfd_closed_after_resolution"] = bool(
+                    worker_termination["resolved"] is True
+                )
+                worker_termination[
+                    "pidfd_closed_after_source_revalidation_attempt"
+                ] = bool(
+                    worker_termination[
+                        "source_revalidation_attempted_after_resolution"
+                    ]
+                )
                 os.close(opened_pidfd)
                 opened_pidfd = None
             if raw_audit_root_fd is not None:
@@ -2312,6 +2653,10 @@ def _run_point(
         run.write_bytes("logs/worker.stderr.txt", stderr)
         for name, snapshot in process_snapshots.items():
             run.write_json(f"environment/process.{name}.json", snapshot)
+        run.write_json(
+            "validation/worker_termination.json",
+            worker_termination,
+        )
         if registry is not None:
             registry_evidence = registry.to_evidence()
             registry_evidence["pidfd_closed_by_supervisor"] = pidfd_was_opened
@@ -2391,6 +2736,8 @@ def _run_point(
                 "pidfd_supported": pidfd_supported,
                 "pidfd_opened": pidfd_was_opened,
                 "pidfd_closed": pidfd_was_opened,
+                "worker_termination_resolved": worker_termination["resolved"],
+                "worker_termination_disposition": worker_termination["disposition"],
                 "failure_reason": (
                     None if process_audit_passed else failure_reason
                 ),
@@ -2470,6 +2817,7 @@ def _run_point(
         "status": final_status.value,
         "run_dir": str(final_path.relative_to(REPOSITORY_ROOT)),
         "checksum_valid": True,
+        "worker_termination_resolved": worker_termination["resolved"],
         "timing_collected": bool(
             evidence is not None
             and isinstance(evidence.get("runtime"), Mapping)
@@ -2509,17 +2857,21 @@ def run_phase3_campaign(plan_path: str | Path) -> dict[str, Any]:
     unexpected_error: BaseException | None = None
     try:
         for point, run_id in zip(points, planned_run_ids):
-            runs.append(
-                _run_point(
-                    bundle=bundle,
-                    plan_path=relative_plan,
-                    point=point,
-                    run_id=run_id,
-                    git_sha=git_sha,
-                    backend=backend,
-                    live_hardware=live_hardware,
-                )
+            run_result = _run_point(
+                bundle=bundle,
+                plan_path=relative_plan,
+                point=point,
+                run_id=run_id,
+                git_sha=git_sha,
+                backend=backend,
+                live_hardware=live_hardware,
             )
+            runs.append(run_result)
+            if run_result.get("worker_termination_resolved") is False:
+                raise Phase3WorkerTerminationUnresolved(
+                    "campaign aborted after preserving run with unresolved "
+                    f"worker termination: {run_id}"
+                )
     except BaseException as error:
         unexpected_error = error
     counts = Counter(item["status"] for item in runs)
