@@ -139,6 +139,7 @@ PHASE3_ALLOWED_PATHS = frozenset(
         "docs/decisions/0009-phase3-eager-allocation-criterion.md",
         "docs/decisions/0010-phase3-audit-to-measurement-session.md",
         "docs/decisions/0011-phase3-run-session-and-control-join.md",
+        "docs/decisions/0012-phase3-minimum-remediation-scope.md",
         "docs/evidence/phase3/backend-identity.md",
         "docs/evidence/phase3/g1-admission.json",
         "docs/evidence/phase3/g1-remediation-admission.json",
