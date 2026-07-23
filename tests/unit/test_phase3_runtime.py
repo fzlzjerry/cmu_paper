@@ -260,6 +260,7 @@ class Phase3EvidenceSerializationTests(unittest.TestCase):
         self,
         *,
         readiness_observed: bool,
+        termination_succeeds: bool = True,
     ) -> tuple[
         dict[str, object],
         mock.Mock,
@@ -507,11 +508,30 @@ class Phase3EvidenceSerializationTests(unittest.TestCase):
                         return_value={"passed": False},
                     )
                 )
+                def terminate_registered(
+                    observed_process: object,
+                    observed_registry: object,
+                    *,
+                    handshake_directory: Path | None = None,
+                ) -> tuple[int, object]:
+                    observed_registry.note_exit_observed()
+                    event = observed_registry.record_supervisor_reaped(
+                        -15,
+                        recorded_at_utc="2026-07-23T00:00:00Z",
+                    )
+                    observed_process.returncode = -15
+                    return -15, event
+
+                termination_effect: object = terminate_registered
+                if not termination_succeeds:
+                    termination_effect = phase3_coordinator.Phase3CoordinatorError(
+                        "synthetic registered-worker termination timeout"
+                    )
                 stack.enter_context(
                     mock.patch.object(
                         phase3_coordinator,
-                        "_terminate_worker",
-                        return_value=-15,
+                        "_terminate_registered_worker",
+                        side_effect=termination_effect,
                     )
                 )
                 stack.enter_context(
@@ -520,7 +540,7 @@ class Phase3EvidenceSerializationTests(unittest.TestCase):
                         "write_handshake_event",
                     )
                 )
-            _run_point(
+            writes["_run_result"] = _run_point(
                 bundle=bundle,
                 plan_path=plan_path,
                 point=point,
@@ -638,6 +658,105 @@ class Phase3EvidenceSerializationTests(unittest.TestCase):
             "validation/execution_source_pin.after_worker_exit.json",
             writes,
         )
+        termination = writes["validation/worker_termination.json"]
+        self.assertTrue(termination["resolved"])
+        self.assertEqual(
+            termination["disposition"],
+            "registered_terminated_reaped",
+        )
+        self.assertTrue(
+            termination["source_revalidation_attempted_after_resolution"]
+        )
+        self.assertTrue(termination["source_revalidated_after_resolution"])
+        self.assertIsNone(termination["pidfd_closed_after_resolution"])
+        self.assertTrue(writes["_run_result"]["worker_termination_resolved"])
+
+    def test_unresolved_termination_is_preserved_and_not_revalidated(self) -> None:
+        writes, _, _, _ = self._captured_coordinator_run(
+            readiness_observed=True,
+            termination_succeeds=False,
+        )
+
+        termination = writes["validation/worker_termination.json"]
+        self.assertFalse(termination["resolved"])
+        self.assertEqual(
+            termination["disposition"],
+            "registered_termination_unresolved",
+        )
+        self.assertIn("termination timeout", termination["failure_reason"])
+        self.assertFalse(
+            termination["source_revalidation_attempted_after_resolution"]
+        )
+        self.assertFalse(termination["source_revalidated_after_resolution"])
+        self.assertNotIn(
+            "validation/execution_source_pin.after_worker_exit.json",
+            writes,
+        )
+        self.assertFalse(writes["_run_result"]["worker_termination_resolved"])
+
+    def test_campaign_stops_before_next_point_after_unresolved_worker(self) -> None:
+        points = (
+            SimpleNamespace(point_id="fixed_l-b1-l128-eager-r1"),
+            SimpleNamespace(point_id="fixed_l-b2-l128-eager-r1"),
+        )
+        plan = SimpleNamespace(
+            expected_process_count=2,
+            fingerprint=lambda: "a" * 64,
+        )
+        bundle = SimpleNamespace(
+            execution_ready=True,
+            plan_path=REPOSITORY_ROOT / "configs/plans/phase3-unit.yaml",
+            plan=plan,
+        )
+        recorder = SimpleNamespace(
+            finalize=mock.Mock(
+                return_value=(
+                    REPOSITORY_ROOT
+                    / "artifacts"
+                    / "phase3-campaigns"
+                    / "phase3-unit-campaign"
+                )
+            )
+        )
+        first_result = {
+            "run_id": "phase3-unit-first",
+            "point_id": points[0].point_id,
+            "status": RunStatus.ABORTED.value,
+            "run_dir": "artifacts/phase3/phase3-unit-first",
+            "checksum_valid": True,
+            "worker_termination_resolved": False,
+            "timing_collected": False,
+        }
+        run_point_mock = mock.Mock(return_value=first_result)
+        with mock.patch.multiple(
+            phase3_coordinator,
+            _validate_entry_evidence=mock.Mock(),
+            _git_identity=mock.Mock(return_value=("1" * 40, False)),
+            _live_hardware=mock.Mock(return_value={"gpu_uuid": "GPU-unit"}),
+            load_phase3_admission_bundle=mock.Mock(return_value=bundle),
+            expand_phase3_process_points=mock.Mock(return_value=points),
+            _backend_identity_stdlib=mock.Mock(return_value=object()),
+            _utc_now=mock.Mock(return_value="2026-07-23T00:00:00Z"),
+            _run_point=run_point_mock,
+        ), mock.patch.object(
+            phase3_coordinator.Phase3CampaignRecorder,
+            "create",
+            return_value=recorder,
+        ):
+            with self.assertRaises(
+                phase3_coordinator.Phase3WorkerTerminationUnresolved
+            ):
+                phase3_coordinator.run_phase3_campaign(bundle.plan_path)
+
+        run_point_mock.assert_called_once()
+        finalized = recorder.finalize.call_args.args[0]
+        self.assertEqual(finalized["attempted_process_count"], 1)
+        self.assertEqual(
+            finalized["unattempted_point_ids"],
+            [points[1].point_id],
+        )
+        self.assertTrue(finalized["unexpected_campaign_abort"])
+        self.assertEqual(finalized["runs"], [first_result])
 
     def test_initial_manifest_uses_supplied_environment_digest(self) -> None:
         plan_path = "configs/plans/phase3_bf16_fixed_l.yaml"

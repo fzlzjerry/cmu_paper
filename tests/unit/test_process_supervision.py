@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+import subprocess
 import tempfile
 from types import SimpleNamespace
 import unittest
@@ -13,7 +14,10 @@ from kvbench.runtime import process_supervision
 from kvbench.runtime.phase3_coordinator import (
     Phase3CoordinatorError,
     _nonreaping_exit_observed,
+    _reap_registered_worker,
     _registry_snapshot_verdict,
+    _terminate_registered_worker,
+    _terminate_unregistered_worker,
     _worker_argv as coordinator_worker_argv,
 )
 from kvbench.runtime.phase3_worker import _worker_argv as worker_worker_argv
@@ -682,6 +686,463 @@ class CoordinatorOwnershipJoinTests(unittest.TestCase):
         ):
             with self.assertRaises(Phase3CoordinatorError):
                 _nonreaping_exit_observed(registry)
+
+
+class CoordinatorRegisteredReapOrderTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self._identity_patcher = mock.patch(
+            "kvbench.runtime.phase3_coordinator.read_process_identity",
+            return_value=ProcessIdentity(
+                pid=432362,
+                start_time_ticks=10973359,
+                parent_pid=431000,
+            ),
+        )
+        self._identity_patcher.start()
+        self.addCleanup(self._identity_patcher.stop)
+
+    class OrderedProcess:
+        def __init__(
+            self,
+            order: list[str],
+            registry: RunOwnedProcessRegistry,
+            returncode: int,
+        ) -> None:
+            self.pid = registry.identity.process.pid
+            self.returncode: int | None = None
+            self.wait_calls = 0
+            self._order = order
+            self._registry = registry
+            self._wait_returncode = returncode
+
+        def wait(self, *, timeout: float) -> int:
+            self._order.append("wait")
+            if not self._registry.exit_observed:
+                raise AssertionError("wait occurred before exit observation")
+            self.wait_calls += 1
+            if self.wait_calls != 1:
+                raise AssertionError("registered worker was waited more than once")
+            self.returncode = self._wait_returncode
+            return self._wait_returncode
+
+    @staticmethod
+    def _record_wrapper(
+        registry: RunOwnedProcessRegistry,
+        order: list[str],
+    ) -> object:
+        original = registry.record_supervisor_reaped
+
+        def record(returncode: int, *, recorded_at_utc: str) -> object:
+            order.append("record")
+            return original(returncode, recorded_at_utc=recorded_at_utc)
+
+        return mock.patch.object(
+            registry,
+            "record_supervisor_reaped",
+            side_effect=record,
+        )
+
+    def test_rapid_normal_exit_after_flush_is_owned_and_ordered(self) -> None:
+        order: list[str] = []
+        registry = make_registry(pidfd_supported=False, pidfd=None)
+        record_through(registry, HandshakeStage.EVIDENCE_FLUSHED)
+        process = self.OrderedProcess(order, registry, 0)
+
+        def signal_request(pid: int, requested_signal: int) -> None:
+            order.append(f"signal:{requested_signal}")
+            raise ProcessLookupError
+
+        def observe(
+            observed_registry: RunOwnedProcessRegistry,
+            *,
+            timeout_seconds: float,
+        ) -> bool:
+            order.append("observe")
+            observed_registry.note_exit_observed()
+            return True
+
+        with (
+            mock.patch(
+                "kvbench.runtime.phase3_coordinator.os.killpg",
+                side_effect=signal_request,
+            ),
+            mock.patch(
+                "kvbench.runtime.phase3_coordinator."
+                "_wait_for_registered_exit_observation",
+                side_effect=observe,
+            ),
+            self._record_wrapper(registry, order),
+        ):
+            returncode, _ = _terminate_registered_worker(process, registry)
+
+        self.assertEqual(returncode, 0)
+        self.assertEqual(order, ["signal:15", "observe", "wait", "record"])
+        self.assertEqual(process.wait_calls, 1)
+        self.assertIs(
+            registry.terminal_outcome().disposition,
+            OwnershipDisposition.OWNED_COMPLETED,
+        )
+
+    def test_abnormal_exit_is_owned_failure_and_ordered(self) -> None:
+        order: list[str] = []
+        registry = make_registry(pidfd_supported=False, pidfd=None)
+        process = self.OrderedProcess(order, registry, 17)
+
+        def observe(
+            observed_registry: RunOwnedProcessRegistry,
+            *,
+            timeout_seconds: float,
+        ) -> bool:
+            order.append("observe")
+            observed_registry.note_exit_observed()
+            return True
+
+        with (
+            mock.patch(
+                "kvbench.runtime.phase3_coordinator.os.killpg",
+                side_effect=lambda pid, sig: order.append(f"signal:{sig}"),
+            ),
+            mock.patch(
+                "kvbench.runtime.phase3_coordinator."
+                "_wait_for_registered_exit_observation",
+                side_effect=observe,
+            ),
+            self._record_wrapper(registry, order),
+        ):
+            returncode, _ = _terminate_registered_worker(process, registry)
+
+        self.assertEqual(returncode, 17)
+        self.assertEqual(order, ["signal:15", "observe", "wait", "record"])
+        self.assertIs(
+            registry.terminal_outcome().disposition,
+            OwnershipDisposition.OWNED_WORKER_FAILURE,
+        )
+
+    def test_term_timeout_escalates_to_kill_before_single_reap(self) -> None:
+        order: list[str] = []
+        registry = make_registry(pidfd_supported=False, pidfd=None)
+        process = self.OrderedProcess(order, registry, -9)
+        observations = iter((False, True))
+
+        def observe(
+            observed_registry: RunOwnedProcessRegistry,
+            *,
+            timeout_seconds: float,
+        ) -> bool:
+            order.append("observe")
+            result = next(observations)
+            if result:
+                observed_registry.note_exit_observed()
+            return result
+
+        with (
+            mock.patch(
+                "kvbench.runtime.phase3_coordinator.os.killpg",
+                side_effect=lambda pid, sig: order.append(f"signal:{sig}"),
+            ),
+            mock.patch(
+                "kvbench.runtime.phase3_coordinator."
+                "_wait_for_registered_exit_observation",
+                side_effect=observe,
+            ),
+            self._record_wrapper(registry, order),
+        ):
+            returncode, _ = _terminate_registered_worker(process, registry)
+
+        self.assertEqual(returncode, -9)
+        self.assertEqual(
+            order,
+            ["signal:15", "observe", "signal:9", "observe", "wait", "record"],
+        )
+        self.assertEqual(process.wait_calls, 1)
+
+    def test_kill_observation_timeout_fails_before_wait_or_record(self) -> None:
+        order: list[str] = []
+        registry = make_registry(pidfd_supported=False, pidfd=None)
+        process = self.OrderedProcess(order, registry, -9)
+        with (
+            mock.patch(
+                "kvbench.runtime.phase3_coordinator.os.killpg",
+                side_effect=lambda pid, sig: order.append(f"signal:{sig}"),
+            ),
+            mock.patch(
+                "kvbench.runtime.phase3_coordinator."
+                "_wait_for_registered_exit_observation",
+                side_effect=lambda registry, timeout_seconds: (
+                    order.append("observe") or False
+                ),
+            ),
+            self._record_wrapper(registry, order),
+        ):
+            with self.assertRaisesRegex(
+                Phase3CoordinatorError,
+                "not observed after SIGKILL",
+            ):
+                _terminate_registered_worker(process, registry)
+
+        self.assertEqual(
+            order,
+            ["signal:15", "observe", "signal:9", "observe"],
+        )
+        self.assertEqual(process.wait_calls, 0)
+        self.assertFalse(registry.reaped)
+
+    def test_direct_reap_before_observation_is_rejected_without_wait(self) -> None:
+        order: list[str] = []
+        registry = make_registry(pidfd_supported=False, pidfd=None)
+        process = self.OrderedProcess(order, registry, 0)
+        with self.assertRaisesRegex(
+            Phase3CoordinatorError,
+            "cannot be waited before",
+        ):
+            _reap_registered_worker(
+                process,
+                registry,
+                timeout_seconds=10.0,
+            )
+        self.assertEqual(process.wait_calls, 0)
+
+    def test_direct_normal_reap_waits_once_then_records_once(self) -> None:
+        order: list[str] = []
+        registry = make_registry(pidfd_supported=False, pidfd=None)
+        record_through(registry, HandshakeStage.WORKER_EXITING)
+        registry.note_exit_observed()
+        process = self.OrderedProcess(order, registry, 0)
+
+        with self._record_wrapper(registry, order):
+            returncode, event = _reap_registered_worker(
+                process,
+                registry,
+                timeout_seconds=10.0,
+            )
+
+        self.assertEqual(returncode, 0)
+        self.assertEqual(event.stage, HandshakeStage.SUPERVISOR_REAPED)
+        self.assertEqual(order, ["wait", "record"])
+        self.assertEqual(process.wait_calls, 1)
+        self.assertTrue(registry.reaped)
+        self.assertIs(
+            registry.terminal_outcome().disposition,
+            OwnershipDisposition.OWNED_COMPLETED,
+        )
+
+    def test_pid_reuse_before_term_fails_without_signaling(self) -> None:
+        order: list[str] = []
+        registry = make_registry(pidfd_supported=False, pidfd=None)
+        process = self.OrderedProcess(order, registry, 0)
+        reused = ProcessIdentity(
+            pid=registry.identity.process.pid,
+            start_time_ticks=registry.identity.process.start_time_ticks + 1,
+            parent_pid=registry.identity.process.parent_pid,
+        )
+        with (
+            mock.patch(
+                "kvbench.runtime.phase3_coordinator.read_process_identity",
+                return_value=reused,
+            ),
+            mock.patch(
+                "kvbench.runtime.phase3_coordinator.os.killpg"
+            ) as killpg,
+        ):
+            with self.assertRaisesRegex(
+                Phase3CoordinatorError,
+                "identity changed before SIGTERM",
+            ):
+                _terminate_registered_worker(process, registry)
+
+        killpg.assert_not_called()
+        self.assertEqual(process.wait_calls, 0)
+        self.assertFalse(registry.exit_observed)
+        self.assertFalse(registry.reaped)
+
+    def test_pid_reuse_between_term_and_kill_blocks_kill(self) -> None:
+        order: list[str] = []
+        registry = make_registry(pidfd_supported=False, pidfd=None)
+        process = self.OrderedProcess(order, registry, -9)
+        expected = registry.identity.process
+        reused = ProcessIdentity(
+            pid=expected.pid,
+            start_time_ticks=expected.start_time_ticks + 1,
+            parent_pid=expected.parent_pid,
+        )
+        identity_reads = mock.Mock(side_effect=(expected, reused))
+        with (
+            mock.patch(
+                "kvbench.runtime.phase3_coordinator.read_process_identity",
+                identity_reads,
+            ),
+            mock.patch(
+                "kvbench.runtime.phase3_coordinator.os.killpg",
+                side_effect=lambda pid, sig: order.append(f"signal:{sig}"),
+            ) as killpg,
+            mock.patch(
+                "kvbench.runtime.phase3_coordinator."
+                "_wait_for_registered_exit_observation",
+                return_value=False,
+            ),
+        ):
+            with self.assertRaisesRegex(
+                Phase3CoordinatorError,
+                "identity changed before SIGKILL",
+            ):
+                _terminate_registered_worker(process, registry)
+
+        self.assertEqual(order, ["signal:15"])
+        self.assertEqual(killpg.call_count, 1)
+        self.assertEqual(identity_reads.call_count, 2)
+        self.assertEqual(process.wait_calls, 0)
+        self.assertFalse(registry.reaped)
+
+    def test_pidfd_is_preferred_over_reusable_pid_signaling(self) -> None:
+        order: list[str] = []
+        registry = make_registry(pidfd_supported=True, pidfd=19)
+        process = self.OrderedProcess(order, registry, -15)
+
+        def observe(
+            observed_registry: RunOwnedProcessRegistry,
+            *,
+            timeout_seconds: float,
+        ) -> bool:
+            observed_registry.note_exit_observed()
+            return True
+
+        with (
+            mock.patch(
+                "kvbench.runtime.phase3_coordinator.signal.pidfd_send_signal"
+            ) as pidfd_send_signal,
+            mock.patch(
+                "kvbench.runtime.phase3_coordinator.os.killpg"
+            ) as killpg,
+            mock.patch(
+                "kvbench.runtime.phase3_coordinator.read_process_identity"
+            ) as identity_read,
+            mock.patch(
+                "kvbench.runtime.phase3_coordinator."
+                "_wait_for_registered_exit_observation",
+                side_effect=observe,
+            ),
+            self._record_wrapper(registry, order),
+        ):
+            returncode, _ = _terminate_registered_worker(process, registry)
+
+        self.assertEqual(returncode, -15)
+        pidfd_send_signal.assert_called_once_with(19, 15)
+        identity_read.assert_not_called()
+        killpg.assert_not_called()
+        self.assertEqual(order, ["wait", "record"])
+
+
+class CoordinatorUnregisteredCleanupTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.identity = ProcessIdentity(
+            pid=517171,
+            start_time_ticks=701,
+            parent_pid=431000,
+        )
+        self._identity_patcher = mock.patch(
+            "kvbench.runtime.phase3_coordinator.read_process_identity",
+            return_value=self.identity,
+        )
+        self._identity_patcher.start()
+        self.addCleanup(self._identity_patcher.stop)
+
+    @staticmethod
+    def _process(
+        *,
+        returncode: int | None = None,
+        wait: mock.Mock | None = None,
+    ) -> SimpleNamespace:
+        return SimpleNamespace(
+            pid=517171,
+            returncode=returncode,
+            wait=wait if wait is not None else mock.Mock(),
+        )
+
+    def test_already_exited_unregistered_worker_needs_no_cleanup(self) -> None:
+        process = self._process(returncode=7)
+        with mock.patch(
+            "kvbench.runtime.phase3_coordinator.os.killpg"
+        ) as killpg:
+            self.assertEqual(_terminate_unregistered_worker(process), 7)
+
+        killpg.assert_not_called()
+        process.wait.assert_not_called()
+
+    def test_term_reaps_unregistered_worker(self) -> None:
+        process = self._process(wait=mock.Mock(return_value=-15))
+        with mock.patch(
+            "kvbench.runtime.phase3_coordinator.os.killpg"
+        ) as killpg:
+            self.assertEqual(
+                _terminate_unregistered_worker(
+                    process,
+                    expected_identity=self.identity,
+                ),
+                -15,
+            )
+
+        self.assertEqual([call.args[1] for call in killpg.call_args_list], [15])
+        process.wait.assert_called_once_with(timeout=10)
+
+    def test_term_timeout_escalates_and_reaps_unregistered_worker(self) -> None:
+        timeout = subprocess.TimeoutExpired(cmd="phase3-worker", timeout=10)
+        process = self._process(wait=mock.Mock(side_effect=(timeout, -9)))
+        with mock.patch(
+            "kvbench.runtime.phase3_coordinator.os.killpg"
+        ) as killpg:
+            self.assertEqual(
+                _terminate_unregistered_worker(
+                    process,
+                    expected_identity=self.identity,
+                ),
+                -9,
+            )
+
+        self.assertEqual(
+            [call.args[1] for call in killpg.call_args_list],
+            [15, 9],
+        )
+        self.assertEqual(process.wait.call_count, 2)
+        process.wait.assert_has_calls(
+            [mock.call(timeout=10), mock.call(timeout=10)]
+        )
+
+    def test_kill_wait_timeout_is_not_hidden(self) -> None:
+        timeouts = (
+            subprocess.TimeoutExpired(cmd="phase3-worker", timeout=10),
+            subprocess.TimeoutExpired(cmd="phase3-worker", timeout=10),
+        )
+        process = self._process(wait=mock.Mock(side_effect=timeouts))
+        with mock.patch(
+            "kvbench.runtime.phase3_coordinator.os.killpg"
+        ) as killpg:
+            with self.assertRaises(subprocess.TimeoutExpired):
+                _terminate_unregistered_worker(
+                    process,
+                    expected_identity=self.identity,
+                )
+
+        self.assertEqual(
+            [call.args[1] for call in killpg.call_args_list],
+            [15, 9],
+        )
+        self.assertEqual(process.wait.call_count, 2)
+
+    def test_live_unregistered_worker_without_stable_identity_is_not_signaled(
+        self,
+    ) -> None:
+        process = self._process(wait=mock.Mock(return_value=-15))
+        with mock.patch(
+            "kvbench.runtime.phase3_coordinator.os.killpg"
+        ) as killpg:
+            with self.assertRaisesRegex(
+                Phase3CoordinatorError,
+                "lacks a stable identity before SIGTERM",
+            ):
+                _terminate_unregistered_worker(process)
+
+        killpg.assert_not_called()
+        process.wait.assert_not_called()
 
 
 if __name__ == "__main__":
