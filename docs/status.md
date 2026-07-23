@@ -8,14 +8,14 @@ requirements; and AGENTS.md. Decision 0005 records precedence.
 
 ## Current state
 
-- Current phase: Phase 3 remediation FAIL after the B-015 fixed-L campaign
-  failed and the stop condition kept growing closed. Phase 2 remains PASS, and
-  Phase 4 is closed.
+- Current phase: Phase 3 remains G1 FAIL; B-016 remediation admission now
+  passes, but no post-fix campaign has run. Phase 2 remains PASS, and Phase 4
+  is closed.
 - Phase 0 status: PASS
 - Phase 1 remediation status: PASS
-- Next action: remediate B-016 with an untimed raw graph-marker diagnostic
-  without weakening B-011/B-012, process ownership, or graph zero-allocation;
-  then rerun all gates and both entirely new complete campaigns
+- Next action: after the governance commit and final clean-tree/immutable-byte
+  checks, execute both entirely new complete campaigns under new IDs; stop on
+  any campaign failure
 - Active admission gate: native-host G0 PASS; container-parity G0 remains a
   later E01 requirement before E02
 - Benchmark implementation changes: exact BF16 static cache, fixed-L and
@@ -25,12 +25,13 @@ requirements; and AGENTS.md. Decision 0005 records precedence.
 - CUDA builds or executions: the new formal E00 run passed extension build,
   native execution, forced PTX/JIT, numerical golden, CUDA Graph, allocation,
   SASS/PTX inspection, and all required Compute Sanitizer lanes
-- Benchmark, profiler, or quality data produced: the original 20 checksum-valid
-  Phase 3 runs/report and first-remediation 16-run failed campaign remain
+- Benchmark, performance-profiler, or quality data produced: the original 20
+  checksum-valid Phase 3 runs/report and first-remediation 16-run failed campaign remain
   immutable. The second remediation preserved 20 new runs, 2 campaigns, and an
   immutable FAIL report. The B-015 execution preserved one new 16-run fixed-L
-  campaign with 13 completed and 3 pre-measurement graph aborts; growing and a
-  new report were not executed. No profiler or quality evidence was produced.
+  campaign with 13 completed and 3 pre-measurement graph aborts; growing was
+  not run and no new report was generated. B-016 produced only untimed dispatch
+  diagnostics; no performance-profiler or quality evidence was produced.
 - Scientific performance claims: none
 - Quality protocol: preregistered by Decision 0005 before any performance or
   quality result
@@ -133,6 +134,33 @@ COMPLETE-last finalization; their aggregate manifest SHA-256 is
 `7a584e456a253c4d583649a6c19ed538e6a8a1fb10e182ece3b5766467132dee`.
 The stop condition prevented a growing campaign and new G1 report. G1 remains
 FAIL; quality, Full Scan, pilot, and Phase 4 remained closed.
+
+## Phase 3 B-016 remediation admission
+
+At clean starting HEAD `7c4057c797230e21755812281bcfffe8e7319d5f`, an
+untimed forced-Flash `B1/L16384` graph diagnostic reproduced the prior MHA
+failure and preserved both raw traces plus the lower parser exception under
+`/tmp/phase3-b016-7c4057c-b1-l16384-xbohqv1i`. The MHA GPU annotation extended
+150.023 microseconds beyond host return, while the host still contained the
+unique `cudaGraphLaunch` and the launch preceded the GPU range. Extending only
+an in-memory copy of the host duration recovered the exact two correlated Flash
+split-K graph nodes, proving host containment was the sole failed predicate.
+
+Decision 0015 and commit `e7219e0dd714149e3eea783ce7a8602c4bf9bc54`
+correct only that asynchronous parser boundary. The parser still requires the
+host/GPU marker identity, unique launch, ordering, correlation, stream,
+External-ID agreement, one graph ID, unique graph-node IDs, recognized Flash
+kernel sequence, and no materialization activity. It now additionally rejects
+launch-correlated device events outside the GPU marker and unknown device-like
+categories across the union of host and GPU ranges.
+
+The deterministic parser suite, pure replay of the preserved failing raw trace,
+and actual long `B1/L16385` MHA graph control pass. `make checks`, `make test`,
+`make test-cuda` (14/14), and `make test-graph` (3/3) pass, including strict
+graph zero allocation, process ownership, and immutable-evidence checks. B-016
+is resolved. B-011/B-012 and G1 remain open pending two entirely new complete
+campaigns. No campaign, quality, Full Scan, pilot, or Phase 4 work ran during
+this remediation admission.
 
 ## Repository
 
@@ -246,15 +274,13 @@ repository.
 
 ## Next action
 
-Phase 3 remains G1 FAIL. B-013 and B-014 are resolved without changing the
-frozen process-exclusivity or numerical contracts, and B-015 is resolved by
-Decision 0014 and its passing controls. The minimum remaining remediation is
-B-016: use an untimed diagnostic to compare raw graph host/GPU marker intervals
-for one failing frozen geometry and one passing control, then correct only a
-source- and trace-proven collector/parser boundary defect. Any new execution
-requires passing all admission controls, a clean new Git SHA, and both entirely
-new complete campaigns; every existing result remains immutable and no point
-may be selectively rerun.
+Phase 3 remains G1 FAIL. B-013 through B-016 are resolved without changing the
+frozen process, numerical, allocation, graph, measured-region, or experiment
+contracts. All admission controls pass. The next action is to commit this
+governance state, reverify a clean new Git SHA and all immutable bytes, then run
+both entirely new complete fixed-L and growing campaigns. Every existing result
+remains immutable, no point may be selectively rerun, and any campaign failure
+must stop execution.
 B-010 still requires a digest-pinned measurement container and container-parity
 G0 before formal E02 closure, ordinary timing, later method admission, or a
 performance claim. B-009 still requires durable append-only storage and an
