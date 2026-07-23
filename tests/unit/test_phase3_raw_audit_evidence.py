@@ -22,6 +22,7 @@ from kvbench.runtime.phase3_raw_audit_evidence import (
     MAX_RAW_AUDIT_RUN_SIZE_BYTES,
     PHASE3_RAW_AUDIT_FILE_SCHEMA_VERSION,
     PHASE3_RAW_AUDIT_OPERATION_SCHEMA_VERSION,
+    PHASE3_RAW_AUDIT_SESSION_PROVENANCE_KIND,
     PHASE3_RAW_AUDIT_RUN_INDEX_SCHEMA_VERSION,
     RAW_AUDIT_STATUS_COMPLETED,
     RAW_AUDIT_STATUS_FAILED,
@@ -234,13 +235,18 @@ def completed_record(
     root: Path | None = None,
 ) -> Phase3RawAuditOperationRecord:
     prefix = f"step-{operation.decode_step:04d}"
+    kinds = REQUIRED_COMPLETED_RAW_AUDIT_FILE_KINDS
+    if operation.decode_step == 0:
+        kinds = tuple(
+            sorted((*kinds, PHASE3_RAW_AUDIT_SESSION_PROVENANCE_KIND))
+        )
     payloads = tuple(
         (
             kind,
             f"{prefix}/{kind}.json",
             f"{operation.operation_fingerprint_sha256}:{kind}".encode("ascii"),
         )
-        for kind in REQUIRED_COMPLETED_RAW_AUDIT_FILE_KINDS
+        for kind in kinds
     )
     return record_with_files(
         operation,
@@ -291,7 +297,14 @@ class Phase3RawAuditSchemaTests(unittest.TestCase):
         )
         self.assertEqual(
             tuple(item.kind for item in record.files),
-            REQUIRED_COMPLETED_RAW_AUDIT_FILE_KINDS,
+            tuple(
+                sorted(
+                    (
+                        *REQUIRED_COMPLETED_RAW_AUDIT_FILE_KINDS,
+                        PHASE3_RAW_AUDIT_SESSION_PROVENANCE_KIND,
+                    )
+                )
+            ),
         )
 
     def test_completed_file_kind_set_requires_session_provenance(self) -> None:
@@ -304,12 +317,14 @@ class Phase3RawAuditSchemaTests(unittest.TestCase):
                     "b012_allocation_audit",
                     "b012_allocator_snapshot",
                     "b012_allocator_trace",
-                    "phase3_session_provenance",
                 }
             )
         )
-        self.assertEqual(len(expected), 7)
+        self.assertEqual(len(expected), 6)
         self.assertEqual(REQUIRED_COMPLETED_RAW_AUDIT_FILE_KINDS, expected)
+        self.assertNotIn(
+            PHASE3_RAW_AUDIT_SESSION_PROVENANCE_KIND, expected
+        )
         self.assertNotIn(
             "b011_source_audit", REQUIRED_COMPLETED_RAW_AUDIT_FILE_KINDS
         )
@@ -714,7 +729,7 @@ class Phase3RawAuditSecureIngestionTests(unittest.TestCase):
         observed = ingest_phase3_raw_audit_evidence(self.root, index)
         self.assertEqual(
             len(observed),
-            16 * len(REQUIRED_COMPLETED_RAW_AUDIT_FILE_KINDS),
+            16 * len(REQUIRED_COMPLETED_RAW_AUDIT_FILE_KINDS) + 1,
         )
 
     def test_partial_failure_is_preserved_and_later_steps_are_absent(self) -> None:

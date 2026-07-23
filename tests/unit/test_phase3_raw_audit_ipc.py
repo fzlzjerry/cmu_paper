@@ -37,6 +37,7 @@ from kvbench.runtime.phase3_coordinator import (
 )
 from kvbench.runtime.phase3_raw_audit_evidence import (
     PHASE3_RAW_AUDIT_OPERATION_SCHEMA_VERSION,
+    PHASE3_RAW_AUDIT_SESSION_PROVENANCE_KIND,
     RAW_AUDIT_STATUS_COMPLETED,
     RAW_AUDIT_STATUS_FAILED,
     RAW_AUDIT_STATUS_NOT_ATTEMPTED,
@@ -182,13 +183,21 @@ def _write_declared(root: Path, payload: bytes = RAW_PAYLOAD) -> None:
 def _completed_index(*, run_id: str = RUN_ID) -> Phase3RawAuditRunIndex:
     failed = _index(run_id=run_id)
     operation = failed.records[0].operation
+    kinds = tuple(
+        sorted(
+            (
+                *REQUIRED_COMPLETED_RAW_AUDIT_FILE_KINDS,
+                PHASE3_RAW_AUDIT_SESSION_PROVENANCE_KIND,
+            )
+        )
+    )
     files = tuple(
         Phase3RawAuditFile.from_bytes(
             path=f"step-0000/{kind}.bin",
             kind=kind,
             payload=f"{kind}-payload".encode("ascii"),
         )
-        for kind in REQUIRED_COMPLETED_RAW_AUDIT_FILE_KINDS
+        for kind in kinds
     )
     record = Phase3RawAuditOperationRecord(
         schema_version=PHASE3_RAW_AUDIT_OPERATION_SCHEMA_VERSION,
@@ -208,7 +217,12 @@ def _completed_record(
     directory = raw_root / directory_name
     directory.mkdir(mode=0o700)
     declarations: list[Phase3RawAuditFile] = []
-    for kind in REQUIRED_COMPLETED_RAW_AUDIT_FILE_KINDS:
+    kinds = REQUIRED_COMPLETED_RAW_AUDIT_FILE_KINDS
+    if operation.decode_step == 0:
+        kinds = tuple(
+            sorted((*kinds, PHASE3_RAW_AUDIT_SESSION_PROVENANCE_KIND))
+        )
+    for kind in kinds:
         payload = f"{kind}-payload".encode("ascii")
         path = f"{directory_name}/{kind}.bin"
         (raw_root / path).write_bytes(payload)
@@ -1281,7 +1295,7 @@ class Phase3RawAuditSemanticJoinTests(unittest.TestCase):
         )
         self.assertEqual(
             outcome["artifact_file_count"],
-            len(REQUIRED_COMPLETED_RAW_AUDIT_FILE_KINDS),
+            len(REQUIRED_COMPLETED_RAW_AUDIT_FILE_KINDS) + 1,
         )
 
     def test_failed_index_is_preserved_but_completed_result_becomes_aborted(
