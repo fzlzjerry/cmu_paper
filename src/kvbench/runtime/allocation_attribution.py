@@ -2411,8 +2411,18 @@ def capture_output_witness_d2h(value: Any) -> OperationOutputWitness:
         raise AllocationAttributionError(
             "operation output D2H witness CPU inspection failed"
         ) from error
+    canonical_header = _canonical_json_bytes(
+        {
+            "shape": list(shape),
+            "dtype": dtype,
+        }
+    )
+    digest = hashlib.sha256()
+    digest.update(canonical_header)
+    digest.update(b"\0")
+    digest.update(raw_bytes)
     return OperationOutputWitness(
-        sha256=hashlib.sha256(raw_bytes).hexdigest(),
+        sha256=digest.hexdigest(),
         shape=shape,
         dtype=dtype,
         device=device,

@@ -9,7 +9,10 @@ import torch
 from kvbench.runtime.cuda_graph import validate_full_model_fixed_graph
 from kvbench.runtime.model_loader import load_frozen_model
 from kvbench.schema import GraphMode
-from tests.cuda.test_phase3_full_model import collect_exact_endpoint_audit
+from tests.cuda.test_phase3_full_model import (
+    collect_exact_endpoint_audit,
+    retained_fixed_output_checksums_untimed,
+)
 
 
 @unittest.skipUnless(torch.cuda.is_available(), "CUDA is required")
@@ -64,6 +67,10 @@ class Phase3FullModelGraphTests(unittest.TestCase):
         self.assertTrue(
             session.graph_evidence["consecutive_replay_outputs_exact"]
         )
+        audit_checksum, audit_finite = session.audit_output(0)
+        observed = retained_fixed_output_checksums_untimed(session)
+        self.assertTrue(audit_finite)
+        self.assertEqual(set(observed), {audit_checksum})
 
 
 

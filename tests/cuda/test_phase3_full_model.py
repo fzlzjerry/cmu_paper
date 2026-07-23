@@ -12,7 +12,10 @@ import torch
 from kvbench.runtime.backend import backend_identity, forced_flash_execution
 from kvbench.runtime.gqa_device_dispatch import REQUIRED_SUT_SOURCES
 from kvbench.runtime.model_loader import load_frozen_model
-from kvbench.runtime.numerical import validate_full_model_reference
+from kvbench.runtime.numerical import (
+    tensor_sha256_untimed,
+    validate_full_model_reference,
+)
 from kvbench.runtime.phase3_coordinator import (
     _cache_identity,
     _expected_phase3_raw_audit_operations,
@@ -120,6 +123,22 @@ def collect_exact_endpoint_audit(
     return session, record, evidence_root
 
 
+def retained_fixed_output_checksums_untimed(
+    session: object,
+    *,
+    repetitions: int = 160,
+) -> tuple[str, ...]:
+    """Repeat the admitted callable without invoking the timing harness."""
+
+    checksums: list[str] = []
+    with torch.inference_mode(), forced_flash_execution():
+        operation = session.fixed_measurement_callable()
+        for _ in range(repetitions):
+            checksums.append(tensor_sha256_untimed(operation()))
+    session.mark_measured()
+    return tuple(checksums)
+
+
 @unittest.skipUnless(torch.cuda.is_available(), "CUDA is required")
 class Phase3FullModelReferenceTests(unittest.TestCase):
     @classmethod
@@ -181,6 +200,10 @@ class Phase3FullModelReferenceTests(unittest.TestCase):
             | {PHASE3_RAW_AUDIT_SESSION_PROVENANCE_KIND},
         )
         self.assertFalse(session.provenance_payload()["graph_retained"])
+        audit_checksum, audit_finite = session.audit_output(0)
+        observed = retained_fixed_output_checksums_untimed(session)
+        self.assertTrue(audit_finite)
+        self.assertEqual(set(observed), {audit_checksum})
 
 
 

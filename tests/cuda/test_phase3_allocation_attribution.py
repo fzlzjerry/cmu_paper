@@ -236,6 +236,19 @@ class Phase3AllocationAttributionCudaTests(unittest.TestCase):
         value = torch.randn_like(key)
         return query, key, value
 
+    def test_output_witness_uses_canonical_tensor_checksum(self) -> None:
+        output = torch.arange(
+            2 * 3 * 16,
+            dtype=torch.bfloat16,
+            device=self.device,
+        ).reshape(2, 3, 16)
+        witness = capture_output_witness_d2h(output)
+
+        self.assertEqual(
+            witness.sha256,
+            tensor_sha256_untimed(output),
+        )
+
     def test_isolated_attention_is_rejected_as_not_the_full_endpoint(
         self,
     ) -> None:
