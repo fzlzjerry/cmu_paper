@@ -1,6 +1,6 @@
 # Project status
 
-Last updated: 2026-07-22
+Last updated: 2026-07-23
 Authoritative contracts: CODEX_WORKFLOW.md for active performance engineering;
 CODEX_POST_PERFORMANCE_QUALITY_VALIDATION.md for post-performance quality
 scheduling; CODEX_QUALITY_EVALUATION_ADDENDUM.md for non-conflicting quality
@@ -8,13 +8,14 @@ requirements; and AGENTS.md. Decision 0005 records precedence.
 
 ## Current state
 
-- Current phase: Phase 3 implementation and bounded admission complete with
-  status FAIL. Phase 2 remains PASS. Phase 4 is closed.
+- Current phase: Phase 3 remediation BLOCKED after a complete fresh fixed-L
+  campaign failed. Phase 3 G1 remains FAIL, Phase 2 remains PASS, and Phase 4
+  is closed.
 - Phase 0 status: PASS
 - Phase 1 remediation status: PASS
-- Next action: remediate B-011 through B-013 in a new task and new Git SHA,
-  then repeat the complete bounded Phase 3 campaigns with new run IDs; do not
-  selectively rerun points and do not begin Phase 4
+- Next action: remediate B-013 and B-014 without weakening B-011/B-012, add
+  targeted runner/query-race controls, then use a new clean Git SHA to repeat
+  both complete bounded campaigns with new run IDs; do not begin Phase 4
 - Active admission gate: native-host G0 PASS; container-parity G0 remains a
   later E01 requirement before E02
 - Benchmark implementation changes: exact BF16 static cache, fixed-L and
@@ -24,10 +25,10 @@ requirements; and AGENTS.md. Decision 0005 records precedence.
 - CUDA builds or executions: the new formal E00 run passed extension build,
   native execution, forced PTX/JIT, numerical golden, CUDA Graph, allocation,
   SASS/PTX inspection, and all required Compute Sanitizer lanes
-- Benchmark, profiler, or quality data produced: 20 checksum-valid Phase 3
-  native-host admission runs and one immutable G1 report exist; eight graph
-  lanes contain claim-ineligible engineering timing, while profiler and
-  quality data remain absent
+- Benchmark, profiler, or quality data produced: the original 20 checksum-valid
+  Phase 3 native-host admission runs and immutable FAIL report remain. The
+  remediation added 16 checksum-valid fixed-L abort records and no timing,
+  profiler, quality, or new report evidence.
 - Scientific performance claims: none
 - Quality protocol: preregistered by Decision 0005 before any performance or
   quality result
@@ -35,6 +36,28 @@ requirements; and AGENTS.md. Decision 0005 records precedence.
 - Quality runs or quality-only dependency installations: none
 - Full-scan admission: CLOSED
 - Gate state: G0 PASS; BF16 G1 FAIL; G2-G5 NOT EVALUATED
+
+## Phase 3 remediation attempt
+
+Clean execution SHA `7bd6dd48c1d88ac2b61684b02cc636f66b121054`
+passed `make checks`, `make test`, `make test-cuda` (12/12), and
+`make test-graph` (3/3). The prior 600-file Phase 3 evidence set remained
+byte-identical before execution.
+
+Fresh fixed-L campaign
+`phase3-20260723t042422417332z-7bd6dd48-8a9cb6` preregistered and attempted
+all 16 frozen points once. All 16 finalized `aborted`; no timing was retained.
+Six operations completed raw B-011/B-012 audit, directly verified the
+`pytorch_flash::flash_fwd_splitkv` GQA/MHA kernel family, found no
+materialization/expanded-KV evidence, and passed the frozen eager or graph
+allocation criterion. Those six then failed the retained-callable output
+equivalence check. Seven runs recorded `owned_worker_failure`, and three
+reproduced the registered-PID `[No data]`/missing-`pmon` race.
+
+The campaign and all 16 runs independently validate, are read-only, and have
+COMPLETE-last finalization. The stop condition prevented a growing-context
+campaign and a new G1 report. No selective rerun occurred. See
+`docs/phase_reports/phase3-remediation.md`.
 
 ## Repository
 
@@ -125,7 +148,7 @@ repository.
 | Phase 0 repository/input audit | PASS | literature manifests; method notes; source lock; decision, risks, blockers, tasks |
 | G0 native-host hardware certification | PASS | `docs/evidence/e00/e00-20260722T050632.375718Z-6442ba1f7554-02d5bd32/`; prior immutable FAIL retained |
 | Phase 2 repository/contracts/tooling | PASS | strict schemas and examples; fail-closed CLI; append-only local writer; 54 Phase 2 tests; repository checks |
-| G1 BF16 baseline | FAIL | 20/20 processes preserved; 19 `gqa_materialization_detected`, one `aborted`; immutable report `phase3-g1-20260722t115413439499z-457123b1-e225cd` |
+| G1 BF16 baseline | FAIL | Original 20/20 processes and report remain immutable; remediation fixed-L campaign preserved 16/16 aborts and stopped before growing/report publication |
 | G2-TQ | NOT EVALUATED | requires E05-E06 |
 | G2-KIVI | NOT EVALUATED | requires E07-E08 |
 | G2-KVQ | NOT EVALUATED | requires E09-E11 |
@@ -148,11 +171,13 @@ repository.
 
 ## Next action
 
-Phase 3 is complete with G1 FAIL. The minimum remediation is to make the
-geometry-specific fused native-GQA path directly provable, remove every eager
-decode allocation event, and correct the terminal process-monitor race. Any
-remediation requires a new Git SHA and complete new bounded campaigns; the
-failed evidence remains immutable and no point may be selectively rerun.
+Phase 3 remains G1 FAIL. The minimum remediation is to diagnose the retained
+fixed-L callable's audit-versus-measurement output mismatch under the frozen
+numerical tolerances and correct the exact registered-PID terminal query join
+without weakening foreign/PID-reuse rejection. B-011/B-012 must retain their
+current direct proof criteria. Any new execution requires a new Git SHA and
+both complete bounded campaigns; all prior and remediation failures remain
+immutable and no point may be selectively rerun.
 B-010 still requires a digest-pinned measurement container and container-parity
 G0 before formal E02 closure, ordinary timing, later method admission, or a
 performance claim. B-009 still requires durable append-only storage and an
