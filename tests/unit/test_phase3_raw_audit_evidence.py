@@ -294,7 +294,7 @@ class Phase3RawAuditSchemaTests(unittest.TestCase):
             REQUIRED_COMPLETED_RAW_AUDIT_FILE_KINDS,
         )
 
-    def test_completed_file_kind_set_is_exactly_the_18_raw_artifacts(self) -> None:
+    def test_completed_file_kind_set_requires_session_provenance(self) -> None:
         expected = tuple(
             sorted(
                 {
@@ -316,10 +316,11 @@ class Phase3RawAuditSchemaTests(unittest.TestCase):
                     "b012_memory_stats_before",
                     "b012_mha_allocator_control",
                     "b012_operation_witness",
+                    "phase3_session_provenance",
                 }
             )
         )
-        self.assertEqual(len(expected), 18)
+        self.assertEqual(len(expected), 19)
         self.assertEqual(REQUIRED_COMPLETED_RAW_AUDIT_FILE_KINDS, expected)
         self.assertNotIn(
             "b011_source_audit", REQUIRED_COMPLETED_RAW_AUDIT_FILE_KINDS
