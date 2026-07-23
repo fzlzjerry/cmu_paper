@@ -140,6 +140,7 @@ PHASE3_ALLOWED_PATHS = frozenset(
         "docs/decisions/0010-phase3-audit-to-measurement-session.md",
         "docs/decisions/0011-phase3-run-session-and-control-join.md",
         "docs/decisions/0012-phase3-minimum-remediation-scope.md",
+        "docs/decisions/0013-phase3-source-backed-eager-allocation-catalog.md",
         "docs/evidence/phase3/backend-identity.md",
         "docs/evidence/phase3/g1-admission.json",
         "docs/evidence/phase3/g1-remediation-admission.json",
@@ -272,12 +273,8 @@ HOT_PATH_FUNCTIONS = {
         "fixed_step",
         "growing_step",
     },
-    "src/kvbench/runtime/fixed_l_runner.py": {
-        "eager_operation",
-    },
     "src/kvbench/runtime/growing_context_runner.py": {
-        "trajectory_step",
-        "full_trajectory",
+        "measured_step",
     },
 }
 HOT_PATH_BANNED_CALLS = {

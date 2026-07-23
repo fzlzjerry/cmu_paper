@@ -36,6 +36,10 @@ PHASE3_DEVICE_INDEX = 0
 PHASE3_OUTPUT_WIDTH = 128_256
 PHASE3_OUTPUT_DTYPE = "torch.bfloat16"
 PHASE3_OUTPUT_DTYPE_BYTES = 2
+PHASE3_HIDDEN_WIDTH = 4_096
+PHASE3_INTERMEDIATE_WIDTH = 14_336
+PHASE3_LAYER_COUNT = 32
+PHASE3_NORM_COUNT = 2 * PHASE3_LAYER_COUNT + 1
 PHASE3_EXTERNAL_PROVENANCE_STATUS = "external_run_join_unverified"
 PHASE3_RECORDER_CONFIGURATION = {
     "enabled": "all",
@@ -47,7 +51,7 @@ PHASE3_RECORDER_CONFIGURATION = {
 FLASH_SPLIT_K_CPP_MARKERS = (
     "pytorch_flash::set_params_splitkv",
     "pytorch_flash::mha_fwd",
-    "_flash_attention_forward_no_dropout_inplace",
+    "at::native::_scaled_dot_product_flash_attention_cuda",
 )
 _TORCH: Any | None = None
 
@@ -165,6 +169,33 @@ class AllocationGeometry:
         )
 
     @property
+    def hidden_bf16_bytes(self) -> int:
+        return self.output_bytes
+
+    @property
+    def hidden_fp32_bytes(self) -> int:
+        return (
+            self.batch
+            * self.query_length
+            * self.query_heads
+            * self.head_dim
+            * 4
+        )
+
+    @property
+    def intermediate_bf16_bytes(self) -> int:
+        return (
+            self.batch
+            * self.query_length
+            * PHASE3_INTERMEDIATE_WIDTH
+            * self.dtype_bytes
+        )
+
+    @property
+    def batch_fp32_scalar_bytes(self) -> int:
+        return self.batch * self.query_length * 4
+
+    @property
     def operation_output_bytes(self) -> int | None:
         if (
             self.operation_output_width is None
@@ -185,6 +216,16 @@ class AllocationGeometry:
         return (
             2
             * self.batch
+            * self.kv_heads
+            * self.query_length
+            * self.head_dim
+            * self.dtype_bytes
+        )
+
+    @property
+    def kv_projection_single_bytes(self) -> int:
+        return (
+            self.batch
             * self.kv_heads
             * self.query_length
             * self.head_dim
@@ -260,12 +301,19 @@ class AllocationGeometry:
             "dtype_bytes": self.dtype_bytes,
             "query_length": self.query_length,
             "output_bytes": self.output_bytes,
+            "hidden_bf16_bytes": self.hidden_bf16_bytes,
+            "hidden_fp32_bytes": self.hidden_fp32_bytes,
+            "intermediate_bf16_bytes": self.intermediate_bf16_bytes,
+            "batch_fp32_scalar_bytes": self.batch_fp32_scalar_bytes,
             "operation_output_width": self.operation_output_width,
             "operation_output_dtype_bytes": (
                 self.operation_output_dtype_bytes
             ),
             "operation_output_bytes": self.operation_output_bytes,
             "kv_projection_bytes": self.kv_projection_bytes,
+            "kv_projection_single_bytes": (
+                self.kv_projection_single_bytes
+            ),
             "flash_lse_bytes": self.flash_lse_bytes,
             "expanded_kv_single_bytes": self.expanded_kv_single_bytes,
             "expanded_kv_combined_bytes": self.expanded_kv_combined_bytes,
@@ -619,6 +667,30 @@ _POLICY_FORMULA_CONTRACTS = {
         AllocationClass.FIXED_SHARED_ACTIVATION,
         DependencyFlags(True, False, False, True),
     ),
+    "kv_projection_single_geometry_bytes_v1": (
+        AllocationClass.FIXED_SHARED_ACTIVATION,
+        DependencyFlags(True, False, False, True),
+    ),
+    "hidden_bf16_geometry_bytes_v1": (
+        AllocationClass.FIXED_SHARED_ACTIVATION,
+        DependencyFlags(True, False, True, False),
+    ),
+    "hidden_fp32_geometry_bytes_v1": (
+        AllocationClass.FIXED_SHARED_ACTIVATION,
+        DependencyFlags(True, False, True, False),
+    ),
+    "intermediate_bf16_geometry_bytes_v1": (
+        AllocationClass.FIXED_SHARED_ACTIVATION,
+        DependencyFlags(True, False, False, False),
+    ),
+    "batch_fp32_scalar_geometry_bytes_v1": (
+        AllocationClass.FIXED_SHARED_ACTIVATION,
+        DependencyFlags(True, False, False, False),
+    ),
+    "attention_output_shared_geometry_bytes_v1": (
+        AllocationClass.FIXED_SHARED_ACTIVATION,
+        DependencyFlags(True, False, True, False),
+    ),
     "flash_lse_geometry_bytes_v1": (
         AllocationClass.FIXED_SHARED_ACTIVATION,
         DependencyFlags(True, False, True, False),
@@ -645,7 +717,10 @@ DECISION_0009_POLICY_CATALOG_ID = (
     "phase3-decision-0009-eager-allocation-policy-catalog-v1"
 )
 DECISION_0009_POLICY_CATALOG_SHA256 = (
-    "ba8a40585cbac5a58769eaf54ec893f476dd0585b7a7b96036583c64fcc25f6b"
+    "9e14a4cb11e5818b795ddd60a1b6b2000999ff24a24340f667c6644050cb589d"
+)
+DECISION_0013_SHA256 = (
+    "458a6c4c1add90fab5a6aea370c968f2f2806dda80677fb77e128c4c9cf83190"
 )
 PHASE3_MODEL_ID = "meta-llama/Llama-3.1-8B-Instruct"
 PHASE3_MODEL_REVISION = "0e9e39f249a16976918f6564b8830bc894c89659"
@@ -762,15 +837,272 @@ def _phase3_cache_layout_fingerprint(
     )
 
 
+# Decision 0013 source-backed template rows:
+# policy, class, formula, count, exact bytes, Python function/source,
+# C++ function/source. Geometry formulas resolve bytes per operation key.
+_DECISION_0013_POLICY_ROWS = (
+    (
+        "embedding_hidden",
+        AllocationClass.FIXED_SHARED_ACTIVATION.value,
+        "hidden_bf16_geometry_bytes_v1",
+        1,
+        None,
+        "embedding",
+        "torch/nn/functional.py",
+        "torch::autograd::THPVariable_embedding(_object*, _object*, _object*)",
+        "python_torch_functions_0.cpp",
+    ),
+    (
+        "norm_to_fp32",
+        AllocationClass.FIXED_SHARED_ACTIVATION.value,
+        "hidden_fp32_geometry_bytes_v1",
+        PHASE3_NORM_COUNT,
+        None,
+        "forward",
+        "transformers/models/llama/modeling_llama.py",
+        "torch::autograd::THPVariable_to(_object*, _object*, _object*)",
+        "python_variable_methods.cpp",
+    ),
+    (
+        "norm_pow",
+        AllocationClass.FIXED_SHARED_ACTIVATION.value,
+        "hidden_fp32_geometry_bytes_v1",
+        PHASE3_NORM_COUNT,
+        None,
+        "forward",
+        "transformers/models/llama/modeling_llama.py",
+        "torch::autograd::THPVariable_pow(_object*, _object*, _object*)",
+        "python_variable_methods.cpp",
+    ),
+    (
+        "norm_mean",
+        AllocationClass.FIXED_SHARED_ACTIVATION.value,
+        "batch_fp32_scalar_geometry_bytes_v1",
+        PHASE3_NORM_COUNT,
+        None,
+        "forward",
+        "transformers/models/llama/modeling_llama.py",
+        "torch::autograd::THPVariable_mean(_object*, _object*, _object*)",
+        "python_variable_methods.cpp",
+    ),
+    (
+        "norm_scalar_add",
+        AllocationClass.FIXED_SHARED_ACTIVATION.value,
+        "batch_fp32_scalar_geometry_bytes_v1",
+        PHASE3_NORM_COUNT,
+        None,
+        "forward",
+        "transformers/models/llama/modeling_llama.py",
+        "torch::autograd::THPVariable_add(_object*, _object*, _object*)",
+        "python_variable_methods.cpp",
+    ),
+    (
+        "norm_rsqrt",
+        AllocationClass.FIXED_SHARED_ACTIVATION.value,
+        "batch_fp32_scalar_geometry_bytes_v1",
+        PHASE3_NORM_COUNT,
+        None,
+        "forward",
+        "transformers/models/llama/modeling_llama.py",
+        "torch::autograd::THPVariable_rsqrt(_object*, _object*, _object*)",
+        "python_torch_functions_1.cpp",
+    ),
+    (
+        "norm_mul_fp32",
+        AllocationClass.FIXED_SHARED_ACTIVATION.value,
+        "hidden_fp32_geometry_bytes_v1",
+        PHASE3_NORM_COUNT,
+        None,
+        "forward",
+        "transformers/models/llama/modeling_llama.py",
+        "torch::autograd::THPVariable_mul(_object*, _object*, _object*)",
+        "python_variable_methods.cpp",
+    ),
+    (
+        "norm_to_bf16",
+        AllocationClass.FIXED_SHARED_ACTIVATION.value,
+        "hidden_bf16_geometry_bytes_v1",
+        PHASE3_NORM_COUNT,
+        None,
+        "forward",
+        "transformers/models/llama/modeling_llama.py",
+        "torch::autograd::THPVariable_to(_object*, _object*, _object*)",
+        "python_variable_methods.cpp",
+    ),
+    (
+        "norm_weight_mul",
+        AllocationClass.FIXED_SHARED_ACTIVATION.value,
+        "hidden_bf16_geometry_bytes_v1",
+        PHASE3_NORM_COUNT,
+        None,
+        "forward",
+        "transformers/models/llama/modeling_llama.py",
+        "torch::autograd::THPVariable_mul(_object*, _object*, _object*)",
+        "python_variable_methods.cpp",
+    ),
+    (
+        "kv_linear",
+        AllocationClass.FIXED_SHARED_ACTIVATION.value,
+        "kv_projection_single_geometry_bytes_v1",
+        2 * PHASE3_LAYER_COUNT,
+        None,
+        "forward",
+        "torch/nn/modules/linear.py",
+        "torch::autograd::THPVariable_linear(_object*, _object*, _object*)",
+        "python_nn_functions.cpp",
+    ),
+    (
+        "hidden_linear",
+        AllocationClass.FIXED_SHARED_ACTIVATION.value,
+        "hidden_bf16_geometry_bytes_v1",
+        3 * PHASE3_LAYER_COUNT,
+        None,
+        "forward",
+        "torch/nn/modules/linear.py",
+        "torch::autograd::THPVariable_linear(_object*, _object*, _object*)",
+        "python_nn_functions.cpp",
+    ),
+    (
+        "residual_add",
+        AllocationClass.FIXED_SHARED_ACTIVATION.value,
+        "hidden_bf16_geometry_bytes_v1",
+        2 * PHASE3_LAYER_COUNT,
+        None,
+        "_base_forward",
+        "src/kvbench/runtime/bf16_endpoint.py",
+        "torch::autograd::THPVariable_add(_object*, _object*, _object*)",
+        "python_variable_methods.cpp",
+    ),
+    (
+        "intermediate_linear",
+        AllocationClass.FIXED_SHARED_ACTIVATION.value,
+        "intermediate_bf16_geometry_bytes_v1",
+        2 * PHASE3_LAYER_COUNT,
+        None,
+        "forward",
+        "torch/nn/modules/linear.py",
+        "torch::autograd::THPVariable_linear(_object*, _object*, _object*)",
+        "python_nn_functions.cpp",
+    ),
+    (
+        "intermediate_silu",
+        AllocationClass.FIXED_SHARED_ACTIVATION.value,
+        "intermediate_bf16_geometry_bytes_v1",
+        PHASE3_LAYER_COUNT,
+        None,
+        "silu",
+        "torch/nn/functional.py",
+        "torch::autograd::THPVariable_silu(_object*, _object*, _object*)",
+        "python_nn_functions.cpp",
+    ),
+    (
+        "intermediate_mul",
+        AllocationClass.FIXED_SHARED_ACTIVATION.value,
+        "intermediate_bf16_geometry_bytes_v1",
+        PHASE3_LAYER_COUNT,
+        None,
+        "forward",
+        "transformers/models/llama/modeling_llama.py",
+        "torch::autograd::THPVariable_mul(_object*, _object*, _object*)",
+        "python_variable_methods.cpp",
+    ),
+    (
+        "flash_scalar_8",
+        AllocationClass.FRAMEWORK_BOOKKEEPING.value,
+        "framework_scalar_exact_bytes_v1",
+        PHASE3_LAYER_COUNT,
+        8,
+        "flash_attention_forward",
+        "src/kvbench/runtime/backend.py",
+        "torch::autograd::THPVariable_scaled_dot_product_attention(_object*, _object*, _object*)",
+        "python_nn_functions.cpp",
+    ),
+    (
+        "flash_scalar_16",
+        AllocationClass.FRAMEWORK_BOOKKEEPING.value,
+        "framework_scalar_exact_bytes_v1",
+        PHASE3_LAYER_COUNT,
+        16,
+        "flash_attention_forward",
+        "src/kvbench/runtime/backend.py",
+        "torch::autograd::THPVariable_scaled_dot_product_attention(_object*, _object*, _object*)",
+        "python_nn_functions.cpp",
+    ),
+    (
+        "flash_lse",
+        AllocationClass.FIXED_SHARED_ACTIVATION.value,
+        "flash_lse_geometry_bytes_v1",
+        PHASE3_LAYER_COUNT,
+        None,
+        "flash_attention_forward",
+        "src/kvbench/runtime/backend.py",
+        "torch::autograd::THPVariable_scaled_dot_product_attention(_object*, _object*, _object*)",
+        "python_nn_functions.cpp",
+    ),
+    (
+        "flash_output",
+        AllocationClass.FIXED_SHARED_ACTIVATION.value,
+        "attention_output_shared_geometry_bytes_v1",
+        PHASE3_LAYER_COUNT,
+        None,
+        "flash_attention_forward",
+        "src/kvbench/runtime/backend.py",
+        "torch::autograd::THPVariable_scaled_dot_product_attention(_object*, _object*, _object*)",
+        "python_nn_functions.cpp",
+    ),
+    (
+        "operation_output",
+        AllocationClass.FIXED_OUTPUT.value,
+        "operation_output_geometry_bytes_v1",
+        1,
+        None,
+        "forward",
+        "torch/nn/modules/linear.py",
+        "torch::autograd::THPVariable_linear(_object*, _object*, _object*)",
+        "python_nn_functions.cpp",
+    ),
+)
+
+
 def _decision_0009_catalog_payload() -> dict[str, Any]:
-    # No production allocation class is enabled until its exact source-backed
-    # frame selectors and per-point multiplicity are recorded in a later
-    # checked-in amendment.  Zero-event eager execution remains admissible.
+    templates = [
+        {
+            "policy_id": f"phase3_decision_0013_{row[0]}_v1",
+            "event_class": row[1],
+            "formula_id": row[2],
+            "exact_count": row[3],
+            "exact_requested_bytes": row[4],
+            "required_python_frame": {
+                "function_name": row[5],
+                "source_suffix": row[6],
+            },
+            "required_cpp_frame": {
+                "function_name": row[7],
+                "source_suffix": row[8],
+            },
+        }
+        for row in _DECISION_0013_POLICY_ROWS
+    ]
+    templates.append(
+        {
+            "policy_id": "phase3_decision_0013_flash_split_k_v1",
+            "event_class": AllocationClass.CONTEXT_SCALED_WORKSPACE.value,
+            "formula_ids": [
+                "flash_split_k_output_accumulator",
+                "flash_split_k_lse",
+            ],
+            "full_endpoint_pair_count": PHASE3_LAYER_COUNT,
+            "required_cpp_markers": list(FLASH_SPLIT_K_CPP_MARKERS),
+            "paired_control_required": True,
+        }
+    )
     return {
         "catalog_id": DECISION_0009_POLICY_CATALOG_ID,
-        "decision_id": DECISION_0009_ID,
-        "decision_sha256": DECISION_0009_SHA256,
-        "production_templates": [],
+        "criterion_decision_id": DECISION_0009_ID,
+        "criterion_decision_sha256": DECISION_0009_SHA256,
+        "catalog_amendment_decision_id": "0013",
+        "catalog_amendment_decision_sha256": DECISION_0013_SHA256,
+        "production_templates": templates,
     }
 
 
@@ -926,17 +1258,13 @@ class AllocationClassPolicy:
 
 @dataclass(frozen=True, slots=True)
 class SplitKCompositeRawInputs:
-    """Raw-artifact identities for a future combined split-K verifier.
-
-    These digests are inputs, never a verdict.  No object of this type can
-    make a context-scaled workspace pass until a raw-derived composite
-    validator is implemented.
-    """
+    """Checksum identities and verifier-derived paired-control multiplicity."""
 
     gqa_dispatch_trace_sha256: str
     mha_dispatch_trace_sha256: str
     gqa_allocator_control_sha256: str
     mha_allocator_control_sha256: str
+    split_k_pair_multiplicity: tuple[tuple[int, int], ...] = ()
     raw_bytes_verified: bool = False
     raw_composite_sha256: str | None = None
 
@@ -951,14 +1279,35 @@ class SplitKCompositeRawInputs:
                 raise AllocationAttributionError(
                     f"{name} must be a lowercase SHA-256 digest"
                 )
+        for pair in self.split_k_pair_multiplicity:
+            if (
+                type(pair) is not tuple
+                or len(pair) != 2
+                or any(
+                    type(value) is not int or value <= 0
+                    for value in pair
+                )
+            ):
+                raise AllocationAttributionError(
+                    "split-K multiplicity entries must be positive pairs"
+                )
+        if self.split_k_pair_multiplicity != tuple(
+            sorted(set(self.split_k_pair_multiplicity))
+        ):
+            raise AllocationAttributionError(
+                "split-K multiplicity must be unique and ordered"
+            )
         if self.raw_bytes_verified:
             if not _valid_sha256(self.raw_composite_sha256):
                 raise AllocationAttributionError(
                     "raw-byte-verified split-K inputs require a composite digest"
                 )
-        elif self.raw_composite_sha256 is not None:
+        elif (
+            self.raw_composite_sha256 is not None
+            or self.split_k_pair_multiplicity
+        ):
             raise AllocationAttributionError(
-                "unverified split-K inputs cannot claim a composite digest"
+                "unverified split-K inputs cannot claim derived facts"
             )
 
     @classmethod
@@ -969,6 +1318,7 @@ class SplitKCompositeRawInputs:
         mha_dispatch_trace: bytes,
         gqa_allocator_control: bytes,
         mha_allocator_control: bytes,
+        split_k_pair_multiplicity: tuple[tuple[int, int], ...] = (),
     ) -> SplitKCompositeRawInputs:
         raw_values = {
             "gqa_dispatch_trace": gqa_dispatch_trace,
@@ -986,8 +1336,17 @@ class SplitKCompositeRawInputs:
             name: hashlib.sha256(value).hexdigest()
             for name, value in raw_values.items()
         }
+        multiplicity_payload = [
+            {"num_splits": splits, "pair_count": count}
+            for splits, count in split_k_pair_multiplicity
+        ]
         composite = hashlib.sha256(
-            _canonical_json_bytes(digests)
+            _canonical_json_bytes(
+                {
+                    "raw_sha256": digests,
+                    "split_k_pair_multiplicity": multiplicity_payload,
+                }
+            )
         ).hexdigest()
         return cls(
             gqa_dispatch_trace_sha256=digests["gqa_dispatch_trace"],
@@ -998,11 +1357,12 @@ class SplitKCompositeRawInputs:
             mha_allocator_control_sha256=digests[
                 "mha_allocator_control"
             ],
+            split_k_pair_multiplicity=split_k_pair_multiplicity,
             raw_bytes_verified=True,
             raw_composite_sha256=composite,
         )
 
-    def to_dict(self) -> dict[str, str | bool | None]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "gqa_dispatch_trace_sha256": self.gqa_dispatch_trace_sha256,
             "mha_dispatch_trace_sha256": self.mha_dispatch_trace_sha256,
@@ -1012,6 +1372,10 @@ class SplitKCompositeRawInputs:
             "mha_allocator_control_sha256": (
                 self.mha_allocator_control_sha256
             ),
+            "split_k_pair_multiplicity": [
+                {"num_splits": splits, "pair_count": count}
+                for splits, count in self.split_k_pair_multiplicity
+            ],
             "raw_bytes_verified": self.raw_bytes_verified,
             "raw_composite_sha256": self.raw_composite_sha256,
         }
@@ -1196,9 +1560,14 @@ class ProductionAllocationBinding:
             errors.append("production_binding_operation_fingerprint_mismatch")
         if not _decision_0009_catalog_is_intact():
             errors.append("decision_0009_policy_catalog_hash_mismatch")
-        if _decision_0009_catalog_requires_split_k_raw() and (
-            self.split_k_raw_inputs is None
-            or not self.split_k_raw_inputs.raw_bytes_verified
+        if (
+            self.execution_mode == "eager"
+            and _decision_0009_catalog_requires_split_k_raw()
+            and (
+                self.split_k_raw_inputs is None
+                or not self.split_k_raw_inputs.raw_bytes_verified
+                or not self.split_k_raw_inputs.split_k_pair_multiplicity
+            )
         ):
             errors.append("production_binding_split_k_raw_unverified")
         return tuple(dict.fromkeys(errors))
@@ -2167,19 +2536,83 @@ class AttributionRules:
 def instantiate_decision_0009_production_rules(
     binding: ProductionAllocationBinding,
 ) -> AttributionRules:
-    """Derive production rules only from the checked-in empty-pass catalog."""
+    """Resolve the Decision 0013 catalog for one frozen operation key."""
 
     errors = binding.validation_errors()
     if errors:
         raise AllocationAttributionError(
             "invalid production allocation binding: " + ", ".join(errors)
         )
-    # The current catalog intentionally enables no allocation template.  A
-    # future nonempty catalog must be committed with a new literal catalog SHA.
+    policies: list[AllocationClassPolicy] = []
+    for template in _decision_0009_catalog_payload()[
+        "production_templates"
+    ]:
+        if (
+            template.get("event_class")
+            == AllocationClass.CONTEXT_SCALED_WORKSPACE.value
+        ):
+            continue
+        formula_id = template["formula_id"]
+        event_class = AllocationClass(template["event_class"])
+        contract = _POLICY_FORMULA_CONTRACTS[formula_id]
+        if contract[0] is not event_class:
+            raise AllocationAttributionError(
+                "catalog formula and event class differ"
+            )
+        exact_bytes = template["exact_requested_bytes"]
+        if exact_bytes is None:
+            exact_bytes = _policy_geometry_bytes(
+                formula_id, binding.geometry
+            )
+        if type(exact_bytes) is not int or exact_bytes <= 0:
+            raise AllocationAttributionError(
+                "catalog formula did not resolve to positive bytes"
+            )
+        count = template["exact_count"]
+        if type(count) is not int or count <= 0:
+            raise AllocationAttributionError(
+                "catalog multiplicity is invalid"
+            )
+        python_frame = template["required_python_frame"]
+        cpp_frame = template["required_cpp_frame"]
+        policies.append(
+            AllocationClassPolicy(
+                policy_id=template["policy_id"],
+                event_class=event_class,
+                formula_id=formula_id,
+                allowed_requested_bytes=frozenset({exact_bytes}),
+                required_python_frames=(
+                    CanonicalFrameSelector(
+                        python_frame["function_name"],
+                        python_frame["source_suffix"],
+                    ),
+                ),
+                required_cpp_frames=(
+                    CanonicalFrameSelector(
+                        cpp_frame["function_name"],
+                        cpp_frame["source_suffix"],
+                    ),
+                ),
+                dependencies=contract[1],
+                exact_count=count,
+                exact_total_requested_bytes=exact_bytes * count,
+            )
+        )
+    split_pair_count: int | None = None
+    if binding.execution_mode == "eager":
+        assert binding.split_k_raw_inputs is not None
+        multiplicity = (
+            binding.split_k_raw_inputs.split_k_pair_multiplicity
+        )
+        if len(multiplicity) != 1 or multiplicity[0][1] != 1:
+            raise AllocationAttributionError(
+                "paired split-K control multiplicity is not one exact pair"
+            )
+        split_pair_count = PHASE3_LAYER_COUNT
     return AttributionRules(
         frozen_backend_identity=binding.backend_identity,
-        permitted_allocation_policies=(),
-        split_k_expected_pair_count=None,
+        permitted_allocation_policies=tuple(policies),
+        split_k_expected_pair_count=split_pair_count,
         policy_authority="decision_0009_production",
         policy_catalog_id=DECISION_0009_POLICY_CATALOG_ID,
         policy_catalog_sha256=DECISION_0009_POLICY_CATALOG_SHA256,
@@ -2639,16 +3072,28 @@ def _has_all_frame_selectors(
 
 
 def _policy_geometry_bytes(
-    policy: AllocationClassPolicy,
+    formula_id: str,
     geometry: AllocationGeometry,
 ) -> int | None:
-    if policy.formula_id == "attention_output_geometry_bytes_v1":
+    if formula_id == "attention_output_geometry_bytes_v1":
         return geometry.output_bytes
-    if policy.formula_id == "operation_output_geometry_bytes_v1":
+    if formula_id == "attention_output_shared_geometry_bytes_v1":
+        return geometry.output_bytes
+    if formula_id == "operation_output_geometry_bytes_v1":
         return geometry.operation_output_bytes
-    if policy.formula_id == "kv_projection_geometry_bytes_v1":
+    if formula_id == "kv_projection_geometry_bytes_v1":
         return geometry.kv_projection_bytes
-    if policy.formula_id == "flash_lse_geometry_bytes_v1":
+    if formula_id == "kv_projection_single_geometry_bytes_v1":
+        return geometry.kv_projection_single_bytes
+    if formula_id == "hidden_bf16_geometry_bytes_v1":
+        return geometry.hidden_bf16_bytes
+    if formula_id == "hidden_fp32_geometry_bytes_v1":
+        return geometry.hidden_fp32_bytes
+    if formula_id == "intermediate_bf16_geometry_bytes_v1":
+        return geometry.intermediate_bf16_bytes
+    if formula_id == "batch_fp32_scalar_geometry_bytes_v1":
+        return geometry.batch_fp32_scalar_bytes
+    if formula_id == "flash_lse_geometry_bytes_v1":
         return geometry.flash_lse_bytes
     return None
 
@@ -2666,7 +3111,7 @@ def _classify(
     for policy in rules.permitted_allocation_policies:
         if size not in policy.allowed_requested_bytes:
             continue
-        geometry_bytes = _policy_geometry_bytes(policy, geometry)
+        geometry_bytes = _policy_geometry_bytes(policy.formula_id, geometry)
         if policy.formula_id == "operation_output_geometry_bytes_v1" and (
             geometry_bytes is None
         ):
@@ -2779,13 +3224,6 @@ def _classify(
             formula_parameters=(("num_splits", derived_splits),),
             dependencies=DependencyFlags(True, True, True, False),
         )
-    if split_formula is not None and derived_splits is not None:
-        return replace(
-            lifetime,
-            size_formula=f"{split_formula}_stack_unverified",
-            formula_parameters=(("num_splits", derived_splits),),
-        )
-
     if len(policy_matches) == 1:
         policy = policy_matches[0]
         return replace(
@@ -2797,6 +3235,12 @@ def _classify(
         )
     if len(policy_matches) > 1:
         return replace(lifetime, size_formula="ambiguous_permitted_policy")
+    if split_formula is not None and derived_splits is not None:
+        return replace(
+            lifetime,
+            size_formula=f"{split_formula}_stack_unverified",
+            formula_parameters=(("num_splits", derived_splits),),
+        )
     return lifetime
 
 
@@ -3351,7 +3795,7 @@ def _append_policy_bound_failures(
                 f"{policy.policy_id}"
             )
         geometry_bytes = _policy_geometry_bytes(
-            policy, attribution.geometry
+            policy.formula_id, attribution.geometry
         )
         geometry_formula = policy.formula_id.endswith(
             "_geometry_bytes_v1"
@@ -3455,7 +3899,6 @@ def _evaluate_eager_criterion(
         if item.event_class is AllocationClass.CONTEXT_SCALED_WORKSPACE
     ]
     if workspaces:
-        reasons.append("flash_split_k_independent_verifier_unavailable")
         workspace_splits = tuple(
             dict(item.formula_parameters).get("num_splits")
             for item in workspaces
@@ -3473,12 +3916,31 @@ def _evaluate_eager_criterion(
             for item in workspaces
         )
         expected_pair_count = attribution.rules.split_k_expected_pair_count
+        control_splits: frozenset[int] = frozenset()
+        if require_production_authority and production_binding is not None:
+            raw_inputs = production_binding.split_k_raw_inputs
+            if raw_inputs is None or not raw_inputs.raw_bytes_verified:
+                reasons.append("flash_split_k_paired_control_unverified")
+            else:
+                control_splits = frozenset(
+                    splits
+                    for splits, pair_count in (
+                        raw_inputs.split_k_pair_multiplicity
+                    )
+                    if pair_count == 1
+                )
+        else:
+            reasons.append("flash_split_k_independent_verifier_unavailable")
         if expected_pair_count is None:
             reasons.append("flash_split_k_pair_multiplicity_unregistered")
         if (
             len(observed_splits) != 1
             or any(split is None for split in workspace_splits)
             or expected_pair_count is None
+            or (
+                require_production_authority
+                and observed_splits != control_splits
+            )
             or any(
                 formula_split_counts[
                     ("flash_split_k_output_accumulator", split)
@@ -3498,6 +3960,8 @@ def _evaluate_eager_criterion(
             for item in workspaces
         ):
             reasons.append("flash_split_k_stack_attribution_failed")
+    elif require_production_authority:
+        reasons.append("flash_split_k_workspace_pair_missing")
 
     no_context_dependent = all(
         item.dependencies.context is False
@@ -3531,11 +3995,11 @@ def evaluate_refined_eager_criterion(
     *,
     production_binding: ProductionAllocationBinding | None = None,
 ) -> AllocationCriterionResult:
-    """Evaluate production eager evidence against Decision 0009.
+    """Evaluate production eager evidence against Decisions 0009 and 0013.
 
-    Arbitrary caller policies are never production authority.  The checked-in
-    catalog currently enables no allocation templates, so only a zero-event
-    eager operation can pass before a source-backed catalog amendment.
+    Arbitrary caller policies are never production authority. The checked-in
+    catalog, paired raw controls, exact stacks, formulas, and multiplicities
+    are all required.
     """
 
     return _evaluate_eager_criterion(

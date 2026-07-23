@@ -4362,7 +4362,7 @@ class Phase3GeometryBoundGQADeviceDispatchAudit:
 PHASE3_GEOMETRY_BOUND_DISPATCH_OBSERVATION_SCHEMA = (
     "kvbench-phase3-geometry-bound-dispatch-observation-1.0.0"
 )
-_MAX_CANONICAL_DISPATCH_JSON_BYTES = 16 * 1024 * 1024
+_MAX_CANONICAL_EVIDENCE_JSON_BYTES = 256 * 1024 * 1024
 _APPROVED_RELATED_FAMILY_DECISION_SHA256 = frozenset()
 
 
@@ -4381,7 +4381,7 @@ def _strict_canonical_json_object(raw: bytes, *, label: str) -> dict[str, object
 
     if type(raw) is not bytes or not raw:
         raise GQADeviceDispatchError(f"{label} bytes are absent")
-    if len(raw) > _MAX_CANONICAL_DISPATCH_JSON_BYTES:
+    if len(raw) > _MAX_CANONICAL_EVIDENCE_JSON_BYTES:
         raise GQADeviceDispatchError(f"{label} exceeds the size limit")
     try:
         text = raw.decode("utf-8")
