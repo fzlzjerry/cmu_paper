@@ -25,7 +25,13 @@ from kvbench.runtime.phase3_campaign import (
     campaign_root,
     validate_phase3_campaign_directory,
 )
-from kvbench.runtime.process_supervision import command_fingerprint
+from kvbench.runtime.process_supervision import (
+    RunOwnedProcessRegistry,
+    command_fingerprint,
+)
+from kvbench.runtime.phase3_worker_channels import (
+    build_phase3_worker_channel_commitment,
+)
 from kvbench.schema import (
     ClaimEligibility,
     CompletionMarker,
@@ -83,6 +89,11 @@ _PROCESS_READY_NOT_OBSERVED_V2 = {
     "process_start_time_ticks": None,
     "cuda_imported": None,
 }
+_PROCESS_AUDIT_V2 = "kvbench-phase3-process-audit-2.0.0"
+_PROCESS_AUDIT_V3 = "kvbench-phase3-process-audit-3.0.0"
+_PROCESS_REGISTRY_V2 = "kvbench-phase3-process-registry-2.0.0"
+_PROCESS_HANDSHAKE_V2 = "kvbench-phase3-worker-handshake-2.0.0"
+_PROCESS_HANDSHAKE_V3 = "kvbench-phase3-worker-handshake-3.0.0"
 _PROCESS_COMMAND_FINGERPRINT_ENV = "KVBENCH_PHASE3_COMMAND_FINGERPRINT"
 _MAX_JSON_BYTES = 64 * 1024 * 1024
 _FIXED_POINT_IDS = tuple(
@@ -869,17 +880,33 @@ def _v2_registry_snapshot_verdict(
     )
     errors = snapshot["errors"]
     registered_pid = registered_identity["pid"]
-    temporal_errors_owned = bool(
+    registered_gpu_uuid = registered_identity["gpu_uuid"]
+    registered_pmon_gap_error = (
+        f"compute_apps GPU {registered_gpu_uuid} "
+        f"PID {registered_pid} has no pmon process type"
+    )
+    registered_proc_unavailable_prefix = (
+        f"cannot read /proc/{registered_pid}/stat"
+    )
+    registered_query_race_owned = bool(
         errors
-        and terminal_resolution_allowed
         and snapshot["query_exit_code"] == 2
         and expected_registry["disposition"] == "owned_only"
+        and registered_pmon_gap_error in errors
         and all(
-            (
-                "has no pmon process type" in error
-                and f"PID {registered_pid}" in error
+            error == registered_pmon_gap_error
+            or (
+                terminal_resolution_allowed
+                and error.startswith(registered_proc_unavailable_prefix)
             )
-            or f"cannot read /proc/{registered_pid}/stat" in error
+            for error in errors
+        )
+    )
+    terminal_resolution_used = bool(
+        registered_query_race_owned
+        and terminal_resolution_allowed
+        and any(
+            error.startswith(registered_proc_unavailable_prefix)
             for error in errors
         )
     )
@@ -887,11 +914,11 @@ def _v2_registry_snapshot_verdict(
     expected = {
         "passed": bool(
             expected_registry["hard_failure"] is False
-            and (clean_query or temporal_errors_owned)
+            and (clean_query or registered_query_race_owned)
         ),
-        "terminal_registered_process_resolution": temporal_errors_owned,
+        "terminal_registered_process_resolution": terminal_resolution_used,
         "query_evidence_hard_failure": bool(
-            not clean_query and not temporal_errors_owned
+            not clean_query and not registered_query_race_owned
         ),
         "registry_verdict": expected_registry,
         "raw_query_exit_code": snapshot["query_exit_code"],
@@ -1023,12 +1050,226 @@ def _validate_v2_handshake(
     return identity, evidence_sha256
 
 
+
+def _normalize_v3_process_evidence(
+    run_dir: Path,
+    manifest: Phase3RunManifest,
+    process_audit: Mapping[str, Any],
+) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
+    """Validate v3 policy fields, then reuse the strict v2 raw-evidence join."""
+
+    audit_v3_extra = {
+        "owned_completion_basis",
+        "owned_completion_policy",
+        "worker_exiting_required_for_owned_completion",
+        "rapid_zero_exit_after_evidence_flushed_owned_completion_allowed",
+        "worker_termination_resolved",
+        "worker_termination_disposition",
+    }
+    registry_v3_extra = {
+        "owned_completion_policy",
+        "evidence_flushed_required_for_owned_completion",
+        "zero_returncode_required_for_owned_completion",
+        "worker_exiting_required_for_owned_completion",
+        "rapid_zero_exit_after_evidence_flushed_owned_completion_allowed",
+    }
+    handshake_v3_extra = {
+        "zero_returncode_required_for_owned_completion",
+        "worker_exiting_required_for_owned_completion",
+        "rapid_zero_exit_after_evidence_flushed_owned_completion_allowed",
+    }
+    registry = _strict_json_object(
+        run_dir / "environment" / "process.registry.json"
+    )
+    handshake = _strict_json_object(
+        run_dir / "environment" / "process.handshake.json"
+    )
+    outcome = _mapping(registry.get("outcome"))
+    if (
+        process_audit.get("schema_version") != _PROCESS_AUDIT_V3
+        or process_audit.get("owned_completion_policy")
+        != RunOwnedProcessRegistry.OWNED_COMPLETION_POLICY
+        or process_audit.get("worker_exiting_required_for_owned_completion")
+        is not False
+        or process_audit.get(
+            "rapid_zero_exit_after_evidence_flushed_owned_completion_allowed"
+        )
+        is not True
+        or process_audit.get("worker_termination_resolved") is not True
+        or process_audit.get("worker_termination_disposition")
+        not in {"registered_reaped", "registered_terminated_reaped"}
+    ):
+        raise Phase3ReportError("v3 process audit policy is malformed")
+    if (
+        registry.get("schema_version") != RunOwnedProcessRegistry.SCHEMA_VERSION
+        or registry.get("owned_completion_policy")
+        != RunOwnedProcessRegistry.OWNED_COMPLETION_POLICY
+        or registry.get("evidence_flushed_required_for_owned_completion") is not True
+        or registry.get("zero_returncode_required_for_owned_completion") is not True
+        or registry.get("worker_exiting_required_for_owned_completion") is not False
+        or registry.get(
+            "rapid_zero_exit_after_evidence_flushed_owned_completion_allowed"
+        )
+        is not True
+    ):
+        raise Phase3ReportError("v3 process registry policy is malformed")
+    if (
+        handshake.get("schema_version") != _PROCESS_HANDSHAKE_V3
+        or handshake.get("run_id") != manifest.run_id
+        or handshake.get("events") != registry.get("handshake_events")
+        or handshake.get("terminal_outcome") != registry.get("outcome")
+        or handshake.get("evidence_flushed_required_for_owned_completion") is not True
+        or handshake.get("zero_returncode_required_for_owned_completion") is not True
+        or handshake.get("worker_exiting_required_for_owned_completion") is not False
+        or handshake.get(
+            "rapid_zero_exit_after_evidence_flushed_owned_completion_allowed"
+        )
+        is not True
+        or outcome is None
+        or process_audit.get("ownership_verdict") != outcome.get("disposition")
+        or process_audit.get("exclusivity_passed")
+        is not outcome.get("exclusivity_passed")
+        or process_audit.get("evidence_flushed")
+        is not outcome.get("evidence_flushed")
+        or process_audit.get("worker_exiting_observed")
+        is not outcome.get("worker_exiting_observed")
+        or process_audit.get("owned_completion_basis")
+        != outcome.get("owned_completion_basis")
+    ):
+        raise Phase3ReportError("v3 process handshake policy is malformed")
+    normalized_events = [dict(event) for event in registry["handshake_events"]]
+    if process_audit.get("passed") is True:
+        if (
+            outcome.get("disposition") != "owned_completed"
+            or outcome.get("owned_completion_basis")
+            != "full_ordered_handshake_zero_exit"
+            or outcome.get("worker_exiting_observed") is not True
+        ):
+            raise Phase3ReportError(
+                "v3 completed process evidence lacks the retained full handshake"
+            )
+        transport_root = run_dir / "raw" / "transport"
+        primary_path = transport_root / "primary_worker_evidence.v1.jsonl"
+        sidecar_path = transport_root / "raw_audit_index_sidecar.v2.jsonl"
+        primary_payload = _strict_json_object(primary_path, canonical=True)
+        _strict_json_object(sidecar_path, canonical=True)
+        primary_bytes = primary_path.read_bytes()
+        sidecar_bytes = sidecar_path.read_bytes()
+        expected_commitment = build_phase3_worker_channel_commitment(
+            run_id=manifest.run_id,
+            point_id=manifest.point_id,
+            primary_evidence_bytes=primary_bytes,
+            raw_audit_index_bytes=sidecar_bytes,
+        )
+        commitment_bytes = (
+            transport_root / "channel_commitment.json"
+        ).read_bytes()
+        expected_commitment_bytes = canonical_json_bytes(expected_commitment)
+        commitment_sha256 = sha256_hex(expected_commitment_bytes)
+        digest_bytes = (transport_root / "channel_commitment.sha256").read_bytes()
+        evidence_events = [
+            event
+            for event in normalized_events
+            if event.get("stage") == "evidence_flushed"
+        ]
+        worker_evidence = _strict_json_object(
+            run_dir / "raw" / "worker_evidence.json"
+        )
+        if (
+            commitment_bytes != expected_commitment_bytes
+            or digest_bytes != commitment_sha256.encode("ascii") + b"\n"
+            or len(evidence_events) != 1
+            or evidence_events[0].get("evidence_sha256") != commitment_sha256
+            or primary_payload != worker_evidence
+        ):
+            raise Phase3ReportError("v3 worker channel commitment differs")
+        evidence_events[0]["evidence_sha256"] = sha256_hex(
+            canonical_json_bytes(worker_evidence) + b"\n"
+        )
+    elif outcome.get("owned_completion_basis") is not None:
+        raise Phase3ReportError("v3 failed process evidence claims completion")
+
+    termination = _strict_json_object(
+        run_dir / "validation" / "worker_termination.json"
+    )
+    termination_keys = {
+        "schema_version",
+        "run_id",
+        "required",
+        "registered",
+        "resolved",
+        "disposition",
+        "returncode",
+        "failure_reason",
+        "source_revalidation_attempted_after_resolution",
+        "source_revalidated_after_resolution",
+        "pidfd_closed_after_resolution",
+        "pidfd_closed_after_source_revalidation_attempt",
+    }
+    expected_pidfd_close = (
+        True if process_audit.get("pidfd_opened") is True else None
+    )
+    if (
+        set(termination) != termination_keys
+        or termination.get("schema_version")
+        != "kvbench-phase3-worker-termination-1.0.0"
+        or termination.get("run_id") != manifest.run_id
+        or termination.get("required") is not True
+        or termination.get("registered") is not True
+        or termination.get("resolved") is not True
+        or termination.get("disposition")
+        != process_audit.get("worker_termination_disposition")
+        or termination.get("returncode") != outcome.get("returncode")
+        or termination.get("failure_reason") is not None
+        or termination.get("source_revalidation_attempted_after_resolution")
+        is not True
+        or termination.get("source_revalidated_after_resolution") is not True
+        or termination.get("pidfd_closed_after_resolution")
+        is not expected_pidfd_close
+        or termination.get("pidfd_closed_after_source_revalidation_attempt")
+        is not expected_pidfd_close
+    ):
+        raise Phase3ReportError(
+            "v3 worker termination is not exactly joined to process evidence"
+        )
+
+    normalized_outcome = {
+        key: value
+        for key, value in outcome.items()
+        if key != "owned_completion_basis"
+    }
+    normalized_audit = {
+        key: value
+        for key, value in process_audit.items()
+        if key not in audit_v3_extra
+    }
+    normalized_audit["schema_version"] = _PROCESS_AUDIT_V2
+    normalized_registry = {
+        key: value for key, value in registry.items() if key not in registry_v3_extra
+    }
+    normalized_registry["schema_version"] = _PROCESS_REGISTRY_V2
+    normalized_registry["handshake_events"] = normalized_events
+    normalized_registry["outcome"] = normalized_outcome
+    normalized_handshake = {
+        key: value
+        for key, value in handshake.items()
+        if key not in handshake_v3_extra
+    }
+    normalized_handshake["schema_version"] = _PROCESS_HANDSHAKE_V2
+    normalized_handshake["events"] = normalized_events
+    normalized_handshake["terminal_outcome"] = normalized_outcome
+    return normalized_audit, normalized_registry, normalized_handshake
+
+
 def _validate_process_evidence_v2_pass(
     run_dir: Path,
     manifest: Phase3RunManifest,
     process_audit: Mapping[str, Any],
     ready: Mapping[str, Any],
     worker_result: Phase3WorkerResult,
+    *,
+    registry_evidence: Mapping[str, Any] | None = None,
+    handshake_evidence: Mapping[str, Any] | None = None,
 ) -> None:
     del worker_result
     expected_command_fingerprint = command_fingerprint(
@@ -1090,11 +1331,15 @@ def _validate_process_evidence_v2_pass(
     ):
         raise Phase3ReportError("v2 worker readiness identity is invalid")
 
-    registry = _strict_json_object(
-        run_dir / "environment" / "process.registry.json"
+    registry = (
+        _strict_json_object(run_dir / "environment" / "process.registry.json")
+        if registry_evidence is None
+        else dict(registry_evidence)
     )
-    handshake = _strict_json_object(
-        run_dir / "environment" / "process.handshake.json"
+    handshake = (
+        _strict_json_object(run_dir / "environment" / "process.handshake.json")
+        if handshake_evidence is None
+        else dict(handshake_evidence)
     )
     worker_evidence = _strict_json_object(
         run_dir / "raw" / "worker_evidence.json"
@@ -2054,6 +2299,9 @@ def _validate_process_evidence_v2_failure(
     process_audit: Mapping[str, Any],
     ready: Mapping[str, Any],
     worker_result: Phase3WorkerResult,
+    *,
+    registry_evidence: Mapping[str, Any] | None = None,
+    handshake_evidence: Mapping[str, Any] | None = None,
 ) -> None:
     registry_created = _validate_v2_failure_audit_join(
         manifest,
@@ -2070,11 +2318,15 @@ def _validate_process_evidence_v2_failure(
         )
         return
 
-    registry = _strict_json_object(
-        run_dir / "environment" / "process.registry.json"
+    registry = (
+        _strict_json_object(run_dir / "environment" / "process.registry.json")
+        if registry_evidence is None
+        else dict(registry_evidence)
     )
-    handshake = _strict_json_object(
-        run_dir / "environment" / "process.handshake.json"
+    handshake = (
+        _strict_json_object(run_dir / "environment" / "process.handshake.json")
+        if handshake_evidence is None
+        else dict(handshake_evidence)
     )
     if _v2_optional_json_object(
         run_dir / "raw" / "worker_evidence.json"
@@ -2162,6 +2414,9 @@ def _validate_process_evidence_v2(
     process_audit: Mapping[str, Any],
     ready: Mapping[str, Any],
     worker_result: Phase3WorkerResult,
+    *,
+    registry_evidence: Mapping[str, Any] | None = None,
+    handshake_evidence: Mapping[str, Any] | None = None,
 ) -> None:
     if process_audit.get("passed") is False:
         _validate_process_evidence_v2_failure(
@@ -2170,6 +2425,8 @@ def _validate_process_evidence_v2(
             process_audit,
             ready,
             worker_result,
+            registry_evidence=registry_evidence,
+            handshake_evidence=handshake_evidence,
         )
         return
     _validate_process_evidence_v2_pass(
@@ -2178,6 +2435,8 @@ def _validate_process_evidence_v2(
         process_audit,
         ready,
         worker_result,
+        registry_evidence=registry_evidence,
+        handshake_evidence=handshake_evidence,
     )
 
 
@@ -2223,10 +2482,22 @@ def _join_setup_and_process_evidence(
     }
     _require_equal("live hardware", live_hardware, expected_hardware)
 
-    if (
-        process_audit.get("schema_version")
-        == "kvbench-phase3-process-audit-2.0.0"
-    ):
+    process_schema = process_audit.get("schema_version")
+    if process_schema == _PROCESS_AUDIT_V3:
+        normalized_audit, normalized_registry, normalized_handshake = (
+            _normalize_v3_process_evidence(run_dir, manifest, process_audit)
+        )
+        _validate_process_evidence_v2(
+            run_dir,
+            manifest,
+            normalized_audit,
+            ready,
+            worker_result,
+            registry_evidence=normalized_registry,
+            handshake_evidence=normalized_handshake,
+        )
+        return
+    if process_schema == _PROCESS_AUDIT_V2:
         _validate_process_evidence_v2(
             run_dir, manifest, process_audit, ready, worker_result
         )
@@ -2489,11 +2760,32 @@ def _load_validated_run(run_dir: Path, expected_run_id: str) -> ValidatedPhase3R
                 != worker_result.completed_operations
                 or stdout_result.failed_operations
                 != worker_result.failed_operations
-                or stdout_result.status is RunStatus.ABORTED
             ):
                 raise Phase3ReportError(
                     "coordinator-aborted worker stdout identity differs"
                 )
+            if stdout_result.status is RunStatus.ABORTED:
+                resolution = _strict_json_object(
+                    run_dir / "validation" / "worker_terminal_resolution.json"
+                )
+                resolved_sha256 = sha256_hex(
+                    canonical_json_bytes(worker_result)
+                )
+                if resolution != {
+                    "schema_version": (
+                        "kvbench-phase3-worker-terminal-resolution-1.0.0"
+                    ),
+                    "source_worker_status": "aborted",
+                    "source_worker_result_sha256": resolved_sha256,
+                    "source_primary_channel_preserved": False,
+                    "resolved_terminal_status": "aborted",
+                    "resolved_worker_result_sha256": resolved_sha256,
+                    "status_overridden": False,
+                    "resolution_reason": worker_result.failure_reason,
+                }:
+                    raise Phase3ReportError(
+                        "worker abort resolution is not exactly joined"
+                    )
         elif stdout_result != worker_result:
             raise Phase3ReportError("worker stdout differs from the strict worker result")
 

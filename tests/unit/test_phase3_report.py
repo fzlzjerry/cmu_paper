@@ -13,11 +13,16 @@ from unittest import mock
 
 from scripts.validate_phase2 import validate_phase3_campaign_and_report_roots
 from kvbench.cli import build_parser, command_phase3_report
+from kvbench.runtime.phase3_worker_channels import (
+    build_phase3_worker_channel_commitment,
+)
 from kvbench.runtime.process_supervision import command_fingerprint
 from kvbench.runtime.phase3_report import (
     Phase3ReportError,
     ValidatedPhase3Run,
     _manifest_environment_join,
+    _normalize_v3_process_evidence,
+    _v2_registry_snapshot_verdict,
     _validate_process_evidence_v2,
     _audit_zero_allocation,
     _strict_json_object,
@@ -613,6 +618,88 @@ class Phase3ProcessEvidenceV2Tests(unittest.TestCase):
         }
 
     @classmethod
+    def _as_v3(cls, source: dict[str, object]) -> dict[str, object]:
+        bundle = copy.deepcopy(source)
+        outcome = bundle["registry"]["outcome"]
+        completion_basis = (
+            "full_ordered_handshake_zero_exit"
+            if bundle["audit"]["passed"] is True
+            else None
+        )
+        outcome["owned_completion_basis"] = completion_basis
+        bundle["audit"].update(
+            {
+                "schema_version": "kvbench-phase3-process-audit-3.0.0",
+                "owned_completion_basis": completion_basis,
+                "owned_completion_policy": (
+                    "zero_exit_after_durable_evidence_flush_worker_exiting_optional"
+                ),
+                "worker_exiting_required_for_owned_completion": False,
+                "rapid_zero_exit_after_evidence_flushed_owned_completion_allowed": True,
+                "worker_termination_resolved": True,
+                "worker_termination_disposition": "registered_reaped",
+            }
+        )
+        bundle["registry"].update(
+            {
+                "schema_version": "kvbench-phase3-process-registry-3.0.0",
+                "owned_completion_policy": (
+                    "zero_exit_after_durable_evidence_flush_worker_exiting_optional"
+                ),
+                "evidence_flushed_required_for_owned_completion": True,
+                "zero_returncode_required_for_owned_completion": True,
+                "worker_exiting_required_for_owned_completion": False,
+                "rapid_zero_exit_after_evidence_flushed_owned_completion_allowed": True,
+            }
+        )
+        bundle["handshake"].update(
+            {
+                "schema_version": "kvbench-phase3-worker-handshake-3.0.0",
+                "zero_returncode_required_for_owned_completion": True,
+                "worker_exiting_required_for_owned_completion": False,
+                "rapid_zero_exit_after_evidence_flushed_owned_completion_allowed": True,
+            }
+        )
+        bundle["worker_termination"] = {
+            "schema_version": "kvbench-phase3-worker-termination-1.0.0",
+            "run_id": cls.RUN_ID,
+            "required": True,
+            "registered": True,
+            "resolved": True,
+            "disposition": "registered_reaped",
+            "returncode": outcome["returncode"],
+            "failure_reason": None,
+            "source_revalidation_attempted_after_resolution": True,
+            "source_revalidated_after_resolution": True,
+            "pidfd_closed_after_resolution": True,
+            "pidfd_closed_after_source_revalidation_attempt": True,
+        }
+        if bundle["audit"]["passed"] is True:
+            primary_payload = bundle["worker_evidence"]
+            sidecar_payload = {
+                "schema_version": "unit-raw-audit-index-v2",
+                "run_id": cls.RUN_ID,
+                "point_id": "fixed_l-b1-l128-eager-r1",
+            }
+            primary_bytes = canonical_json_bytes(primary_payload) + b"\n"
+            sidecar_bytes = canonical_json_bytes(sidecar_payload) + b"\n"
+            commitment = build_phase3_worker_channel_commitment(
+                run_id=cls.RUN_ID,
+                point_id="fixed_l-b1-l128-eager-r1",
+                primary_evidence_bytes=primary_bytes,
+                raw_audit_index_bytes=sidecar_bytes,
+            )
+            commitment_sha256 = sha256_hex(canonical_json_bytes(commitment))
+            for event in bundle["registry"]["handshake_events"]:
+                if event["stage"] == "evidence_flushed":
+                    event["evidence_sha256"] = commitment_sha256
+            bundle["transport_primary"] = primary_payload
+            bundle["transport_sidecar"] = sidecar_payload
+            bundle["transport_commitment"] = commitment
+            bundle["transport_digest"] = commitment_sha256
+        return bundle
+
+    @classmethod
     def _failure_bundle(
         cls,
         *,
@@ -957,6 +1044,7 @@ class Phase3ProcessEvidenceV2Tests(unittest.TestCase):
             "environment/process.after_registry_verdict.json": (
                 "after_verdict"
             ),
+            "validation/worker_termination.json": "worker_termination",
         }
         for relative, key in paths.items():
             if key not in bundle:
@@ -967,25 +1055,51 @@ class Phase3ProcessEvidenceV2Tests(unittest.TestCase):
                 json.dumps(bundle[key], indent=2, sort_keys=True) + "\n",
                 encoding="utf-8",
             )
+        transport_root = root / "raw" / "transport"
+        if "transport_primary" in bundle:
+            transport_root.mkdir(parents=True, exist_ok=True)
+            (transport_root / "primary_worker_evidence.v1.jsonl").write_bytes(
+                canonical_json_bytes(bundle["transport_primary"]) + b"\n"
+            )
+            (transport_root / "raw_audit_index_sidecar.v2.jsonl").write_bytes(
+                canonical_json_bytes(bundle["transport_sidecar"]) + b"\n"
+            )
+            (transport_root / "channel_commitment.json").write_bytes(
+                canonical_json_bytes(bundle["transport_commitment"])
+            )
+            (transport_root / "channel_commitment.sha256").write_text(
+                f'{bundle["transport_digest"]}\n', encoding="ascii"
+            )
+        manifest = SimpleNamespace(
+            run_id=cls.RUN_ID,
+            point_id="fixed_l-b1-l128-eager-r1",
+            gpu_uuid=cls.GPU_UUID,
+            status=manifest_status,
+            failure_reason=manifest_failure_reason,
+            command=SimpleNamespace(
+                argv=cls.COMMAND_ARGV,
+                working_directory=cls.WORKING_DIRECTORY,
+                environment_sha256=cls.ENVIRONMENT_SHA,
+            ),
+        )
+        audit = bundle["audit"]
+        registry_evidence = None
+        handshake_evidence = None
+        if audit["schema_version"] == "kvbench-phase3-process-audit-3.0.0":
+            audit, registry_evidence, handshake_evidence = (
+                _normalize_v3_process_evidence(root, manifest, audit)
+            )
         _validate_process_evidence_v2(
             root,
-            SimpleNamespace(
-                run_id=cls.RUN_ID,
-                gpu_uuid=cls.GPU_UUID,
-                status=manifest_status,
-                failure_reason=manifest_failure_reason,
-                command=SimpleNamespace(
-                    argv=cls.COMMAND_ARGV,
-                    working_directory=cls.WORKING_DIRECTORY,
-                    environment_sha256=cls.ENVIRONMENT_SHA,
-                ),
-            ),
-            bundle["audit"],
+            manifest,
+            audit,
             bundle["ready"],
             SimpleNamespace(
                 status=worker_status,
                 failure_reason=worker_failure_reason,
             ),
+            registry_evidence=registry_evidence,
+            handshake_evidence=handshake_evidence,
         )
 
     def _assert_rejected(self, bundle: dict[str, object]) -> None:
@@ -1013,6 +1127,83 @@ class Phase3ProcessEvidenceV2Tests(unittest.TestCase):
                     self._validate_bundle(
                         Path(raw_root),
                         self._bundle(fast_exit=fast_exit),
+                    )
+
+    def test_v3_completed_and_owned_abort_are_reportable(self) -> None:
+        bundles = (
+            self._as_v3(self._bundle()),
+            self._as_v3(self._owned_worker_failure_bundle("incomplete")),
+        )
+        for bundle in bundles:
+            with self.subTest(status=bundle["audit"]["passed"]):
+                self._assert_accepted(bundle)
+
+    def test_v3_policy_commitment_and_termination_tamper_fail_closed(self) -> None:
+        policy = self._as_v3(self._bundle())
+        policy["audit"]["worker_exiting_required_for_owned_completion"] = True
+        commitment = self._as_v3(self._bundle())
+        commitment["transport_primary"]["tampered"] = True
+        termination = self._as_v3(self._owned_worker_failure_bundle("incomplete"))
+        termination["worker_termination"]["returncode"] = 9
+        for label, bundle in (
+            ("policy", policy),
+            ("commitment", commitment),
+            ("termination", termination),
+        ):
+            with self.subTest(label=label):
+                self._assert_rejected(bundle)
+
+    def test_live_registered_pmon_gap_does_not_relax_foreign_or_pid_reuse(self) -> None:
+        identity = {
+            "pid": self.PID,
+            "start_time_ticks": self.START_TICKS,
+            "gpu_uuid": self.GPU_UUID,
+        }
+        error = (
+            f"compute_apps GPU {self.GPU_UUID} PID {self.PID} "
+            "has no pmon process type"
+        )
+        owned = {
+            "gpu_uuid": self.GPU_UUID,
+            "pid": self.PID,
+            "process_start_time_ticks": self.START_TICKS,
+        }
+        snapshot = self._snapshot(self._raw_process())
+        snapshot["query_exit_code"] = 2
+        snapshot["errors"] = [error]
+        verdict = self._registry_verdict(owned=(owned,))
+        verdict["raw_query_exit_code"] = 2
+        verdict["raw_errors"] = [error]
+        observed = _v2_registry_snapshot_verdict(
+            snapshot,
+            verdict,
+            registered_identity=identity,
+            terminal_resolution_allowed=False,
+            proc_disappeared_after_registration=False,
+        )
+        self.assertTrue(observed["passed"])
+        self.assertFalse(observed["terminal_registered_process_resolution"])
+
+        foreign = self._snapshot(
+            self._raw_process(),
+            self._raw_process(pid=9999, start_ticks=111),
+        )
+        foreign["query_exit_code"] = 2
+        foreign["errors"] = [error]
+        reused = self._snapshot(
+            self._raw_process(start_ticks=self.START_TICKS + 1)
+        )
+        reused["query_exit_code"] = 2
+        reused["errors"] = [error]
+        for label, unsafe in (("foreign", foreign), ("pid_reuse", reused)):
+            with self.subTest(label=label):
+                with self.assertRaises(Phase3ReportError):
+                    _v2_registry_snapshot_verdict(
+                        unsafe,
+                        verdict,
+                        registered_identity=identity,
+                        terminal_resolution_allowed=False,
+                        proc_disappeared_after_registration=False,
                     )
 
     def test_registry_not_created_failure_uses_explicit_sentinel(self) -> None:
