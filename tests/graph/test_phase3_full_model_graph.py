@@ -5,6 +5,10 @@ from __future__ import annotations
 import unittest
 
 import torch
+from kvbench.adapters import (
+    build_method_adapter,
+    declared_bf16_runtime_context,
+)
 
 from kvbench.runtime.cuda_graph import validate_full_model_fixed_graph
 from kvbench.runtime.model_loader import load_frozen_model
@@ -20,6 +24,10 @@ class Phase3FullModelGraphTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         cls.loaded = load_frozen_model(device="cuda:0")
+        cls.adapter = build_method_adapter(
+            "bf16",
+            declared_bf16_runtime_context(cls.loaded.model),
+        )
 
     def test_short_fixed_shape_capture_replay_is_exact_and_allocation_free(
         self,
@@ -35,6 +43,7 @@ class Phase3FullModelGraphTests(unittest.TestCase):
             self.loaded.model,
             prefix,
             current,
+            method=self.adapter,
         )
         self.assertTrue(result.passed, result.to_dict())
         self.assertTrue(result.eager_replay_comparison["passed"])
@@ -60,6 +69,8 @@ class Phase3FullModelGraphTests(unittest.TestCase):
             graph_mode=GraphMode.CUDA_GRAPH,
         )
         print(f"preserved_endpoint_graph_audit={evidence_root}")
+        self.assertEqual(session.method.name, "bf16")
+        self.assertEqual(len(session.adapter_config_fingerprint), 64)
         self.assertEqual(record.status, "completed")
         self.assertEqual(session.state, "ready")
         self.assertTrue(session.provenance_payload()["graph_retained"])

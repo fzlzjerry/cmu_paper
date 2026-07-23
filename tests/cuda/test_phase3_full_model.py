@@ -8,6 +8,10 @@ import tempfile
 import unittest
 
 import torch
+from kvbench.adapters import (
+    build_method_adapter,
+    declared_bf16_runtime_context,
+)
 
 from kvbench.runtime.backend import backend_identity, forced_flash_execution
 from kvbench.runtime.gqa_device_dispatch import REQUIRED_SUT_SOURCES
@@ -148,6 +152,10 @@ class Phase3FullModelReferenceTests(unittest.TestCase):
         cls.model = loaded.model
         cls.tokenizer = loaded.tokenizer
         cls.identity = loaded.identity
+        cls.adapter = build_method_adapter(
+            "bf16",
+            declared_bf16_runtime_context(cls.model),
+        )
 
     def test_exact_model_fixed_and_growing_match_dynamic_cache_reference(
         self,
@@ -170,7 +178,12 @@ class Phase3FullModelReferenceTests(unittest.TestCase):
             dtype=torch.long,
             device="cuda:0",
         ).unsqueeze(0)
-        result = validate_full_model_reference(self.model, prefix, decode)
+        result = validate_full_model_reference(
+            self.model,
+            prefix,
+            decode,
+            method=self.adapter,
+        )
         self.assertTrue(result.passed, result.to_dict())
         self.assertEqual(result.reference_cache_type, "DynamicCache")
         self.assertTrue(result.reference_implementation_restored)
@@ -194,6 +207,8 @@ class Phase3FullModelReferenceTests(unittest.TestCase):
         )
         print(f"preserved_endpoint_audit={evidence_root}")
         self.assertEqual(session.state, "ready")
+        self.assertEqual(session.method.name, "bf16")
+        self.assertEqual(len(session.adapter_config_fingerprint), 64)
         self.assertEqual(
             {item.kind for item in record.files},
             set(REQUIRED_COMPLETED_RAW_AUDIT_FILE_KINDS)

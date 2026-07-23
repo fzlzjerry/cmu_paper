@@ -32,8 +32,8 @@ _WORKSPACE_BYTES = 32 * (32 + 8) * 64 * 2
 class _Endpoint:
     instances: list[_Endpoint] = []
 
-    def __init__(self, model: object, cache: object) -> None:
-        del model
+    def __init__(self, model: object, cache: object, method: object) -> None:
+        del model, method
         self.cache = cache
         self.decode_calls = 0
         self.prefill_calls = 0

@@ -766,10 +766,12 @@ class Phase3EvidenceSerializationTests(unittest.TestCase):
         point = phase3_coordinator.expand_phase3_process_points(bundle.plan)[0]
         environment_sha = "a" * 64
         backend = SimpleNamespace(
+            backend_id="torch_sdpa_flash_gqa",
             to_dict=lambda: {"schema_version": "unit-backend"},
             fingerprint=lambda: "b" * 64,
         )
         cache = SimpleNamespace(
+            layout_fingerprint="c" * 64,
             to_dict=lambda: {"schema_version": "unit-cache"},
         )
         with mock.patch.object(
@@ -791,6 +793,10 @@ class Phase3EvidenceSerializationTests(unittest.TestCase):
         self.assertEqual(
             payload["command"]["environment_sha256"],
             environment_sha,
+        )
+        self.assertEqual(
+            len(payload["adapter_config_fingerprint"]),
+            64,
         )
 
     def test_sanitized_worker_environment_is_constructible_and_secret_free(self) -> None:
