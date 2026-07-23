@@ -8,14 +8,14 @@ requirements; and AGENTS.md. Decision 0005 records precedence.
 
 ## Current state
 
-- Current phase: Phase 3 remediation FAIL after both complete fresh campaigns
-  were attempted. Phase 2 remains PASS, and Phase 4 is closed.
+- Current phase: Phase 3 remediation FAIL after the B-015 fixed-L campaign
+  failed and the stop condition kept growing closed. Phase 2 remains PASS, and
+  Phase 4 is closed.
 - Phase 0 status: PASS
 - Phase 1 remediation status: PASS
-- Next action: remediate B-015 without weakening B-011/B-012, preserve the
-  lower-level raw-audit producer cause, establish a source-backed worst-case
-  bundle bound, rerun admission controls, then use a new clean SHA and entirely
-  new complete campaigns; do not begin Phase 4
+- Next action: remediate B-016 with an untimed raw graph-marker diagnostic
+  without weakening B-011/B-012, process ownership, or graph zero-allocation;
+  then rerun all gates and both entirely new complete campaigns
 - Active admission gate: native-host G0 PASS; container-parity G0 remains a
   later E01 requirement before E02
 - Benchmark implementation changes: exact BF16 static cache, fixed-L and
@@ -27,9 +27,10 @@ requirements; and AGENTS.md. Decision 0005 records precedence.
   SASS/PTX inspection, and all required Compute Sanitizer lanes
 - Benchmark, profiler, or quality data produced: the original 20 checksum-valid
   Phase 3 runs/report and first-remediation 16-run failed campaign remain
-  immutable. The latest execution preserved 20 new runs, 2 campaigns, and a
-  new immutable FAIL report; 5 runs completed and 15 aborted before measurement.
-  No profiler or quality evidence was produced.
+  immutable. The second remediation preserved 20 new runs, 2 campaigns, and an
+  immutable FAIL report. The B-015 execution preserved one new 16-run fixed-L
+  campaign with 13 completed and 3 pre-measurement graph aborts; growing and a
+  new report were not executed. No profiler or quality evidence was produced.
 - Scientific performance claims: none
 - Quality protocol: preregistered by Decision 0005 before any performance or
   quality result
@@ -91,6 +92,47 @@ FAIL, SHA-256
 `2bc0b4be6c1cc4a723b5b031e56b42520709de2d98cb35917bea857de70412c0`.
 Independent validation passes with no errors and `COMPLETE` written last.
 Quality remains locked, Full Scan remains closed, and Phase 4 did not begin.
+
+## Phase 3 remediation execution 3 (B-015)
+
+Untimed diagnostics at starting SHA
+`8d64c673696ab3c8147310fa09b25217cac5104c` preserved the lower producer
+exception, proved that the frozen Flash split heuristic selected 11 partitions
+for GQA and 5 for the held-constant MHA geometry, and measured the exact
+16-step worst-case raw bundle. Decision 0014 corrected only that disproven
+cross-geometry equality and the source-backed raw transport envelope.
+
+Clean execution SHA `52f41ce9d9be4edc07a833e00fe3404fbfa80b89`
+passed `make checks`, `make test`, `make test-cuda` (13/13), and
+`make test-graph` (3/3). The complete 1,978-file entry Phase 3 artifact baseline
+and the original report SHA-256
+`060a88283f083e281692a2c471d279da9bfc635e0f513e2dca588ed729d85c7d`
+remained unchanged.
+
+Fresh fixed-L campaign
+`phase3-20260723t072710859854z-52f41ce9-88e3fd` preregistered and attempted all
+16 frozen points once. It preserved 13 completed and 3 aborted runs, with no
+unattempted point or selective rerun. All 13 completed operations independently
+rederived `gqa_nonmaterialization_verified` for
+`pytorch_flash::flash_fwd_splitkv`, found no replication/copy kernel or
+expanded-KV allocation, passed frozen numerical/state/checksum controls, and
+retained stable cache geometry. All 8 eager operations attributed 1,066 events
+each with no forbidden/unknown event; all 5 graph operations had zero allocation
+events and deltas.
+
+The graph controls at `B1/L16384`, `B4/L4096`, and `B4/L16384` aborted before
+measurement. Each immutable worker log preserves the same exact lower cause:
+`ChromeTraceValidationError: graph GPU marker is not contained by its host
+marker`. Each registered worker was correctly classified as an owned failure,
+reaped with PID start-time protection, and never treated as foreign. This is
+B-016; B-013 remains resolved.
+
+Independent validation passed for the campaign and all 16 runs. The 17 new
+directories contain 778 checksum-bound files, are read-only, and have
+COMPLETE-last finalization; their aggregate manifest SHA-256 is
+`7a584e456a253c4d583649a6c19ed538e6a8a1fb10e182ece3b5766467132dee`.
+The stop condition prevented a growing campaign and new G1 report. G1 remains
+FAIL; quality, Full Scan, pilot, and Phase 4 remained closed.
 
 ## Repository
 
@@ -181,7 +223,7 @@ repository.
 | Phase 0 repository/input audit | PASS | literature manifests; method notes; source lock; decision, risks, blockers, tasks |
 | G0 native-host hardware certification | PASS | `docs/evidence/e00/e00-20260722T050632.375718Z-6442ba1f7554-02d5bd32/`; prior immutable FAIL retained |
 | Phase 2 repository/contracts/tooling | PASS | strict schemas and examples; fail-closed CLI; append-only local writer; 54 Phase 2 tests; repository checks |
-| G1 BF16 baseline | FAIL | Original and first-remediation evidence remain immutable; latest complete campaigns attempted 20/20 points, preserved 5 completed plus 15 aborted runs, and produced independently valid FAIL report `phase3-g1-20260723t060636246041z-3f2c365a-26bf3c` |
+| G1 BF16 baseline | FAIL | The B-015 fixed-L campaign attempted 16/16 points and preserved 13 completed plus 3 graph aborts; the stop condition prevented growing and a new report. Prior evidence/report bundles remain immutable. |
 | G2-TQ | NOT EVALUATED | requires E05-E06 |
 | G2-KIVI | NOT EVALUATED | requires E07-E08 |
 | G2-KVQ | NOT EVALUATED | requires E09-E11 |
@@ -205,12 +247,14 @@ repository.
 ## Next action
 
 Phase 3 remains G1 FAIL. B-013 and B-014 are resolved without changing the
-frozen process-exclusivity or numerical contracts. The minimum remaining
-remediation is B-015: preserve each raw-audit producer exception and establish
-a source-backed worst-case evidence bound so all B-011/B-012 operations can
-complete. Any new execution requires passing all admission controls, a clean
-new Git SHA, and both entirely new complete campaigns; every existing result
-remains immutable and no point may be selectively rerun.
+frozen process-exclusivity or numerical contracts, and B-015 is resolved by
+Decision 0014 and its passing controls. The minimum remaining remediation is
+B-016: use an untimed diagnostic to compare raw graph host/GPU marker intervals
+for one failing frozen geometry and one passing control, then correct only a
+source- and trace-proven collector/parser boundary defect. Any new execution
+requires passing all admission controls, a clean new Git SHA, and both entirely
+new complete campaigns; every existing result remains immutable and no point
+may be selectively rerun.
 B-010 still requires a digest-pinned measurement container and container-parity
 G0 before formal E02 closure, ordinary timing, later method admission, or a
 performance claim. B-009 still requires durable append-only storage and an
