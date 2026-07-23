@@ -157,3 +157,93 @@ endpoint, and make terminal process monitoring race-safe. Report-lifecycle
 hardening in R-026 is also required before publishing the next admission
 report. Then use a new Git SHA and run both complete bounded campaigns with
 new run IDs. Preserve every current artifact.
+
+## Phase 3 remediation execution 2 (2026-07-23)
+
+Execution Git SHA: `eb908f6e372d6b232e6079e9344c2103bc90cdea`.
+Report-generator Git SHA: `3f2c365a5fd495cb3666b421e279b196b58dfb88`.
+
+The execution tree was clean. Before execution, `make checks`, `make test`,
+`make test-cuda` (13/13), and `make test-graph` (3/3) passed. The original
+600-file Phase 3 baseline and the 614-file first-remediation baseline still
+match manifests with SHA-256
+`e3f6cfaf7bf20728e82503ad5c2905750ea7afe4a4dbf0ac6692b67674095518` and
+`501832c9af981d812928a7c6f9e82c3635170bea240e344581bb783c7c283438`.
+The immutable original report still validates at
+`060a88283f083e281692a2c471d279da9bfc635e0f513e2dca588ed729d85c7d`.
+
+B-014 was traced outside timing to inconsistent checksum serialization: the
+audit witness hashed tensor bytes while the runner used the frozen
+shape/dtype-bound tensor checksum. Exact eager and retained-graph diagnostics
+were stable for 160 repeats. Commit `fe28f5e` canonicalized the audit witness
+without changing tolerances or the measured region. B-013 was corrected in
+commit `eb908f6` so only the exact registered GPU/PID/start-time
+`compute_apps`/`pmon` gap is owned; foreign, unregistered, and PID-reuse rows
+remain hard failures.
+
+### Complete fresh campaigns
+
+- Fixed-L: `phase3-20260723t051939423712z-eb908f6e-b1039a`; all 16 frozen
+  points attempted once, 5 completed and 11 aborted.
+- Growing context: `phase3-20260723t052647190745z-eb908f6e-5caf7f`; all 4
+  frozen points attempted once, 0 completed and 4 aborted.
+- No point was selectively rerun, omitted, or replaced. Every terminal result
+  is preserved under a new run ID. No quality, full scan, pilot, or Phase 4
+  work ran.
+
+The five completed operations independently rederived
+`gqa_nonmaterialization_verified`. Raw CUDA traces for held-constant GQA
+`H_Q=32,H_KV=8,head_dim=128` and MHA `H_Q=32,H_KV=32,head_dim=128` controls
+identified `pytorch_flash::flash_fwd_splitkv` plus its combine kernel, with
+Flash forced, fallback rejected, no preceding repeat/expand/copy kernel, no
+expanded-KV allocation, native eight-head cache storage, and passing
+source/shape/stride joins. This is valid evidence for those five operations,
+not campaign-wide proof.
+
+Both completed eager operations attributed 1,066 allocation lifetimes each:
+937 fixed shared activations, 64 source-backed context workspaces, 64 framework
+bookkeeping allocations, and 1 fixed output. All were cache-reused and fully
+freed; segment allocation, unknown, cache-growth, GQA-expanded, persistent
+allocated/reserved growth, and device-used-memory growth were zero. The three
+completed Graph operations retained strict zero allocation and zero memory
+deltas. Decision 0013 remains unchanged.
+
+All five completed runs passed the frozen numerical controls with finite
+outputs. Their audit-output and measured-output checksums are exactly equal.
+The remaining fifteen workers exited before measurement and therefore cannot
+supply identity, numerical, dispatch, allocation, runner, or stability
+coverage for G1.
+
+The exact B-013 race occurred in eight fresh process snapshots. Each snapshot
+retained the registered GPU/PID/start time, derived `owned_only`, and passed;
+none was reclassified as foreign or PID reuse. The fifteen terminal failures
+were correctly retained as `owned_worker_failure` after exit before
+`evidence_flushed`.
+
+Two growing L128 workers preserve `ValueError: raw audit run size exceeds the
+hard limit`. The other thirteen aborts preserve only
+`Phase3RawAuditProducerError: raw-audit collection did not complete before
+measurement`; their lower-level producer cause is absent. This is B-015 and is
+the minimum remaining remediation before another execution.
+
+### Immutable remediation report
+
+The first publication attempt failed closed during source indexing and remains
+preserved with no `COMPLETE` marker. Reporting-only commit `3f2c365` added
+strict v3 process-evidence rederivation without changing run semantics. The
+append-only publisher then finalized
+`phase3-g1-20260723t060636246041z-3f2c365a-26bf3c` with report SHA-256
+`2bc0b4be6c1cc4a723b5b031e56b42520709de2d98cb35917bea857de70412c0`
+and checksum-ledger SHA-256
+`a595e9aa2d7112e6fd3fefd2acfdac6a884f39ac4612d67b0b1931e7778beaa3`.
+Independent validation reports `valid=true` with no errors; `COMPLETE` binds
+the report, source index, inventory, and ledger and records
+`written_last=true`.
+
+The fresh-evidence verdict is G0 PASS, G1 FAIL, G2-G5 NOT EVALUATED, and Full
+Scan CLOSED. Quality execution remains LOCKED, no quality benchmark ran,
+`PERFORMANCE_DATA_FROZEN` is absent, and all results remain
+`quality_status=unvalidated`, `claim_eligibility=performance_only`,
+`performance_claim_eligible=false`, and
+`measurement_scope=native_host_admission`. No speedup, knee, HBM, compression,
+capacity, or quality claim is made.
