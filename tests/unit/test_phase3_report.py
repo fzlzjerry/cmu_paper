@@ -22,6 +22,9 @@ from kvbench.runtime.phase3_report import (
     ValidatedPhase3Run,
     _manifest_environment_join,
     _normalize_v3_process_evidence,
+    _raw_audit_index_bytes,
+    _replay_report_raw_audit_run,
+    _report_generator_requires_raw_audit_replay,
     _v2_registry_snapshot_verdict,
     _validate_process_evidence_v2,
     _audit_zero_allocation,
@@ -267,6 +270,241 @@ class StabilityDerivationTests(unittest.TestCase):
         self.assertTrue(_audit_zero_allocation(passing))
         failing = dict(passing, allocation_event_count=1, allocation_event_bytes=8)
         self.assertFalse(_audit_zero_allocation(failing))
+
+
+class RawAuditReportReplayTests(unittest.TestCase):
+    RUN_ID = "phase3-report-raw-replay-fixture"
+    POINT_ID = "fixed_l-b1-l128-eager-r1"
+    FINGERPRINT = "a" * 64
+
+    @classmethod
+    def _fixture(
+        cls,
+        root: Path,
+    ) -> tuple[
+        SimpleNamespace,
+        SimpleNamespace,
+        SimpleNamespace,
+        SimpleNamespace,
+        Path,
+    ]:
+        index_payload = {"fixture": "raw-audit-index"}
+        index_bytes = canonical_json_bytes(index_payload)
+        index_path = root / "raw" / "audits" / "index.json"
+        index_path.parent.mkdir(parents=True)
+        index_path.write_bytes(index_bytes)
+        sidecar = {
+            "schema_version": "kvbench-phase3-worker-evidence-2.0.0",
+            "raw_audit_run_index": index_payload,
+            "raw_audit_run_index_sha256": sha256_hex(index_bytes),
+        }
+        sidecar_path = (
+            root
+            / "raw"
+            / "transport"
+            / "raw_audit_index_sidecar.v2.jsonl"
+        )
+        sidecar_path.parent.mkdir(parents=True)
+        sidecar_path.write_bytes(canonical_json_bytes(sidecar) + b"\n")
+
+        payload = b"checksum-bound raw evidence"
+        relative = "step-0000/dispatch-audit.json"
+        raw_path = root / "raw" / "audits" / "files" / relative
+        raw_path.parent.mkdir(parents=True)
+        raw_path.write_bytes(payload)
+        declaration = SimpleNamespace(
+            path=relative,
+            sha256=sha256_hex(payload),
+            size_bytes=len(payload),
+        )
+        operation = SimpleNamespace(
+            operation_fingerprint_sha256=cls.FINGERPRINT,
+            graph_mode=GraphMode.EAGER,
+        )
+        record = SimpleNamespace(
+            operation=operation,
+            files=(declaration,),
+        )
+        index = SimpleNamespace(
+            run_id=cls.RUN_ID,
+            point_id=cls.POINT_ID,
+            records=(record,),
+        )
+        manifest = SimpleNamespace(
+            git_sha=ZERO_GIT_SHA,
+            runner_kind=RunnerKind.FIXED_L,
+            graph_mode=GraphMode.EAGER,
+            batch_size=1,
+            context_length=128,
+            output_steps=1,
+            process_replicate=1,
+            cache_identity=object(),
+            backend_identity=object(),
+        )
+        run = SimpleNamespace(
+            run_dir=root,
+            run_id=cls.RUN_ID,
+            point_id=cls.POINT_ID,
+            manifest=manifest,
+            process_audit={"passed": True},
+            worker_evidence={"passed": True},
+        )
+        source_pin = SimpleNamespace(sut_source_sha256_by_path={})
+        return run, source_pin, index, operation, raw_path
+
+    @classmethod
+    def _semantic_operation(cls, *, passed: bool) -> dict[str, object]:
+        return {
+            "operation_fingerprint_sha256": cls.FINGERPRINT,
+            "gqa_verdict": (
+                "gqa_nonmaterialization_verified"
+                if passed
+                else "gqa_dispatch_unverified"
+            ),
+            "gqa_reasons": [] if passed else ["local_raw_replay_failed"],
+            "device_kernel_families": {
+                "gqa": "pytorch_flash::flash_fwd_splitkv",
+                "mha_control": "pytorch_flash::flash_fwd_splitkv",
+            },
+            "allocation_criterion_id": (
+                "phase3_eager_attributed_ephemeral_v1"
+            ),
+            "allocation_event_count": 2,
+            "allocation_class_counts": {
+                "fixed_output": 1,
+                "framework_bookkeeping": 1,
+            },
+            "allocation_failure_reasons": (
+                [] if passed else ["unknown_allocation"]
+            ),
+        }
+
+    def _replay(
+        self,
+        root: Path,
+        *,
+        locally_passed: bool,
+    ) -> dict[str, bool]:
+        run, source_pin, index, operation, _ = self._fixture(root)
+        run.worker_evidence["passed"] = not locally_passed
+
+        def local_replay(**kwargs: object) -> None:
+            outcome = kwargs["outcome"]
+            assert isinstance(outcome, dict)
+            outcome.update(
+                {
+                    "semantic_validation_passed": True,
+                    "scientific_completion_passed": True,
+                    "semantic_operations": [
+                        self._semantic_operation(passed=locally_passed)
+                    ],
+                }
+            )
+
+        with mock.patch(
+            "kvbench.runtime.phase3_report._validate_report_execution_source_pin"
+        ), mock.patch(
+            "kvbench.runtime.phase3_raw_audit_evidence."
+            "parse_phase3_raw_audit_run_index_bytes",
+            return_value=index,
+        ), mock.patch(
+            "kvbench.runtime.phase3_coordinator."
+            "_expected_phase3_raw_audit_operations",
+            return_value=(operation,),
+        ), mock.patch(
+            "kvbench.runtime.phase3_coordinator."
+            "_replay_phase3_raw_audit_semantics",
+            side_effect=local_replay,
+        ):
+            return _replay_report_raw_audit_run(run, source_pin)
+
+    def test_local_raw_replay_passes_without_trusting_worker_boolean(self) -> None:
+        with tempfile.TemporaryDirectory(dir="/tmp") as raw_root:
+            facts = self._replay(Path(raw_root), locally_passed=True)
+        self.assertEqual(
+            facts,
+            {
+                "semantic_validation_passed": True,
+                "gqa_nonmaterialization_verified": True,
+                "allocation_criterion_passed": True,
+                "graph_zero_allocation_passed": True,
+                "flash_backend_forced": True,
+            },
+        )
+
+    def test_local_raw_contradiction_overrides_worker_passed_boolean(self) -> None:
+        with tempfile.TemporaryDirectory(dir="/tmp") as raw_root:
+            facts = self._replay(Path(raw_root), locally_passed=False)
+        self.assertFalse(facts["gqa_nonmaterialization_verified"])
+        self.assertFalse(facts["allocation_criterion_passed"])
+        self.assertFalse(facts["flash_backend_forced"])
+
+    def test_missing_or_tampered_declared_raw_file_fails_closed(self) -> None:
+        for condition in ("missing", "tampered"):
+            with self.subTest(condition=condition), tempfile.TemporaryDirectory(
+                dir="/tmp"
+            ) as raw_root:
+                root = Path(raw_root)
+                run, source_pin, index, operation, raw_path = self._fixture(root)
+                if condition == "missing":
+                    raw_path.unlink()
+                else:
+                    raw_path.write_bytes(b"tampered")
+                with mock.patch(
+                    "kvbench.runtime.phase3_report."
+                    "_validate_report_execution_source_pin"
+                ), mock.patch(
+                    "kvbench.runtime.phase3_raw_audit_evidence."
+                    "parse_phase3_raw_audit_run_index_bytes",
+                    return_value=index,
+                ), mock.patch(
+                    "kvbench.runtime.phase3_coordinator."
+                    "_expected_phase3_raw_audit_operations",
+                    return_value=(operation,),
+                ), self.assertRaises(Phase3ReportError):
+                    _replay_report_raw_audit_run(run, source_pin)
+
+    def test_missing_or_mismatched_index_sidecar_fails_closed(self) -> None:
+        for condition in ("missing_index", "mismatched_sidecar"):
+            with self.subTest(condition=condition), tempfile.TemporaryDirectory(
+                dir="/tmp"
+            ) as raw_root:
+                root = Path(raw_root)
+                run, _, _, _, _ = self._fixture(root)
+                if condition == "missing_index":
+                    (root / "raw" / "audits" / "index.json").unlink()
+                else:
+                    sidecar = (
+                        root
+                        / "raw"
+                        / "transport"
+                        / "raw_audit_index_sidecar.v2.jsonl"
+                    )
+                    payload = json.loads(sidecar.read_text(encoding="utf-8"))
+                    payload["raw_audit_run_index_sha256"] = "f" * 64
+                    sidecar.write_bytes(canonical_json_bytes(payload) + b"\n")
+                with self.assertRaises(Phase3ReportError):
+                    _raw_audit_index_bytes(run)
+
+    def test_generator_blob_selects_legacy_or_raw_replay_contract(self) -> None:
+        with mock.patch(
+            "kvbench.runtime.phase3_report._git_blob_bytes",
+            return_value=b"legacy report generator",
+        ):
+            self.assertFalse(
+                _report_generator_requires_raw_audit_replay(
+                    Path("/tmp"), ZERO_GIT_SHA
+                )
+            )
+        with mock.patch(
+            "kvbench.runtime.phase3_report._git_blob_bytes",
+            return_value=b"phase3-report-raw-audit-replay-v1",
+        ):
+            self.assertTrue(
+                _report_generator_requires_raw_audit_replay(
+                    Path("/tmp"), ZERO_GIT_SHA
+                )
+            )
 
 
 class ImmutableReportBundleTests(unittest.TestCase):

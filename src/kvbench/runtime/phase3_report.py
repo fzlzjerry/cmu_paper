@@ -124,6 +124,12 @@ _FORBIDDEN_HOT_PATH_PATTERNS = (
 )
 _REPORT_GENERATOR_CHANGE_PATHS = frozenset(
     {
+        "docs/blockers.md",
+        "docs/evidence/phase3/g1-admission.json",
+        "docs/phase_reports/phase3.md",
+        "docs/risk_register.md",
+        "docs/status.md",
+        "docs/tasks.md",
         "scripts/validate_phase2.py",
         "src/kvbench/runtime/phase3_report.py",
         "src/kvbench/runtime/phase3_report_publication.py",
@@ -139,6 +145,22 @@ _POST_REPORT_CHANGE_PATHS = frozenset(
         "docs/risk_register.md",
         "docs/status.md",
         "docs/tasks.md",
+    }
+)
+_PHASE3_REPORT_RAW_AUDIT_REPLAY_CONTRACT = (
+    "phase3-report-raw-audit-replay-v1"
+)
+_PHASE3_EAGER_ALLOCATION_CRITERION = (
+    "phase3_eager_attributed_ephemeral_v1"
+)
+_PHASE3_GRAPH_ALLOCATION_CRITERION = "phase3_graph_zero_allocation_v1"
+_PHASE3_GQA_VERIFIED = "gqa_nonmaterialization_verified"
+_PHASE3_EAGER_ALLOCATION_CLASSES = frozenset(
+    {
+        "context_scaled_workspace",
+        "fixed_output",
+        "fixed_shared_activation",
+        "framework_bookkeeping",
     }
 )
 
@@ -3798,6 +3820,357 @@ def _recorded_report_generator_provenance(
     return dict(recorded)
 
 
+def _git_blob_bytes(
+    repository: Path,
+    git_sha: str,
+    relative_path: str,
+) -> bytes:
+    result = _git_command(
+        repository,
+        ["cat-file", "blob", f"{git_sha}:{relative_path}"],
+    )
+    if (
+        result.returncode != 0
+        or not isinstance(result.stdout, bytes)
+        or not result.stdout
+    ):
+        raise Phase3ReportError(
+            f"report source blob is unavailable: {relative_path}"
+        )
+    return result.stdout
+
+
+def _report_generator_requires_raw_audit_replay(
+    repository: Path,
+    generator_git_sha: str,
+) -> bool:
+    generator_source = _git_blob_bytes(
+        repository,
+        generator_git_sha,
+        "src/kvbench/runtime/phase3_report.py",
+    )
+    return (
+        _PHASE3_REPORT_RAW_AUDIT_REPLAY_CONTRACT.encode("ascii")
+        in generator_source
+    )
+
+
+def _report_execution_source_pin(
+    repository: Path,
+    execution_git_sha: str,
+) -> Any:
+    from kvbench.runtime.gqa_device_dispatch import (
+        phase3_source_identity_sha256,
+    )
+    from kvbench.runtime.phase3_coordinator import (
+        PHASE3_EXECUTION_SOURCE_PATHS,
+        Phase3ExecutionSourcePin,
+        _phase3_execution_source_identity_sha256,
+    )
+
+    pinned = tuple(
+        (
+            relative_path,
+            _git_blob_bytes(repository, execution_git_sha, relative_path),
+        )
+        for relative_path in PHASE3_EXECUTION_SOURCE_PATHS
+    )
+    source_digests = {
+        relative_path: sha256_hex(payload)
+        for relative_path, payload in pinned
+    }
+    sut_digests = {
+        relative_path: source_digests[relative_path]
+        for relative_path in (
+            "src/kvbench/runtime/backend.py",
+            "src/kvbench/runtime/bf16_endpoint.py",
+            "src/kvbench/runtime/static_cache.py",
+        )
+    }
+    return Phase3ExecutionSourcePin(
+        execution_git_sha=execution_git_sha,
+        source_bytes_by_path=pinned,
+        source_identity_sha256=phase3_source_identity_sha256(sut_digests),
+        execution_source_identity_sha256=(
+            _phase3_execution_source_identity_sha256(source_digests)
+        ),
+    )
+
+
+def _validate_report_execution_source_pin(
+    run: ValidatedPhase3Run,
+    source_pin: Any,
+) -> None:
+    before = _strict_json_object(
+        run.run_dir / "validation" / "execution_source_pin.before_spawn.json"
+    )
+    after = _strict_json_object(
+        run.run_dir
+        / "validation"
+        / "execution_source_pin.after_worker_exit.json"
+    )
+    if (
+        before != source_pin.to_dict(verification_stage="before_spawn")
+        or after
+        != source_pin.to_dict(verification_stage="after_worker_exit")
+    ):
+        raise Phase3ReportError(
+            f"execution source pin differs for run: {run.run_id}"
+        )
+
+
+def _raw_audit_index_bytes(run: ValidatedPhase3Run) -> bytes:
+    index_path = run.run_dir / "raw" / "audits" / "index.json"
+    try:
+        index_bytes = index_path.read_bytes()
+    except OSError as error:
+        raise Phase3ReportError(
+            f"consolidated raw-audit index is absent: {run.run_id}"
+        ) from error
+    sidecar = _strict_json_object(
+        run.run_dir
+        / "raw"
+        / "transport"
+        / "raw_audit_index_sidecar.v2.jsonl",
+        canonical=True,
+    )
+    if (
+        set(sidecar)
+        != {
+            "schema_version",
+            "raw_audit_run_index",
+            "raw_audit_run_index_sha256",
+        }
+        or sidecar.get("schema_version")
+        != "kvbench-phase3-worker-evidence-2.0.0"
+        or not isinstance(sidecar.get("raw_audit_run_index"), Mapping)
+        or sidecar.get("raw_audit_run_index_sha256")
+        != sha256_hex(index_bytes)
+        or canonical_json_bytes(sidecar["raw_audit_run_index"])
+        != index_bytes
+    ):
+        raise Phase3ReportError(
+            f"raw-audit sidecar/index binding differs: {run.run_id}"
+        )
+    return index_bytes
+
+
+def _retained_raw_audit_bytes(run: ValidatedPhase3Run, index: Any) -> dict[str, bytes]:
+    retained: dict[str, bytes] = {}
+    root = run.run_dir / "raw" / "audits" / "files"
+    for record in index.records:
+        for declaration in record.files:
+            path = root / declaration.path
+            try:
+                payload = path.read_bytes()
+            except OSError as error:
+                raise Phase3ReportError(
+                    f"declared raw-audit file is absent: {run.run_id}: "
+                    f"{declaration.path}"
+                ) from error
+            if (
+                len(payload) != declaration.size_bytes
+                or sha256_hex(payload) != declaration.sha256
+            ):
+                raise Phase3ReportError(
+                    f"declared raw-audit file differs: {run.run_id}: "
+                    f"{declaration.path}"
+                )
+            retained[declaration.path] = payload
+    return retained
+
+
+def _raw_audit_replay_facts(index: Any, outcome: Mapping[str, Any]) -> dict[str, bool]:
+    semantic_operations = _sequence(outcome.get("semantic_operations"))
+    semantic_passed = bool(
+        outcome.get("semantic_validation_passed") is True
+        and outcome.get("scientific_completion_passed") is True
+        and semantic_operations is not None
+        and len(semantic_operations) == len(index.records)
+    )
+    failed = {
+        "semantic_validation_passed": False,
+        "gqa_nonmaterialization_verified": False,
+        "allocation_criterion_passed": False,
+        "graph_zero_allocation_passed": False,
+        "flash_backend_forced": False,
+    }
+    if not semantic_passed or semantic_operations is None:
+        return failed
+    gqa_verified = semantic_passed
+    allocation_verified = semantic_passed
+    graph_zero_allocation = semantic_passed
+    flash_backend_forced = semantic_passed
+    for record, raw_operation in zip(
+        index.records,
+        semantic_operations,
+        strict=True,
+    ):
+        operation = _mapping(raw_operation)
+        if operation is None:
+            raise Phase3ReportError("raw-audit replay operation is malformed")
+        class_counts = _mapping(operation.get("allocation_class_counts"))
+        failure_reasons = _sequence(
+            operation.get("allocation_failure_reasons")
+        )
+        kernel_families = _mapping(
+            operation.get("device_kernel_families")
+        )
+        event_count = operation.get("allocation_event_count")
+        if (
+            operation.get("operation_fingerprint_sha256")
+            != record.operation.operation_fingerprint_sha256
+            or class_counts is None
+            or failure_reasons is None
+            or kernel_families is None
+            or type(event_count) is not int
+            or event_count < 0
+            or any(
+                type(name) is not str
+                or type(count) is not int
+                or count < 0
+                for name, count in class_counts.items()
+            )
+            or sum(class_counts.values()) != event_count
+        ):
+            raise Phase3ReportError(
+                "raw-audit replay operation differs from its operation key"
+            )
+        operation_gqa_verified = bool(
+            operation.get("gqa_verdict") == _PHASE3_GQA_VERIFIED
+            and operation.get("gqa_reasons") == []
+        )
+        gqa_verified = gqa_verified and operation_gqa_verified
+        gqa_family = kernel_families.get("gqa")
+        mha_family = kernel_families.get("mha_control")
+        flash_backend_forced = bool(
+            flash_backend_forced
+            and operation_gqa_verified
+            and isinstance(gqa_family, str)
+            and gqa_family.startswith("pytorch_flash::flash_fwd")
+            and isinstance(mha_family, str)
+            and mha_family.startswith("pytorch_flash::flash_fwd")
+        )
+
+        is_graph = record.operation.graph_mode.value == "cuda_graph"
+        expected_criterion = (
+            _PHASE3_GRAPH_ALLOCATION_CRITERION
+            if is_graph
+            else _PHASE3_EAGER_ALLOCATION_CRITERION
+        )
+        operation_allocation_verified = bool(
+            operation.get("allocation_criterion_id") == expected_criterion
+            and failure_reasons == []
+            and (
+                class_counts == {} and event_count == 0
+                if is_graph
+                else set(class_counts).issubset(
+                    _PHASE3_EAGER_ALLOCATION_CLASSES
+                )
+            )
+        )
+        allocation_verified = (
+            allocation_verified and operation_allocation_verified
+        )
+        if is_graph:
+            graph_zero_allocation = bool(
+                graph_zero_allocation and operation_allocation_verified
+            )
+    return {
+        "semantic_validation_passed": semantic_passed,
+        "gqa_nonmaterialization_verified": gqa_verified,
+        "allocation_criterion_passed": allocation_verified,
+        "graph_zero_allocation_passed": graph_zero_allocation,
+        "flash_backend_forced": flash_backend_forced,
+    }
+
+
+def _replay_report_raw_audit_run(
+    run: ValidatedPhase3Run,
+    source_pin: Any,
+) -> dict[str, bool]:
+    from kvbench.runtime.phase3_coordinator import (
+        Phase3CoordinatorError,
+        _expected_phase3_raw_audit_operations,
+        _replay_phase3_raw_audit_semantics,
+    )
+    from kvbench.runtime.phase3_raw_audit_evidence import (
+        Phase3RawAuditEvidenceError,
+        parse_phase3_raw_audit_run_index_bytes,
+    )
+    from kvbench.schema.phase3 import Phase3ProcessPoint
+
+    _validate_report_execution_source_pin(run, source_pin)
+    try:
+        index = parse_phase3_raw_audit_run_index_bytes(
+            _raw_audit_index_bytes(run)
+        )
+        point = Phase3ProcessPoint(
+            point_id=run.point_id,
+            runner_kind=run.manifest.runner_kind,
+            graph_mode=run.manifest.graph_mode,
+            batch_size=run.manifest.batch_size,
+            context_length=run.manifest.context_length,
+            output_steps=run.manifest.output_steps,
+            process_replicate=run.manifest.process_replicate,
+            stability_member=(
+                run.point_id in FROZEN_PHASE3_STABILITY_POINT_IDS
+            ),
+        )
+        expected_operations = _expected_phase3_raw_audit_operations(
+            point=point,
+            run_id=run.run_id,
+            git_sha=run.manifest.git_sha,
+            cache=run.manifest.cache_identity,
+            backend=run.manifest.backend_identity,
+            source_sha256_by_path=source_pin.sut_source_sha256_by_path,
+        )
+        if (
+            index.run_id != run.run_id
+            or index.point_id != run.point_id
+            or tuple(record.operation for record in index.records)
+            != expected_operations
+        ):
+            raise Phase3ReportError(
+                f"raw-audit operation join differs: {run.run_id}"
+            )
+        retained = _retained_raw_audit_bytes(run, index)
+        outcome: dict[str, Any] = {
+            "process_audit_passed": run.process_audit.get("passed") is True,
+            "commitment_validation_passed": True,
+            "execution_source_revalidated_after_worker_exit": True,
+        }
+        _replay_phase3_raw_audit_semantics(
+            index=index,
+            retained=retained,
+            execution_source_pin=source_pin,
+            backend_identity=run.manifest.backend_identity,
+            outcome=outcome,
+        )
+        return _raw_audit_replay_facts(index, outcome)
+    except Phase3ReportError:
+        raise
+    except (Phase3CoordinatorError, Phase3RawAuditEvidenceError) as error:
+        raise Phase3ReportError(
+            f"independent raw-audit replay failed: {run.run_id}"
+        ) from error
+
+
+def _replay_report_raw_audits(
+    runs: tuple[ValidatedPhase3Run, ...],
+    repository: Path,
+) -> dict[str, dict[str, bool]]:
+    execution_git_sha = runs[0].manifest.git_sha
+    source_pin = _report_execution_source_pin(
+        repository,
+        execution_git_sha,
+    )
+    return {
+        run.run_id: _replay_report_raw_audit_run(run, source_pin)
+        for run in runs
+    }
+
+
 def _criterion(
     name: str,
     runs_by_point: Mapping[str, ValidatedPhase3Run],
@@ -3823,6 +4196,7 @@ def _derive_criteria(
     stability: Mapping[GraphMode, Phase3StabilitySummary],
     source_audit: Mapping[str, Any],
     repository_root: Path,
+    raw_audit_replays: Mapping[str, Mapping[str, bool]] | None = None,
 ) -> tuple[Phase3G1Criterion, ...]:
     by_point = {run.point_id: run for run in runs}
     fixed = tuple(run for run in runs if run.manifest.runner_kind is RunnerKind.FIXED_L)
@@ -3845,21 +4219,66 @@ def _derive_criteria(
     exact_backend = all(
         run.manifest.backend_identity.to_dict() == backend_payload for run in runs
     )
-    allocation = all(
-        run.runtime is not None
-        and _audit_zero_allocation(run.runtime.get("allocation"))
-        and _mapping(run.runtime.get("memory_evidence")) is not None
-        and _mapping(run.runtime.get("memory_evidence")).get("timing_executed") is True
-        and _mapping(run.runtime.get("memory_evidence")).get(
-            "timing_allocated_delta_bytes", 1
+    if raw_audit_replays is not None:
+        if set(raw_audit_replays) != {run.run_id for run in runs}:
+            raise Phase3ReportError(
+                "raw-audit replay set differs from selected runs"
+            )
+        raw_gqa = all(
+            raw_audit_replays[run.run_id].get(
+                "gqa_nonmaterialization_verified"
+            )
+            is True
+            for run in runs
         )
-        <= 0
-        and _mapping(run.runtime.get("memory_evidence")).get(
-            "timing_reserved_delta_bytes", 1
+        allocation = all(
+            raw_audit_replays[run.run_id].get(
+                "allocation_criterion_passed"
+            )
+            is True
+            for run in runs
         )
-        <= 0
-        for run in runs
-    )
+        graph_allocation = all(
+            raw_audit_replays[run.run_id].get(
+                "graph_zero_allocation_passed"
+            )
+            is True
+            for run in graph
+        )
+        raw_flash_backend = all(
+            raw_audit_replays[run.run_id].get("flash_backend_forced")
+            is True
+            for run in runs
+        )
+        source_non_growth = bool(source_audit.get("passed")) and raw_gqa
+    else:
+        raw_gqa = all(_gqa_passes(run) for run in runs)
+        allocation = all(
+            run.runtime is not None
+            and _audit_zero_allocation(run.runtime.get("allocation"))
+            and _mapping(run.runtime.get("memory_evidence")) is not None
+            and _mapping(run.runtime.get("memory_evidence")).get(
+                "timing_executed"
+            )
+            is True
+            and _mapping(run.runtime.get("memory_evidence")).get(
+                "timing_allocated_delta_bytes", 1
+            )
+            <= 0
+            and _mapping(run.runtime.get("memory_evidence")).get(
+                "timing_reserved_delta_bytes", 1
+            )
+            <= 0
+            for run in runs
+        )
+        graph_allocation = all(_graph_allocation_passes(run) for run in graph)
+        raw_flash_backend = False
+        source_non_growth = bool(source_audit.get("passed")) and all(
+            _mapping(run.runtime.get("gqa_source")) is not None
+            and _mapping(run.runtime.get("gqa_source")).get("passed") is True
+            for run in runs
+            if run.runtime is not None
+        ) and all(run.runtime is not None for run in runs)
     checksums = all(
         run.worker_result.output_checksum is not None
         and run.worker_result.output_checksum == _runtime_output_checksum(run)
@@ -3900,18 +4319,24 @@ def _derive_criteria(
         and run.process_audit.get("unknown_compute_allowed") is False
         for run in runs
     )
-    no_fallback = process_audits and all(
-        run.manifest.status is not RunStatus.BACKEND_FALLBACK
-        and run.runtime is not None
-        and _backend_flash(run.runtime.get("prefill_backend"))
-        and _backend_flash(run.runtime.get("backend"))
-        and (
-            run.manifest.graph_mode is GraphMode.EAGER
-            or _mapping(run.runtime.get("graph")) is not None
-            and _mapping(run.runtime.get("graph")).get("fallback") is False
+    if raw_audit_replays is not None:
+        no_fallback = process_audits and raw_flash_backend and all(
+            run.manifest.status is not RunStatus.BACKEND_FALLBACK
+            for run in runs
         )
-        for run in runs
-    )
+    else:
+        no_fallback = process_audits and all(
+            run.manifest.status is not RunStatus.BACKEND_FALLBACK
+            and run.runtime is not None
+            and _backend_flash(run.runtime.get("prefill_backend"))
+            and _backend_flash(run.runtime.get("backend"))
+            and (
+                run.manifest.graph_mode is GraphMode.EAGER
+                or _mapping(run.runtime.get("graph")) is not None
+                and _mapping(run.runtime.get("graph")).get("fallback") is False
+            )
+            for run in runs
+        )
     no_claim = all(
         run.manifest.performance_claim_eligible is False
         and run.manifest.measurement_scope is MeasurementScope.NATIVE_HOST_ADMISSION
@@ -3942,20 +4367,45 @@ def _derive_criteria(
         "exact_model_and_tokenizer_identity": (exact_model, "model/tokenizer identity join failed"),
         "exact_bf16_backend_identity": (exact_backend, "backend identity join failed"),
         "numerical_reference_match": (all(_numerical_passes(run) for run in runs), "one or more numerical controls failed or are absent"),
-        "no_torch_cat_growth": (bool(source_audit.get("passed")) and all(_mapping(run.runtime.get("gqa_source")) is not None and _mapping(run.runtime.get("gqa_source")).get("passed") is True for run in runs if run.runtime is not None) and all(run.runtime is not None for run in runs), "recorded SUT source audit found forbidden growth"),
-        "no_unexplained_measured_region_allocation": (allocation, "one or more exact decode operations issued allocator events or lacked normal timing"),
+        "no_torch_cat_growth": (
+            source_non_growth,
+            "raw dispatch/source proof found forbidden or unverified growth"
+            if raw_audit_replays is not None
+            else "recorded SUT source audit found forbidden growth",
+        ),
+        "no_unexplained_measured_region_allocation": (
+            allocation,
+            "one or more raw exact-operation allocation replays failed the frozen criterion"
+            if raw_audit_replays is not None
+            else "one or more exact decode operations issued allocator events or lacked normal timing",
+        ),
         "kv_head_cache_geometry": (all(_cache_geometry_passes(run) for run in runs), "cache geometry or byte accounting failed"),
-        "gqa_not_materialized": (all(_gqa_passes(run) for run in runs), "GQA source/operator/storage audit failed"),
+        "gqa_not_materialized": (
+            raw_gqa,
+            "raw GQA dispatch/allocation replay did not verify non-materialization"
+            if raw_audit_replays is not None
+            else "GQA source/operator/storage audit failed",
+        ),
         "fixed_l_runner": (all(_fixed_runner_passes(run) for run in fixed), "one or more fixed-L processes did not complete its declared timing lane"),
         "growing_context_runner": (all(_growing_runner_passes(run) for run in growing), "one or more growing-context processes did not complete its declared trajectory"),
         "eager_lane": (all(run.manifest.status is RunStatus.COMPLETED and _validated_timing_host_ms(run) is not None for run in eager), "one or more eager processes did not complete valid timing"),
         "cuda_graph_capture_and_replay": (all(_graph_passes(run) for run in graph), "one or more CUDA Graph capture/replay controls failed"),
         "eager_graph_numerical_agreement": (all(_graph_agreement_passes(run) for run in graph), "one or more eager/graph comparisons failed"),
-        "graph_replay_no_allocation": (all(_graph_allocation_passes(run) for run in graph), "one or more graph replay allocation controls failed"),
+        "graph_replay_no_allocation": (
+            graph_allocation,
+            "one or more raw graph replay allocation controls were not strict zero"
+            if raw_audit_replays is not None
+            else "one or more graph replay allocation controls failed",
+        ),
         "stable_output_checksums": (checksums, "output checksum derivation or replicate stability failed"),
         "independent_process_replicates": (independent, "exact independent process identities were not preserved"),
         "stability_threshold": (stability_pass, "both eager and graph host-wall CV summaries are required at CV <= 3%"),
-        "no_backend_fallback": (no_fallback, "backend dispatch or process audit indicates fallback/ambiguity"),
+        "no_backend_fallback": (
+            no_fallback,
+            "raw forced-Flash dispatch or process audit indicates fallback/ambiguity"
+            if raw_audit_replays is not None
+            else "backend dispatch or process audit indicates fallback/ambiguity",
+        ),
         "no_model_substitution": (exact_model, "selected runs do not share the exact frozen checkpoint/tokenizer"),
         "no_formal_paper_claim": (no_claim, "Phase 3 claim/quality/profiler governance was violated"),
         "immutable_checksum_valid_artifacts": (all_immutable, "one or more selected runs failed immutable checksum validation"),
@@ -4018,6 +4468,12 @@ def derive_phase3_g1_report(
             raise Phase3ReportError(
                 "requested and recorded report generators differ"
             )
+    raw_audit_replay_required = (
+        _report_generator_requires_raw_audit_replay(
+            repository,
+            report_git_provenance["report_generator_git_sha"],
+        )
+    )
     if any(
         (repository / relative).exists()
         or (repository / relative).is_symlink()
@@ -4040,7 +4496,18 @@ def derive_phase3_g1_report(
             stability[mode] = summary
             stability_payloads[summary.summary_artifact_path] = payload
     source_audit = _git_source_audit(repository, git_sha)
-    criteria = _derive_criteria(runs, stability, source_audit, repository)
+    raw_audit_replays = (
+        _replay_report_raw_audits(runs, repository)
+        if raw_audit_replay_required
+        else None
+    )
+    criteria = _derive_criteria(
+        runs,
+        stability,
+        source_audit,
+        repository,
+        raw_audit_replays,
+    )
     dispositions = {item.disposition for item in criteria}
     status = (
         GateDisposition.FAIL
