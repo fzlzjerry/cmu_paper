@@ -19,12 +19,17 @@ PHASE3_SITE := $(CURDIR)/.phase3/site-packages
 PHASE3_ENV := /usr/bin/env PYTHONDONTWRITEBYTECODE=1 PYTHONNOUSERSITE=1 PYTHONPATH=$(PHASE3_SITE):src HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 HF_HUB_DISABLE_TELEMETRY=1 TOKENIZERS_PARALLELISM=false
 PHASE3_CLI := $(PHASE3_ENV) $(PHASE3_PYTHON) -m kvbench
 PHASE3_REMEDIATION_UNIT_TESTS := tests.unit.test_allocation_attribution tests.unit.test_gqa_device_dispatch tests.unit.test_gqa_taxonomy tests.unit.test_process_supervision
+TURBOQUANT_REFERENCE_VENV := .reference/turboquant-v0.25.1
+TURBOQUANT_REFERENCE_PYTHON := $(TURBOQUANT_REFERENCE_VENV)/bin/python
+TURBOQUANT_REFERENCE_SOURCE := .reference/vllm-source-v0.25.1
+TURBOQUANT_REFERENCE_ENV := /usr/bin/env PYTHONDONTWRITEBYTECODE=1 PYTHONNOUSERSITE=1 PYTHONPATH=$(CURDIR)/src:$(CURDIR) CUBLAS_WORKSPACE_CONFIG=:4096:8 TORCH_CUDA_ARCH_LIST=12.0 CUDAARCHS=120 CMAKE_CUDA_ARCHITECTURES=120 VLLM_NO_USAGE_STATS=1 HF_HUB_DISABLE_TELEMETRY=1
 
 .PHONY: bootstrap bootstrap-phase3 test checks format-check lint hot-path-check typecheck config-check
 .PHONY: provenance-check scope-check immutable-check package-lock-check
 .PHONY: phase3-package-lock-check test-cuda test-graph test-allocation
 .PHONY: smoke pilot full-scan profile-subset
 .PHONY: fit figures reproduce
+.PHONY: reference-turboquant validate-reference-turboquant
 
 preflight:
 	@/usr/bin/env -i PATH=/usr/bin:/bin LC_ALL=C LANG=C TZ=UTC \
@@ -81,6 +86,7 @@ test: checks
 	@$(PHASE3_ENV) $(PHASE3_PYTHON) -m unittest discover -s tests/unit -p 'test_phase3_*.py' -v
 	@$(PHASE3_ENV) $(PHASE3_PYTHON) -m unittest $(PHASE3_REMEDIATION_UNIT_TESTS) -v
 	@$(PHASE3_ENV) $(PHASE3_PYTHON) -m unittest discover -s tests/unit -p 'test_phase4_*.py' -v
+	@$(PHASE3_ENV) $(PHASE3_PYTHON) -m unittest discover -s tests/unit -p 'test_phase5_*.py' -v
 	@$(PHASE2_VALIDATE) immutable
 
 test-cuda: phase3-package-lock-check immutable-check
@@ -90,6 +96,14 @@ test-graph: phase3-package-lock-check immutable-check
 	@set +e; $(PHASE3_ENV) $(PHASE3_PYTHON) -m unittest discover -s tests/graph -p 'test_phase*_*.py' -v; test_status=$$?; $(PHASE2_VALIDATE) immutable; immutable_status=$$?; if (( test_status != 0 )); then exit $$test_status; fi; exit $$immutable_status
 
 test-allocation: test-cuda
+
+reference-turboquant:
+	@$(PHASE2_PYTHON) reference/turboquant/bootstrap_environment.py prepare --venv $(TURBOQUANT_REFERENCE_VENV) --source $(TURBOQUANT_REFERENCE_SOURCE)
+	@$(TURBOQUANT_REFERENCE_ENV) $(TURBOQUANT_REFERENCE_PYTHON) reference/turboquant/generate_fixtures.py --venv $(TURBOQUANT_REFERENCE_VENV) --source $(TURBOQUANT_REFERENCE_SOURCE)
+	@$(TURBOQUANT_REFERENCE_ENV) $(PHASE2_PYTHON) reference/turboquant/validate_fixtures.py
+
+validate-reference-turboquant:
+	@$(TURBOQUANT_REFERENCE_ENV) $(PHASE2_PYTHON) reference/turboquant/validate_fixtures.py
 
 smoke: export KVBENCH_METHOD := $(METHOD)
 smoke:

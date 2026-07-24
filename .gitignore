@@ -10,6 +10,7 @@
 
 # Local environments, caches, and profiler output.
 /.venv/
+/.reference/
 /.phase3/
 /__pycache__/
 *.py[cod]
