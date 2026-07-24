@@ -5,22 +5,33 @@ attributed or embedded code whose upstream lineage is unresolved. This project
 did not vendor, build, import, or execute those sources. Acquisition must use
 the commit field in LOCK.json; branch names are informational only.
 
-## vLLM / TurboQuant source candidate
+## vLLM / TurboQuant reference authority
 
 - Repository: https://github.com/vllm-project/vllm
 - Pinned release: v0.25.1
 - Commit: 752a3a504485790a2e8491cacbb35c137339ad34
 - Declared license: Apache License 2.0
-- Intended use: TurboQuant reference-environment candidate and inspected source
-  for a later Measurement Lane adapter.
+- Source tree: 3ec7a4eb00f9bc8fec399bea6cf7de27a7936372
+- Commit date: 2026-07-12T16:40:12-07:00
+- Intended use: authoritative implementation for the Phase 5
+  TurboQuant/vLLM Reference Lane and inspected source candidate for a later,
+  separately admitted Measurement Lane adapter.
 
 The TurboQuant paper in the supplied archive does not identify an author-owned
-code repository. Upstream vLLM is therefore a candidate source, not yet asserted
-to be the paper authors' official reference. The pinned implementation describes
-its DRIVE/EDEN/HIGGS-style lineage as predating the TurboQuant paper and omits
-QJL. Matching preset names is not evidence of paper equivalence. Phase 5 must
-resolve authority and semantics in a decision before golden fixtures are
-accepted.
+code repository. Phase 5 selects the official vLLM implementation as authority
+for the specifically named TurboQuant/vLLM lane; it does not assert that vLLM
+is the paper authors' repository or that it implements every paper variant.
+The pinned implementation describes its DRIVE/EDEN/HIGGS-style lineage as
+predating the TurboQuant paper and omits QJL. Matching preset names is not
+evidence of broader paper equivalence.
+
+The official `vllm/vllm-openai:v0.25.1` image is pinned by multi-architecture
+manifest digest
+`sha256:e4f88a835143cd22aee2397a26ec6bb80b3a4a6fe0c882bcbc63822904766089`;
+the linux/amd64 image digest is
+`sha256:f0b9a0dc75a9fca3b6811e3279367b2d6a448055a000bfd13859587d74cef268`.
+The reference container is separate from the unresolved Measurement Lane
+container in B-010.
 
 ## KIVI
 

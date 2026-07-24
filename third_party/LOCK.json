@@ -1,7 +1,7 @@
 {
   "schema_version": 2,
   "generated_at_utc": "2026-07-21T17:13:29Z",
-  "last_updated_at_utc": "2026-07-21T17:37:13Z",
+  "last_updated_at_utc": "2026-07-24T02:47:56Z",
   "policy": {
     "checkout_by_commit_only": true,
     "floating_default_branches_forbidden": true,
@@ -18,15 +18,69 @@
       "tree": "3ec7a4eb00f9bc8fec399bea6cf7de27a7936372",
       "tag": "v0.25.1",
       "revision_kind": "release_tag_commit",
-      "revision_verified_with": "git ls-remote and read-only shallow source inspection",
+      "commit_committed_at": "2026-07-12T16:40:12-07:00",
+      "revision_verified_with": "exact local Git commit/tree inspection and git ls-remote refs/tags/v0.25.1",
       "declared_license": "Apache-2.0",
       "license_verification_status": "verified_from_root_license",
-      "acquisition_status": "planned",
+      "authority_status": "selected_for_vllm_turboquant_reference_lane",
+      "authority_scope": "The pinned official vLLM implementation defines Phase 5 fixtures; no claim of paper-author ownership or equivalence to every TurboQuant paper variant.",
+      "acquisition_status": "identity_verified_execution_pending",
+      "reference_container": {
+        "repository": "vllm/vllm-openai",
+        "tag_observed": "v0.25.1",
+        "manifest_digest": "sha256:e4f88a835143cd22aee2397a26ec6bb80b3a4a6fe0c882bcbc63822904766089",
+        "linux_amd64_digest": "sha256:f0b9a0dc75a9fca3b6811e3279367b2d6a448055a000bfd13859587d74cef268"
+      },
+      "relevant_source_files": [
+        {
+          "path": "vllm/config/cache.py",
+          "git_blob": "70a58004fc58f6ecfab8e6d60a9524240ff847d0",
+          "sha256": "0a0d3583f493b599097b2613f1b772de9f74471f6892be21a7920f2bd6fdf15a",
+          "role": "cache dtype definition"
+        },
+        {
+          "path": "vllm/model_executor/layers/quantization/turboquant/config.py",
+          "git_blob": "84e3940d264dc3108a5a4e2bdb688c886a61d2b6",
+          "sha256": "1fe9930e25e12b6b6cf3696159f9475a32fd2cd714991c501268c872374966bd",
+          "role": "preset and packed-layout definition"
+        },
+        {
+          "path": "vllm/model_executor/layers/quantization/turboquant/centroids.py",
+          "git_blob": "490265747c5ba4e676376f3998d2b0846a93dfff",
+          "sha256": "0a0ec4cb3b1380d6f6983835a1ded5ebaa03d6a0927541f9dcf59d6423d4ad1d",
+          "role": "official Lloyd-Max codebook"
+        },
+        {
+          "path": "vllm/v1/attention/ops/triton_turboquant_store.py",
+          "git_blob": "3ad2d41488e7e0aec31097e75734c375d54abd13",
+          "sha256": "0ac49b3da69a70fdc6e7b1800237a81f8398f8509770d0f48d1938d926d06e45",
+          "role": "official store and append kernels"
+        },
+        {
+          "path": "vllm/v1/attention/ops/triton_turboquant_decode.py",
+          "git_blob": "3adaf2610d8dc033180f16709f780d756efc7445",
+          "sha256": "8e52678136449e4bbca2195fbcbb87426c955a2b1b8422e7ab9511e45ee5f5c6",
+          "role": "official compressed-cache decode kernels"
+        },
+        {
+          "path": "vllm/v1/attention/backends/turboquant_attn.py",
+          "git_blob": "af4ab007a8be1a602feda5e07b899f8ad18d6a39",
+          "sha256": "e02d975b1e204d56247e8efd6fecf80d6b87767bb2b323243eb4441b926198de",
+          "role": "attention backend, cache allocation, and graph declaration"
+        },
+        {
+          "path": "tests/quantization/test_turboquant.py",
+          "git_blob": "ccdc69074c7f558bda3fe8a69fdf46f620973f55",
+          "sha256": "80d08f4021ec64724e9d536b8574e5e14c069118645f011925cb965b2d5706b6",
+          "role": "upstream configuration and round-trip tests"
+        }
+      ],
       "notes": [
         "The TurboQuant paper does not name an author-owned implementation repository.",
-        "This upstream vLLM release contains all four cache dtype names in CODEX_WORKFLOW.md.",
+        "Phase 5 selects this official vLLM release as authority for the TurboQuant/vLLM reference lane only.",
+        "Direct source inspection verifies all four cache dtype names in CODEX_WORKFLOW.md.",
         "Source comments say this DRIVE/EDEN/HIGGS-style implementation predates the TurboQuant paper and intentionally omits QJL.",
-        "Matching cache dtype names do not establish paper authority or equivalence; that remains hard-gating Phase 5 work."
+        "Matching cache dtype names do not establish paper-author ownership or equivalence to every paper variant."
       ]
     },
     {
@@ -171,7 +225,7 @@
     },
     {
       "id": "container_bases",
-      "required_action": "Resolve every base image to a registry digest before any reference or measurement run."
+      "required_action": "The TurboQuant Phase 5 reference base is resolved above. Resolve every remaining reference base and the separate Measurement Lane base before its corresponding execution."
     },
     {
       "id": "kvquant_embedded_source_lineage",

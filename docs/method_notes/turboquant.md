@@ -1,6 +1,7 @@
 # TurboQuant source note
 
-Status: Phase 0 source audit; not admitted for benchmarking.
+Status: Phase 5 source authority pinned; reference execution pending. Not
+admitted for benchmarking.
 
 ## Paper
 
@@ -11,15 +12,20 @@ Status: Phase 0 source audit; not admitted for benchmarking.
 - Paper-reported hardware: a single NVIDIA A100 GPU.
 - The paper does not identify an author-owned implementation repository.
 
-## Pinned source candidate
+## Pinned reference authority
 
 - Repository: https://github.com/vllm-project/vllm
 - Release: v0.25.1
 - Commit: 752a3a504485790a2e8491cacbb35c137339ad34
-- Role: candidate Reference Lane plus source for a later Measurement Lane adapter.
-- Authority caveat: upstream vLLM is an official vLLM project source, but Phase 0
-  found no evidence that it is the paper authors' official reference
-  implementation. Phase 5 must resolve or explicitly accept this distinction.
+- Commit date: 2026-07-12T16:40:12-07:00
+- Git tree: 3ec7a4eb00f9bc8fec399bea6cf7de27a7936372
+- License: Apache-2.0, verified from the root `LICENSE`.
+- Role: authoritative implementation for the Phase 5 TurboQuant/vLLM
+  Reference Lane plus inspected source for a later Measurement Lane adapter.
+- Authority boundary: upstream vLLM is an official vLLM project source, but
+  there is no evidence that it is the paper authors' official repository.
+  Fixtures therefore establish conformance to this pinned vLLM implementation,
+  not to every algorithmic variant described by the paper.
 
 ## Algorithm and current source semantics
 
