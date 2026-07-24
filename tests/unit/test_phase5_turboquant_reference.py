@@ -13,6 +13,7 @@ from kvbench.adapters import MethodRuntimeContext, build_method_adapter
 from kvbench.errors import ArtifactConflictError, PhaseNotImplementedError
 from reference.turboquant.generate_fixtures import publish_staged
 from reference.turboquant.validate_fixtures import validate_reference
+from scripts.validate_phase2 import PHASE5_ALLOWED_PATHS
 
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
@@ -133,6 +134,39 @@ class Phase5SourceAndFixtureTests(unittest.TestCase):
 
 
 class Phase5GovernanceTests(unittest.TestCase):
+    def test_phase6_blocked_report_has_exact_scope_exception(self) -> None:
+        blocked_report = (
+            "docs/phase_reports/phase6-turboquant-measurement-blocked.md"
+        )
+        self.assertIn(blocked_report, PHASE5_ALLOWED_PATHS)
+        self.assertNotIn(
+            "docs/phase_reports/arbitrary-phase-report.md",
+            PHASE5_ALLOWED_PATHS,
+        )
+        self.assertNotIn(
+            "src/kvbench/methods/turboquant/adapter.py",
+            PHASE5_ALLOWED_PATHS,
+        )
+        for alternate in (
+            f"../{blocked_report}",
+            f"./{blocked_report}",
+            "docs/phase_reports/../phase_reports/"
+            "phase6-turboquant-measurement-blocked.md",
+            "docs//phase_reports/phase6-turboquant-measurement-blocked.md",
+            "docs/phase_reports/phase6-turboquant-measurement-blocked.md.bak",
+            "docs/phase_reports/phase6-turboquant-measurement-blocked-extra.md",
+        ):
+            with self.subTest(alternate=alternate):
+                self.assertNotIn(alternate, PHASE5_ALLOWED_PATHS)
+        for existing in (
+            "docs/phase_reports/phase5-turboquant-reference.md",
+            "docs/status.md",
+            "scripts/validate_phase2.py",
+            "tests/unit/test_phase5_turboquant_reference.py",
+        ):
+            with self.subTest(existing=existing):
+                self.assertIn(existing, PHASE5_ALLOWED_PATHS)
+
     def test_turboquant_measurement_adapter_remains_fail_closed(self) -> None:
         with self.assertRaises(PhaseNotImplementedError):
             build_method_adapter("turboquant", _context())

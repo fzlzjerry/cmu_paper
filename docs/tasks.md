@@ -12,8 +12,8 @@ authoritative local task index until issues are created elsewhere.
 | E03 | Fixed-L benchmark | E02; Decision 0007 permits only bounded Phase 3 admission runner | fixed-L and growing-context runners; timing-boundary tests | Execution SHA `9def265ab613cde7a06b0e51850f066d0564d635` completed all 16 fixed-L and all 4 growing-context runs with new IDs, no abort/failure, no unattempted point, and no selective rerun. The results remain non-claim admission evidence. |
 | E04 | Common cache-method and CUDA Graph harness | E02-E03 | stable method protocol; correctness/allocation/path facades; capture/replay correctness; no replay allocation | complete for Phase 4 BF16 at `0cf160caa532c7cac23275c8a14fd8694789a86f`; `docs/evidence/phase4/method-admission.json` validates. TurboQuant reference work is complete, but later Measurement Lane adapters still require their own G2 evidence. |
 | E05 | TurboQuant reference lane | E00-E04 | authoritative pinned source; isolated container; golden fixtures | complete: official vLLM v0.25.1 commit `752a3a504485790a2e8491cacbb35c137339ad34`; isolated SM120 environment; 3 mandatory MSE+NC and 1 held-out deterministic fixture; exact regeneration and validation PASS |
-| E06 | TurboQuant measurement adapter | E05 | numerical, byte, graph, path, sanitizer, smoke evidence; G2-TQ | pending |
-| E07 | KIVI reference lane | G2-TQ | pinned legacy container; rollover and K/V asymmetry fixtures | pending |
+| E06 | TurboQuant measurement adapter | E05 | numerical, byte, graph, path, sanitizer, smoke evidence; G2-TQ | attempted and BLOCKED at entry by B-009/B-010; no implementation retained; restart only after Phase 6A prerequisites |
+| E07 | KIVI reference lane | G2-TQ | pinned legacy container; rollover and K/V asymmetry fixtures | pending; unopened |
 | E08 | KIVI measurement adapter | E07 | static buffers; r_alloc(L); GQA indexing; G2-KIVI | pending |
 | E09 | KVQuant calibration | G2-KIVI | frozen dataset/revision/seed/cap/artifacts/checksums | pending |
 | E10 | KVQuant reference lane | E09 | dense/sparse/sink fixtures for 4/3/2-bit and cap cases | pending |
@@ -50,9 +50,11 @@ task list. E16 remains closed until its evidence is reviewed.
 - E04 owns the capture/replay harness used by M14-GRAPH-AB; that milestone runs
   only after pilot admission and keeps method/cache/backend/shape fixed.
 - Phase 4 adds only the BF16 adapter/factory and reusable admission facades.
-  Phase 5 adds only the TurboQuant reference lane. The TurboQuant adapter,
+  Phase 5 adds only the TurboQuant reference lane. Phase 6 was attempted and
+  BLOCKED at entry with no implementation retained. Phase 6A prerequisites
+  resolving B-009/B-010 are the next authorized task. E07 and later tasks,
   KIVI, KVQuant, pilot, performance profiler, Full Scan, and quality execution
-  remain unstarted and unauthorized.
+  remain unopened and unauthorized.
 - E12 includes an operator-level MHA control with identical head dimension and
   no GQA repetition.
 - B-011 through B-017 are resolved for native-host BF16 G1. The reporting-only

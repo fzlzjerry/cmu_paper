@@ -16,7 +16,8 @@ a silent fallback or weakened scientific gate. Phase 5 resolves B-003 only
 for the explicitly bounded vLLM reference authority. It does not close or
 weaken B-009 or B-010; both remain open and still block formal/unified
 admission, TurboQuant Measurement Lane execution, ordinary timing, and every
-performance claim.
+performance claim. Both unresolved blockers stopped Phase 6 at entry; no
+TurboQuant Measurement Adapter implementation was retained.
 
 | ID | Blocking condition | Blocks | Evidence / next action | Status |
 |---|---|---|---|---|
@@ -54,3 +55,12 @@ environment, fixtures, and checksum ledgers reproduce on SM120; no source or
 configuration substitution occurred. Direct CUDA Graph smoke was not exercised
 in the minimal official API and remains Phase 6 work, but is not a Phase 5
 blocker under the frozen acceptance criteria. B-009 and B-010 remain OPEN.
+
+## Phase 6 entry-blocked disposition
+
+Phase 6 was attempted and BLOCKED at entry because B-009 and B-010 were both
+unresolved. B-009 remains OPEN without durable append-only publication and
+clean retrieval verification. B-010 remains OPEN without an authorized,
+digest-pinned Measurement Container and container G0 parity. Neither blocker
+is narrowed or resolved by the retrospective record. No Phase 6 implementation
+is present; Phase 6A prerequisites are the next authorized task.

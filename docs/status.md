@@ -8,17 +8,20 @@ requirements; and AGENTS.md. Decision 0005 records precedence.
 
 ## Current state
 
-- Current phase: Phase 5 TurboQuant Reference Lane PASS. Official vLLM
+- Latest completed PASS phase: Phase 5 TurboQuant Reference Lane. Official vLLM
   `v0.25.1` commit `752a3a504485790a2e8491cacbb35c137339ad34` is pinned,
   and three mandatory MSE+NC fixtures plus the same-path held-out k8v4 fixture
   reproduce on SM120. The TurboQuant Measurement Lane remains fail-closed;
   formal E02 and later measurement admission remain blocked by B-009/B-010.
+- Phase 6 status: attempted and BLOCKED at entry because B-009 and B-010 were
+  unresolved. The retrospective record is
+  `docs/phase_reports/phase6-turboquant-measurement-blocked.md`. No Phase 6
+  implementation is present.
 - Phase 0 status: PASS
 - Phase 1 remediation status: PASS
-- Next action: preserve all prior evidence and the finalized Phase 5 fixtures.
-  Phase 6 TurboQuant Measurement Adapter may be proposed only in a separate
-  task; no adapter execution, pilot, Full Scan, or quality execution is
-  authorized here
+- Next authorized task: Phase 6A prerequisites only, resolving B-009 and B-010
+  before a fresh Phase 6 attempt. No adapter execution, pilot, Full Scan, or
+  quality execution is authorized here
 - Active admission gate: native-host G0 PASS; container-parity G0 remains a
   later E01 requirement before E02
 - Benchmark implementation changes: exact BF16 static cache, fixed-L and
@@ -26,7 +29,8 @@ requirements; and AGENTS.md. Decision 0005 records precedence.
   telemetry, campaign lifecycle, and source-backed G1 reporting are
   implemented. Phase 4 adds only a thin method adapter, explicit BF16-only
   factory, shared audit facades, and a strict admission report schema. Phase 5
-  adds only an isolated upstream TurboQuant reference lane and compact fixtures
+  adds only an isolated upstream TurboQuant reference lane and compact
+  fixtures. No Phase 6 implementation is present
 - CUDA builds or executions: the new formal E00 run passed extension build,
   native execution, forced PTX/JIT, numerical golden, CUDA Graph, allocation,
   SASS/PTX inspection, and all required Compute Sanitizer lanes
@@ -51,7 +55,8 @@ requirements; and AGENTS.md. Decision 0005 records precedence.
 - Quality execution: LOCKED; `PERFORMANCE_DATA_FROZEN` is absent
 - Quality runs or quality-only dependency installations: none
 - Full-scan admission: CLOSED
-- Gate state: G0 PASS; native-host BF16 G1 PASS; G2-G5 NOT EVALUATED
+- Gate state: G0 PASS; native-host BF16 G1 PASS; method-specific G2-TQ
+  BLOCKED; global G2-G5 NOT EVALUATED
 
 ## Phase 5 TurboQuant reference lane
 
@@ -83,9 +88,28 @@ minimal path. Direct graph smoke is deferred to Phase 6; upstream declares
 identical run returned `verified_existing` without replacing it.
 `make validate-reference-turboquant` validates all manifests, 34 root checksum
 entries, layouts, actual storage sizes, and claim boundaries. TurboQuant remains
-rejected by the Measurement Lane adapter factory. G0/G1 remain PASS, G2-G5
-remain NOT EVALUATED, Full Scan remains CLOSED, quality execution remains
-LOCKED, and `PERFORMANCE_DATA_FROZEN` remains absent.
+rejected by the Measurement Lane adapter factory. G0/G1 remain PASS,
+method-specific G2-TQ is BLOCKED, global G2-G5 remain NOT EVALUATED, Full Scan
+remains CLOSED, quality execution remains LOCKED, and
+`PERFORMANCE_DATA_FROZEN` remains absent.
+
+## Phase 6 retrospective entry-blocked record
+
+Phase 6 was attempted from
+`7bccb3217e257d2dbc72deefe8653e9f3556d4f2` and stopped BLOCKED at entry.
+Method-specific G2-TQ was BLOCKED because B-009 and B-010 were unresolved;
+global G2-G5 were NOT EVALUATED. Provisional plan commit
+`1f8e29a8da97e3ad56567c319ec817bec91593be` was completely reverted by
+`a9cb4833bfba15a01426bf314c31add7e1c1c698`. No TurboQuant Measurement
+Adapter implementation, formal run, performance data, profiler data, or
+quality data was retained or created.
+
+The retrospective governance record is
+`docs/phase_reports/phase6-turboquant-measurement-blocked.md`. It was created
+after the complete revert and is not CUDA, correctness, performance, profiler,
+quality, or method-admission evidence. G0 and G1 remain PASS, Full Scan remains
+CLOSED, quality execution remains LOCKED, and `PERFORMANCE_DATA_FROZEN`
+remains absent. Phase 6A prerequisites are the next authorized task.
 
 ## Phase 4 common adapter
 
@@ -401,7 +425,8 @@ reference execution is recorded separately above.
 | G1 BF16 baseline | PASS | Native-host report `phase3-g1-20260723t132609515797z-7f72c95f-f31ccb` independently replays the unchanged 20 runs and 80 operations and passes all 20 criteria. Formal E02 remains blocked by B-009/B-010. |
 | Phase 4 common method adapter | PASS | BF16 delegates through `KVCacheMethod`; fixed-L/growing, allocation, graph, and path checks pass; `docs/evidence/phase4/method-admission.json`; no quantized method implemented |
 | Phase 5 TurboQuant reference lane | PASS | Exact vLLM v0.25.1 source/environment lock; 3 mandatory and 1 held-out deterministic fixtures; official store/append/decode paths; no measurement adapter or timing |
-| G2-TQ | NOT EVALUATED | requires E05-E06 |
+| Phase 6 TurboQuant measurement adapter | BLOCKED at entry | B-009 and B-010 unresolved; no implementation retained; retrospective governance record only |
+| G2-TQ | BLOCKED | Method-specific gate; B-009 and B-010 must be resolved before a fresh Phase 6 attempt |
 | G2-KIVI | NOT EVALUATED | requires E07-E08 |
 | G2-KVQ | NOT EVALUATED | requires E09-E11 |
 | G1-G5 unified admission | NOT EVALUATED | requires E12 |
@@ -423,12 +448,16 @@ reference execution is recorded separately above.
 
 ## Next action
 
-Phase 5 is PASS only for the pinned TurboQuant/vLLM Reference Lane. The
-Phase 3 campaigns, all 20 runs, every failed report, the PASS report, and Phase
-4 evidence remain unchanged. Phase 6 TurboQuant Measurement Adapter may be
-proposed only as a separate new task; it has not begun. B-010 still requires a
-digest-pinned measurement container and container-parity G0 before formal E02
+Phase 5 remains the latest completed PASS phase for the pinned TurboQuant/vLLM
+Reference Lane. The Phase 3 campaigns, all 20 runs, every failed report, the
+PASS report, Phase 4 evidence, and Phase 5 fixtures remain unchanged. Phase 6
+was attempted and BLOCKED at entry; no implementation is present.
+
+Phase 6A prerequisites are the next authorized task. B-010 still requires a
+digest-pinned Measurement Container and container-parity G0 before formal E02
 closure, TurboQuant measurement admission, ordinary timing, or a performance
 claim. B-009 still requires durable append-only storage and an immutable
-locator/publication mechanism. G2-G5 remain NOT EVALUATED, Full Scan is CLOSED,
-quality execution is LOCKED, and `PERFORMANCE_DATA_FROZEN` is absent.
+locator/publication mechanism with clean retrieval verification. G0 and G1
+remain PASS, method-specific G2-TQ is BLOCKED, global G2-G5 remain NOT
+EVALUATED, Full Scan is CLOSED, quality execution is LOCKED, and
+`PERFORMANCE_DATA_FROZEN` is absent.

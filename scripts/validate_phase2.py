@@ -297,6 +297,7 @@ PHASE5_ALLOWED_PATHS = frozenset(
         "docs/method_notes/turboquant.md",
         "docs/plans/phase5-turboquant-reference.md",
         "docs/phase_reports/phase5-turboquant-reference.md",
+        "docs/phase_reports/phase6-turboquant-measurement-blocked.md",
         "docs/risk_register.md",
         "docs/status.md",
         "docs/tasks.md",
