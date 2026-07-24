@@ -10,7 +10,7 @@ import unittest
 
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
-PHASE4_ENTRY_SHA = "a3a56e45354ac93ab3c25f82a82e8e6096b513b9"
+PHASE4_ENTRY_SHA = "89189297992947b7a8b79252add551c9321e5f33"
 PHASE3_REPORT = (
     REPOSITORY_ROOT
     / "artifacts/phase3_reports"
