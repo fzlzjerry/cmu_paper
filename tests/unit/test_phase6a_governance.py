@@ -19,6 +19,10 @@ EXPECTED_PHASE6_REPORT_SHA256 = (
     "18015eeda156eeb1718d551919605244b6"
     "ff21c819182fcd5d66fa316558ed74"
 )
+EXPECTED_PHASE6A_BLOCKED_REPORT_SHA256 = (
+    "000da9d64bf362c19fd3486fc07dab12c"
+    "f4e5f12fee0146de37ee31ce316b99f"
+)
 
 
 def _sha256(path: Path) -> str:
@@ -33,6 +37,7 @@ class Phase6AGovernanceTests(unittest.TestCase):
             "docker/measurement.Dockerfile",
             "docs/plans/phase6a-measurement-container-and-r2.md",
             "preflight/e00_manifest.schema.json",
+            "preflight/process_query.py",
             "preflight/run_preflight.py",
             "scripts/phase6a_bf16_parity.py",
             "scripts/r2_artifact.py",
@@ -67,6 +72,7 @@ class Phase6AGovernanceTests(unittest.TestCase):
                 "preflight/e00_manifest.schema.json",
                 "preflight/measurement-container-system-packages.expected.json",
                 "preflight/measurement-container-system-packages.lock.json",
+                "preflight/process_query.py",
                 "preflight/run_preflight.py",
                 "tests/unit/test_preflight_unit.py",
             },
@@ -136,6 +142,15 @@ class Phase6AGovernanceTests(unittest.TestCase):
                 / "phase6-turboquant-measurement-blocked.md"
             ),
             EXPECTED_PHASE6_REPORT_SHA256,
+        )
+        self.assertEqual(
+            _sha256(
+                REPOSITORY_ROOT
+                / "docs"
+                / "phase_reports"
+                / "phase6a-measurement-container-and-r2-blocked.md"
+            ),
+            EXPECTED_PHASE6A_BLOCKED_REPORT_SHA256,
         )
 
     def test_quality_and_later_work_remain_locked(self) -> None:

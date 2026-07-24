@@ -1,6 +1,6 @@
 # Blockers
 
-Last updated: 2026-07-24.
+Last updated: 2026-07-25.
 
 ## Current disposition
 
@@ -14,10 +14,12 @@ bundles from the unchanged 20-run campaigns. Every earlier failed report,
 campaign, and run remains immutable. B-011 through B-017 are resolved without
 a silent fallback or weakened scientific gate. Phase 5 resolves B-003 only
 for the explicitly bounded vLLM reference authority. It does not close or
-weaken B-009 or B-010; both remain open and still block formal/unified
-admission, TurboQuant Measurement Lane execution, ordinary timing, and every
-performance claim. Both unresolved blockers stopped Phase 6 at entry; no
-TurboQuant Measurement Adapter implementation was retained.
+weaken B-009 or B-010. Phase 6A remediation separately resolves both: the exact
+Decision 0016 image passed container G0 and both BF16 parity smokes, and the
+private indefinite-locked R2 path passed synthetic plus container-G0 clean
+retrieval. No TurboQuant Measurement Adapter implementation is present. G2-TQ
+is `NOT EVALUATED / READY`; global G2-G5 remain NOT EVALUATED; later execution
+requires its own gates.
 
 | ID | Blocking condition | Blocks | Evidence / next action | Status |
 |---|---|---|---|---|
@@ -29,8 +31,8 @@ TurboQuant Measurement Adapter implementation was retained.
 | B-006 | KVQuant root licensing and embedded/adapted-source lineage are incomplete. | E10 reference execution, copying, or redistribution | Map recorded embedded trees and attributed files to exact upstream commits/patch deltas; resolve repository-wide license authority. | open |
 | B-007 | Archive acquisition URL and pre-workspace provenance were not supplied. | Exact external reacquisition of literature bundle | Ask the operator for origin metadata if available; retain the local archive/file hashes meanwhile. | open, non-gating for local audit |
 | B-008 | qpdf is not installed for an additional PDF structural scan. | Optional defense-in-depth literature check | Install only in a reviewed environment or use an equivalent static scanner; current pdfinfo/pdfdetach checks are recorded. | open, non-gating |
-| B-009 | Phase 2 local append-only controls exist, and Phase 6A selected Cloudflare R2 and exercised the synthetic object path, but durable acceptance remains incomplete. | E01 task closure, formal/unified G1-G5 admission, durable evidence claims, and every claim-bearing run. Decision 0007 narrowly permits a Phase 3 engineering G1 verdict from locally finalized checksum-valid non-claim evidence; it does not claim durable immutability. | Synthetic run `phase6a-r2-synthetic-20260724t135642z`, root `bbb80210dc729dedc9dd25a24d61cfbedbbe9d05661b1f95e6af278df3d0c11e`, passed conditional publication, exact-existing verification, differing-byte rejection, and clean retrieval. Cloudflare REST certification stopped on HTTP 403, so bucket public-access and Bucket Lock state remain unverified; no container-G0 artifact was available for the second acceptance test. Supply an account-wide R2 `Admin Read only` token, not an `Object Read only` token, verify active lock/public state, and publish/retrieve container-G0 evidence before closure. | open; synthetic object-path acceptance passed 2026-07-24 |
-| B-010 | One Phase 6A container definition exists, but container tooling was unavailable. No built image digest, container G0, BF16 eager/graph parity evidence, or execution-authority decision exists. | Formal E02 closure, later method Measurement Lane CUDA execution/admission, formal/unified G1-G5, ordinary timing, and every performance claim. Decision 0007 narrowly permits bounded BF16 Phase 3 implementation and `native_host_admission` engineering timing on the certified host. | Make the approved container runtime/NVIDIA Container Toolkit path available; build the exact image; record full inspect, layer-secret scan, system/Python/package/tool identities, and immutable image identity; then run container G0 plus both parity smokes before authorization. | open; Phase 6A execution blocked 2026-07-24 |
+| B-009 | Durable acceptance required verified private Cloudflare R2 management state, an active indefinite lock covering `kvbench/sha256/`, synthetic verification, and container-G0 publication plus clean retrieval. | E01 durable-store closure and any future claim-bearing artifact publication. | Read-only REST verification confirms bucket `kvbench-artifacts`, disabled r2.dev, zero custom domains, and exact enabled indefinite rule `kvbench-evidence-indefinite`. Synthetic root `bbb80210dc729dedc9dd25a24d61cfbedbbe9d05661b1f95e6af278df3d0c11e` cleanly reverified. Container-G0 root `85e1f49dea76d08b2cba4477d089a71759d529f03b2bc3538da3d15d8639455c` published 222 conditional objects with COMPLETE last and cleanly retrieved with every checksum and no unexpected object. | resolved 2026-07-25 |
+| B-010 | Measurement Lane execution required one exact built/scanned image, full container G0, both bounded BF16 parity smokes, and digest-bound authority. | Measurement Lane CUDA environment authority; method-specific and global admission remain separate gates. | Docker image ID / OCI image-index digest `sha256:059bc9be89387369d7de9e3e9b26d85b6e9902c41e7dbf002ebc45edd188fb7e` passed exact package/tool/secret/model-weight verification. G0 run `e00-20260724T195014.679255Z-a6025ae023e1-23dbe853` and both eager/graph parity runs pass. Decision 0016 authorizes only that digest, disallows floating tags, and requires full recertification after a digest change. | resolved 2026-07-25 |
 | B-011 | The immutable original report failed because only high-level SDPA names were visible and found no positive materialization evidence. Both complete campaigns at execution SHA `9def265ab613cde7a06b0e51850f066d0564d635` preserve direct CUDA traces for all 80 operations. | BF16 G1, Phase 4, every later method baseline comparison. | Reporting commit `7f72c95f9932c608f9bd68f1971d6e86378596a2` independently replays the checksum-bound raw traces, source/shape evidence, allocation join, and exact operation keys. New immutable report `phase3-g1-20260723t132609515797z-7f72c95f-f31ccb` derives `gqa_nonmaterialization_verified` for all 80 operations, identifies `pytorch_flash::flash_fwd_splitkv` for both controls, and passes `gqa_not_materialized`, `no_torch_cat_growth`, and `no_backend_fallback`. Preserve the corrected taxonomy and direct device-kernel contract. | resolved 2026-07-23 |
 | B-012 | The immutable original eager audits had unexplained transient traffic. Decisions 0013/0014 froze the source-backed eager criterion and geometry-specific split control. | BF16 G1 eager/graph lanes, Phase 4 common baseline. | The new report independently replays every allocator event: all 72 eager operations pass `phase3_eager_attributed_ephemeral_v1` with 1,066 fully attributed events each and no failure reason; all 8 graph operations pass `phase3_graph_zero_allocation_v1` with zero events. `no_unexplained_measured_region_allocation` and `graph_replay_no_allocation` both PASS. Retain Decisions 0013/0014 and strict graph-zero-allocation. | resolved 2026-07-23 |
 | B-013 | The original fixed-L terminal query race and three first-remediation recurrences remain immutable. The exact live race recurred in eight snapshots in the latest complete campaigns; every row joined to the registered GPU/PID/start time and passed as `owned_only`. Targeted tests keep unregistered foreign processes and PID reuse as hard failures. | Complete BF16 G1 process ownership. | Resolved by commit `eb908f6e372d6b232e6079e9344c2103bc90cdea`; retain the exact registered-row rule and all foreign/PID-reuse controls. | resolved 2026-07-23 |
@@ -42,11 +44,11 @@ TurboQuant Measurement Adapter implementation was retained.
 ## Phase 4 disposition
 
 The adapter boundary adds no new blocker and closes none. Its report and three
-functional smoke records remain local, checksum-bound, non-claim evidence.
-B-009 still requires durable append-only publication, and B-010 still requires
-a digest-pinned measurement container with parity G0 before any TurboQuant
-Measurement Lane execution or formal performance work. The separate Phase 5
-reference environment does not satisfy measurement-container parity.
+functional smoke records remain local, checksum-bound, non-claim evidence. At
+Phase 4 completion, B-009 still required durable append-only publication and
+B-010 still required a digest-pinned Measurement Container with parity G0.
+The separate Phase 5 reference environment did not satisfy container parity;
+Phase 6A remediation later resolved both blockers independently.
 
 ## Phase 5 disposition
 
@@ -54,15 +56,31 @@ B-003 is resolved for the narrowly selected vLLM authority. The exact source,
 environment, fixtures, and checksum ledgers reproduce on SM120; no source or
 configuration substitution occurred. Direct CUDA Graph smoke was not exercised
 in the minimal official API and remains Phase 6 work, but is not a Phase 5
-blocker under the frozen acceptance criteria. B-009 and B-010 remain OPEN.
+blocker under the frozen acceptance criteria. At Phase 5 completion, B-009 and
+B-010 remained OPEN; Phase 6A remediation later resolved them.
 
 ## Phase 6 entry-blocked disposition
 
 Phase 6 was attempted and BLOCKED at entry because B-009 and B-010 were both
-unresolved. B-009 remains OPEN without durable append-only publication and
-clean retrieval verification. B-010 remains OPEN without an authorized,
-digest-pinned Measurement Container and container G0 parity. Neither blocker
-is narrowed or resolved by the retrospective record. No Phase 6 implementation
-is present. The later Phase 6A prerequisite attempt does not alter this
-retrospective record. It produced partial synthetic R2 object-path evidence
-only; B-009 and B-010 remain OPEN.
+unresolved. At that entry, B-009 was OPEN without durable append-only
+publication and clean retrieval verification, and B-010 was OPEN without an
+authorized digest-pinned Measurement Container and container G0 parity.
+Neither blocker is narrowed or resolved by the retrospective record. No Phase
+6 implementation is present. The initial Phase 6A prerequisite attempt did not
+alter this retrospective record and left both blockers open.
+
+## Phase 6A remediation disposition
+
+Phase 6A remediation reused the existing implementation and directly resolved
+B-009 and B-010. Decision 0016 binds Measurement Lane CUDA execution to exact
+Docker image ID / OCI image-index digest
+`sha256:059bc9be89387369d7de9e3e9b26d85b6e9902c41e7dbf002ebc45edd188fb7e`.
+Container G0 and both bounded BF16 parity smokes pass. Cloudflare management
+state is private, and exact enabled rule `kvbench-evidence-indefinite` retains
+`kvbench/sha256/` indefinitely. The synthetic root and container-G0 root
+`85e1f49dea76d08b2cba4477d089a71759d529f03b2bc3538da3d15d8639455c`
+both cleanly retrieve and validate.
+
+Blocker closure supplies environment and durable-store authority only. Phase 6
+was not restarted; G2-TQ is `NOT EVALUATED / READY`; global G2-G5 remain NOT
+EVALUATED; Full Scan remains CLOSED; and quality execution remains LOCKED.

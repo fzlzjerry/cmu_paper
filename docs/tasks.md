@@ -7,12 +7,12 @@ authoritative local task index until issues are created elsewhere.
 | ID | Scope | Depends on | Required evidence / gate | Status |
 |---|---|---|---|---|
 | E00 | Hardware preflight | Phase 0 PASS | hardware manifest; native extension; PTX/JIT; Compute Sanitizer; G0 | complete: native-host G0 PASS in `e00-20260722T050632.375718Z-6442ba1f7554-02d5bd32` |
-| E01 | Repository scaffold and schemas | G0 | strict schemas; append-only writer; durable artifact policy; digest-pinned container; parity preflight | partial: local scaffold/contracts/writer PASS and the Phase 6A synthetic R2 object-path test PASS; Cloudflare Bucket Lock/public-access verification returned HTTP 403, the container-G0 publication test was not run, and no Measurement Container was built or certified. B-009/B-010 remain OPEN. |
-| E02 | BF16 static-cache baseline | E01 and container-parity G0 for formal closure; Decision 0007 for Phase 3 engineering scope | reference numerical match; static allocation; GQA audit | Native-host engineering G1 PASS in independently validated immutable report `phase3-g1-20260723t132609515797z-7f72c95f-f31ccb`. All 20 criteria pass from the unchanged complete campaigns and raw audit bundles. Formal E02 closure remains blocked by B-009/B-010. |
+| E01 | Repository scaffold and schemas | G0 | strict schemas; append-only writer; durable artifact policy; digest-pinned container; parity preflight | complete: local contracts/writer PASS; exact Decision 0016 image built/scanned; container G0 plus BF16 eager/graph parity PASS; private indefinite-locked R2 state verified; synthetic and container-G0 roots cleanly retrieved. B-009/B-010 RESOLVED. |
+| E02 | BF16 static-cache baseline | E01 and container-parity G0 for formal closure; Decision 0007 for Phase 3 engineering scope | reference numerical match; static allocation; GQA audit | Native-host engineering G1 PASS in independently validated immutable report `phase3-g1-20260723t132609515797z-7f72c95f-f31ccb`. All 20 criteria pass from unchanged campaigns/raw audits. Phase 6A eager/graph runs establish container parity only and create no new unified or claim-bearing G1 result. |
 | E03 | Fixed-L benchmark | E02; Decision 0007 permits only bounded Phase 3 admission runner | fixed-L and growing-context runners; timing-boundary tests | Execution SHA `9def265ab613cde7a06b0e51850f066d0564d635` completed all 16 fixed-L and all 4 growing-context runs with new IDs, no abort/failure, no unattempted point, and no selective rerun. The results remain non-claim admission evidence. |
 | E04 | Common cache-method and CUDA Graph harness | E02-E03 | stable method protocol; correctness/allocation/path facades; capture/replay correctness; no replay allocation | complete for Phase 4 BF16 at `0cf160caa532c7cac23275c8a14fd8694789a86f`; `docs/evidence/phase4/method-admission.json` validates. TurboQuant reference work is complete, but later Measurement Lane adapters still require their own G2 evidence. |
 | E05 | TurboQuant reference lane | E00-E04 | authoritative pinned source; isolated container; golden fixtures | complete: official vLLM v0.25.1 commit `752a3a504485790a2e8491cacbb35c137339ad34`; isolated SM120 environment; 3 mandatory MSE+NC and 1 held-out deterministic fixture; exact regeneration and validation PASS |
-| E06 | TurboQuant measurement adapter | E05 | numerical, byte, graph, path, sanitizer, smoke evidence; G2-TQ | attempted and BLOCKED at entry by B-009/B-010; no implementation retained; restart only after Phase 6A prerequisites |
+| E06 | TurboQuant measurement adapter | E05 | numerical, byte, graph, path, sanitizer, smoke evidence; G2-TQ | ready, not started: B-009/B-010 RESOLVED by Phase 6A; G2-TQ NOT EVALUATED / READY; no implementation present; restart only in a separate Phase 6 task |
 | E07 | KIVI reference lane | G2-TQ | pinned legacy container; rollover and K/V asymmetry fixtures | pending; unopened |
 | E08 | KIVI measurement adapter | E07 | static buffers; r_alloc(L); GQA indexing; G2-KIVI | pending |
 | E09 | KVQuant calibration | G2-KIVI | frozen dataset/revision/seed/cap/artifacts/checksums | pending |
@@ -37,26 +37,25 @@ task list. E16 remains closed until its evidence is reviewed.
 
 ## Cross-cutting subtasks
 
-- Phase 2 implements the local portion of docs/artifact_policy.md; no
-  claim-bearing run starts while B-009's durable-store/locator requirements
-  remain open.
-- E01 task closure still requires a pinned measurement-container digest and
-  identical E00 execution inside it. Decision 0007 narrowly permits bounded
-  BF16 Phase 3 implementation and non-claim native-host admission evidence;
-  B-010 keeps formal E02 closure, ordinary timing, later methods, and claims
-  closed until parity passes.
+- Phase 2 implements the local portion of docs/artifact_policy.md. Phase 6A
+  resolves B-009 with verified private, indefinite-locked Cloudflare R2 plus
+  clean synthetic and container-G0 retrieval. Every future publication still
+  repeats the management and clean-retrieval checks.
+- E01 is complete for exact Decision 0016 Docker image ID / OCI image-index
+  digest
+  `sha256:059bc9be89387369d7de9e3e9b26d85b6e9902c41e7dbf002ebc45edd188fb7e`.
+  Tags are non-authoritative; a changed digest requires full recertification.
+  Native-host admission remains non-claim-bearing.
 - E03 includes growing-context request validation but does not mix those
   samples with fixed-L fitting.
 - E04 owns the capture/replay harness used by M14-GRAPH-AB; that milestone runs
   only after pilot admission and keeps method/cache/backend/shape fixed.
 - Phase 4 adds only the BF16 adapter/factory and reusable admission facades.
   Phase 5 adds only the TurboQuant reference lane. Phase 6 was attempted and
-  BLOCKED at entry with no implementation retained. Phase 6A was attempted and
-  BLOCKED: the bounded synthetic R2 path passed, but Bucket Lock/public-access
-  state remains unverified and no container certification or container-G0 R2
-  test exists. Complete only those Phase 6A prerequisites. E07 and later tasks,
-  KIVI, KVQuant, pilot, performance profiler, Full Scan, and quality execution
-  remain unopened and unauthorized.
+  BLOCKED at entry with no implementation retained. Phase 6A remediation is
+  PASS and makes E06 ready for a separate new task; it does not begin E06.
+  E07 and later tasks, KIVI, KVQuant, pilot, performance profiler, Full Scan,
+  and quality execution remain unopened and unauthorized.
 - E12 includes an operator-level MHA control with identical head dimension and
   no GQA repetition.
 - B-011 through B-017 are resolved for native-host BF16 G1. The reporting-only

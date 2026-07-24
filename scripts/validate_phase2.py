@@ -343,6 +343,7 @@ PHASE6A_ALLOWED_PATHS = frozenset(
         "preflight/e00_manifest.schema.json",
         "preflight/measurement-container-system-packages.expected.json",
         "preflight/measurement-container-system-packages.lock.json",
+        "preflight/process_query.py",
         "preflight/run_preflight.py",
         "scripts/phase6a_bf16_parity.py",
         "scripts/r2_artifact.py",
@@ -359,6 +360,7 @@ PHASE6A_E00_ALLOWED_PATHS = frozenset(
         "preflight/e00_manifest.schema.json",
         "preflight/measurement-container-system-packages.expected.json",
         "preflight/measurement-container-system-packages.lock.json",
+        "preflight/process_query.py",
         "preflight/run_preflight.py",
         "tests/unit/test_preflight_unit.py",
     }

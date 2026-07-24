@@ -210,6 +210,11 @@ class MeasurementContainerDefinitionTests(unittest.TestCase):
         self.assertIn("git archive --format=tar", text)
         self.assertIn("git clone --quiet --no-local --no-checkout", text)
         self.assertIn('test ! -e "$$task_root/source/.env"', text)
+        self.assertIn(
+            "PYTHONPATH=$(CURDIR):$(CURDIR)/src $(PHASE2_PYTHON) "
+            "scripts/r2_artifact.py",
+            text,
+        )
         self.assertGreaterEqual(text.count("docker image save --output"), 2)
         self.assertGreaterEqual(
             text.count("validate_docker_image_save_archive"),

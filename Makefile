@@ -27,7 +27,7 @@ MEASUREMENT_IMAGE ?= kvbench-measurement:phase6a
 MEASUREMENT_IMAGE_CONFIG_DIGEST ?=
 MEASUREMENT_BASE_IMAGE_DIGEST := sha256:0eee3094c71518ad31d011a594ae6ed6de72959ee07e318cb31cffe71690e90c
 MEASUREMENT_GPU_UUID := GPU-75bd273e-6b20-0d22-1b0b-5fbb6fb0025b
-R2_ARTIFACT := $(PHASE2_ENV) $(PHASE2_PYTHON) scripts/r2_artifact.py
+R2_ARTIFACT := /usr/bin/env PYTHONDONTWRITEBYTECODE=1 PYTHONNOUSERSITE=1 PYTHONPATH=$(CURDIR):$(CURDIR)/src $(PHASE2_PYTHON) scripts/r2_artifact.py
 
 .PHONY: bootstrap bootstrap-phase3 test checks format-check lint hot-path-check typecheck config-check
 .PHONY: provenance-check scope-check immutable-check package-lock-check
