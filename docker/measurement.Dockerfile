@@ -3,7 +3,6 @@ FROM --platform=linux/amd64 nvidia/cuda@sha256:0eee3094c71518ad31d011a594ae6ed6d
 
 LABEL org.kvbench.measurement.lane="phase3-phase4-bf16" \
       org.kvbench.measurement.base.manifest="sha256:0eee3094c71518ad31d011a594ae6ed6de72959ee07e318cb31cffe71690e90c" \
-      org.kvbench.measurement.system-lock.sha256="9283ef0f7edc23a07a1943afc014adb5b5e45973e305ccd5cb22d9ccc29e9b7a" \
       org.kvbench.measurement.requirements-e00.sha256="aafe68e54cb316d6bb673dbc42087b2f971ac94668973cc3f8cc555d8a0dbb29" \
       org.kvbench.measurement.requirements-phase3.sha256="cebe254a3e03a48e3e67100ce11d5623fc0dc722dc43e2f482152beb644a08e9"
 
@@ -15,6 +14,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
     CUDAARCHS=120 \
     CMAKE_CUDA_ARCHITECTURES=120 \
     CUBLAS_WORKSPACE_CONFIG=:4096:8 \
+    LD_LIBRARY_PATH= \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONNOUSERSITE=1 \
     HF_HUB_OFFLINE=1 \
@@ -24,7 +24,9 @@ ENV DEBIAN_FRONTEND=noninteractive \
 
 SHELL ["/bin/bash", "--noprofile", "--norc", "-eu", "-o", "pipefail", "-c"]
 
-# Every image-owned package below is copied from the native-host E00 lock.
+# These explicit package versions preserve the validated Phase 3/4 stack.
+# A distinct observed container package lock is recorded only after a real
+# build; the native-host E00 lock is not container authority.
 # The host driver, NVML, and nvidia-smi are supplied only by NVIDIA Container
 # Toolkit at runtime; no host driver package is installed in this image.
 RUN apt-get update \
@@ -67,7 +69,6 @@ RUN apt-get update \
 
 WORKDIR /opt/kvbench
 
-COPY preflight/system-packages.lock.json preflight/system-packages.lock.json
 COPY preflight/requirements-e00.txt preflight/requirements-e00.txt
 COPY preflight/requirements-phase3.txt preflight/requirements-phase3.txt
 
@@ -87,7 +88,8 @@ RUN python3.12 -m venv /opt/kvbench/.venv \
        --require-hashes \
        --only-binary=:all: \
        --target /opt/kvbench/.phase3/site-packages \
-       -r preflight/requirements-phase3.txt
+       -r preflight/requirements-phase3.txt \
+    && mkdir -p /run/kvbench
 
 ENV PATH=/opt/kvbench/.venv/bin:/usr/local/cuda-13.0/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 

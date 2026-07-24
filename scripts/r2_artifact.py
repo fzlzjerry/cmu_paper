@@ -36,6 +36,22 @@ CONTROL_FILES = (
     "checksums.sha256",
     "COMPLETE",
 )
+INVENTORY_SCHEMA_VERSION = "kvbench-artifact-inventory-1.0.0"
+INVENTORY_KEYS = frozenset(
+    {
+        "schema_version",
+        "run_id",
+        "files",
+        "excluded_control_files",
+    }
+)
+INVENTORY_ITEM_KEYS = frozenset({"path", "role", "size_bytes", "sha256"})
+INVENTORY_EXCLUDED_CONTROLS = (
+    "artifact_inventory.json",
+    "checksums.sha256",
+    "COMPLETE",
+)
+E00_CONTAINER_SCHEMA_VERSION = "e00-manifest-1.1.0"
 OBJECT_ACCESS_VARIABLES = (
     "R2_ACCOUNT_ID",
     "R2_BUCKET",
@@ -48,7 +64,10 @@ REQUIRED_VARIABLES = (*OBJECT_ACCESS_VARIABLES, LOCK_VARIABLE)
 SECRET_VARIABLES = (
     "AWS_ACCESS_KEY_ID",
     "AWS_SECRET_ACCESS_KEY",
+    "AWS_SESSION_TOKEN",
     "CLOUDFLARE_API_TOKEN",
+    "HF_TOKEN",
+    "HUGGING_FACE_HUB_TOKEN",
     "R2_ACCOUNT_ID",
 )
 _SHA256_RE = re.compile(r"[0-9a-f]{64}")
@@ -58,7 +77,10 @@ _PROHIBITED_JSON_KEYS = frozenset(
     {
         "aws_access_key_id",
         "aws_secret_access_key",
+        "aws_session_token",
         "cloudflare_api_token",
+        "hf_token",
+        "hugging_face_hub_token",
         "r2_account_id",
         "authorization",
     }
@@ -215,7 +237,7 @@ def _validate_endpoint(value: str) -> str:
 
 @dataclass(frozen=True)
 class R2Config:
-    endpoint: str
+    endpoint: str = field(repr=False)
     bucket: str
     prefix: str
     account_id: str = field(repr=False)
@@ -249,10 +271,15 @@ class R2Config:
             cloudflare_api_token=source["CLOUDFLARE_API_TOKEN"],
         )
 
+    def endpoint_identity(self) -> str:
+        """Return a recordable endpoint identity without the account ID."""
+
+        return self.endpoint.replace(self.account_id, "<R2_ACCOUNT_ID>")
+
     def public_identity(self) -> dict[str, str]:
         return {
             "provider": "cloudflare_r2",
-            "endpoint": self.endpoint,
+            "endpoint": self.endpoint_identity(),
             "bucket": self.bucket,
             "prefix": self.prefix,
             "region": REGION,
@@ -393,11 +420,127 @@ def _tree_root_sha256(files: Sequence[ArtifactFile]) -> str:
     return sha256_bytes(canonical)
 
 
+def _manifest_identity(manifest: Mapping[str, object]) -> tuple[str, str | None]:
+    if manifest.get("schema_version") == E00_CONTAINER_SCHEMA_VERSION:
+        run = manifest.get("run")
+        if not isinstance(run, Mapping):
+            raise ArtifactValidationError("E00 manifest run identity is invalid")
+        run_id = run.get("id")
+        status = run.get("status")
+    else:
+        run_id = manifest.get("run_id")
+        status = manifest.get("status")
+    if not isinstance(run_id, str) or not run_id:
+        raise ArtifactValidationError("manifest run identity is invalid")
+    if status is not None and not isinstance(status, str):
+        raise ArtifactValidationError("manifest status is invalid")
+    return run_id, status
+
+
+def _validate_inventory_structure(
+    inventory: Mapping[str, object],
+) -> list[Mapping[str, object]]:
+    if (
+        set(inventory) != INVENTORY_KEYS
+        or inventory.get("schema_version") != INVENTORY_SCHEMA_VERSION
+        or inventory.get("excluded_control_files")
+        != list(INVENTORY_EXCLUDED_CONTROLS)
+        or not isinstance(inventory.get("run_id"), str)
+        or not inventory.get("run_id")
+    ):
+        raise ArtifactValidationError("artifact inventory is invalid")
+    files = inventory.get("files")
+    if not isinstance(files, list):
+        raise ArtifactValidationError("artifact inventory is invalid")
+    result: list[Mapping[str, object]] = []
+    for item in files:
+        if (
+            not isinstance(item, Mapping)
+            or set(item) != INVENTORY_ITEM_KEYS
+            or not isinstance(item.get("role"), str)
+            or not item["role"].strip()
+        ):
+            raise ArtifactValidationError("artifact inventory is invalid")
+        result.append(item)
+    return result
+
+
+def _validate_e00_artifact(
+    root: Path,
+    manifest: dict[str, Any],
+    inventory_files: Sequence[Mapping[str, object]],
+) -> None:
+    try:
+        from preflight import run_preflight
+
+        manifest_errors = run_preflight.validate_manifest(manifest)
+    except (ImportError, OSError, TypeError, ValueError) as error:
+        raise ArtifactValidationError(
+            "E00 manifest validator is unavailable"
+        ) from error
+    if manifest_errors:
+        raise ArtifactValidationError("E00 manifest validation failed")
+
+    for item in inventory_files:
+        relative = item["path"]
+        expected_role = (
+            "manifest"
+            if relative == "manifest.json"
+            else run_preflight.file_role(str(relative))
+        )
+        if item["role"] != expected_role:
+            raise ArtifactValidationError("E00 inventory role is invalid")
+
+    try:
+        actual_evidence = run_preflight.enumerate_evidence_files(root)
+        inventory_records = [
+            item
+            for item in actual_evidence
+            if item.get("path") == "artifact_inventory.json"
+        ]
+        evidence = manifest.get("evidence")
+        if (
+            len(inventory_records) != 1
+            or not isinstance(evidence, Mapping)
+            or not isinstance(evidence.get("files"), list)
+            or any(
+                isinstance(item, Mapping)
+                and item.get("path") == "artifact_inventory.json"
+                for item in evidence["files"]
+            )
+        ):
+            raise ArtifactValidationError(
+                "E00 evidence inventory projection is invalid"
+            )
+        projected_manifest = dict(manifest)
+        projected_evidence = dict(evidence)
+        projected_evidence["files"] = sorted(
+            [*evidence["files"], inventory_records[0]],
+            key=lambda item: item["path"],
+        )
+        projected_manifest["evidence"] = projected_evidence
+        reference_errors = run_preflight.evidence_reference_errors(
+            root,
+            projected_manifest,
+        )
+    except ArtifactValidationError:
+        raise
+    except (KeyError, OSError, RuntimeError, TypeError, ValueError) as error:
+        raise ArtifactValidationError(
+            "E00 evidence-reference validator is unavailable"
+        ) from error
+    if reference_errors:
+        raise ArtifactValidationError(
+            "E00 evidence-reference validation failed"
+        )
+
+
 def _validate_artifact(
     directory: str | Path,
     *,
     environ: Mapping[str, str] | None,
     require_immutable: bool,
+    expect_final_name: bool,
 ) -> ValidatedArtifact:
     root = Path(directory).absolute()
     files = _collect_files(root, require_immutable=require_immutable)
@@ -413,6 +556,20 @@ def _validate_artifact(
     completion = _load_json_object(root / "COMPLETE", "completion marker")
     for payload in (manifest, inventory, completion):
         _reject_credential_keys(payload)
+    manifest_run_id, manifest_status = _manifest_identity(manifest)
+    inventory_files = _validate_inventory_structure(inventory)
+    if (
+        inventory.get("run_id") != manifest_run_id
+        or completion.get("run_id") != manifest_run_id
+    ):
+        raise ArtifactValidationError("artifact run identities do not agree")
+    completion_status = completion.get("status")
+    if completion_status is not None and not isinstance(completion_status, str):
+        raise ArtifactValidationError("completion marker status is invalid")
+    if manifest_status is not None and completion_status != manifest_status:
+        raise ArtifactValidationError(
+            "manifest and completion marker statuses do not agree"
+        )
 
     source = os.environ if environ is None else environ
     secret_values = tuple(
@@ -436,13 +593,8 @@ def _validate_artifact(
         if sha256_file(root / relative) != expected:
             raise ArtifactValidationError("artifact checksum verification failed")
 
-    inventory_files = inventory.get("files")
-    if not isinstance(inventory_files, list):
-        raise ArtifactValidationError("artifact inventory is invalid")
     declared: dict[str, tuple[str, int]] = {}
     for item in inventory_files:
-        if not isinstance(item, Mapping):
-            raise ArtifactValidationError("artifact inventory is invalid")
         relative_value = item.get("path")
         digest = item.get("sha256")
         size = item.get("size_bytes")
@@ -487,11 +639,17 @@ def _validate_artifact(
     if completion.get("checksum_ledger_path", "checksums.sha256") != "checksums.sha256":
         raise ArtifactValidationError("COMPLETE references an unexpected ledger")
 
+    if manifest.get("schema_version") == E00_CONTAINER_SCHEMA_VERSION:
+        _validate_e00_artifact(root, manifest, inventory_files)
+
     if "manifest.initial.json" in relatives and require_immutable:
         try:
             from kvbench.runtime.artifacts import validate_run_directory
 
-            repository_validation = validate_run_directory(root)
+            repository_validation = validate_run_directory(
+                root,
+                expect_final_name=expect_final_name,
+            )
         except (ImportError, OSError) as error:
             raise ArtifactValidationError(
                 "repository artifact validator is unavailable"
@@ -528,6 +686,7 @@ def validate_local_artifact(
         directory,
         environ=environ,
         require_immutable=True,
+        expect_final_name=True,
     )
 
 
@@ -603,6 +762,11 @@ def publish_artifact(
     verified_existing: list[str] = []
     ordered = publication_order(artifact)
     for item in ordered:
+        data = item.path.read_bytes()
+        if sha256_bytes(data) != item.sha256:
+            raise ArtifactValidationError(
+                "local artifact changed after final validation"
+            )
         key = artifact_object_key(
             config.prefix,
             artifact.root_sha256,
@@ -616,7 +780,6 @@ def publish_artifact(
                 )
             verified_existing.append(item.relative_path)
             continue
-        data = item.path.read_bytes()
         try:
             client.put_object_if_absent(
                 key,
@@ -758,13 +921,19 @@ def verify_remote_artifact(
         target_root,
         environ=environ,
         require_immutable=False,
+        expect_final_name=False,
     )
     if reconstructed.root_sha256 != digest:
         raise ArtifactValidationError("reconstructed root digest does not match prefix")
     if set(relatives) != {item.relative_path for item in reconstructed.files}:
         raise ArtifactValidationError("remote prefix contains unexpected objects")
     _make_tree_immutable(target_root)
-    immutable = validate_local_artifact(target_root, environ=environ)
+    immutable = _validate_artifact(
+        target_root,
+        environ=environ,
+        require_immutable=True,
+        expect_final_name=False,
+    )
     if immutable.root_sha256 != digest:
         raise ArtifactValidationError("immutable retrieval digest changed")
     return RetrievalResult(
@@ -782,7 +951,10 @@ def _xml_error_code(data: bytes) -> str:
         return "Unspecified"
     for element in root.iter():
         if element.tag.rsplit("}", 1)[-1] == "Code" and element.text:
-            return element.text[:80]
+            candidate = element.text[:80]
+            if re.fullmatch(r"[A-Za-z][A-Za-z0-9_.-]{0,79}", candidate):
+                return candidate
+            return "Unspecified"
     return "Unspecified"
 
 
@@ -879,8 +1051,8 @@ class R2S3Client:
         ).hexdigest()
         authorization = (
             "AWS4-HMAC-SHA256 "
-            f"Credential={self._config.access_key_id}/{scope},"
-            f"SignedHeaders={signed_headers},Signature={signature}"
+            f"Credential={self._config.access_key_id}/{scope}, "
+            f"SignedHeaders={signed_headers}, Signature={signature}"
         )
         output = {name: value for name, value in headers.items() if name != "host"}
         output["Authorization"] = authorization
@@ -922,9 +1094,20 @@ class R2S3Client:
                 response_body = error.read(65536)
             except OSError:
                 response_body = b""
+            code = _xml_error_code(response_body)
+            if any(
+                secret and secret in code
+                for secret in (
+                    self._config.account_id,
+                    self._config.access_key_id,
+                    self._config.secret_access_key,
+                    self._config.cloudflare_api_token,
+                )
+            ):
+                code = "Unspecified"
             raise RemoteRequestError(
                 status=error.code,
-                code=_xml_error_code(response_body),
+                code=code,
             ) from None
         except (urllib.error.URLError, TimeoutError, OSError):
             raise RemoteRequestError(status=None, code="TransportError") from None
@@ -1033,7 +1216,7 @@ class CloudflareReadClient:
 @dataclass(frozen=True)
 class BucketLockEvidence:
     bucket: str
-    endpoint: str
+    endpoint_identity: str
     rule_id: str
     covered_prefix: str
     rule_prefix: str
@@ -1045,7 +1228,7 @@ class BucketLockEvidence:
         return {
             "provider": "cloudflare_r2",
             "bucket": self.bucket,
-            "endpoint": self.endpoint,
+            "endpoint": self.endpoint_identity,
             "bucket_public": False,
             "lock_rule_id": self.rule_id,
             "lock_rule_name": self.rule_id,
@@ -1064,17 +1247,6 @@ def _cloudflare_result(payload: Mapping[str, Any]) -> Mapping[str, Any]:
     ):
         raise R2ArtifactError("Cloudflare API response failed validation")
     return payload["result"]
-
-
-def _lock_scope(rule_prefix: str, evidence_prefix: str) -> str | None:
-    exact = f"{evidence_prefix}/"
-    if rule_prefix == exact:
-        return "exact"
-    if rule_prefix == "":
-        return "whole_bucket"
-    if rule_prefix.endswith("/") and exact.startswith(rule_prefix):
-        return "parent_prefix"
-    return None
 
 
 def verify_cloudflare_bucket_lock(
@@ -1116,8 +1288,8 @@ def verify_cloudflare_bucket_lock(
     rules = lock_result.get("rules")
     if not isinstance(rules, list):
         raise R2ArtifactError("R2 Bucket Lock response failed validation")
-    candidates: list[tuple[int, int, str, str, str]] = []
-    scope_rank = {"exact": 0, "parent_prefix": 1, "whole_bucket": 2}
+    expected_lock_prefix = f"{config.prefix}/"
+    candidates: list[tuple[str, str]] = []
     for rule in rules:
         if not isinstance(rule, Mapping) or rule.get("enabled") is not True:
             continue
@@ -1132,36 +1304,32 @@ def verify_cloudflare_bucket_lock(
             or not isinstance(raw_prefix, str)
         ):
             continue
-        scope = _lock_scope(raw_prefix, config.prefix)
-        if scope is not None:
-            candidates.append(
-                (
-                    scope_rank[scope],
-                    -len(raw_prefix),
-                    rule_id,
-                    raw_prefix,
-                    scope,
-                )
-            )
+        if raw_prefix == expected_lock_prefix:
+            candidates.append((rule_id, raw_prefix))
     if not candidates:
         raise R2ArtifactError(
-            "no enabled indefinite Bucket Lock rule covers the evidence prefix"
+            "no enabled indefinite Bucket Lock rule exactly matches the evidence prefix"
         )
-    _, _, rule_id, rule_prefix, scope = sorted(candidates)[0]
+    rule_id, rule_prefix = sorted(candidates)[0]
     return BucketLockEvidence(
         bucket=config.bucket,
-        endpoint=config.endpoint,
+        endpoint_identity=config.endpoint_identity(),
         rule_id=rule_id,
-        covered_prefix=f"{config.prefix}/",
+        covered_prefix=expected_lock_prefix,
         rule_prefix=rule_prefix,
-        scope_kind=scope,
+        scope_kind="exact",
         retention_type="Indefinite",
         verified_at_utc=_utc_now(),
     )
 
 
-def _output(payload: Mapping[str, object]) -> None:
-    print(json.dumps(payload, indent=2, sort_keys=True, allow_nan=False))
+def _output(
+    payload: Mapping[str, object],
+    *,
+    environ: Mapping[str, str] | None = None,
+) -> None:
+    rendered = json.dumps(payload, indent=2, sort_keys=True, allow_nan=False)
+    print(redact_text(rendered, environ))
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -1188,6 +1356,15 @@ def main(argv: Sequence[str] | None = None) -> int:
             result: Mapping[str, object] = publish_artifact(
                 client, config, artifact
             ).to_dict()
+            _output(
+                {
+                    "status": "PASS",
+                    "required_variables": statuses,
+                    "r2": config.public_identity(),
+                    "bucket_lock": lock.to_dict(),
+                    arguments.operation: result,
+                }
+            )
         else:
             with tempfile.TemporaryDirectory(prefix="kvbench-r2-verify-") as temporary:
                 result = verify_remote_artifact(
@@ -1196,15 +1373,15 @@ def main(argv: Sequence[str] | None = None) -> int:
                     arguments.root_sha256,
                     Path(temporary) / "artifact",
                 ).to_dict()
-        _output(
-            {
-                "status": "PASS",
-                "required_variables": statuses,
-                "r2": config.public_identity(),
-                "bucket_lock": lock.to_dict(),
-                arguments.operation: result,
-            }
-        )
+                _output(
+                    {
+                        "status": "PASS",
+                        "required_variables": statuses,
+                        "r2": config.public_identity(),
+                        "bucket_lock": lock.to_dict(),
+                        arguments.operation: result,
+                    }
+                )
         return 0
     except (R2ArtifactError, OSError, ValueError) as error:
         _output(

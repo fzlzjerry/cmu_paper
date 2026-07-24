@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import ast
 import copy
+import io
 import json
 import os
 from pathlib import Path
 import subprocess
 import sys
+import tarfile
 import tempfile
 import threading
 import time
@@ -26,21 +28,792 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 class PreflightUnitTests(unittest.TestCase):
-    def test_gate_order_matches_schema(self) -> None:
+    def test_measurement_container_contract_binds_image_inputs(self) -> None:
+        self.assertEqual(
+            run_preflight.MEASUREMENT_CONTAINER_CONTRACT_PATHS[-3:],
+            (
+                ".dockerignore",
+                "docker/measurement.Dockerfile",
+                "preflight/requirements-phase3.txt",
+            ),
+        )
+        self.assertIn(
+            "preflight/measurement-container-system-packages.expected.json",
+            run_preflight.MEASUREMENT_CONTAINER_CONTRACT_PATHS,
+        )
+        self.assertNotIn(
+            "preflight/system-packages.lock.json",
+            run_preflight.MEASUREMENT_CONTAINER_CONTRACT_PATHS,
+        )
+
+    def test_container_identity_records_full_package_freezes(self) -> None:
+        source = (ROOT / "preflight" / "run_preflight.py").read_text(
+            encoding="utf-8"
+        )
+        for command_id in (
+            "container_dpkg_inventory",
+            "container_python_freeze",
+            "container_phase3_python_freeze",
+            "container_phase3_pip_check",
+        ):
+            with self.subTest(command_id=command_id):
+                self.assertIn(f'"{command_id}"', source)
+                self.assertIn(command_id, source[source.index("gate_check(") :])
+
+    def test_gate_order_matches_schema_for_both_modes(self) -> None:
         schema = json.loads(
             (ROOT / "preflight" / "e00_manifest.schema.json").read_text()
         )
         prefix = schema["$defs"]["gate"]["properties"]["checks"]["prefixItems"]
-        observed = [
-            item["allOf"][1]["properties"]["name"]["const"] for item in prefix
+        fixed = [
+            item["allOf"][1]["properties"]["name"] for item in prefix
         ]
-        self.assertEqual(observed, list(run_preflight.GATE_NAMES))
+        self.assertEqual(
+            fixed[1]["enum"],
+            [
+                "native_host_environment_verified",
+                "measurement_container_environment_verified",
+            ],
+        )
+        native = [
+            (
+                item["const"]
+                if "const" in item
+                else item["enum"][0]
+            )
+            for item in fixed
+        ]
+        container = [
+            (
+                item["const"]
+                if "const" in item
+                else item["enum"][1]
+            )
+            for item in fixed
+        ]
+        self.assertEqual(native, list(run_preflight.NATIVE_HOST_GATE_NAMES))
+        self.assertEqual(
+            container,
+            list(run_preflight.MEASUREMENT_CONTAINER_GATE_NAMES),
+        )
+        self.assertEqual(
+            run_preflight.GATE_NAMES,
+            run_preflight.NATIVE_HOST_GATE_NAMES,
+        )
 
     def test_schema_is_draft_2020_12(self) -> None:
         schema = json.loads(
             (ROOT / "preflight" / "e00_manifest.schema.json").read_text()
         )
         jsonschema.Draft202012Validator.check_schema(schema)
+
+    def test_container_cli_is_explicit_and_digest_strict(self) -> None:
+        native = run_preflight.parse_args([])
+        self.assertFalse(native.measurement_container)
+        self.assertIsNone(native.container_image_reference)
+        self.assertIsNone(native.container_image_config_digest)
+        self.assertIsNone(native.container_base_image_digest)
+
+        digest = "sha256:" + "a" * 64
+        container = run_preflight.parse_args(
+            [
+                "--measurement-container",
+                "--container-image-reference",
+                "kvbench-measurement:phase6a",
+                "--container-image-config-digest",
+                digest,
+                "--container-base-image-digest",
+                digest,
+                "--container-image-inspect-json",
+                "/run/kvbench/container-image-inspect.json",
+                "--container-runtime-inspect-json",
+                "/run/kvbench/container-runtime-inspect.json",
+            ]
+        )
+        self.assertTrue(container.measurement_container)
+        self.assertEqual(container.container_image_config_digest, digest)
+        self.assertEqual(container.container_base_image_digest, digest)
+        self.assertEqual(
+            container.container_runtime_inspect_json,
+            Path("/run/kvbench/container-runtime-inspect.json"),
+        )
+
+        invalid_argv = (
+            ["--measurement-container"],
+            [
+                "--container-image-reference",
+                "kvbench-measurement:phase6a",
+            ],
+            [
+                "--measurement-container",
+                "--container-image-reference",
+                "kvbench-measurement:phase6a",
+                "--container-image-config-digest",
+                "sha256:" + "A" * 64,
+                "--container-base-image-digest",
+                digest,
+                "--container-image-inspect-json",
+                "/run/kvbench/container-image-inspect.json",
+            ],
+            [
+                "--measurement-container",
+                "--container-image-reference",
+                "kvbench-measurement:phase6a",
+                "--container-image-config-digest",
+                digest,
+                "--container-base-image-digest",
+                digest,
+                "--container-image-inspect-json",
+                "relative/image-inspect.json",
+            ],
+        )
+        for argv in invalid_argv:
+            with self.subTest(argv=argv), mock.patch("sys.stderr"):
+                with self.assertRaises(SystemExit):
+                    run_preflight.parse_args(argv)
+
+    def test_container_mode_uses_separate_fixed_contract_paths(self) -> None:
+        self.assertEqual(
+            run_preflight.EVIDENCE_ROOT,
+            ROOT / "docs" / "evidence" / "e00",
+        )
+        self.assertEqual(
+            run_preflight.MEASUREMENT_CONTAINER_EVIDENCE_ROOT,
+            ROOT / "artifacts" / "phase6a" / "container_g0",
+        )
+        self.assertEqual(
+            run_preflight.MEASUREMENT_CONTAINER_SYSTEM_LOCK_PATH,
+            ROOT
+            / "preflight"
+            / "measurement-container-system-packages.expected.json",
+        )
+        self.assertNotEqual(
+            run_preflight.MEASUREMENT_CONTAINER_SYSTEM_LOCK_PATH,
+            run_preflight.SYSTEM_LOCK_PATH,
+        )
+        self.assertIn(
+            "preflight/measurement-container-system-packages.expected.json",
+            run_preflight.MEASUREMENT_CONTAINER_CONTRACT_PATHS,
+        )
+        self.assertNotIn(
+            "preflight/system-packages.lock.json",
+            run_preflight.MEASUREMENT_CONTAINER_CONTRACT_PATHS,
+        )
+        self.assertEqual(
+            run_preflight.MEASUREMENT_CONTAINER_PYTHON,
+            Path("/opt/kvbench/.venv/bin/python"),
+        )
+
+    def test_container_image_inspect_identity_is_exact_and_secret_safe(
+        self,
+    ) -> None:
+        image_digest = "sha256:" + "a" * 64
+        base_digest = "sha256:" + "b" * 64
+        payload = [
+            {
+                "Id": image_digest,
+                "Config": {
+                    "Env": [
+                        "PATH=/opt/kvbench/.venv/bin:/usr/bin",
+                        "LD_LIBRARY_PATH=",
+                        "TOKENIZERS_PARALLELISM=false",
+                    ],
+                    "Labels": {
+                        "org.kvbench.measurement.lane": (
+                            "phase3-phase4-bf16"
+                        ),
+                        run_preflight.MEASUREMENT_BASE_DIGEST_LABEL: (
+                            base_digest
+                        ),
+                        (
+                            "org.kvbench.measurement."
+                            "requirements-e00.sha256"
+                        ): run_preflight.sha256_file(
+                            ROOT / "preflight" / "requirements-e00.txt"
+                        ),
+                        (
+                            "org.kvbench.measurement."
+                            "requirements-phase3.sha256"
+                        ): run_preflight.sha256_file(
+                            ROOT / "preflight" / "requirements-phase3.txt"
+                        ),
+                    },
+                },
+            }
+        ]
+        with tempfile.TemporaryDirectory() as raw_directory:
+            path = Path(raw_directory) / "image-inspect.json"
+            raw = (json.dumps(payload, sort_keys=True) + "\n").encode()
+            path.write_bytes(raw)
+            copied, validation = (
+                run_preflight.validate_container_image_inspect(
+                    path,
+                    expected_image_config_digest=image_digest,
+                    expected_base_image_digest=base_digest,
+                )
+            )
+            self.assertEqual(copied, raw)
+            self.assertEqual(validation["status"], "PASS")
+            self.assertTrue(validation["image_config_digest_matches"])
+            self.assertTrue(validation["base_image_digest_matches"])
+            self.assertEqual(validation["secret_named_field_count"], 0)
+            self.assertEqual(
+                validation["source_sha256"],
+                run_preflight.sha256_bytes(raw),
+            )
+
+            mismatch_raw, mismatch = (
+                run_preflight.validate_container_image_inspect(
+                    path,
+                    expected_image_config_digest="sha256:" + "c" * 64,
+                    expected_base_image_digest=base_digest,
+                )
+            )
+            self.assertIsNone(mismatch_raw)
+            self.assertEqual(mismatch["status"], "FAIL")
+            self.assertFalse(mismatch["image_config_digest_matches"])
+
+            payload[0]["Config"]["Env"].append(
+                "AWS_SECRET_ACCESS_KEY=never-print-this-value"
+            )
+            payload[0]["Config"]["ApiToken"] = "also-never-print-this-value"
+            path.write_text(json.dumps(payload))
+            secret_raw, secret_validation = (
+                run_preflight.validate_container_image_inspect(
+                    path,
+                    expected_image_config_digest=image_digest,
+                    expected_base_image_digest=base_digest,
+                )
+            )
+            self.assertIsNone(secret_raw)
+            self.assertEqual(secret_validation["status"], "FAIL")
+            serialized = json.dumps(secret_validation)
+            self.assertNotIn("AWS_SECRET_ACCESS_KEY", serialized)
+            self.assertNotIn("ApiToken", serialized)
+            self.assertNotIn("never-print-this-value", serialized)
+            self.assertNotIn("also-never-print-this-value", serialized)
+
+            payload[0]["Config"].pop("ApiToken")
+            payload[0]["Config"]["Env"] = [
+                "PATH=/opt/kvbench/.venv/bin:/usr/bin",
+                "LD_LIBRARY_PATH=",
+            ]
+            payload[0]["Config"]["Labels"]["note"] = (
+                "AWS_SECRET_ACCESS_KEY=fake-placeholder"
+            )
+            path.write_text(json.dumps(payload))
+            scalar_raw, scalar_validation = (
+                run_preflight.validate_container_image_inspect(
+                    path,
+                    expected_image_config_digest=image_digest,
+                    expected_base_image_digest=base_digest,
+                )
+            )
+            self.assertIsNone(scalar_raw)
+            self.assertEqual(scalar_validation["status"], "FAIL")
+            self.assertNotIn("fake-placeholder", json.dumps(scalar_validation))
+
+            payload[0]["Config"]["Labels"]["note"] = (
+                "opaque configured value: never-print-opaque-secret"
+            )
+            path.write_text(json.dumps(payload))
+            configured_raw, configured_validation = (
+                run_preflight.validate_container_image_inspect(
+                    path,
+                    expected_image_config_digest=image_digest,
+                    expected_base_image_digest=base_digest,
+                    secret_environment={
+                        "CLOUDFLARE_API_TOKEN": (
+                            "never-print-opaque-secret"
+                        )
+                    },
+                )
+            )
+            self.assertIsNone(configured_raw)
+            self.assertEqual(configured_validation["status"], "FAIL")
+            self.assertEqual(
+                configured_validation["configured_secret_value_count"],
+                1,
+            )
+            self.assertNotIn(
+                "never-print-opaque-secret",
+                json.dumps(configured_validation),
+            )
+
+            payload[0]["Config"]["Labels"].pop("note")
+            payload[0]["Config"]["Labels"][
+                "ApiToken-never-print-key-secret"
+            ] = "x"
+            path.write_text(json.dumps(payload))
+            key_raw, key_validation = (
+                run_preflight.validate_container_image_inspect(
+                    path,
+                    expected_image_config_digest=image_digest,
+                    expected_base_image_digest=base_digest,
+                )
+            )
+            self.assertIsNone(key_raw)
+            self.assertEqual(key_validation["status"], "FAIL")
+            key_serialized = json.dumps(key_validation)
+            self.assertNotIn("ApiToken", key_serialized)
+            self.assertNotIn("never-print-key-secret", key_serialized)
+
+            payload[0]["Config"]["Labels"].pop(
+                "ApiToken-never-print-key-secret"
+            )
+            payload[0]["Config"]["Env"] = [
+                "PATH=/opt/kvbench/.venv/bin:/usr/bin",
+                (
+                    "LD_LIBRARY_PATH=/usr/local/nvidia/lib:"
+                    "/usr/local/nvidia/lib64"
+                ),
+            ]
+            path.write_text(json.dumps(payload))
+            startup_raw, startup_validation = (
+                run_preflight.validate_container_image_inspect(
+                    path,
+                    expected_image_config_digest=image_digest,
+                    expected_base_image_digest=base_digest,
+                )
+            )
+            self.assertIsNone(startup_raw)
+            self.assertEqual(startup_validation["status"], "FAIL")
+            self.assertEqual(
+                startup_validation[
+                    "forbidden_startup_environment_count"
+                ],
+                1,
+            )
+
+    def test_image_save_archive_rejects_env_files_and_secret_bytes(
+        self,
+    ) -> None:
+        def tar_bytes(files: dict[str, bytes]) -> bytes:
+            buffer = io.BytesIO()
+            with tarfile.open(fileobj=buffer, mode="w") as archive:
+                for name, content in files.items():
+                    member = tarfile.TarInfo(name)
+                    member.size = len(content)
+                    member.mode = 0o644
+                    archive.addfile(member, io.BytesIO(content))
+            return buffer.getvalue()
+
+        def write_image_save(
+            path: Path,
+            *,
+            layer_name: str,
+            layer_content: bytes,
+        ) -> None:
+            layer = tar_bytes({layer_name: layer_content})
+            manifest = json.dumps(
+                [
+                    {
+                        "Config": "config.json",
+                        "RepoTags": ["kvbench:test"],
+                        "Layers": ["layer.tar"],
+                    }
+                ]
+            ).encode()
+            with tarfile.open(path, mode="w") as archive:
+                for name, content in (
+                    ("manifest.json", manifest),
+                    ("config.json", b"{}"),
+                    ("layer.tar", layer),
+                ):
+                    member = tarfile.TarInfo(name)
+                    member.size = len(content)
+                    member.mode = 0o644
+                    archive.addfile(member, io.BytesIO(content))
+
+        secret_name = "AWS_SECRET_ACCESS_KEY"
+        secret_value = "never-print-layer-secret"
+        secret_environment = {secret_name: secret_value}
+        with tempfile.TemporaryDirectory() as raw_directory:
+            path = Path(raw_directory) / "image.tar"
+            write_image_save(
+                path,
+                layer_name="opt/kvbench/safe.txt",
+                layer_content=b"safe",
+            )
+            clean = run_preflight.validate_docker_image_save_archive(
+                path,
+                secret_environment=secret_environment,
+            )
+            self.assertEqual(clean["status"], "PASS")
+            self.assertEqual(clean["layer_count"], 1)
+
+            write_image_save(
+                path,
+                layer_name="opt/kvbench/.env.production",
+                layer_content=b"placeholder=true",
+            )
+            env_file = run_preflight.validate_docker_image_save_archive(
+                path,
+                secret_environment=secret_environment,
+            )
+            self.assertEqual(env_file["status"], "FAIL")
+            self.assertEqual(env_file["operator_env_path_count"], 1)
+
+            write_image_save(
+                path,
+                layer_name=f"opt/kvbench/{secret_value}/safe.txt",
+                layer_content=(
+                    b"prefix-" + secret_value.encode() + b"-suffix"
+                ),
+            )
+            secret = run_preflight.validate_docker_image_save_archive(
+                path,
+                secret_environment=secret_environment,
+            )
+            self.assertEqual(secret["status"], "FAIL")
+            self.assertEqual(
+                secret["configured_secret_variables"],
+                [secret_name],
+            )
+            self.assertNotIn(secret_value, json.dumps(secret))
+
+    def test_runtime_inspect_binds_running_container_and_exact_image(
+        self,
+    ) -> None:
+        image_digest = "sha256:" + "a" * 64
+        runtime_id = "b" * 64
+        hostname = runtime_id[:12]
+        payload = [
+            {
+                "Id": runtime_id,
+                "Image": image_digest,
+                "Config": {
+                    "Image": image_digest,
+                    "Hostname": hostname,
+                    "Env": ["PATH=/opt/kvbench/.venv/bin:/usr/bin"],
+                },
+                "State": {"Status": "created"},
+                "HostConfig": {
+                    "NetworkMode": "none",
+                    "PidMode": "host",
+                    "ReadonlyRootfs": True,
+                    "DeviceRequests": [
+                        {
+                            "DeviceIDs": [run_preflight.EXPECTED_GPU_UUID],
+                            "Capabilities": [["gpu"]],
+                        }
+                    ],
+                    "Tmpfs": {
+                        "/tmp": "rw,nosuid,nodev,size=8g",
+                        "/root": "rw,nosuid,nodev,size=2g",
+                    },
+                },
+                "Mounts": [
+                    {
+                        "Type": "bind",
+                        "Destination": "/workspace",
+                        "RW": False,
+                    },
+                    {
+                        "Type": "bind",
+                        "Destination": (
+                            "/workspace/artifacts/phase6a/container_g0"
+                        ),
+                        "RW": True,
+                    },
+                    {
+                        "Type": "bind",
+                        "Destination": (
+                            "/run/kvbench/image-inspect.json"
+                        ),
+                        "RW": False,
+                    },
+                    {
+                        "Type": "bind",
+                        "Destination": (
+                            "/run/kvbench/runtime-inspect.json"
+                        ),
+                        "RW": False,
+                    },
+                ],
+            }
+        ]
+        with tempfile.TemporaryDirectory() as raw_directory:
+            path = Path(raw_directory) / "runtime-inspect.json"
+            raw = (json.dumps(payload, sort_keys=True) + "\n").encode()
+            path.write_bytes(raw)
+            copied, validation = (
+                run_preflight.validate_container_runtime_inspect(
+                    path,
+                    expected_image_config_digest=image_digest,
+                    expected_hostname=hostname,
+                )
+            )
+            self.assertEqual(copied, raw)
+            self.assertEqual(validation["status"], "PASS")
+            self.assertTrue(validation["image_config_digest_matches"])
+            self.assertTrue(validation["hostname_matches"])
+            self.assertTrue(validation["pre_start_state"])
+            self.assertTrue(validation["network_disabled"])
+            self.assertTrue(validation["host_pid_mode"])
+            self.assertTrue(validation["read_only_root"])
+            self.assertTrue(validation["exact_gpu_request"])
+            self.assertTrue(validation["exact_tmpfs"])
+            self.assertTrue(validation["required_mounts_match"])
+
+            payload[0]["Image"] = "sha256:" + "c" * 64
+            path.write_text(json.dumps(payload))
+            rejected, failure = (
+                run_preflight.validate_container_runtime_inspect(
+                    path,
+                    expected_image_config_digest=image_digest,
+                    expected_hostname=hostname,
+                )
+            )
+            self.assertIsNone(rejected)
+            self.assertEqual(failure["status"], "FAIL")
+
+            payload[0]["Image"] = image_digest
+            payload[0]["Mounts"].extend(
+                [
+                    {
+                        "Type": "tmpfs",
+                        "Destination": "/tmp",
+                        "RW": True,
+                    },
+                    {
+                        "Type": "tmpfs",
+                        "Destination": "/root",
+                        "RW": True,
+                    },
+                ]
+            )
+            path.write_text(json.dumps(payload))
+            with_tmpfs, with_tmpfs_validation = (
+                run_preflight.validate_container_runtime_inspect(
+                    path,
+                    expected_image_config_digest=image_digest,
+                    expected_hostname=hostname,
+                )
+            )
+            self.assertIsNotNone(with_tmpfs)
+            self.assertEqual(with_tmpfs_validation["status"], "PASS")
+            del payload[0]["Mounts"][-2:]
+
+            payload[0]["HostConfig"]["DeviceRequests"].append(
+                {
+                    "DeviceIDs": ["GPU-" + "c" * 32],
+                    "Capabilities": [["gpu"]],
+                }
+            )
+            path.write_text(json.dumps(payload))
+            extra_gpu, extra_gpu_validation = (
+                run_preflight.validate_container_runtime_inspect(
+                    path,
+                    expected_image_config_digest=image_digest,
+                    expected_hostname=hostname,
+                )
+            )
+            self.assertIsNone(extra_gpu)
+            self.assertEqual(extra_gpu_validation["status"], "FAIL")
+            self.assertFalse(extra_gpu_validation["exact_gpu_request"])
+            payload[0]["HostConfig"]["DeviceRequests"].pop()
+
+            payload[0]["Mounts"].append(
+                {
+                    "Type": "bind",
+                    "Destination": "/opt/kvbench",
+                    "RW": True,
+                }
+            )
+            path.write_text(json.dumps(payload))
+            extra_mount, extra_mount_validation = (
+                run_preflight.validate_container_runtime_inspect(
+                    path,
+                    expected_image_config_digest=image_digest,
+                    expected_hostname=hostname,
+                )
+            )
+            self.assertIsNone(extra_mount)
+            self.assertEqual(extra_mount_validation["status"], "FAIL")
+            self.assertFalse(
+                extra_mount_validation["required_mounts_match"]
+            )
+
+            payload[0]["Mounts"].pop()
+            payload[0]["HostConfig"]["Tmpfs"]["/tmp"] = (
+                "rw,nosuid,nodev,size=9g"
+            )
+            path.write_text(json.dumps(payload))
+            altered_tmpfs, altered_tmpfs_validation = (
+                run_preflight.validate_container_runtime_inspect(
+                    path,
+                    expected_image_config_digest=image_digest,
+                    expected_hostname=hostname,
+                )
+            )
+            self.assertIsNone(altered_tmpfs)
+            self.assertEqual(altered_tmpfs_validation["status"], "FAIL")
+            self.assertFalse(altered_tmpfs_validation["exact_tmpfs"])
+
+    def test_process_snapshots_use_selected_project_python(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_directory:
+            recorder = run_preflight.EvidenceRecorder(
+                Path(raw_directory),
+                {},
+                project_python=run_preflight.MEASUREMENT_CONTAINER_PYTHON,
+            )
+            command_record = {"id": "process_unit_before"}
+            with (
+                mock.patch.object(
+                    recorder,
+                    "run",
+                    return_value=command_record,
+                ) as run,
+                mock.patch.object(
+                    recorder,
+                    "_snapshot_from_command",
+                    return_value={"phase": "before"},
+                ),
+            ):
+                recorder.capture_snapshot(
+                    target_command_id="unit",
+                    phase="before",
+                    supervised_root=None,
+                    environment={},
+                )
+            argv = run.call_args.args[2]
+            self.assertEqual(
+                argv[0],
+                str(run_preflight.MEASUREMENT_CONTAINER_PYTHON),
+            )
+        native = run_preflight.EvidenceRecorder(Path("/tmp"), {})
+        self.assertEqual(native.project_python, run_preflight.VENV_PYTHON)
+
+    def test_historical_e00_manifests_remain_schema_valid(self) -> None:
+        schema = json.loads(
+            (ROOT / "preflight" / "e00_manifest.schema.json").read_text()
+        )
+        validator = jsonschema.Draft202012Validator(
+            schema,
+            format_checker=jsonschema.Draft202012Validator.FORMAT_CHECKER,
+        )
+        manifests = sorted(
+            (ROOT / "docs" / "evidence" / "e00").glob("e00-*/manifest.json")
+        )
+        self.assertTrue(manifests)
+        for path in manifests:
+            with self.subTest(path=path):
+                errors = sorted(
+                    validator.iter_errors(json.loads(path.read_text())),
+                    key=lambda error: list(error.path),
+                )
+                self.assertEqual(
+                    [error.message for error in errors],
+                    [],
+                )
+
+    def test_schema_accepts_exact_container_manifest_projection(self) -> None:
+        schema = json.loads(
+            (ROOT / "preflight" / "e00_manifest.schema.json").read_text()
+        )
+        historical = [
+            json.loads(path.read_text())
+            for path in sorted(
+                (ROOT / "docs" / "evidence" / "e00").glob(
+                    "e00-*/manifest.json"
+                )
+            )
+        ]
+        manifest = copy.deepcopy(
+            next(
+                item
+                for item in historical
+                if item["gate"]["aggregate_status"] == "PASS"
+            )
+        )
+        run_id = manifest["run"]["id"]
+        digest = "sha256:" + "a" * 64
+        manifest["schema_version"] = "e00-manifest-1.1.0"
+        manifest["execution_environment"] = {
+            "kind": "measurement_container",
+            "verification_status": "PASS",
+            "verification_evidence_file_id": manifest[
+                "execution_environment"
+            ]["verification_evidence_file_id"],
+            "performance_claim_eligible": False,
+            "performance_ineligibility_reasons": [
+                "container_bf16_parity_not_yet_established",
+                "hardware_certification_not_benchmark_timing",
+            ],
+            "container": {
+                "runtime": "docker",
+                "image_reference": "kvbench-measurement:phase6a",
+                "image_config_digest": digest,
+                "base_image_digest": digest,
+                "image_inspect_validation": manifest["evidence"][
+                    "commands"
+                ][0]["stdout"],
+                "image_inspect": manifest["evidence"]["commands"][0][
+                    "stdout"
+                ],
+                "runtime_container_id": "b" * 64,
+                "runtime_inspect_validation": manifest["evidence"][
+                    "commands"
+                ][0]["stdout"],
+                "runtime_inspect": manifest["evidence"]["commands"][0][
+                    "stdout"
+                ],
+                "digest_status": (
+                    "verified_against_sanitized_image_inspect"
+                ),
+            },
+            "container_parity_required_before_e02": True,
+        }
+        manifest["evidence"]["storage"]["root"] = (
+            "artifacts/phase6a/container_g0"
+        )
+        manifest["evidence"]["storage"]["run_directory"] = (
+            f"artifacts/phase6a/container_g0/{run_id}"
+        )
+        manifest["gate"]["checks"][1]["name"] = (
+            "measurement_container_environment_verified"
+        )
+        errors = run_preflight.validate_manifest(manifest)
+        self.assertEqual(errors, [])
+        wrong_version = copy.deepcopy(manifest)
+        wrong_version["schema_version"] = "e00-manifest-1.0.0"
+        self.assertTrue(run_preflight.validate_manifest(wrong_version))
+        native_as_container_version = copy.deepcopy(historical[-1])
+        native_as_container_version["schema_version"] = "e00-manifest-1.1.0"
+        self.assertTrue(
+            run_preflight.validate_manifest(native_as_container_version)
+        )
+        environment_validator = jsonschema.Draft202012Validator(
+            {
+                "$defs": schema["$defs"],
+                "$ref": "#/$defs/measurementContainerExecutionEnvironment",
+            }
+        )
+        failed_environment = copy.deepcopy(
+            manifest["execution_environment"]
+        )
+        failed_environment["kind"] = "unverified"
+        failed_environment["verification_status"] = "FAIL"
+        failed_environment["performance_ineligibility_reasons"].append(
+            "execution_environment_not_verified"
+        )
+        failed_environment["container"]["image_inspect"] = None
+        failed_environment["container"]["digest_status"] = (
+            "image_inspect_verification_failed"
+        )
+        self.assertEqual(
+            list(environment_validator.iter_errors(failed_environment)),
+            [],
+        )
+        invalid_pass = copy.deepcopy(manifest["execution_environment"])
+        invalid_pass["container"]["image_inspect"] = None
+        invalid_pass["container"]["digest_status"] = (
+            "image_inspect_verification_failed"
+        )
+        self.assertTrue(
+            list(environment_validator.iter_errors(invalid_pass))
+        )
 
     def test_python_lock_is_hash_complete(self) -> None:
         locked = run_preflight.parse_requirements_lock(
@@ -1128,6 +1901,46 @@ class PreflightUnitTests(unittest.TestCase):
         )
         self.assertGreaterEqual(len(detected), 5)
 
+    def test_measurement_container_validation_requires_visible_docker(self) -> None:
+        clean = run_preflight.measurement_container_validation_errors(
+            container_detection_ok=True,
+            container_detection_output="docker",
+            cgroup_evidence={
+                "host_cgroup": "0::/docker/test\n",
+                "host_self_cgroup": "0::/docker/test\n",
+            },
+            present_container_markers=["/.dockerenv"],
+            image_identity_ok=True,
+        )
+        self.assertEqual(clean, [])
+
+        hidden_marker = run_preflight.measurement_container_validation_errors(
+            container_detection_ok=True,
+            container_detection_output="docker",
+            cgroup_evidence={
+                "host_cgroup": "0::/docker/test\n",
+                "host_self_cgroup": "0::/docker/test\n",
+            },
+            present_container_markers=[],
+            image_identity_ok=True,
+        )
+        self.assertTrue(any("/.dockerenv" in item for item in hidden_marker))
+
+        ambiguous = run_preflight.measurement_container_validation_errors(
+            container_detection_ok=False,
+            container_detection_output="none",
+            cgroup_evidence={
+                "host_cgroup": "",
+                "host_self_cgroup": "0::/scope\n",
+            },
+            present_container_markers=["/.dockerenv"],
+            image_identity_ok=False,
+        )
+        self.assertGreaterEqual(len(ambiguous), 4)
+        self.assertTrue(
+            any("identity verification failed" in item for item in ambiguous)
+        )
+
     def test_verification_output_must_be_byte_empty(self) -> None:
         self.assertTrue(
             run_preflight.verification_outputs_are_empty(
@@ -1235,6 +2048,107 @@ Build cuda_13.0.r13.0/compiler.36400806_0
         self.assertEqual(result["status"], "FAIL")
         self.assertTrue(
             any("unexpected-extra" in item for item in result["errors"])
+        )
+
+    def test_container_dependency_inventory_is_exact_and_target_aware(
+        self,
+    ) -> None:
+        locked = run_preflight.parse_requirements_lock(
+            ROOT / "preflight" / "requirements-e00.txt"
+        )
+        installed = [
+            {"name": name, "version": version}
+            for name, version in locked.items()
+        ]
+        system_lock = {
+            "dpkg_packages": [
+                {
+                    "name": "locked-package",
+                    "version": "1.2.3",
+                    "architecture": "amd64",
+                }
+            ],
+            "tools": [],
+        }
+        dpkg_inventory = "locked-package\t1.2.3\tamd64\n"
+        phase3_locked = run_preflight.parse_requirements_lock(
+            ROOT / "preflight" / "requirements-phase3.txt"
+        )
+        phase3_freeze = "".join(
+            f"{name}=={version}\n"
+            for name, version in sorted(phase3_locked.items())
+        )
+        passing = run_preflight.verify_dependency_locks(
+            system_lock,
+            dpkg_inventory,
+            installed,
+            full_dpkg_text=dpkg_inventory,
+            phase3_freeze_text=phase3_freeze,
+            phase3_dependency_check_ok=True,
+        )
+        self.assertEqual(passing["status"], "PASS")
+        self.assertEqual(
+            passing["container_dependency_validation"],
+            {
+                "full_dpkg_inventory_matches": True,
+                "expected_dpkg_package_count": 1,
+                "observed_dpkg_package_count": 1,
+                "phase3_target_freeze_matches": True,
+                "expected_phase3_distribution_count": len(phase3_locked),
+                "observed_phase3_distribution_count": len(phase3_locked),
+                "phase3_target_dependency_check_passed": True,
+            },
+        )
+
+        extra_dpkg = run_preflight.verify_dependency_locks(
+            system_lock,
+            dpkg_inventory,
+            installed,
+            full_dpkg_text=(
+                dpkg_inventory + "unexpected-package\t9.9\tamd64\n"
+            ),
+            phase3_freeze_text=phase3_freeze,
+            phase3_dependency_check_ok=True,
+        )
+        self.assertEqual(extra_dpkg["status"], "FAIL")
+        self.assertTrue(
+            any(
+                "extra package: unexpected-package" in error
+                for error in extra_dpkg["errors"]
+            )
+        )
+
+        mismatched_phase3 = run_preflight.verify_dependency_locks(
+            system_lock,
+            dpkg_inventory,
+            installed,
+            full_dpkg_text=dpkg_inventory,
+            phase3_freeze_text=(
+                phase3_freeze + "unexpected-distribution==1.0\n"
+            ),
+            phase3_dependency_check_ok=True,
+        )
+        self.assertEqual(mismatched_phase3["status"], "FAIL")
+        self.assertFalse(
+            mismatched_phase3["container_dependency_validation"][
+                "phase3_target_freeze_matches"
+            ]
+        )
+
+        failed_check = run_preflight.verify_dependency_locks(
+            system_lock,
+            dpkg_inventory,
+            installed,
+            full_dpkg_text=dpkg_inventory,
+            phase3_freeze_text=phase3_freeze,
+            phase3_dependency_check_ok=False,
+        )
+        self.assertEqual(failed_check["status"], "FAIL")
+        self.assertTrue(
+            any(
+                "target-aware dependency check failed" in error
+                for error in failed_check["errors"]
+            )
         )
 
     def test_system_lock_tool_names_and_reported_versions(self) -> None:
@@ -1602,6 +2516,79 @@ Build cuda_13.0.r13.0/compiler.36400806_0
             self.assertFalse(outcome["checkpoint_verified"])
             self.assertFalse(outcome["release_published_by_collector"])
             self.assertTrue(recorder.audit_errors)
+
+    def test_container_finalization_adds_r2_inventory_complete_last(self) -> None:
+        from scripts.r2_artifact import validate_local_artifact
+
+        with tempfile.TemporaryDirectory() as raw_directory:
+            root = Path(raw_directory)
+            stage = root / ".e00-container-finalize.tmp"
+            final = root / "e00-container-finalize"
+            stage.mkdir()
+            manifest = {
+                "schema_version": "e00-manifest-1.1.0",
+                "run": {
+                    "id": final.name,
+                    "status": "PASS",
+                    "finished_at_utc": "2026-07-24T00:00:00Z",
+                },
+                "evidence": {"files": [], "commands": []},
+            }
+
+            run_preflight.finalize_stage(
+                stage=stage,
+                final=final,
+                manifest=manifest,
+            )
+
+            inventory = json.loads(
+                (final / "artifact_inventory.json").read_text()
+            )
+            complete = json.loads((final / "COMPLETE").read_text())
+            self.assertEqual(
+                [item["path"] for item in inventory["files"]],
+                ["manifest.json"],
+            )
+            self.assertEqual(
+                complete["artifact_inventory_sha256"],
+                run_preflight.sha256_file(
+                    final / "artifact_inventory.json"
+                ),
+            )
+            self.assertTrue(complete["written_last"])
+            # This fixture isolates the finalizer's control-file protocol; a
+            # separate manifest suite exercises full E00 schema semantics.
+            with mock.patch(
+                "scripts.r2_artifact._validate_e00_artifact"
+            ):
+                validated = validate_local_artifact(final, environ={})
+            self.assertEqual(validated.directory, final.resolve())
+
+    def test_native_finalization_retains_historical_control_set(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_directory:
+            root = Path(raw_directory)
+            stage = root / ".e00-native-finalize.tmp"
+            final = root / "e00-native-finalize"
+            stage.mkdir()
+            manifest = {
+                "schema_version": "e00-manifest-1.0.0",
+                "run": {
+                    "id": final.name,
+                    "status": "PASS",
+                    "finished_at_utc": "2026-07-24T00:00:00Z",
+                },
+                "evidence": {"files": [], "commands": []},
+            }
+
+            run_preflight.finalize_stage(
+                stage=stage,
+                final=final,
+                manifest=manifest,
+            )
+
+            self.assertFalse((final / "artifact_inventory.json").exists())
+            complete = json.loads((final / "COMPLETE").read_text())
+            self.assertNotIn("artifact_inventory_sha256", complete)
 
 
 if __name__ == "__main__":

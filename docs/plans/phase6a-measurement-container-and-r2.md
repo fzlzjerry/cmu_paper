@@ -48,21 +48,28 @@ evidence and Phase 5 fixtures remain outside the writable scope.
 
 ## Container identity and G0
 
-The build records the Dockerfile SHA-256, base manifest digest, image
-ID/config digest, secret-free full image inspect, exact installed dpkg
-inventory, Python freeze, and CUDA/compiler/tool identities. A repository
-digest is recorded only if an already-approved registry exists.
+The build context is a `git archive` of the clean committed HEAD, not the
+working directory. The build records the Dockerfile SHA-256, base manifest
+digest, image ID/config digest, source-revision label, secret-free full image
+inspect and history, a streaming scan of every saved image layer for `.env`
+files and configured credential bytes, exact installed dpkg inventory, both
+Python freezes, and CUDA/compiler/tool identities. A repository digest is
+recorded only if an already-approved registry exists.
 
 `make measurement-container` builds the digest-pinned Dockerfile without
-secrets. `make verify-measurement-container` checks the recorded identities.
-`make preflight-container` runs the existing E00 implementation, under a new
-run ID, with the repository source read-only, a separate writable evidence
-mount, `--network=none`, the NVIDIA runtime, the selected GPU UUID, and the
-exact image config digest. The explicit container mode requires positive
-container detection and repeats every G0 CUDA build, native-SASS, forced-PTX,
+secrets and returns only `BUILT_UNCERTIFIED`. Verification and preflight
+require the explicit immutable image config digest and the separately reviewed
+container system lock; they never resolve a floating tag as authority.
+`make preflight-container` creates the exact container without starting it,
+captures host-side image and runtime inspect records, validates the runtime
+container ID, image ID, source revision, disabled network, read-only root,
+host PID view, and exact GPU request, then starts that same instance. It runs
+the existing E00 implementation under a new run ID with a clean detached
+source clone mounted read-only and a separate writable evidence mount. The
+explicit container mode repeats every G0 CUDA build, native-SASS, forced-PTX,
 Compute Sanitizer, `nvdisasm`, cubin/PTX, exclusivity, schema, checksum,
-provenance, and COMPLETE-last check. Any failure is preserved and leaves
-B-010 open.
+provenance, inventory, and COMPLETE-last check. Any failure is preserved and
+leaves B-010 open.
 
 ## Bounded BF16 parity
 

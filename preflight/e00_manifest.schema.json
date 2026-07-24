@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "urn:cmu-paper:preflight:e00-manifest:1.0.0",
-  "title": "E00 native-host hardware preflight manifest",
-  "description": "Strict, self-contained schema for the non-performance Phase 1 / Gate G0 certification defined by CODEX_WORKFLOW.md and Decisions 0002-0004.",
+  "$id": "urn:cmu-paper:preflight:e00-manifest:1.1.0",
+  "title": "E00 hardware preflight manifest",
+  "description": "Strict, self-contained schema for non-performance native-host and Measurement Container Gate G0 certification.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -22,7 +22,10 @@
   ],
   "properties": {
     "schema_version": {
-      "const": "e00-manifest-1.0.0"
+      "enum": [
+        "e00-manifest-1.0.0",
+        "e00-manifest-1.1.0"
+      ]
     },
     "run": {
       "$ref": "#/$defs/run"
@@ -92,7 +95,10 @@
           "execution_environment": {
             "properties": {
               "kind": {
-                "const": "native_host"
+                "enum": [
+                  "native_host",
+                  "measurement_container"
+                ]
               },
               "verification_status": {
                 "const": "PASS"
@@ -330,6 +336,92 @@
             "properties": {
               "status": {
                 "const": "FAIL"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "schema_version": {
+            "const": "e00-manifest-1.0.0"
+          }
+        },
+        "required": [
+          "schema_version"
+        ]
+      },
+      "then": {
+        "properties": {
+          "execution_environment": {
+            "$ref": "#/$defs/nativeExecutionEnvironment"
+          },
+          "evidence": {
+            "properties": {
+              "storage": {
+                "properties": {
+                  "root": {
+                    "const": "docs/evidence/e00"
+                  },
+                  "run_directory": {
+                    "pattern": "^docs/evidence/e00/e00-[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+                  }
+                }
+              }
+            }
+          },
+          "gate": {
+            "properties": {
+              "checks": {
+                "prefixItems": [
+                  {},
+                  {
+                    "properties": {
+                      "name": {
+                        "const": "native_host_environment_verified"
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "execution_environment": {
+            "$ref": "#/$defs/measurementContainerExecutionEnvironment"
+          },
+          "evidence": {
+            "properties": {
+              "storage": {
+                "properties": {
+                  "root": {
+                    "const": "artifacts/phase6a/container_g0"
+                  },
+                  "run_directory": {
+                    "pattern": "^artifacts/phase6a/container_g0/e00-[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+                  }
+                }
+              }
+            }
+          },
+          "gate": {
+            "properties": {
+              "checks": {
+                "prefixItems": [
+                  {},
+                  {
+                    "properties": {
+                      "name": {
+                        "const": "measurement_container_environment_verified"
+                      }
+                    }
+                  }
+                ]
               }
             }
           }
@@ -614,6 +706,16 @@
       }
     },
     "executionEnvironment": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/nativeExecutionEnvironment"
+        },
+        {
+          "$ref": "#/$defs/measurementContainerExecutionEnvironment"
+        }
+      ]
+    },
+    "nativeExecutionEnvironment": {
       "type": "object",
       "additionalProperties": false,
       "required": [
@@ -725,6 +827,188 @@
                   "const": "unavailable_unverified_environment"
                 }
               }
+            }
+          }
+        }
+      ]
+    },
+    "measurementContainerExecutionEnvironment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "verification_status",
+        "verification_evidence_file_id",
+        "performance_claim_eligible",
+        "performance_ineligibility_reasons",
+        "container",
+        "container_parity_required_before_e02"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "measurement_container",
+            "unverified"
+          ]
+        },
+        "verification_status": {
+          "enum": [
+            "PASS",
+            "FAIL"
+          ]
+        },
+        "verification_evidence_file_id": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "performance_claim_eligible": {
+          "const": false
+        },
+        "performance_ineligibility_reasons": {
+          "type": "array",
+          "minItems": 2,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/nonEmptyString"
+          },
+          "allOf": [
+            {
+              "contains": {
+                "const": "container_bf16_parity_not_yet_established"
+              },
+              "minContains": 1,
+              "maxContains": 1
+            },
+            {
+              "contains": {
+                "const": "hardware_certification_not_benchmark_timing"
+              },
+              "minContains": 1,
+              "maxContains": 1
+            }
+          ]
+        },
+        "container": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "runtime",
+            "image_reference",
+            "image_config_digest",
+            "base_image_digest",
+            "image_inspect_validation",
+            "image_inspect",
+            "runtime_container_id",
+            "runtime_inspect_validation",
+            "runtime_inspect",
+            "digest_status"
+          ],
+          "properties": {
+            "runtime": {
+              "const": "docker"
+            },
+            "image_reference": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 512,
+              "pattern": "^[^\\s\\u0000-\\u001f\\u007f]+$"
+            },
+            "image_config_digest": {
+              "type": "string",
+              "pattern": "^sha256:[0-9a-f]{64}$"
+            },
+            "base_image_digest": {
+              "type": "string",
+              "pattern": "^sha256:[0-9a-f]{64}$"
+            },
+            "image_inspect_validation": {
+              "$ref": "#/$defs/commandOutput"
+            },
+            "image_inspect": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/commandOutput"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "runtime_container_id": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            "runtime_inspect_validation": {
+              "$ref": "#/$defs/commandOutput"
+            },
+            "runtime_inspect": {
+              "$ref": "#/$defs/commandOutput"
+            },
+            "digest_status": {
+              "enum": [
+                "verified_against_sanitized_image_inspect",
+                "image_inspect_verification_failed"
+              ]
+            }
+          },
+          "oneOf": [
+            {
+              "properties": {
+                "image_inspect": {
+                  "$ref": "#/$defs/commandOutput"
+                },
+                "digest_status": {
+                  "const": "verified_against_sanitized_image_inspect"
+                }
+              }
+            },
+            {
+              "properties": {
+                "image_inspect": {
+                  "type": "null"
+                },
+                "digest_status": {
+                  "const": "image_inspect_verification_failed"
+                }
+              }
+            }
+          ]
+        },
+        "container_parity_required_before_e02": {
+          "const": true
+        }
+      },
+      "oneOf": [
+        {
+          "properties": {
+            "kind": {
+              "const": "measurement_container"
+            },
+            "verification_status": {
+              "const": "PASS"
+            },
+            "container": {
+              "properties": {
+                "digest_status": {
+                  "const": "verified_against_sanitized_image_inspect"
+                }
+              }
+            }
+          }
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "unverified"
+            },
+            "verification_status": {
+              "const": "FAIL"
+            },
+            "performance_ineligibility_reasons": {
+              "contains": {
+                "const": "execution_environment_not_verified"
+              },
+              "minContains": 1,
+              "maxContains": 1
             }
           }
         }
@@ -3818,6 +4102,9 @@
         "PYTHONOPTIMIZE": {
           "const": "0"
         },
+        "PYTHONPATH": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
         "MAX_JOBS": {
           "type": "string",
           "pattern": "^[1-9][0-9]*$"
@@ -4011,11 +4298,14 @@
           ],
           "properties": {
             "root": {
-              "const": "docs/evidence/e00"
+              "enum": [
+                "docs/evidence/e00",
+                "artifacts/phase6a/container_g0"
+              ]
             },
             "run_directory": {
               "type": "string",
-              "pattern": "^docs/evidence/e00/e00-[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+              "pattern": "^(?:docs/evidence/e00|artifacts/phase6a/container_g0)/e00-[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
             },
             "append_only": {
               "const": true
@@ -4192,7 +4482,10 @@
                 {
                   "properties": {
                     "name": {
-                      "const": "native_host_environment_verified"
+                      "enum": [
+                        "native_host_environment_verified",
+                        "measurement_container_environment_verified"
+                      ]
                     }
                   }
                 }

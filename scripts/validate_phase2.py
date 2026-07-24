@@ -33,6 +33,7 @@ PHASE2_ENTRY_COMMIT = "fb164b5ea96031ca40b21f4b8436a49a3bb5b8d2"
 PHASE2_FINAL_COMMIT = "7c36d130565acef0883acb638c6b6c731b3f32ad"
 PHASE4_ENTRY_COMMIT = "89189297992947b7a8b79252add551c9321e5f33"
 PHASE5_ENTRY_COMMIT = "9eeabe787060e84c20cd7f88da8f7bca68eae1d4"
+PHASE6A_ENTRY_COMMIT = "a25a76a052a918428e8eb56cdfde63470cf6a152"
 QUALITY_COMMIT = "a7b8285dd8ed2fb598efbb3312e9f55064a0ee64"
 ENVIRONMENT_COMMIT = "ea176994921c793789ebbd9d42515ce20ae4baee"
 EVIDENCE_COMMIT = "fb164b5ea96031ca40b21f4b8436a49a3bb5b8d2"
@@ -325,6 +326,41 @@ PHASE5_ALLOWED_PATHS = frozenset(
         ),
     }
 )
+PHASE6A_ALLOWED_PATHS = frozenset(
+    {
+        ".dockerignore",
+        ".gitignore",
+        "Makefile",
+        "docker/measurement.Dockerfile",
+        "docs/blockers.md",
+        "docs/decisions/0016-measurement-container-execution-authority.md",
+        "docs/phase_reports/phase6a-measurement-container-and-r2-blocked.md",
+        "docs/phase_reports/phase6a-measurement-container-and-r2.md",
+        "docs/plans/phase6a-measurement-container-and-r2.md",
+        "docs/risk_register.md",
+        "docs/status.md",
+        "docs/tasks.md",
+        "preflight/e00_manifest.schema.json",
+        "preflight/measurement-container-system-packages.expected.json",
+        "preflight/measurement-container-system-packages.lock.json",
+        "preflight/run_preflight.py",
+        "scripts/r2_artifact.py",
+        "scripts/validate_phase2.py",
+        "tests/unit/test_measurement_container.py",
+        "tests/unit/test_phase6a_governance.py",
+        "tests/unit/test_preflight_unit.py",
+        "tests/unit/test_r2_artifact.py",
+    }
+)
+PHASE6A_E00_ALLOWED_PATHS = frozenset(
+    {
+        "preflight/e00_manifest.schema.json",
+        "preflight/measurement-container-system-packages.expected.json",
+        "preflight/measurement-container-system-packages.lock.json",
+        "preflight/run_preflight.py",
+        "tests/unit/test_preflight_unit.py",
+    }
+)
 
 RAW_RESULT_SUFFIXES = {
     ".bin",
@@ -540,9 +576,17 @@ def historical_phase4_paths() -> set[str]:
     )
 
 
-def current_phase5_paths() -> set[str]:
+def historical_phase5_paths() -> set[str]:
+    return git_paths(
+        (
+            "diff", "--name-only", "-z", PHASE5_ENTRY_COMMIT, PHASE6A_ENTRY_COMMIT, "--"
+        )
+    )
+
+
+def current_phase6a_paths() -> set[str]:
     changed = git_paths(
-        ("diff", "--name-only", "-z", PHASE5_ENTRY_COMMIT, "--")
+        ("diff", "--name-only", "-z", PHASE6A_ENTRY_COMMIT, "--")
     )
     untracked = git_paths(
         ("ls-files", "--others", "--exclude-standard", "-z", "--")
@@ -550,8 +594,14 @@ def current_phase5_paths() -> set[str]:
     return changed | untracked
 
 
+def current_phase5_paths() -> set[str]:
+    """Compatibility alias for callers predating the Phase 6A boundary."""
+
+    return historical_phase5_paths() | current_phase6a_paths()
+
+
 def changed_paths() -> set[str]:
-    return current_phase3_paths()
+    return current_phase6a_paths()
 
 
 def repository_python_paths() -> list[Path]:
@@ -559,6 +609,7 @@ def repository_python_paths() -> list[Path]:
     if SRC.is_dir():
         paths.update(SRC.rglob("*.py"))
     paths.add(ROOT / "scripts" / "validate_phase2.py")
+    paths.add(ROOT / "scripts" / "r2_artifact.py")
     schema_tests = ROOT / "tests" / "schema"
     if schema_tests.is_dir():
         paths.update(schema_tests.rglob("*.py"))
@@ -566,12 +617,18 @@ def repository_python_paths() -> list[Path]:
     if unit_tests.is_dir():
         paths.update(unit_tests.glob("test_phase2_*.py"))
         paths.update(unit_tests.glob("test_phase3_*.py"))
+        paths.update(unit_tests.glob("test_phase4_*.py"))
+        paths.update(unit_tests.glob("test_phase5_*.py"))
+        paths.update(unit_tests.glob("test_phase6a_*.py"))
         paths.update(
             unit_tests / name
             for name in (
                 "test_allocation_attribution.py",
                 "test_gqa_device_dispatch.py",
                 "test_gqa_taxonomy.py",
+                "test_measurement_container.py",
+                "test_preflight_unit.py",
+                "test_r2_artifact.py",
                 "test_process_supervision.py",
             )
         )
@@ -1438,6 +1495,7 @@ def validate_phase3_artifact_root() -> list[str]:
                 "phase3_campaigns",
                 "phase3_reports",
                 "phase4_smoke",
+                "phase6a",
             }
         )
         if unexpected:
@@ -1491,6 +1549,28 @@ def validate_phase3_artifact_root() -> list[str]:
     return errors
 
 
+def validate_phase6a_artifact_root() -> list[str]:
+    """Keep ignored Phase 6A outputs inside three exact append-only lanes."""
+
+    root = ROOT / "artifacts" / "phase6a"
+    if not root.exists() and not root.is_symlink():
+        return []
+    if root.is_symlink() or not root.is_dir():
+        return ["Phase 6A artifact root is unsafe"]
+    allowed = {"container_g0", "bf16_parity", "r2_acceptance"}
+    errors: list[str] = []
+    for child in sorted(root.iterdir()):
+        if child.name not in allowed:
+            errors.append(
+                f"unapproved Phase 6A artifact root: {child.name}"
+            )
+        elif child.is_symlink() or not child.is_dir():
+            errors.append(
+                f"unsafe Phase 6A artifact root: {child.name}"
+            )
+    return errors
+
+
 def check_scope() -> int:
     errors: list[str] = []
     if not commit_is_ancestor(PHASE2_FINAL_COMMIT):
@@ -1526,27 +1606,34 @@ def check_scope() -> int:
         errors.append(
             f"historical files outside the approved Phase 4 plan: {phase4_unexpected!r}"
         )
-    changed = current_phase5_paths()
-    phase5_unexpected = sorted(changed - PHASE5_ALLOWED_PATHS)
+    if not commit_is_ancestor(PHASE6A_ENTRY_COMMIT):
+        errors.append(
+            "the accepted Phase 6A entry commit is not an ancestor of HEAD"
+        )
+    phase5 = historical_phase5_paths()
+    phase5_unexpected = sorted(phase5 - PHASE5_ALLOWED_PATHS)
     if phase5_unexpected:
         errors.append(
-            f"files outside the approved Phase 5 plan: {phase5_unexpected!r}"
+            f"historical files outside the approved Phase 5 plan: "
+            f"{phase5_unexpected!r}"
+        )
+    changed = current_phase6a_paths()
+    phase6a_unexpected = sorted(changed - PHASE6A_ALLOWED_PATHS)
+    if phase6a_unexpected:
+        errors.append(
+            f"files outside the approved Phase 6A plan: {phase6a_unexpected!r}"
         )
     for relative in sorted(changed):
         if relative.startswith("docs/evidence/e00/"):
             errors.append(f"immutable E00 evidence changed: {relative}")
         if relative in QUALITY_PROTOCOL_HASHES:
             errors.append(
-                f"quality protocol changed during Phase 5: {relative}"
+                f"quality protocol changed during Phase 6A: {relative}"
             )
-        is_reference_fixture = (
-            relative in PHASE5_ALLOWED_PATHS
-            and relative.startswith("reference/turboquant/fixtures/")
-        )
-        if Path(relative).suffix in RAW_RESULT_SUFFIXES and not is_reference_fixture:
+        if Path(relative).suffix in RAW_RESULT_SUFFIXES:
             errors.append(
                 f"forbidden binary, kernel, model, or profiler artifact "
-                f"in Phase 5 scope: {relative}"
+                f"in Phase 6A scope: {relative}"
             )
         if relative.startswith(
             (
@@ -1558,7 +1645,7 @@ def check_scope() -> int:
             )
         ):
             errors.append(
-                f"forbidden result tree in Phase 5 scope: {relative}"
+                f"forbidden result tree in Phase 6A scope: {relative}"
             )
     e00_changes = git_paths(
         (
@@ -1570,10 +1657,11 @@ def check_scope() -> int:
             *E00_PROTECTED_PATHS,
         )
     )
-    if e00_changes:
+    unexpected_e00_changes = e00_changes - PHASE6A_E00_ALLOWED_PATHS
+    if unexpected_e00_changes:
         errors.append(
-            f"certified E00 implementation changed: "
-            f"{sorted(e00_changes)!r}"
+            f"certified E00 implementation changed outside the exact "
+            f"Phase 6A extension: {sorted(unexpected_e00_changes)!r}"
         )
     entry_makefile = git(
         ("show", f"{PHASE2_FINAL_COMMIT}:Makefile")
@@ -1591,6 +1679,7 @@ def check_scope() -> int:
                     f"certified Makefile target semantics changed: {target}"
                 )
     errors.extend(validate_phase3_artifact_root())
+    errors.extend(validate_phase6a_artifact_root())
     forbidden_modules = (
         "src/kvbench/methods/turboquant",
         "src/kvbench/methods/kivi",

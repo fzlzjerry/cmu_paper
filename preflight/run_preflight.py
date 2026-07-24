@@ -11,7 +11,7 @@ import hashlib
 import json
 import math
 import os
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 import re
 import secrets
 import signal
@@ -20,21 +20,42 @@ import stat
 import socket
 import subprocess
 import sys
+import tarfile
 import time
-from typing import Any, Iterable, Sequence
+from typing import Any, Iterable, Mapping, Sequence
 
 
 ROOT = Path(__file__).resolve().parents[1]
 EVIDENCE_ROOT = ROOT / "docs" / "evidence" / "e00"
+MEASUREMENT_CONTAINER_EVIDENCE_ROOT = (
+    ROOT / "artifacts" / "phase6a" / "container_g0"
+)
 SCHEMA_PATH = ROOT / "preflight" / "e00_manifest.schema.json"
 PYTHON_LOCK_PATH = ROOT / "preflight" / "requirements-e00.txt"
 SYSTEM_LOCK_PATH = ROOT / "preflight" / "system-packages.lock.json"
+MEASUREMENT_CONTAINER_SYSTEM_LOCK_PATH = (
+    ROOT
+    / "preflight"
+    / "measurement-container-system-packages.expected.json"
+)
 PROCESS_QUERY_PATH = ROOT / "preflight" / "process_query.py"
 PYTHON_PROBE_PATH = ROOT / "preflight" / "python_probe.py"
 VENV_PYTHON = ROOT / ".venv" / "bin" / "python"
+MEASUREMENT_CONTAINER_PYTHON = Path("/opt/kvbench/.venv/bin/python")
 PYTHON_INTEGRITY_PATH = ROOT / "preflight" / "python_integrity_probe.py"
 CUDA_HOME_DEFAULT = Path("/usr/local/cuda-13.0")
 EXPECTED_GPU_NAME = "NVIDIA RTX PRO 6000 Blackwell Workstation Edition"
+EXPECTED_GPU_UUID = "GPU-75bd273e-6b20-0d22-1b0b-5fbb6fb0025b"
+MEASUREMENT_BASE_DIGEST_LABEL = "org.kvbench.measurement.base.manifest"
+IMAGE_SECRET_VARIABLES = (
+    "AWS_ACCESS_KEY_ID",
+    "AWS_SECRET_ACCESS_KEY",
+    "AWS_SESSION_TOKEN",
+    "CLOUDFLARE_API_TOKEN",
+    "HF_TOKEN",
+    "HUGGING_FACE_HUB_TOKEN",
+    "R2_ACCOUNT_ID",
+)
 
 GPU_QUERY_FIELDS = (
     "index",
@@ -65,7 +86,7 @@ GPU_QUERY_FIELDS = (
     "driver_version",
 )
 
-GATE_NAMES = (
+NATIVE_HOST_GATE_NAMES = (
     "committed_clean_code",
     "native_host_environment_verified",
     "single_uuid_selected_gpu",
@@ -83,6 +104,16 @@ GATE_NAMES = (
     "no_foreign_compute_process",
     "manifest_schema_valid",
     "evidence_checksums_valid",
+)
+MEASUREMENT_CONTAINER_GATE_NAMES = (
+    "committed_clean_code",
+    "measurement_container_environment_verified",
+    *NATIVE_HOST_GATE_NAMES[2:],
+)
+# Preserve the historical public constant and default no-argument gate order.
+GATE_NAMES = NATIVE_HOST_GATE_NAMES
+ALL_GATE_NAMES = frozenset(
+    (*NATIVE_HOST_GATE_NAMES, *MEASUREMENT_CONTAINER_GATE_NAMES)
 )
 
 ENVIRONMENT_ALLOWLIST = (
@@ -103,6 +134,7 @@ ENVIRONMENT_ALLOWLIST = (
     "CUDA_CACHE_PATH",
     "PYTHONNOUSERSITE",
     "PYTHONOPTIMIZE",
+    "PYTHONPATH",
     "PYTORCH_NO_CUDA_MEMORY_CACHING",
     "MAX_JOBS",
     "CC",
@@ -140,6 +172,19 @@ CONTRACT_PATHS = (
     "preflight/e00_manifest.schema.json",
     "preflight/requirements-e00.txt",
     "preflight/system-packages.lock.json",
+)
+MEASUREMENT_CONTAINER_CONTRACT_PATHS = (
+    *tuple(
+        (
+            "preflight/measurement-container-system-packages.expected.json"
+            if path == "preflight/system-packages.lock.json"
+            else path
+        )
+        for path in CONTRACT_PATHS
+    ),
+    ".dockerignore",
+    "docker/measurement.Dockerfile",
+    "preflight/requirements-phase3.txt",
 )
 
 
@@ -415,10 +460,930 @@ def parse_last_json(text: str) -> dict[str, Any] | None:
     return None
 
 
+def _canonical_inspect_name(name: str) -> str:
+    with_word_boundaries = re.sub(
+        r"(?<=[a-z0-9])(?=[A-Z])",
+        "_",
+        name,
+    )
+    return re.sub(r"[^A-Za-z0-9]+", "_", with_word_boundaries).strip("_").upper()
+
+
+def configured_secret_value_names(
+    data: bytes,
+    environ: Mapping[str, str],
+) -> list[str]:
+    """Return only names of configured credentials whose bytes are present."""
+
+    return sorted(
+        name
+        for name in IMAGE_SECRET_VARIABLES
+        if (value := environ.get(name))
+        and value.encode("utf-8") in data
+    )
+
+
+def _stream_configured_secret_value_names(
+    stream: Any,
+    environ: Mapping[str, str],
+) -> set[str]:
+    configured = {
+        name: value.encode("utf-8")
+        for name in IMAGE_SECRET_VARIABLES
+        if (value := environ.get(name))
+    }
+    if not configured:
+        return set()
+    overlap = max(len(value) for value in configured.values()) - 1
+    tail = b""
+    found: set[str] = set()
+    while True:
+        chunk = stream.read(1024 * 1024)
+        if not chunk:
+            break
+        window = tail + chunk
+        for name, value in configured.items():
+            if name not in found and value in window:
+                found.add(name)
+        tail = window[-overlap:] if overlap > 0 else b""
+    return found
+
+
+def _safe_tar_parts(name: str) -> tuple[str, ...] | None:
+    candidate = PurePosixPath(name)
+    if candidate.is_absolute() or ".." in candidate.parts:
+        return None
+    parts = tuple(part for part in candidate.parts if part not in ("", "."))
+    return parts if parts else None
+
+
+def _contains_operator_env_filename(parts: Sequence[str]) -> bool:
+    return any(part == ".env" or part.startswith(".env.") for part in parts)
+
+
+def validate_docker_image_save_archive(
+    path: Path,
+    *,
+    secret_environment: Mapping[str, str],
+) -> dict[str, Any]:
+    """Validate a Docker image-save archive without exposing secret values."""
+
+    errors: list[str] = []
+    configured_secret_names: set[str] = set()
+    outer_member_count = 0
+    layer_count = 0
+    layer_member_count = 0
+    operator_env_path_count = 0
+    source_size_bytes: int | None = None
+
+    try:
+        file_stat = path.lstat()
+        if not stat.S_ISREG(file_stat.st_mode):
+            errors.append("image-save input is not a regular file")
+        elif file_stat.st_size <= 0:
+            errors.append("image-save input is empty")
+        else:
+            source_size_bytes = file_stat.st_size
+    except OSError as error:
+        errors.append(
+            "image-save input is unavailable: "
+            f"{type(error).__name__}"
+        )
+
+    if not errors:
+        try:
+            with tarfile.open(path, mode="r:*") as outer:
+                outer_members = outer.getmembers()
+                outer_member_count = len(outer_members)
+                members_by_name: dict[str, list[tarfile.TarInfo]] = {}
+                for member_index, member in enumerate(outer_members):
+                    members_by_name.setdefault(member.name, []).append(member)
+                    parts = _safe_tar_parts(member.name)
+                    if parts is None:
+                        errors.append(
+                            "unsafe outer archive member path at "
+                            f"member[{member_index}]"
+                        )
+                    elif _contains_operator_env_filename(parts):
+                        operator_env_path_count += 1
+                        errors.append(
+                            "operator environment file present in outer "
+                            f"archive at member[{member_index}]"
+                        )
+                    metadata = "\0".join(
+                        (
+                            member.name,
+                            member.linkname,
+                            member.uname,
+                            member.gname,
+                            json.dumps(
+                                member.pax_headers,
+                                sort_keys=True,
+                                separators=(",", ":"),
+                            ),
+                        )
+                    ).encode("utf-8", errors="surrogateescape")
+                    configured_secret_names.update(
+                        configured_secret_value_names(
+                            metadata,
+                            secret_environment,
+                        )
+                    )
+                    if member.isfile():
+                        stream = outer.extractfile(member)
+                        if stream is None:
+                            errors.append(
+                                "outer archive regular member is unreadable at "
+                                f"member[{member_index}]"
+                            )
+                        else:
+                            with stream:
+                                configured_secret_names.update(
+                                    _stream_configured_secret_value_names(
+                                        stream,
+                                        secret_environment,
+                                    )
+                                )
+
+                manifest_members = members_by_name.get("manifest.json", [])
+                layer_names: list[str] = []
+                if (
+                    len(manifest_members) != 1
+                    or not manifest_members[0].isfile()
+                    or manifest_members[0].size > 16 * 1024 * 1024
+                ):
+                    errors.append(
+                        "image-save archive must contain one bounded regular "
+                        "manifest.json"
+                    )
+                else:
+                    stream = outer.extractfile(manifest_members[0])
+                    if stream is None:
+                        errors.append("image-save manifest is unreadable")
+                    else:
+                        with stream:
+                            manifest_raw = stream.read(16 * 1024 * 1024 + 1)
+                        try:
+                            manifest = json.loads(manifest_raw.decode("utf-8"))
+                        except (UnicodeDecodeError, json.JSONDecodeError):
+                            errors.append(
+                                "image-save manifest is not valid UTF-8 JSON"
+                            )
+                        else:
+                            if (
+                                not isinstance(manifest, list)
+                                or len(manifest) != 1
+                                or not isinstance(manifest[0], dict)
+                                or not isinstance(
+                                    manifest[0].get("Layers"),
+                                    list,
+                                )
+                                or not manifest[0]["Layers"]
+                                or not all(
+                                    isinstance(item, str)
+                                    and _safe_tar_parts(item) is not None
+                                    for item in manifest[0]["Layers"]
+                                )
+                                or len(set(manifest[0]["Layers"]))
+                                != len(manifest[0]["Layers"])
+                            ):
+                                errors.append(
+                                    "image-save manifest does not identify "
+                                    "exactly one image with unique safe layers"
+                                )
+                            else:
+                                layer_names = list(manifest[0]["Layers"])
+
+                layer_count = len(layer_names)
+                for layer_index, layer_name in enumerate(layer_names):
+                    candidates = members_by_name.get(layer_name, [])
+                    if len(candidates) != 1 or not candidates[0].isfile():
+                        errors.append(
+                            "manifest layer is missing, duplicated, or not "
+                            f"regular at layer[{layer_index}]"
+                        )
+                        continue
+                    layer_stream = outer.extractfile(candidates[0])
+                    if layer_stream is None:
+                        errors.append(
+                            "manifest layer is unreadable at "
+                            f"layer[{layer_index}]"
+                        )
+                        continue
+                    try:
+                        with layer_stream:
+                            with tarfile.open(
+                                fileobj=layer_stream,
+                                mode="r|*",
+                            ) as layer:
+                                for member_index, member in enumerate(layer):
+                                    layer_member_count += 1
+                                    parts = _safe_tar_parts(member.name)
+                                    if parts is None:
+                                        errors.append(
+                                            "unsafe layer member path at "
+                                            f"layer[{layer_index}].member"
+                                            f"[{member_index}]"
+                                        )
+                                    elif _contains_operator_env_filename(parts):
+                                        operator_env_path_count += 1
+                                        errors.append(
+                                            "operator environment file present "
+                                            "in image layer at "
+                                            f"layer[{layer_index}].member"
+                                            f"[{member_index}]"
+                                        )
+                                    metadata = "\0".join(
+                                        (
+                                            member.name,
+                                            member.linkname,
+                                            member.uname,
+                                            member.gname,
+                                            json.dumps(
+                                                member.pax_headers,
+                                                sort_keys=True,
+                                                separators=(",", ":"),
+                                            ),
+                                        )
+                                    ).encode(
+                                        "utf-8",
+                                        errors="surrogateescape",
+                                    )
+                                    configured_secret_names.update(
+                                        configured_secret_value_names(
+                                            metadata,
+                                            secret_environment,
+                                        )
+                                    )
+                                    if member.isfile():
+                                        member_stream = layer.extractfile(
+                                            member
+                                        )
+                                        if member_stream is None:
+                                            errors.append(
+                                                "layer regular member is "
+                                                "unreadable at "
+                                                f"layer[{layer_index}].member"
+                                                f"[{member_index}]"
+                                            )
+                                        else:
+                                            with member_stream:
+                                                configured_secret_names.update(
+                                                    _stream_configured_secret_value_names(
+                                                        member_stream,
+                                                        secret_environment,
+                                                    )
+                                                )
+                    except (OSError, tarfile.TarError) as error:
+                        errors.append(
+                            "image layer cannot be parsed at "
+                            f"layer[{layer_index}]: "
+                            f"{type(error).__name__}"
+                        )
+        except (OSError, tarfile.TarError) as error:
+            errors.append(
+                "image-save archive cannot be parsed: "
+                f"{type(error).__name__}"
+            )
+
+    if configured_secret_names:
+        errors.append("image-save archive contains configured credential bytes")
+    return {
+        "status": "PASS" if not errors else "FAIL",
+        "errors": errors,
+        "source_size_bytes": source_size_bytes,
+        "outer_member_count": outer_member_count,
+        "layer_count": layer_count,
+        "layer_member_count": layer_member_count,
+        "operator_env_path_count": operator_env_path_count,
+        "configured_secret_variables": sorted(configured_secret_names),
+    }
+
+
+def _secret_named_inspect_fields(payload: Any) -> list[str]:
+    forbidden_parts = {
+        "AUTH",
+        "AUTHORIZATION",
+        "CREDENTIAL",
+        "CREDENTIALS",
+        "PASSWORD",
+        "PASSWD",
+        "SECRET",
+        "TOKEN",
+    }
+    forbidden_names = {
+        "AWS_ACCESS_KEY_ID",
+        "AWS_SECRET_ACCESS_KEY",
+        "CLOUDFLARE_API_TOKEN",
+        "HF_TOKEN",
+        "HUGGING_FACE_HUB_TOKEN",
+        "KVBENCH_R2_PREFIX",
+        "R2_ACCOUNT_ID",
+        "R2_BUCKET",
+        "R2_ENDPOINT",
+    }
+    forbidden_scalar_patterns = (
+        (
+            "credential variable name",
+            re.compile(
+                r"(?i)\b(?:AWS_ACCESS_KEY_ID|AWS_SECRET_ACCESS_KEY|"
+                r"AWS_SESSION_TOKEN|CLOUDFLARE_API_TOKEN|HF_TOKEN|"
+                r"HUGGING_FACE_HUB_TOKEN|R2_ACCOUNT_ID)\b"
+            ),
+        ),
+        (
+            "authorization header",
+            re.compile(
+                r"(?i)\bauthorization\s*:\s*(?:bearer|aws4-hmac-sha256)\b"
+            ),
+        ),
+        (
+            "private key marker",
+            re.compile(r"-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----"),
+        ),
+        (
+            "signed credential parameter",
+            re.compile(r"(?i)\b(?:x-amz-credential|credential)\s*="),
+        ),
+        (
+            "operator environment file path",
+            re.compile(r"(?:^|[/\\])\.env(?:\.|[/\\]|$)"),
+        ),
+    )
+    findings: list[str] = []
+
+    def secret_named(name: str) -> bool:
+        canonical = _canonical_inspect_name(name)
+        parts = set(canonical.split("_"))
+        return (
+            canonical in forbidden_names
+            or bool(parts & forbidden_parts)
+            or "ACCESS_KEY" in canonical
+            or "API_KEY" in canonical
+            or "PRIVATE_KEY" in canonical
+        )
+
+    def visit(value: Any, location: str) -> None:
+        if isinstance(value, dict):
+            for key_index, (raw_key, child) in enumerate(value.items()):
+                key = str(raw_key)
+                key_location = f"{location}.key[{key_index}]"
+                child_location = f"{location}.value[{key_index}]"
+                if secret_named(key):
+                    findings.append(
+                        f"secret-named JSON key at {key_location}"
+                    )
+                if _canonical_inspect_name(key) == "ENV" and isinstance(
+                    child,
+                    list,
+                ):
+                    for index, entry in enumerate(child):
+                        if not isinstance(entry, str) or "=" not in entry:
+                            findings.append(
+                                "malformed environment entry at "
+                                f"{child_location}.item[{index}]"
+                            )
+                            continue
+                        name, _value = entry.split("=", 1)
+                        if secret_named(name):
+                            findings.append(
+                                "secret-named environment variable at "
+                                f"{child_location}.item[{index}]"
+                            )
+                visit(child, child_location)
+        elif isinstance(value, list):
+            for index, child in enumerate(value):
+                visit(child, f"{location}.item[{index}]")
+        elif isinstance(value, str):
+            for label, pattern in forbidden_scalar_patterns:
+                if pattern.search(value):
+                    findings.append(
+                        f"secret-shaped scalar ({label}) at {location}"
+                    )
+
+    visit(payload, "$")
+    return sorted(set(findings))
+
+
+def validate_container_image_inspect(
+    path: Path,
+    *,
+    expected_image_config_digest: str,
+    expected_base_image_digest: str,
+    expected_revision: str | None = None,
+    secret_environment: Mapping[str, str] | None = None,
+) -> tuple[bytes | None, dict[str, Any]]:
+    """Validate a sanitized host-side image inspect without exposing values."""
+    errors: list[str] = []
+    raw: bytes | None = None
+    payload: Any = None
+    try:
+        file_stat = path.lstat()
+        if not stat.S_ISREG(file_stat.st_mode):
+            errors.append("image inspect input is not a regular file")
+        elif file_stat.st_size <= 0:
+            errors.append("image inspect input is empty")
+        elif file_stat.st_size > 16 * 1024 * 1024:
+            errors.append("image inspect input exceeds 16 MiB")
+        else:
+            raw = path.read_bytes()
+    except OSError as error:
+        errors.append(
+            "image inspect input is unavailable: "
+            f"{type(error).__name__}"
+        )
+
+    duplicate_key_count = 0
+
+    def reject_duplicate_keys(
+        pairs: list[tuple[str, Any]],
+    ) -> dict[str, Any]:
+        nonlocal duplicate_key_count
+        result: dict[str, Any] = {}
+        for key, value in pairs:
+            if key in result:
+                duplicate_key_count += 1
+            result[key] = value
+        return result
+
+    if raw is not None and not errors:
+        try:
+            payload = json.loads(
+                raw.decode("utf-8"),
+                object_pairs_hook=reject_duplicate_keys,
+            )
+        except UnicodeDecodeError as error:
+            errors.append(
+                "image inspect input is not UTF-8: "
+                f"byte offset {error.start}"
+            )
+        except json.JSONDecodeError as error:
+            errors.append(
+                "image inspect input is not valid JSON: "
+                f"{error.msg} at line {error.lineno} column {error.colno}"
+            )
+    if duplicate_key_count:
+        errors.append(
+            "duplicate JSON key names detected: "
+            f"count={duplicate_key_count}"
+        )
+
+    if isinstance(payload, list):
+        if len(payload) == 1 and isinstance(payload[0], dict):
+            payload = payload[0]
+        else:
+            errors.append(
+                "image inspect JSON array must contain exactly one object"
+            )
+            payload = None
+    elif payload is not None and not isinstance(payload, dict):
+        errors.append("image inspect JSON root must be one object")
+        payload = None
+
+    secret_findings = (
+        _secret_named_inspect_fields(payload)
+        if isinstance(payload, dict)
+        else []
+    )
+    errors.extend(secret_findings)
+    configured_secret_names = (
+        configured_secret_value_names(raw, secret_environment)
+        if raw is not None and secret_environment is not None
+        else []
+    )
+    errors.extend(
+        f"image inspect contains configured credential bytes for {name}"
+        for name in configured_secret_names
+    )
+
+    observed_config_digest: str | None = None
+    observed_base_digest: str | None = None
+    observed_revision: str | None = None
+    label_matches = False
+    forbidden_startup_environment_count = 0
+    if isinstance(payload, dict):
+        image_id = payload.get("Id")
+        if isinstance(image_id, str):
+            observed_config_digest = image_id
+        else:
+            errors.append("image inspect .Id is missing or invalid")
+        config = payload.get("Config")
+        if not isinstance(config, dict):
+            errors.append("image inspect .Config is missing or invalid")
+        else:
+            environment = config.get("Env")
+            if not isinstance(environment, list) or not all(
+                isinstance(item, str) and "=" in item
+                for item in environment
+            ):
+                errors.append("image inspect .Config.Env is missing or invalid")
+            else:
+                environment_names: set[str] = set()
+                forbidden_startup_names = {
+                    "LD_LIBRARY_PATH",
+                    "LD_PRELOAD",
+                    "PYTHONHOME",
+                    "PYTHONPATH",
+                }
+                for environment_index, entry in enumerate(environment):
+                    name, value = entry.split("=", 1)
+                    if name in environment_names:
+                        errors.append(
+                            "duplicate image environment variable at "
+                            f"Config.Env item[{environment_index}]"
+                        )
+                    environment_names.add(name)
+                    if name in forbidden_startup_names and value:
+                        forbidden_startup_environment_count += 1
+                        errors.append(
+                            "nonempty forbidden startup environment variable "
+                            f"at Config.Env item[{environment_index}]"
+                        )
+            labels = config.get("Labels")
+            if not isinstance(labels, dict):
+                errors.append(
+                    "image inspect .Config.Labels is missing or invalid"
+                )
+            else:
+                base_digest = labels.get(MEASUREMENT_BASE_DIGEST_LABEL)
+                if isinstance(base_digest, str):
+                    observed_base_digest = base_digest
+                else:
+                    errors.append(
+                        "image inspect base-image digest label is missing "
+                        "or invalid"
+                    )
+                expected_labels = {
+                    "org.kvbench.measurement.lane": "phase3-phase4-bf16",
+                    MEASUREMENT_BASE_DIGEST_LABEL: expected_base_image_digest,
+                    "org.kvbench.measurement.requirements-e00.sha256": (
+                        sha256_file(PYTHON_LOCK_PATH)
+                    ),
+                    "org.kvbench.measurement.requirements-phase3.sha256": (
+                        sha256_file(ROOT / "preflight" / "requirements-phase3.txt")
+                    ),
+                }
+                if expected_revision is not None:
+                    expected_labels["org.opencontainers.image.revision"] = (
+                        expected_revision
+                    )
+                revision = labels.get("org.opencontainers.image.revision")
+                if isinstance(revision, str):
+                    observed_revision = revision
+                label_matches = all(
+                    labels.get(name) == expected
+                    for name, expected in expected_labels.items()
+                )
+                if not label_matches:
+                    errors.append(
+                        "image inspect Measurement Container labels do not "
+                        "match committed inputs"
+                    )
+
+    config_digest_matches = (
+        observed_config_digest == expected_image_config_digest
+    )
+    base_digest_matches = observed_base_digest == expected_base_image_digest
+    if observed_config_digest is not None and not config_digest_matches:
+        errors.append("image inspect .Id does not match the supplied digest")
+    if observed_base_digest is not None and not base_digest_matches:
+        errors.append(
+            "image inspect base-image label does not match the supplied digest"
+        )
+
+    status = "PASS" if not errors else "FAIL"
+    validation = {
+        "status": status,
+        "errors": errors,
+        "image_config_digest": observed_config_digest,
+        "image_config_digest_matches": config_digest_matches,
+        "base_image_digest_label": MEASUREMENT_BASE_DIGEST_LABEL,
+        "base_image_digest": observed_base_digest,
+        "base_image_digest_matches": base_digest_matches,
+        "source_revision": observed_revision,
+        "source_revision_matches": (
+            expected_revision is None or observed_revision == expected_revision
+        ),
+        "measurement_labels_match": label_matches,
+        "forbidden_startup_environment_count": (
+            forbidden_startup_environment_count
+        ),
+        "secret_named_field_count": len(secret_findings),
+        "configured_secret_value_count": len(configured_secret_names),
+        "source_sha256": sha256_bytes(raw) if raw is not None else None,
+        "source_size_bytes": len(raw) if raw is not None else None,
+    }
+    return (raw if status == "PASS" else None), validation
+
+
+def validate_container_runtime_inspect(
+    path: Path,
+    *,
+    expected_image_config_digest: str,
+    expected_hostname: str,
+    secret_environment: Mapping[str, str] | None = None,
+) -> tuple[bytes | None, dict[str, Any]]:
+    """Bind a pre-start Docker container inspect to this running collector."""
+
+    errors: list[str] = []
+    raw: bytes | None = None
+    payload: Any = None
+    try:
+        file_stat = path.lstat()
+        if not stat.S_ISREG(file_stat.st_mode):
+            errors.append("runtime inspect input is not a regular file")
+        elif file_stat.st_size <= 0:
+            errors.append("runtime inspect input is empty")
+        elif file_stat.st_size > 16 * 1024 * 1024:
+            errors.append("runtime inspect input exceeds 16 MiB")
+        else:
+            raw = path.read_bytes()
+    except OSError as error:
+        errors.append(
+            "runtime inspect input is unavailable: "
+            f"{type(error).__name__}"
+        )
+
+    duplicate_key_count = 0
+
+    def reject_duplicate_keys(
+        pairs: list[tuple[str, Any]],
+    ) -> dict[str, Any]:
+        nonlocal duplicate_key_count
+        result: dict[str, Any] = {}
+        for key, value in pairs:
+            if key in result:
+                duplicate_key_count += 1
+            result[key] = value
+        return result
+
+    if raw is not None and not errors:
+        try:
+            payload = json.loads(
+                raw.decode("utf-8"),
+                object_pairs_hook=reject_duplicate_keys,
+            )
+        except UnicodeDecodeError as error:
+            errors.append(
+                "runtime inspect input is not UTF-8: "
+                f"byte offset {error.start}"
+            )
+        except json.JSONDecodeError as error:
+            errors.append(
+                "runtime inspect input is not valid JSON: "
+                f"{error.msg} at line {error.lineno} column {error.colno}"
+            )
+    if duplicate_key_count:
+        errors.append(
+            "duplicate runtime JSON key names detected: "
+            f"count={duplicate_key_count}"
+        )
+    if isinstance(payload, list):
+        if len(payload) == 1 and isinstance(payload[0], dict):
+            payload = payload[0]
+        else:
+            errors.append(
+                "runtime inspect JSON array must contain exactly one object"
+            )
+            payload = None
+    elif payload is not None and not isinstance(payload, dict):
+        errors.append("runtime inspect JSON root must be one object")
+        payload = None
+
+    secret_findings = (
+        _secret_named_inspect_fields(payload)
+        if isinstance(payload, dict)
+        else []
+    )
+    errors.extend(secret_findings)
+    configured_secret_names = (
+        configured_secret_value_names(raw, secret_environment)
+        if raw is not None and secret_environment is not None
+        else []
+    )
+    errors.extend(
+        f"runtime inspect contains configured credential bytes for {name}"
+        for name in configured_secret_names
+    )
+
+    runtime_id: str | None = None
+    observed_image: str | None = None
+    configured_image: str | None = None
+    configured_hostname: str | None = None
+    state_status: str | None = None
+    network_mode: str | None = None
+    pid_mode: str | None = None
+    read_only_root = False
+    exact_gpu_request = False
+    exact_tmpfs = False
+    required_mounts_match = False
+    if isinstance(payload, dict):
+        candidate_runtime_id = payload.get("Id")
+        if (
+            isinstance(candidate_runtime_id, str)
+            and re.fullmatch(r"[0-9a-f]{64}", candidate_runtime_id)
+        ):
+            runtime_id = candidate_runtime_id
+        else:
+            errors.append("runtime inspect .Id is missing or invalid")
+        candidate_image = payload.get("Image")
+        if isinstance(candidate_image, str):
+            observed_image = candidate_image
+        else:
+            errors.append("runtime inspect .Image is missing or invalid")
+        config = payload.get("Config")
+        if isinstance(config, dict):
+            if isinstance(config.get("Image"), str):
+                configured_image = config["Image"]
+            else:
+                errors.append(
+                    "runtime inspect .Config.Image is missing or invalid"
+                )
+            if isinstance(config.get("Hostname"), str):
+                configured_hostname = config["Hostname"]
+            else:
+                errors.append(
+                    "runtime inspect .Config.Hostname is missing or invalid"
+                )
+        else:
+            errors.append("runtime inspect .Config is missing or invalid")
+        state = payload.get("State")
+        if isinstance(state, dict) and isinstance(state.get("Status"), str):
+            state_status = state["Status"]
+        else:
+            errors.append("runtime inspect .State.Status is missing or invalid")
+        host_config = payload.get("HostConfig")
+        if isinstance(host_config, dict):
+            if isinstance(host_config.get("NetworkMode"), str):
+                network_mode = host_config["NetworkMode"]
+            else:
+                errors.append(
+                    "runtime inspect .HostConfig.NetworkMode is missing or invalid"
+                )
+            if isinstance(host_config.get("PidMode"), str):
+                pid_mode = host_config["PidMode"]
+            else:
+                errors.append(
+                    "runtime inspect .HostConfig.PidMode is missing or invalid"
+                )
+            read_only_root = host_config.get("ReadonlyRootfs") is True
+            device_requests = host_config.get("DeviceRequests")
+            if isinstance(device_requests, list):
+                exact_gpu_request = (
+                    len(device_requests) == 1
+                    and isinstance(device_requests[0], dict)
+                    and device_requests[0].get("DeviceIDs")
+                    == [EXPECTED_GPU_UUID]
+                    and device_requests[0].get("Capabilities") == [["gpu"]]
+                )
+            else:
+                errors.append(
+                    "runtime inspect GPU device requests are missing or invalid"
+                )
+            tmpfs = host_config.get("Tmpfs")
+            expected_tmpfs = {
+                "/root": {"rw", "nosuid", "nodev", "size=2g"},
+                "/tmp": {"rw", "nosuid", "nodev", "size=8g"},
+            }
+            if isinstance(tmpfs, dict) and all(
+                isinstance(path, str) and isinstance(options, str)
+                for path, options in tmpfs.items()
+            ):
+                tmpfs_options_well_formed = all(
+                    len(options.split(",")) == len(set(options.split(",")))
+                    for options in tmpfs.values()
+                )
+                observed_tmpfs = {
+                    path: set(options.split(","))
+                    for path, options in tmpfs.items()
+                }
+                exact_tmpfs = (
+                    tmpfs_options_well_formed
+                    and observed_tmpfs == expected_tmpfs
+                )
+            else:
+                errors.append(
+                    "runtime inspect tmpfs configuration is missing or invalid"
+                )
+        else:
+            errors.append("runtime inspect .HostConfig is missing or invalid")
+        mounts = payload.get("Mounts")
+        if isinstance(mounts, list):
+            expected_bind_modes = {
+                "/workspace": False,
+                "/workspace/artifacts/phase6a/container_g0": True,
+                "/run/kvbench/image-inspect.json": False,
+                "/run/kvbench/runtime-inspect.json": False,
+            }
+            expected_tmpfs_modes = {
+                "/root": True,
+                "/tmp": True,
+            }
+            valid_mounts = [
+                item
+                for item in mounts
+                if isinstance(item, dict)
+                and item.get("Type") in {"bind", "tmpfs"}
+                and isinstance(item.get("Destination"), str)
+                and isinstance(item.get("RW"), bool)
+            ]
+            bind_modes = {
+                item["Destination"]: item["RW"]
+                for item in valid_mounts
+                if item["Type"] == "bind"
+            }
+            tmpfs_modes = {
+                item["Destination"]: item["RW"]
+                for item in valid_mounts
+                if item["Type"] == "tmpfs"
+            }
+            required_mounts_match = (
+                len(valid_mounts) == len(mounts)
+                and len(
+                    {
+                        item["Destination"]
+                        for item in valid_mounts
+                    }
+                )
+                == len(mounts)
+                and bind_modes == expected_bind_modes
+                and tmpfs_modes in ({}, expected_tmpfs_modes)
+                and len(mounts)
+                == len(expected_bind_modes) + len(tmpfs_modes)
+            )
+        else:
+            errors.append("runtime inspect .Mounts is missing or invalid")
+
+    if observed_image != expected_image_config_digest:
+        errors.append("runtime inspect .Image does not match the supplied digest")
+    if configured_image != expected_image_config_digest:
+        errors.append(
+            "runtime inspect .Config.Image does not match the supplied digest"
+        )
+    if (
+        runtime_id is None
+        or configured_hostname != runtime_id[:12]
+        or expected_hostname != configured_hostname
+    ):
+        errors.append(
+            "runtime inspect container ID/hostname does not match the collector"
+        )
+    if state_status != "created":
+        errors.append("runtime inspect was not captured before container start")
+    if network_mode != "none":
+        errors.append("runtime inspect network mode is not none")
+    if pid_mode != "host":
+        errors.append("runtime inspect PID mode is not host")
+    if not read_only_root:
+        errors.append("runtime inspect root filesystem is not read-only")
+    if not exact_gpu_request:
+        errors.append("runtime inspect does not bind the exact certified GPU UUID")
+    if not exact_tmpfs:
+        errors.append("runtime inspect tmpfs isolation does not exactly match")
+    if not required_mounts_match:
+        errors.append("runtime inspect required mount isolation does not match")
+
+    status = "PASS" if not errors else "FAIL"
+    validation = {
+        "status": status,
+        "errors": errors,
+        "runtime_container_id": runtime_id,
+        "image_config_digest": observed_image,
+        "image_config_digest_matches": (
+            observed_image == expected_image_config_digest
+            and configured_image == expected_image_config_digest
+        ),
+        "hostname_matches": (
+            runtime_id is not None
+            and configured_hostname == runtime_id[:12]
+            and expected_hostname == configured_hostname
+        ),
+        "pre_start_state": state_status == "created",
+        "network_disabled": network_mode == "none",
+        "host_pid_mode": pid_mode == "host",
+        "read_only_root": read_only_root,
+        "exact_gpu_request": exact_gpu_request,
+        "exact_tmpfs": exact_tmpfs,
+        "required_mounts_match": required_mounts_match,
+        "secret_named_field_count": len(secret_findings),
+        "configured_secret_value_count": len(configured_secret_names),
+        "source_sha256": sha256_bytes(raw) if raw is not None else None,
+        "source_size_bytes": len(raw) if raw is not None else None,
+    }
+    return (raw if status == "PASS" else None), validation
+
+
 class EvidenceRecorder:
-    def __init__(self, stage: Path, base_environment: dict[str, str]) -> None:
+    def __init__(
+        self,
+        stage: Path,
+        base_environment: dict[str, str],
+        *,
+        project_python: Path = VENV_PYTHON,
+    ) -> None:
         self.stage = stage
         self.base_environment = base_environment
+        self.project_python = project_python
         self.commands: list[dict[str, Any]] = []
         self.command_index: dict[str, dict[str, Any]] = {}
         self.snapshots: list[dict[str, Any]] = []
@@ -602,7 +1567,7 @@ class EvidenceRecorder:
         environment: dict[str, str],
     ) -> dict[str, Any]:
         query_id = safe_id(f"process_{target_command_id}_{phase}")
-        argv = [str(VENV_PYTHON), str(PROCESS_QUERY_PATH)]
+        argv = [str(self.project_python), str(PROCESS_QUERY_PATH)]
         if supervised_root is not None:
             argv.extend(
                 [
@@ -1089,6 +2054,37 @@ def native_host_validation_errors(
     return errors
 
 
+def measurement_container_validation_errors(
+    *,
+    container_detection_ok: bool,
+    container_detection_output: str,
+    cgroup_evidence: dict[str, str | None],
+    present_container_markers: Sequence[str],
+    image_identity_ok: bool,
+) -> list[str]:
+    """Fail closed unless the collector is visibly running in Docker."""
+    errors: list[str] = []
+    if not container_detection_ok:
+        errors.append("systemd-detect-virt did not return container exit 0")
+    if container_detection_output != "docker":
+        errors.append(
+            "systemd-detect-virt did not identify the Docker runtime: "
+            f"{container_detection_output!r}"
+        )
+    for command_id, output in cgroup_evidence.items():
+        if output is None or not output.strip():
+            errors.append(
+                f"required cgroup evidence is unavailable: {command_id}"
+            )
+    if "/.dockerenv" not in present_container_markers:
+        errors.append("required Docker marker /.dockerenv is absent")
+    if not image_identity_ok:
+        errors.append(
+            "sanitized container image inspect identity verification failed"
+        )
+    return errors
+
+
 def verification_outputs_are_empty(
     *,
     command_ok: bool,
@@ -1151,10 +2147,73 @@ def parse_requirements_lock(path: Path) -> dict[str, str]:
     return requirements
 
 
+def parse_exact_dpkg_inventory(
+    text: str,
+) -> tuple[dict[str, tuple[str, str]], list[str]]:
+    observed: dict[str, tuple[str, str]] = {}
+    errors: list[str] = []
+    for line_number, line in enumerate(text.splitlines(), start=1):
+        parts = line.split("\t")
+        if (
+            len(parts) != 3
+            or not parts[0]
+            or not parts[1]
+            or not parts[2]
+        ):
+            errors.append(
+                f"malformed dpkg inventory row at line {line_number}"
+            )
+            continue
+        name, version, architecture = parts
+        if name in observed:
+            errors.append(
+                f"duplicate dpkg inventory package at line {line_number}"
+            )
+            continue
+        observed[name] = (version, architecture)
+    if not observed:
+        errors.append("dpkg inventory is empty")
+    return observed, errors
+
+
+def parse_exact_python_freeze(
+    text: str,
+) -> tuple[dict[str, str], list[str]]:
+    observed: dict[str, str] = {}
+    errors: list[str] = []
+    pattern = re.compile(
+        r"([A-Za-z0-9][A-Za-z0-9._-]*)==([^\s]+)"
+    )
+    for line_number, line in enumerate(text.splitlines(), start=1):
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        match = pattern.fullmatch(stripped)
+        if match is None:
+            errors.append(
+                f"malformed Python freeze row at line {line_number}"
+            )
+            continue
+        name = re.sub(r"[-_.]+", "-", match.group(1)).lower()
+        if name in observed:
+            errors.append(
+                f"duplicate Python freeze distribution at line {line_number}"
+            )
+            continue
+        observed[name] = match.group(2)
+    if not observed:
+        errors.append("Python freeze is empty")
+    return observed, errors
+
+
 def verify_dependency_locks(
     system_lock: dict[str, Any],
     dpkg_text: str,
     pip_payload: Any,
+    *,
+    full_dpkg_text: str | None = None,
+    phase3_freeze_text: str | None = None,
+    phase3_dependency_check_ok: bool | None = None,
 ) -> dict[str, Any]:
     errors: list[str] = []
     package_observations: list[dict[str, Any]] = []
@@ -1243,7 +2302,7 @@ def verify_dependency_locks(
                 f"{installed.get(name)!r} != {version!r}"
             )
 
-    return {
+    result: dict[str, Any] = {
         "status": "PASS" if not errors else "FAIL",
         "errors": errors,
         "python_locked_package_count": len(locked_python),
@@ -1253,6 +2312,115 @@ def verify_dependency_locks(
         "package_observations": package_observations,
         "tool_hash_observations": tool_observations,
     }
+    container_inputs = (
+        full_dpkg_text,
+        phase3_freeze_text,
+        phase3_dependency_check_ok,
+    )
+    if any(item is not None for item in container_inputs):
+        if (
+            not isinstance(full_dpkg_text, str)
+            or not isinstance(phase3_freeze_text, str)
+            or not isinstance(phase3_dependency_check_ok, bool)
+        ):
+            errors.append(
+                "container dependency validation inputs are incomplete"
+            )
+        else:
+            expected_dpkg: dict[str, tuple[str, str]] = {}
+            expected_dpkg_errors: list[str] = []
+            for package_index, package in enumerate(
+                system_lock.get("dpkg_packages", [])
+            ):
+                if not isinstance(package, dict):
+                    expected_dpkg_errors.append(
+                        "invalid expected dpkg package at "
+                        f"index {package_index}"
+                    )
+                    continue
+                name = package.get("name")
+                version = package.get("version")
+                architecture = package.get("architecture")
+                if not all(
+                    isinstance(item, str) and item
+                    for item in (name, version, architecture)
+                ):
+                    expected_dpkg_errors.append(
+                        "invalid expected dpkg package fields at "
+                        f"index {package_index}"
+                    )
+                    continue
+                if name in expected_dpkg:
+                    expected_dpkg_errors.append(
+                        "duplicate expected dpkg package at "
+                        f"index {package_index}"
+                    )
+                    continue
+                expected_dpkg[name] = (version, architecture)
+
+            observed_full_dpkg, full_dpkg_errors = (
+                parse_exact_dpkg_inventory(full_dpkg_text)
+            )
+            errors.extend(expected_dpkg_errors)
+            errors.extend(full_dpkg_errors)
+            for name in sorted(set(expected_dpkg) - set(observed_full_dpkg)):
+                errors.append(f"full dpkg inventory missing package: {name}")
+            for name in sorted(set(observed_full_dpkg) - set(expected_dpkg)):
+                errors.append(f"full dpkg inventory has extra package: {name}")
+            for name in sorted(set(expected_dpkg) & set(observed_full_dpkg)):
+                if observed_full_dpkg[name] != expected_dpkg[name]:
+                    errors.append(
+                        f"full dpkg inventory mismatch {name}: "
+                        f"observed={observed_full_dpkg[name]!r} "
+                        f"expected={expected_dpkg[name]!r}"
+                    )
+
+            expected_phase3 = parse_requirements_lock(
+                ROOT / "preflight" / "requirements-phase3.txt"
+            )
+            observed_phase3, phase3_freeze_errors = (
+                parse_exact_python_freeze(phase3_freeze_text)
+            )
+            errors.extend(phase3_freeze_errors)
+            for name in sorted(set(expected_phase3) - set(observed_phase3)):
+                errors.append(
+                    f"Phase 3 target freeze missing distribution: {name}"
+                )
+            for name in sorted(set(observed_phase3) - set(expected_phase3)):
+                errors.append(
+                    f"Phase 3 target freeze has extra distribution: {name}"
+                )
+            for name in sorted(set(expected_phase3) & set(observed_phase3)):
+                if observed_phase3[name] != expected_phase3[name]:
+                    errors.append(
+                        f"Phase 3 target freeze mismatch {name}: "
+                        f"{observed_phase3[name]!r} != "
+                        f"{expected_phase3[name]!r}"
+                    )
+            if phase3_dependency_check_ok is not True:
+                errors.append(
+                    "Phase 3 target-aware dependency check failed"
+                )
+            result["container_dependency_validation"] = {
+                "full_dpkg_inventory_matches": (
+                    not expected_dpkg_errors
+                    and not full_dpkg_errors
+                    and observed_full_dpkg == expected_dpkg
+                ),
+                "expected_dpkg_package_count": len(expected_dpkg),
+                "observed_dpkg_package_count": len(observed_full_dpkg),
+                "phase3_target_freeze_matches": (
+                    not phase3_freeze_errors
+                    and observed_phase3 == expected_phase3
+                ),
+                "expected_phase3_distribution_count": len(expected_phase3),
+                "observed_phase3_distribution_count": len(observed_phase3),
+                "phase3_target_dependency_check_passed": (
+                    phase3_dependency_check_ok is True
+                ),
+            }
+    result["status"] = "PASS" if not errors else "FAIL"
+    return result
 
 
 def verify_platform_lock(
@@ -1312,7 +2480,7 @@ def gate_check(
     command_ids: Sequence[str] = (),
     evidence_file_ids: Sequence[str] = (),
 ) -> dict[str, Any]:
-    if name not in GATE_NAMES:
+    if name not in ALL_GATE_NAMES:
         raise ValueError(f"unknown G0 check: {name}")
     payload = result_envelope(
         status,
@@ -1649,6 +2817,46 @@ def finalize_stage(
     reference_errors = evidence_reference_errors(stage, manifest)
     if reference_errors:
         raise RuntimeError(f"manifest evidence cross-reference failed: {reference_errors[0]}")
+    container_inventory = manifest.get("schema_version") == "e00-manifest-1.1.0"
+    if container_inventory:
+        inventory_items = []
+        for path in sorted(stage.rglob("*")):
+            if not path.is_file():
+                continue
+            relative = path.relative_to(stage).as_posix()
+            if relative in {
+                "artifact_inventory.json",
+                "checksums.sha256",
+                "COMPLETE",
+            }:
+                continue
+            inventory_items.append(
+                {
+                    "path": relative,
+                    "role": (
+                        "manifest"
+                        if relative == "manifest.json"
+                        else file_role(relative)
+                    ),
+                    "size_bytes": path.stat().st_size,
+                    "sha256": sha256_file(path),
+                }
+            )
+        write_exclusive(
+            stage / "artifact_inventory.json",
+            json_bytes(
+                {
+                    "schema_version": "kvbench-artifact-inventory-1.0.0",
+                    "run_id": manifest["run"]["id"],
+                    "files": inventory_items,
+                    "excluded_control_files": [
+                        "artifact_inventory.json",
+                        "checksums.sha256",
+                        "COMPLETE",
+                    ],
+                }
+            ),
+        )
     ledger_entries: list[tuple[str, str]] = []
     for path in sorted(stage.rglob("*")):
         if not path.is_file():
@@ -1678,6 +2886,15 @@ def finalize_stage(
         "run_id": manifest["run"]["id"],
         "status": manifest["run"]["status"],
         "manifest_sha256": sha256_bytes(manifest_data),
+        **(
+            {
+                "artifact_inventory_sha256": sha256_file(
+                    stage / "artifact_inventory.json"
+                )
+            }
+            if container_inventory
+            else {}
+        ),
         "checksum_ledger_path": "checksums.sha256",
         "checksum_ledger_sha256": ledger_sha256,
         "written_last": True,
@@ -1708,11 +2925,132 @@ def finalize_stage(
 
 def parse_args(argv: Sequence[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    return parser.parse_args(list(argv))
+    parser.add_argument(
+        "--measurement-container",
+        action="store_true",
+        help="run E00 inside the certified Measurement Container candidate",
+    )
+    parser.add_argument(
+        "--container-image-reference",
+        help="non-authoritative human-readable OCI image reference",
+    )
+    parser.add_argument(
+        "--container-image-config-digest",
+        help="immutable OCI image configuration digest (sha256:<64 lowercase hex>)",
+    )
+    parser.add_argument(
+        "--container-base-image-digest",
+        help="immutable OCI base-image manifest digest (sha256:<64 lowercase hex>)",
+    )
+    parser.add_argument(
+        "--container-image-inspect-json",
+        type=Path,
+        help=(
+            "absolute path to one sanitized host-generated Docker image "
+            "inspect JSON document"
+        ),
+    )
+    parser.add_argument(
+        "--container-runtime-inspect-json",
+        type=Path,
+        help=(
+            "absolute path to one sanitized host-generated pre-start Docker "
+            "container inspect JSON document"
+        ),
+    )
+    args = parser.parse_args(list(argv))
+    identity_values = {
+        "--container-image-reference": args.container_image_reference,
+        "--container-image-config-digest": args.container_image_config_digest,
+        "--container-base-image-digest": args.container_base_image_digest,
+        "--container-image-inspect-json": args.container_image_inspect_json,
+        "--container-runtime-inspect-json": (
+            args.container_runtime_inspect_json
+        ),
+    }
+    if args.measurement_container:
+        missing = [
+            name for name, value in identity_values.items() if not value
+        ]
+        if missing:
+            parser.error(
+                "--measurement-container requires " + ", ".join(missing)
+            )
+        digest_pattern = re.compile(r"sha256:[0-9a-f]{64}")
+        for name in (
+            "--container-image-config-digest",
+            "--container-base-image-digest",
+        ):
+            value = identity_values[name]
+            if not isinstance(value, str) or digest_pattern.fullmatch(value) is None:
+                parser.error(f"{name} must be sha256:<64 lowercase hex>")
+        image_reference = args.container_image_reference
+        if (
+            not isinstance(image_reference, str)
+            or len(image_reference) > 512
+            or re.search(r"[\s\x00-\x1f\x7f]", image_reference)
+        ):
+            parser.error(
+                "--container-image-reference must be a non-empty "
+                "single-line OCI reference"
+            )
+        for name, inspect_path in (
+            (
+                "--container-image-inspect-json",
+                args.container_image_inspect_json,
+            ),
+            (
+                "--container-runtime-inspect-json",
+                args.container_runtime_inspect_json,
+            ),
+        ):
+            if (
+                not isinstance(inspect_path, Path)
+                or not inspect_path.is_absolute()
+            ):
+                parser.error(f"{name} must be an absolute path")
+            if inspect_path.is_relative_to(ROOT):
+                parser.error(
+                    f"{name} must be outside the repository checkout"
+                )
+    else:
+        supplied = [name for name, value in identity_values.items() if value]
+        if supplied:
+            parser.error(
+                "container identity arguments require --measurement-container: "
+                + ", ".join(supplied)
+            )
+    return args
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    parse_args(sys.argv[1:] if argv is None else argv)
+    args = parse_args(sys.argv[1:] if argv is None else argv)
+    measurement_container_mode = bool(args.measurement_container)
+    evidence_root = (
+        MEASUREMENT_CONTAINER_EVIDENCE_ROOT
+        if measurement_container_mode
+        else EVIDENCE_ROOT
+    )
+    system_lock_path = (
+        MEASUREMENT_CONTAINER_SYSTEM_LOCK_PATH
+        if measurement_container_mode
+        else SYSTEM_LOCK_PATH
+    )
+    contract_paths = (
+        MEASUREMENT_CONTAINER_CONTRACT_PATHS
+        if measurement_container_mode
+        else CONTRACT_PATHS
+    )
+    gate_names = (
+        MEASUREMENT_CONTAINER_GATE_NAMES
+        if measurement_container_mode
+        else NATIVE_HOST_GATE_NAMES
+    )
+    project_python = (
+        MEASUREMENT_CONTAINER_PYTHON
+        if measurement_container_mode
+        else VENV_PYTHON
+    )
     cuda_home = CUDA_HOME_DEFAULT.resolve()
     original_environment = dict(os.environ)
     startup_forbidden = sorted(
@@ -1804,7 +3142,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             "--stage",
             "-z",
             "--",
-            *CONTRACT_PATHS,
+            *contract_paths,
         ],
         environment=base_environment,
     )
@@ -1815,14 +3153,14 @@ def main(argv: Sequence[str] | None = None) -> int:
             "-v",
             "-z",
             "--",
-            *CONTRACT_PATHS,
+            *contract_paths,
         ],
         environment=base_environment,
     )
     contract_git_validation = verify_contract_git_state(
         staged_output=git_contract_index_raw["stdout_bytes"],
         flags_output=git_contract_flags_raw["stdout_bytes"],
-        paths=CONTRACT_PATHS,
+        paths=contract_paths,
     )
     git_sha = decode(git_head_raw["stdout_bytes"]).strip()
     dirty_text = decode(git_status_raw["stdout_bytes"])
@@ -1845,7 +3183,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 2
 
     initial_process_raw = run_memory(
-        [str(VENV_PYTHON), str(PROCESS_QUERY_PATH)],
+        [str(project_python), str(PROCESS_QUERY_PATH)],
         environment=base_environment,
         timeout_seconds=20.0,
     )
@@ -1853,11 +3191,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     started_at = utc_now()
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S.%fZ")
     run_id = f"e00-{timestamp}-{git_sha[:12]}-{secrets.token_hex(4)}"
-    EVIDENCE_ROOT.mkdir(parents=True, exist_ok=True)
-    stage = EVIDENCE_ROOT / f".{run_id}.tmp"
-    final = EVIDENCE_ROOT / run_id
+    evidence_root.mkdir(parents=True, exist_ok=True)
+    stage = evidence_root / f".{run_id}.tmp"
+    final = evidence_root / run_id
     os.mkdir(stage, 0o700)
-    recorder = EvidenceRecorder(stage, base_environment)
+    recorder = EvidenceRecorder(
+        stage,
+        base_environment,
+        project_python=project_python,
+    )
 
     try:
         recorder.record_precollected(
@@ -1904,6 +3246,90 @@ def main(argv: Sequence[str] | None = None) -> int:
                 }
             ),
         )
+        container_inspect_relative: str | None = None
+        container_identity_validation_relative: str | None = None
+        container_identity_validation: dict[str, Any] | None = None
+        container_runtime_inspect_relative: str | None = None
+        container_runtime_validation_relative: str | None = None
+        container_runtime_validation: dict[str, Any] | None = None
+        if measurement_container_mode:
+            container_inspect_relative = (
+                "inputs/container_image_inspect.json"
+            )
+            container_identity_validation_relative = (
+                "validation/container_image_identity.json"
+            )
+            container_runtime_inspect_relative = (
+                "inputs/container_runtime_inspect.json"
+            )
+            container_runtime_validation_relative = (
+                "validation/container_runtime_identity.json"
+            )
+            inspect_raw, container_identity_validation = (
+                validate_container_image_inspect(
+                    args.container_image_inspect_json,
+                    expected_image_config_digest=(
+                        args.container_image_config_digest
+                    ),
+                    expected_base_image_digest=(
+                        args.container_base_image_digest
+                    ),
+                    expected_revision=git_sha,
+                )
+            )
+            if inspect_raw is not None:
+                write_exclusive(
+                    stage / container_inspect_relative,
+                    inspect_raw,
+                )
+                container_identity_validation["copied_evidence"] = output_ref(
+                    stage,
+                    container_inspect_relative,
+                )
+            else:
+                container_identity_validation["copied_evidence"] = None
+            write_exclusive(
+                stage / container_identity_validation_relative,
+                json_bytes(container_identity_validation),
+            )
+            runtime_raw, container_runtime_validation = (
+                validate_container_runtime_inspect(
+                    args.container_runtime_inspect_json,
+                    expected_image_config_digest=(
+                        args.container_image_config_digest
+                    ),
+                    expected_hostname=socket.gethostname(),
+                )
+            )
+            if runtime_raw is not None:
+                write_exclusive(
+                    stage / container_runtime_inspect_relative,
+                    runtime_raw,
+                )
+                container_runtime_validation["copied_evidence"] = output_ref(
+                    stage,
+                    container_runtime_inspect_relative,
+                )
+            else:
+                container_runtime_validation["copied_evidence"] = None
+            write_exclusive(
+                stage / container_runtime_validation_relative,
+                json_bytes(container_runtime_validation),
+            )
+        container_identity_ok = (
+            not measurement_container_mode
+            or (
+                container_identity_validation is not None
+                and container_identity_validation["status"] == "PASS"
+                and container_runtime_validation is not None
+                and container_runtime_validation["status"] == "PASS"
+            )
+        )
+        if measurement_container_mode and not container_identity_ok:
+            raise RuntimeError(
+                "Measurement Container identity validation failed before "
+                "CUDA execution"
+            )
         initial_process_command = recorder.record_precollected(
             command_id="process_initial_before_directory",
             purpose="Check GPU process isolation before evidence-directory creation",
@@ -1914,7 +3340,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             command_record=initial_process_command
         )
 
-        system_lock = json.loads(SYSTEM_LOCK_PATH.read_text(encoding="utf-8"))
+        system_lock = json.loads(system_lock_path.read_text(encoding="utf-8"))
         lock_tools = {
             item["name"]: item for item in system_lock.get("tools", [])
         }
@@ -1954,9 +3380,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         recorder.run("host_cgroup", "Record PID 1 cgroup for environment classification", ["/usr/bin/cat", "/proc/1/cgroup"])
         recorder.run(
             "host_container_detection",
-            "Detect container virtualization without fabricating a digest",
+            (
+                "Verify the Docker execution environment"
+                if measurement_container_mode
+                else "Detect container virtualization without fabricating a digest"
+            ),
             ["/usr/bin/systemd-detect-virt", "--container"],
-            expected_exit_codes=(1,),
+            expected_exit_codes=(0,) if measurement_container_mode else (1,),
         )
         recorder.run("host_self_cgroup", "Record collector cgroup for environment classification", ["/usr/bin/cat", "/proc/self/cgroup"])
 
@@ -1998,7 +3428,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             ),
             "python_version": (
                 "Record project Python version",
-                [str(VENV_PYTHON), "--version"],
+                [str(project_python), "--version"],
             ),
         }
         version_specs = {
@@ -2053,17 +3483,60 @@ def main(argv: Sequence[str] | None = None) -> int:
         recorder.run(
             "pip_check",
             "Verify installed Python dependency consistency",
-            [str(VENV_PYTHON), "-m", "pip", "check"],
+            [str(project_python), "-m", "pip", "check"],
         )
         recorder.run(
             "pip_list",
             "Record installed Python dependency versions",
-            [str(VENV_PYTHON), "-m", "pip", "list", "--format=json"],
+            [str(project_python), "-m", "pip", "list", "--format=json"],
         )
+        container_inventory_ids: tuple[str, ...] = ()
+        if measurement_container_mode:
+            recorder.run(
+                "container_dpkg_inventory",
+                "Record the complete installed container package inventory",
+                ["/usr/bin/dpkg-query", "-W", f"-f={dpkg_format}"],
+            )
+            recorder.run(
+                "container_python_freeze",
+                "Record the complete Measurement Container Python freeze",
+                [str(project_python), "-m", "pip", "freeze", "--all"],
+            )
+            recorder.run(
+                "container_phase3_python_freeze",
+                "Record the frozen Phase 3 additive Python target",
+                [
+                    str(project_python),
+                    "-m",
+                    "pip",
+                    "freeze",
+                    "--path",
+                    "/opt/kvbench/.phase3/site-packages",
+                ],
+            )
+            recorder.run(
+                "container_phase3_pip_check",
+                "Verify Phase 3 target dependencies against the frozen base",
+                [str(project_python), "-m", "pip", "check"],
+                environment=environment_with(
+                    base_environment,
+                    {
+                        "PYTHONPATH": (
+                            "/opt/kvbench/.phase3/site-packages"
+                        )
+                    },
+                ),
+            )
+            container_inventory_ids = (
+                "container_dpkg_inventory",
+                "container_python_freeze",
+                "container_phase3_python_freeze",
+                "container_phase3_pip_check",
+            )
         recorder.run(
             "python_record_integrity",
             "Verify installed wheel RECORD hashes and file ownership",
-            [str(VENV_PYTHON), str(PYTHON_INTEGRITY_PATH)],
+            [str(project_python), str(PYTHON_INTEGRITY_PATH)],
             timeout_seconds=300.0,
         )
 
@@ -2089,7 +3562,14 @@ def main(argv: Sequence[str] | None = None) -> int:
             and gpu_parse_error is None
             and selected_uuid is not None
         )
-        selection_ok = len(matches) == 1 and selection_collection_ok
+        selection_ok = (
+            len(matches) == 1
+            and selection_collection_ok
+            and (
+                not measurement_container_mode
+                or selected_uuid == EXPECTED_GPU_UUID
+            )
+        )
         gpu_selection = {
             "collection_status": "PASS" if selection_collection_ok else "FAIL",
             "collection_error": None if selection_collection_ok else (gpu_parse_error or "no valid GPU UUID inventory row"),
@@ -2268,18 +3748,32 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
             for command_id in ("host_cgroup", "host_self_cgroup")
         }
-        native_host_errors = native_host_validation_errors(
-            container_detection_ok=recorder.command_ok(
-                "host_container_detection"
-            ),
-            container_detection_output=container_detection_output,
-            cgroup_evidence=cgroup_evidence,
-            present_container_markers=present_container_markers,
-            cgroup_container_tokens=cgroup_container_tokens,
-            caller_container_marker=caller_container_marker,
-        )
-        native_host_ok = not native_host_errors
-        native_host_relative = "validation/native_host_detection.json"
+        if measurement_container_mode:
+            environment_errors = measurement_container_validation_errors(
+                container_detection_ok=recorder.command_ok(
+                    "host_container_detection"
+                ),
+                container_detection_output=container_detection_output,
+                cgroup_evidence=cgroup_evidence,
+                present_container_markers=present_container_markers,
+                image_identity_ok=container_identity_ok,
+            )
+            environment_relative = (
+                "validation/measurement_container_detection.json"
+            )
+        else:
+            environment_errors = native_host_validation_errors(
+                container_detection_ok=recorder.command_ok(
+                    "host_container_detection"
+                ),
+                container_detection_output=container_detection_output,
+                cgroup_evidence=cgroup_evidence,
+                present_container_markers=present_container_markers,
+                cgroup_container_tokens=cgroup_container_tokens,
+                caller_container_marker=caller_container_marker,
+            )
+            environment_relative = "validation/native_host_detection.json"
+        environment_ok = not environment_errors
 
         host_manifest = {
             "collection_status": "PASS" if host_ok else "FAIL",
@@ -2297,11 +3791,46 @@ def main(argv: Sequence[str] | None = None) -> int:
         }
 
         write_exclusive(
-            stage / native_host_relative,
+            stage / environment_relative,
             json_bytes(
                 {
-                    "status": "PASS" if native_host_ok else "FAIL",
-                    "errors": native_host_errors,
+                    **(
+                        {
+                            "mode": "measurement_container",
+                            "container_image_identity": {
+                                "status": container_identity_validation[
+                                    "status"
+                                ],
+                                "validation_evidence_file_id": artifact_id(
+                                    container_identity_validation_relative
+                                ),
+                                "inspect_evidence_file_id": (
+                                    artifact_id(container_inspect_relative)
+                                    if container_identity_ok
+                                    else None
+                                ),
+                            },
+                            "container_runtime_identity": {
+                                "status": container_runtime_validation[
+                                    "status"
+                                ],
+                                "validation_evidence_file_id": artifact_id(
+                                    container_runtime_validation_relative
+                                ),
+                                "inspect_evidence_file_id": (
+                                    artifact_id(
+                                        container_runtime_inspect_relative
+                                    )
+                                    if container_identity_ok
+                                    else None
+                                ),
+                            },
+                        }
+                        if measurement_container_mode
+                        else {}
+                    ),
+                    "status": "PASS" if environment_ok else "FAIL",
+                    "errors": environment_errors,
                     "systemd_detect_virt": {
                         "exit_code": recorder.command_index["host_container_detection"]["exit_code"],
                         "stdout": container_detection_output,
@@ -2321,10 +3850,24 @@ def main(argv: Sequence[str] | None = None) -> int:
                 )
             except json.JSONDecodeError:
                 pip_payload = None
+        container_dependency_inputs: dict[str, Any] = {}
+        if measurement_container_mode:
+            container_dependency_inputs = {
+                "full_dpkg_text": recorder.command_stdout(
+                    "container_dpkg_inventory"
+                ),
+                "phase3_freeze_text": recorder.command_stdout(
+                    "container_phase3_python_freeze"
+                ),
+                "phase3_dependency_check_ok": recorder.command_ok(
+                    "container_phase3_pip_check"
+                ),
+            }
         dependency_validation = verify_dependency_locks(
             system_lock,
             recorder.command_text("dpkg_locked_versions").split("\n\n", 1)[0],
             pip_payload,
+            **container_dependency_inputs,
         )
         dependency_errors = dependency_validation["errors"]
         nvdisasm_owner_ok = dpkg_ownership_matches(
@@ -2352,7 +3895,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         }
 
         try:
-            venv_python_resolved = VENV_PYTHON.resolve(strict=True)
+            venv_python_resolved = project_python.resolve(strict=True)
         except OSError as error:
             venv_python_resolved = None
             dependency_errors.append(f"project Python cannot be resolved: {error}")
@@ -2392,18 +3935,34 @@ def main(argv: Sequence[str] | None = None) -> int:
             ),
             "python_abi": f"cp{sys.version_info.major}{sys.version_info.minor}",
             "execution_environment_kind": (
-                "native_host" if native_host_ok else "unverified"
+                (
+                    "measurement_container"
+                    if measurement_container_mode
+                    else "native_host"
+                )
+                if environment_ok
+                else "unverified"
             ),
             "container_digest_status": (
-                "not_applicable_native_host"
-                if native_host_ok
-                else "unavailable_unverified_environment"
+                (
+                    "verified_against_sanitized_image_inspect"
+                    if container_identity_ok
+                    else "image_inspect_verification_failed"
+                )
+                if measurement_container_mode
+                else (
+                    "not_applicable_native_host"
+                    if environment_ok
+                    else "unavailable_unverified_environment"
+                )
             ),
             "performance_claim_eligible": False,
             "cuda_home": str(cuda_home),
-            "python_environment": VENV_PYTHON.parents[1]
-            .relative_to(ROOT)
-            .as_posix(),
+            "python_environment": (
+                project_python.parents[1].as_posix()
+                if measurement_container_mode
+                else project_python.parents[1].relative_to(ROOT).as_posix()
+            ),
             "python_requirements_lock": PYTHON_LOCK_PATH.relative_to(
                 ROOT
             ).as_posix(),
@@ -2416,6 +3975,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         dependency_validation["requirements_lock_sha256"] = sha256_file(
             PYTHON_LOCK_PATH
         )
+        if measurement_container_mode:
+            dependency_validation["system_lock_path"] = (
+                system_lock_path.relative_to(ROOT).as_posix()
+            )
+            dependency_validation["system_lock_sha256"] = sha256_file(
+                system_lock_path
+            )
 
         dpkg_verify_clean = verification_outputs_are_empty(
             command_ok=recorder.command_ok("dpkg_verify_locked_files"),
@@ -2498,6 +4064,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             all(recorder.command_ok(item) for item in version_ids)
             and recorder.command_ok("pip_check")
             and recorder.command_ok("pip_list")
+            and all(
+                recorder.command_ok(command_id)
+                for command_id in container_inventory_ids
+            )
             and recorder.command_ok("python_record_integrity")
             and recorder.command_ok("dpkg_locked_versions")
             and recorder.command_ok("dpkg_architecture")
@@ -2518,7 +4088,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         torch_payload: dict[str, Any] | None = None
         torch_command_ran = False
         selected_environment: dict[str, str] | None = None
-        if selected_uuid and initial_isolation_ok and native_host_ok:
+        if selected_uuid and initial_isolation_ok and environment_ok:
             selected_environment = environment_with(
                 base_environment,
                 {
@@ -2529,7 +4099,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             recorder.run_supervised(
                 "torch_probe",
                 "Verify PyTorch CUDA availability, selected GPU identity, and capability",
-                [str(VENV_PYTHON), str(PYTHON_PROBE_PATH)],
+                [str(project_python), str(PYTHON_PROBE_PATH)],
                 environment=selected_environment,
                 timeout_seconds=120.0,
             )
@@ -2817,7 +4387,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         binary_path: Path | None = None
         build_command_ran = False
         build_preconditions = (
-            native_host_ok
+            environment_ok
             and initial_isolation_ok
             and selection_ok
             and gpu_collection_ok
@@ -2846,7 +4416,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 "extension_build",
                 "Compile the certification extension with exact native SASS and PTX targets",
                 [
-                    str(VENV_PYTHON),
+                    str(project_python),
                     str(ROOT / "preflight" / "e00_cuda" / "build.py"),
                     "--build-directory",
                     str(build_directory),
@@ -2945,7 +4515,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 "native_runtime",
                 "Prove native SASS execution with PTX JIT disabled",
                 [
-                    str(VENV_PYTHON),
+                    str(project_python),
                     str(ROOT / "tests" / "cuda" / "e00_runtime_probe.py"),
                     "--mode",
                     "native",
@@ -2982,7 +4552,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 recorder.run_supervised(
                     command_id,
                     purpose,
-                    [str(VENV_PYTHON), str(script)],
+                    [str(project_python), str(script)],
                     environment=native_environment,
                     timeout_seconds=240.0,
                 )
@@ -3044,7 +4614,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 "forced_ptx_runtime",
                 "Prove forced PTX JIT execution in a fresh process",
                 [
-                    str(VENV_PYTHON),
+                    str(project_python),
                     str(ROOT / "tests" / "cuda" / "e00_runtime_probe.py"),
                     "--mode",
                     "forced-ptx",
@@ -3083,7 +4653,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                     command.extend(["--leak-check", "full"])
                 command.extend(
                     [
-                        str(VENV_PYTHON),
+                        str(project_python),
                         str(ROOT / "tests" / "cuda" / "e00_sanitizer_probe.py"),
                     ]
                 )
@@ -3406,11 +4976,42 @@ def main(argv: Sequence[str] | None = None) -> int:
                 + [artifact_id(source_git_relative)],
             ),
             gate_check(
-                "native_host_environment_verified",
-                "PASS" if native_host_ok else "FAIL",
-                reason=None if native_host_ok else "; ".join(native_host_errors),
+                gate_names[1],
+                "PASS" if environment_ok else "FAIL",
+                reason=None if environment_ok else "; ".join(environment_errors),
                 command_ids=("host_container_detection", "host_cgroup", "host_self_cgroup"),
-                evidence_file_ids=command_file_ids(recorder, ("host_container_detection", "host_cgroup", "host_self_cgroup")) + [artifact_id(native_host_relative)],
+                evidence_file_ids=(
+                    command_file_ids(
+                        recorder,
+                        (
+                            "host_container_detection",
+                            "host_cgroup",
+                            "host_self_cgroup",
+                        ),
+                    )
+                    + [artifact_id(environment_relative)]
+                    + (
+                        [
+                            artifact_id(
+                                container_identity_validation_relative
+                            ),
+                            artifact_id(
+                                container_runtime_validation_relative
+                            ),
+                        ]
+                        if measurement_container_mode
+                        else []
+                    )
+                    + (
+                        [
+                            artifact_id(container_inspect_relative),
+                            artifact_id(container_runtime_inspect_relative),
+                        ]
+                        if measurement_container_mode
+                        and container_identity_ok
+                        else []
+                    )
+                ),
             ),
             gate_check(
                 "single_uuid_selected_gpu",
@@ -3444,8 +5045,8 @@ def main(argv: Sequence[str] | None = None) -> int:
                 "required_toolchain_complete",
                 "PASS" if required_tool_commands_ok and software_manifest["collection_status"] == "PASS" else "FAIL",
                 reason=None if required_tool_commands_ok and software_manifest["collection_status"] == "PASS" else "locked CUDA/Python/profiler toolchain did not verify",
-                command_ids=version_ids + ("dpkg_locked_versions", "dpkg_architecture", "nvdisasm_package_ownership", "dpkg_verify_locked_files", "pip_check", "pip_list", "python_record_integrity"),
-                evidence_file_ids=command_file_ids(recorder, version_ids + ("dpkg_locked_versions", "dpkg_architecture", "nvdisasm_package_ownership", "dpkg_verify_locked_files", "pip_check", "pip_list", "python_record_integrity")) + [artifact_id(dependency_relative)],
+                command_ids=version_ids + ("dpkg_locked_versions", "dpkg_architecture", "nvdisasm_package_ownership", "dpkg_verify_locked_files", "pip_check", "pip_list") + container_inventory_ids + ("python_record_integrity",),
+                evidence_file_ids=command_file_ids(recorder, version_ids + ("dpkg_locked_versions", "dpkg_architecture", "nvdisasm_package_ownership", "dpkg_verify_locked_files", "pip_check", "pip_list") + container_inventory_ids + ("python_record_integrity",)) + [artifact_id(dependency_relative)],
             ),
             gate_check(
                 "torch_cuda_available",
@@ -3511,8 +5112,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             gate_check("evidence_checksums_valid", "NOT_RUN", reason="evidence cross-reference and checksum validation pending"),
         ]
 
-        schema_check_index = GATE_NAMES.index("manifest_schema_valid")
-        evidence_check_index = GATE_NAMES.index("evidence_checksums_valid")
+        schema_check_index = gate_names.index("manifest_schema_valid")
+        evidence_check_index = gate_names.index("evidence_checksums_valid")
 
         def failure_classes_for(current_checks: Sequence[dict[str, Any]]) -> list[str]:
             statuses = {item["name"]: item["status"] for item in current_checks}
@@ -3522,7 +5123,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 if value not in classes:
                     classes.append(value)
 
-            if statuses["native_host_environment_verified"] == "FAIL":
+            if statuses[gate_names[1]] == "FAIL":
                 add("environment_unverified")
             if any(
                 statuses[name] == "FAIL"
@@ -3578,28 +5179,96 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
         )
 
-        contract_records = source_artifacts(CONTRACT_PATHS)
-        execution_environment = {
-            "kind": "native_host" if native_host_ok else "unverified",
-            "verification_status": "PASS" if native_host_ok else "FAIL",
-            "verification_evidence_file_id": artifact_id(native_host_relative),
-            "performance_claim_eligible": False,
-            "performance_ineligibility_reasons": ([
-                "native_host_without_container_digest" if native_host_ok else "execution_environment_not_verified",
-                "hardware_certification_not_benchmark_timing",
-            ]),
-            "container": {
-                "runtime": None,
-                "image_reference": None,
-                "image_digest": None,
-                "digest_status": "not_applicable_native_host" if native_host_ok else "unavailable_unverified_environment",
-            },
-            "container_parity_required_before_e02": True,
-        }
+        contract_records = source_artifacts(contract_paths)
+        if measurement_container_mode:
+            execution_environment = {
+                "kind": (
+                    "measurement_container"
+                    if environment_ok
+                    else "unverified"
+                ),
+                "verification_status": "PASS" if environment_ok else "FAIL",
+                "verification_evidence_file_id": artifact_id(
+                    environment_relative
+                ),
+                "performance_claim_eligible": False,
+                "performance_ineligibility_reasons": [
+                    *(
+                        []
+                        if environment_ok
+                        else ["execution_environment_not_verified"]
+                    ),
+                    "container_bf16_parity_not_yet_established",
+                    "hardware_certification_not_benchmark_timing",
+                ],
+                "container": {
+                    "runtime": "docker",
+                    "image_reference": args.container_image_reference,
+                    "image_config_digest": args.container_image_config_digest,
+                    "base_image_digest": args.container_base_image_digest,
+                    "image_inspect_validation": output_ref(
+                        stage,
+                        container_identity_validation_relative,
+                    ),
+                    "image_inspect": (
+                        output_ref(stage, container_inspect_relative)
+                        if container_identity_ok
+                        else None
+                    ),
+                    "runtime_container_id": container_runtime_validation[
+                        "runtime_container_id"
+                    ],
+                    "runtime_inspect_validation": output_ref(
+                        stage,
+                        container_runtime_validation_relative,
+                    ),
+                    "runtime_inspect": (
+                        output_ref(stage, container_runtime_inspect_relative)
+                        if container_identity_ok
+                        else None
+                    ),
+                    "digest_status": (
+                        "verified_against_sanitized_image_inspect"
+                        if container_identity_ok
+                        else "image_inspect_verification_failed"
+                    ),
+                },
+                "container_parity_required_before_e02": True,
+            }
+        else:
+            execution_environment = {
+                "kind": "native_host" if environment_ok else "unverified",
+                "verification_status": "PASS" if environment_ok else "FAIL",
+                "verification_evidence_file_id": artifact_id(
+                    environment_relative
+                ),
+                "performance_claim_eligible": False,
+                "performance_ineligibility_reasons": ([
+                    "native_host_without_container_digest"
+                    if environment_ok
+                    else "execution_environment_not_verified",
+                    "hardware_certification_not_benchmark_timing",
+                ]),
+                "container": {
+                    "runtime": None,
+                    "image_reference": None,
+                    "image_digest": None,
+                    "digest_status": (
+                        "not_applicable_native_host"
+                        if environment_ok
+                        else "unavailable_unverified_environment"
+                    ),
+                },
+                "container_parity_required_before_e02": True,
+            }
 
         recorder.commands.sort(key=lambda item: (item["started_at_utc"], item["id"]))
         manifest: dict[str, Any] = {
-            "schema_version": "e00-manifest-1.0.0",
+            "schema_version": (
+                "e00-manifest-1.1.0"
+                if measurement_container_mode
+                else "e00-manifest-1.0.0"
+            ),
             "run": {
                 "id": run_id,
                 "phase": "E00",
@@ -3629,8 +5298,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             "extension": extension_manifest,
             "evidence": {
                 "storage": {
-                    "root": "docs/evidence/e00",
-                    "run_directory": f"docs/evidence/e00/{run_id}",
+                    "root": evidence_root.relative_to(ROOT).as_posix(),
+                    "run_directory": final.relative_to(ROOT).as_posix(),
                     "append_only": True,
                     "exclusive_temporary_sibling": True,
                     "atomic_final_rename": True,
