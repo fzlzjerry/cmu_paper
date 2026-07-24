@@ -1,0 +1,13 @@
+# Deny the complete repository build context, then admit only the Dockerfile
+# and the three immutable Measurement Lane lock inputs.
+**
+!docker/
+!docker/measurement.Dockerfile
+!preflight/
+!preflight/system-packages.lock.json
+!preflight/requirements-e00.txt
+!preflight/requirements-phase3.txt
+
+# Explicit defense in depth for operator-managed secrets.
+.env
+.env.*
