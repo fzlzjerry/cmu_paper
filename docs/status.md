@@ -17,11 +17,22 @@ requirements; and AGENTS.md. Decision 0005 records precedence.
   unresolved. The retrospective record is
   `docs/phase_reports/phase6-turboquant-measurement-blocked.md`. No Phase 6
   implementation is present.
+- Phase 6A prerequisite status: BLOCKED. The Docker/OCI runtime and NVIDIA
+  Container Toolkit were unavailable, so no Measurement Container was built,
+  container G0 and BF16 parity were not run, and no execution-authority
+  decision was created. B-010 remains OPEN.
+- The synthetic R2 artifact
+  `phase6a-r2-synthetic-20260724t135642z`, root SHA-256
+  `bbb80210dc729dedc9dd25a24d61cfbedbbe9d05661b1f95e6af278df3d0c11e`,
+  passed conditional publication, exact republish, differing-byte rejection,
+  and clean retrieval. Cloudflare REST certification returned HTTP 403, so
+  public-access and Bucket Lock state remain NOT VERIFIED; the container-G0
+  publication test was not run. B-009 remains OPEN.
 - Phase 0 status: PASS
 - Phase 1 remediation status: PASS
-- Next authorized task: Phase 6A prerequisites only, resolving B-009 and B-010
-  before a fresh Phase 6 attempt. No adapter execution, pilot, Full Scan, or
-  quality execution is authorized here
+- Next authorized task: complete only the remaining Phase 6A prerequisites for
+  B-009 and B-010 before a fresh Phase 6 attempt. No adapter execution, pilot,
+  Full Scan, or quality execution is authorized here
 - Active admission gate: native-host G0 PASS; container-parity G0 remains a
   later E01 requirement before E02
 - Benchmark implementation changes: exact BF16 static cache, fixed-L and
@@ -88,7 +99,7 @@ minimal path. Direct graph smoke is deferred to Phase 6; upstream declares
 identical run returned `verified_existing` without replacing it.
 `make validate-reference-turboquant` validates all manifests, 34 root checksum
 entries, layouts, actual storage sizes, and claim boundaries. TurboQuant remains
-rejected by the Measurement Lane adapter factory. G0/G1 remain PASS,
+rejected by the Measurement Lane adapter factory. Native-host G0/G1 remain PASS,
 method-specific G2-TQ is BLOCKED, global G2-G5 remain NOT EVALUATED, Full Scan
 remains CLOSED, quality execution remains LOCKED, and
 `PERFORMANCE_DATA_FROZEN` remains absent.
@@ -107,9 +118,30 @@ quality data was retained or created.
 The retrospective governance record is
 `docs/phase_reports/phase6-turboquant-measurement-blocked.md`. It was created
 after the complete revert and is not CUDA, correctness, performance, profiler,
-quality, or method-admission evidence. G0 and G1 remain PASS, Full Scan remains
+quality, or method-admission evidence. Native-host G0 and native-host BF16 G1
+remain PASS, Full Scan remains
 CLOSED, quality execution remains LOCKED, and `PERFORMANCE_DATA_FROZEN`
-remains absent. Phase 6A prerequisites are the next authorized task.
+remains absent.
+
+## Phase 6A prerequisite attempt
+
+Phase 6A added one digest-pinned Measurement Container definition, an explicit
+container mode for the existing E00 implementation, and one Cloudflare
+R2-specific publisher/verifier. Unit and repository validation passed, but the
+execution host had no Docker/OCI runtime or NVIDIA Container Toolkit. No image
+ID/config digest, container G0 run, BF16 eager/graph parity run, or execution
+authority therefore exists.
+
+The bounded synthetic R2 object-path acceptance test passed conditional
+creation, exact-existing verification, conflicting-byte rejection, and clean
+retrieval at the content-addressed root
+`bbb80210dc729dedc9dd25a24d61cfbedbbe9d05661b1f95e6af278df3d0c11e`.
+The read-only Cloudflare REST certification returned HTTP 403, so the bucket's
+public state and active Bucket Lock rule remain NOT VERIFIED. The required
+container-G0 bundle was unavailable for the second publication test. The
+separate report is
+`docs/phase_reports/phase6a-measurement-container-and-r2-blocked.md`.
+B-009 and B-010 remain OPEN.
 
 ## Phase 4 common adapter
 
@@ -122,7 +154,7 @@ semantics. Quantized methods remain `phase_not_implemented`.
 `make test`, `make test-cuda` (15/15), and `make test-graph` (4/4) passed.
 The three bounded functional smokes passed with new run IDs and valid checksum
 ledgers. The strict report at `docs/evidence/phase4/method-admission.json`
-retains G0/G1 PASS, G2-G5 NOT EVALUATED, Full Scan CLOSED, quality LOCKED,
+retains native-host G0/G1 PASS, G2-G5 NOT EVALUATED, Full Scan CLOSED, quality LOCKED,
 B-009/B-010 OPEN, and native-host non-claim status. No decision record was
 needed because delegation was mechanical and changed no experiment semantics.
 
@@ -350,9 +382,11 @@ is configured.
 Phase 2 adds a dependency-free strict schema package, 11 versioned contract
 templates, a fail-closed CLI, deterministic command reconstruction, and a
 local append-only staging/finalization implementation. Its tests use temporary
-roots only. The local controls do not select a durable backing store or an
-immutable publication locator, so B-009 remains open. No digest-pinned
-measurement container or container-parity G0 exists, so B-010 remains open.
+roots only. Phase 6A later selected Cloudflare R2 and exercised one synthetic
+content-addressed object path, but control-plane lock/public-state
+certification and the container-G0 publication test remain incomplete, so
+B-009 remains open. No built and certified digest-pinned Measurement Container
+or container-parity G0 exists, so B-010 remains open.
 
 Phase 3 execution used clean SHA
 `457123b12220aa4a724968c1b4dd04340cf34a54`. The fixed-L campaign
@@ -426,6 +460,7 @@ reference execution is recorded separately above.
 | Phase 4 common method adapter | PASS | BF16 delegates through `KVCacheMethod`; fixed-L/growing, allocation, graph, and path checks pass; `docs/evidence/phase4/method-admission.json`; no quantized method implemented |
 | Phase 5 TurboQuant reference lane | PASS | Exact vLLM v0.25.1 source/environment lock; 3 mandatory and 1 held-out deterministic fixtures; official store/append/decode paths; no measurement adapter or timing |
 | Phase 6 TurboQuant measurement adapter | BLOCKED at entry | B-009 and B-010 unresolved; no implementation retained; retrospective governance record only |
+| Phase 6A Measurement Container and R2 prerequisites | BLOCKED | Synthetic R2 object-path test passed, but Bucket Lock/public-access verification returned HTTP 403 and no container image, container G0, BF16 parity, authority decision, or container-G0 R2 test exists. B-009/B-010 remain OPEN. |
 | G2-TQ | BLOCKED | Method-specific gate; B-009 and B-010 must be resolved before a fresh Phase 6 attempt |
 | G2-KIVI | NOT EVALUATED | requires E07-E08 |
 | G2-KVQ | NOT EVALUATED | requires E09-E11 |
@@ -453,11 +488,15 @@ Reference Lane. The Phase 3 campaigns, all 20 runs, every failed report, the
 PASS report, Phase 4 evidence, and Phase 5 fixtures remain unchanged. Phase 6
 was attempted and BLOCKED at entry; no implementation is present.
 
-Phase 6A prerequisites are the next authorized task. B-010 still requires a
-digest-pinned Measurement Container and container-parity G0 before formal E02
-closure, TurboQuant measurement admission, ordinary timing, or a performance
-claim. B-009 still requires durable append-only storage and an immutable
-locator/publication mechanism with clean retrieval verification. G0 and G1
-remain PASS, method-specific G2-TQ is BLOCKED, global G2-G5 remain NOT
-EVALUATED, Full Scan is CLOSED, quality execution is LOCKED, and
-`PERFORMANCE_DATA_FROZEN` is absent.
+Resume Phase 6A only. Provide the approved container runtime and NVIDIA
+Container Toolkit path on the RTX PRO 6000 host, then build and identify the
+exact image, run container G0 and both BF16 parity smokes, and create an
+authority decision only if they pass. Provide an account-wide R2
+`Admin Read only` Cloudflare API token, not an `Object Read only` token, then
+rerun read-only public-state/Bucket-Lock certification and publish/retrieve the
+completed container-G0 artifact. Do not restart Phase 6 until B-009 and B-010
+are both resolved.
+
+Native-host G0 and native-host BF16 G1 remain PASS, method-specific G2-TQ is
+BLOCKED, global G2-G5 remain NOT EVALUATED, Full Scan is CLOSED, quality
+execution is LOCKED, and `PERFORMANCE_DATA_FROZEN` is absent.
