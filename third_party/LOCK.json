@@ -1,7 +1,7 @@
 {
   "schema_version": 2,
   "generated_at_utc": "2026-07-21T17:13:29Z",
-  "last_updated_at_utc": "2026-07-24T02:47:56Z",
+  "last_updated_at_utc": "2026-07-24T03:57:59Z",
   "policy": {
     "checkout_by_commit_only": true,
     "floating_default_branches_forbidden": true,
@@ -12,7 +12,10 @@
     {
       "id": "vllm_turboquant",
       "method": "turboquant",
-      "lane": ["reference", "measurement_source_candidate"],
+      "lane": [
+        "reference",
+        "measurement_source_candidate"
+      ],
       "repository": "https://github.com/vllm-project/vllm.git",
       "revision": "752a3a504485790a2e8491cacbb35c137339ad34",
       "tree": "3ec7a4eb00f9bc8fec399bea6cf7de27a7936372",
@@ -24,7 +27,7 @@
       "license_verification_status": "verified_from_root_license",
       "authority_status": "selected_for_vllm_turboquant_reference_lane",
       "authority_scope": "The pinned official vLLM implementation defines Phase 5 fixtures; no claim of paper-author ownership or equivalence to every TurboQuant paper variant.",
-      "acquisition_status": "identity_verified_execution_pending",
+      "acquisition_status": "reference_fixture_generated_and_validated",
       "reference_container": {
         "repository": "vllm/vllm-openai",
         "tag_observed": "v0.25.1",
@@ -81,12 +84,30 @@
         "Direct source inspection verifies all four cache dtype names in CODEX_WORKFLOW.md.",
         "Source comments say this DRIVE/EDEN/HIGGS-style implementation predates the TurboQuant paper and intentionally omits QJL.",
         "Matching cache dtype names do not establish paper-author ownership or equivalence to every paper variant."
-      ]
+      ],
+      "reference_execution": {
+        "environment": "reference/turboquant/environment.json",
+        "environment_sha256": "b8a44c6769a17eb3c1de6e3ce129563bca2d338a7702b94e9256d443b89fcdb4",
+        "python_freeze": "reference/turboquant/python-freeze.txt",
+        "python_freeze_sha256": "5cffaea6de3bc701bf4bf28b53e2432f28b84ba6a735aa572aee38e40cfa3774",
+        "source_manifest": "reference/turboquant/source_manifest.json",
+        "source_manifest_sha256": "2817315b99eac1388973fd59b9cf73f795fd81172496ef066efefeda5e2235da",
+        "fixture_root": "reference/turboquant/fixtures",
+        "fixture_set_sha256": "774ec946a8839d4de012bc6fba0ee5a933ab1488ecc43354d8573b4481b12f76",
+        "fixture_ledger_sha256": "d4dbf7933c417a956c3789af404b38aac146f705ec7f8e2a03cad999fc294b38",
+        "mandatory_fixture_count": 3,
+        "optional_fixture_count": 1,
+        "sm120_execution": "pass",
+        "deterministic_regeneration": "verified_existing_without_replacement",
+        "performance_or_quality_data_created": false
+      }
     },
     {
       "id": "kivi",
       "method": "kivi",
-      "lane": ["reference"],
+      "lane": [
+        "reference"
+      ],
       "repository": "https://github.com/jy-yuan/KIVI.git",
       "revision": "876b4d2d08e3b1d5f70d0969c299d8c7c42ddfb6",
       "tree": "c94c31b2cfd44eeb9a18cff9dcdf03adff4ac49b",
@@ -107,7 +128,10 @@
     {
       "id": "kvquant",
       "method": "kvquant",
-      "lane": ["calibration", "reference"],
+      "lane": [
+        "calibration",
+        "reference"
+      ],
       "repository": "https://github.com/SqueezeAILab/KVQuant.git",
       "revision": "57a238357f0ffe50084670fcd5781c9848f80ea2",
       "observed_branch": "main",
@@ -128,7 +152,9 @@
     {
       "id": "kivi_lm_evaluation_harness",
       "method": "kivi",
-      "lane": ["reference_environment_dependency"],
+      "lane": [
+        "reference_environment_dependency"
+      ],
       "repository": "https://github.com/EleutherAI/lm-evaluation-harness.git",
       "revision": "c9bbec6e7de418b9082379da82797522eb173054",
       "tree": "f768f7f6693a1068b0d9644535c2f858898b9211",

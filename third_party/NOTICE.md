@@ -1,9 +1,10 @@
 # Third-party provenance and notices
 
 Phase 0 records exact source pins plus explicit commit-resolution plans for
-attributed or embedded code whose upstream lineage is unresolved. This project
-did not vendor, build, import, or execute those sources. Acquisition must use
-the commit field in LOCK.json; branch names are informational only.
+attributed or embedded code whose upstream lineage is unresolved. Phase 5
+executes only the pinned vLLM source described below; the other sources remain
+unbuilt and unexecuted. Acquisition must use the commit field in `LOCK.json`;
+branch names are informational only.
 
 ## vLLM / TurboQuant reference authority
 
@@ -31,7 +32,10 @@ manifest digest
 the linux/amd64 image digest is
 `sha256:f0b9a0dc75a9fca3b6811e3279367b2d6a448055a000bfd13859587d74cef268`.
 The reference container is separate from the unresolved Measurement Lane
-container in B-010.
+container in B-010. Phase 5 verified the matching vLLM wheel source hashes and
+ran compact store, append, and decode fixtures on SM120 in the isolated
+reference environment recorded under `reference/turboquant/`. No vLLM source
+copy, benchmark timing, or quality result is vendored here.
 
 ## KIVI
 

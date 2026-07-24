@@ -1,7 +1,7 @@
 # TurboQuant source note
 
-Status: Phase 5 source authority pinned; reference execution pending. Not
-admitted for benchmarking.
+Status: Phase 5 source authority and deterministic reference fixtures
+validated on SM120. Not admitted for benchmarking or quality execution.
 
 ## Paper
 
@@ -89,8 +89,10 @@ assumption.
 
 ## Porting and admission risks
 
-1. Reference authority and exact equivalence to the paper are unresolved.
-2. Blackwell/RTX PRO 6000 compatibility is untested; no G0 evidence exists.
+1. The vLLM reference authority is fixed, but equivalence to every paper
+   variant remains outside the demonstrated scope.
+2. The small official reference path executed on Blackwell/RTX PRO 6000;
+   Measurement Lane compatibility and admission remain untested.
 3. Decode performs query conversion/rotation operations whose allocation
    behavior must be measured under eager and graph replay.
 4. The source includes full-prefix dequantization for large continuation
@@ -102,3 +104,42 @@ assumption.
    method fingerprint; it cannot be inferred from nominal bitwidth.
 7. Current source unit tests are not project golden fixtures and do not replace
    numerical reference, Compute Sanitizer, graph replay, or allocation gates.
+
+## Phase 5 reference fixture result
+
+The isolated reference environment is recorded in
+`reference/turboquant/environment.json` with its complete
+`python-freeze.txt`; the installed vLLM runtime files match the hashes of the
+pinned Git tree. CUDA was available on the NVIDIA RTX PRO 6000 Blackwell,
+compute capability 12.0, using driver 595.71.05, PyTorch 2.11.0+cu130, CUDA
+13.0, Triton 3.6.0, and vLLM 0.25.1. This reference environment is separate
+from the Measurement Lane and does not resolve B-010.
+
+The frozen fixture geometry is batch 1, 32 query heads, 8 KV heads, head
+dimension 128, a 17-token store, one append, block size 16, seed 20260724, and
+BF16 inputs. The official vLLM store function and compressed-cache decode
+function produced these per-head, per-token layouts:
+
+| Cache dtype | Packed key | Packed value | Key norm | Scale | Zero | Padding | Slot |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| turboquant_4bit_nc | 64 | 64 | 2 | 2 | 2 | 0 | 134 |
+| turboquant_k3v4_nc | 48 | 64 | 2 | 2 | 2 | 0 | 118 |
+| turboquant_3bit_nc | 48 | 48 | 2 | 2 | 2 | 0 | 102 |
+| turboquant_k8v4 | 128 | 64 | 0 | 2 | 2 | 0 | 196 |
+
+For each fixture, the source-derived slot multiplied by the allocated storage
+shape agrees with the actual packed cache file size. Store, append-slot, and
+decode outputs plus checksums are under `reference/turboquant/fixtures/`.
+Repeated generation in the same frozen environment returned
+`verified_existing`: all bytes matched and the finalized fixture set was not
+replaced.
+
+Kernel-name-only `torch.profiler` traces identify `_tq_fused_store_mse` for
+the three mandatory configurations, `_tq_fused_store_fp8` for the held-out
+configuration, and `_tq_decode_stage1` plus `_fwd_kernel_stage2` for decode.
+No `_tq_full_dequant_kv`, GQA repeat/materialization name, or backend fallback
+was observed in this minimal direct path. The trace retains no duration and
+cannot support a latency or physical-HBM claim. Source-declared CUDA Graph
+support is `AttentionCGSupport.UNIFORM_BATCH`; direct graph smoke was not
+exercised because the minimal API would require a separate graph harness, so
+unified capture/replay remains Phase 6 work.
