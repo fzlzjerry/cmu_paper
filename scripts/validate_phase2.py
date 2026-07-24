@@ -32,6 +32,7 @@ SRC = ROOT / "src"
 PHASE2_ENTRY_COMMIT = "fb164b5ea96031ca40b21f4b8436a49a3bb5b8d2"
 PHASE2_FINAL_COMMIT = "7c36d130565acef0883acb638c6b6c731b3f32ad"
 PHASE4_ENTRY_COMMIT = "89189297992947b7a8b79252add551c9321e5f33"
+PHASE5_ENTRY_COMMIT = "9eeabe787060e84c20cd7f88da8f7bca68eae1d4"
 QUALITY_COMMIT = "a7b8285dd8ed2fb598efbb3312e9f55064a0ee64"
 ENVIRONMENT_COMMIT = "ea176994921c793789ebbd9d42515ce20ae4baee"
 EVIDENCE_COMMIT = "fb164b5ea96031ca40b21f4b8436a49a3bb5b8d2"
@@ -265,6 +266,65 @@ PHASE4_ALLOWED_PATHS = frozenset(
     }
 )
 
+PHASE5_FIXTURE_CONFIGURATIONS = (
+    "turboquant_k8v4",
+    "turboquant_4bit_nc",
+    "turboquant_k3v4_nc",
+    "turboquant_3bit_nc",
+)
+PHASE5_FIXTURE_INPUTS = (
+    "append_key.bf16.bin",
+    "append_value.bf16.bin",
+    "decode_query.bf16.bin",
+    "prefill_key.bf16.bin",
+    "prefill_value.bf16.bin",
+)
+PHASE5_FIXTURE_FILES = (
+    "append_slot.uint8.bin",
+    "cache_after_append.uint8.bin",
+    "cache_after_store.uint8.bin",
+    "checksums.sha256",
+    "decode_output.bf16.bin",
+    "kernel_trace.json",
+    "manifest.json",
+)
+PHASE5_ALLOWED_PATHS = frozenset(
+    {
+        ".gitignore",
+        "Makefile",
+        "docker/reference-turboquant.Dockerfile",
+        "docs/blockers.md",
+        "docs/method_notes/turboquant.md",
+        "docs/plans/phase5-turboquant-reference.md",
+        "docs/phase_reports/phase5-turboquant-reference.md",
+        "docs/risk_register.md",
+        "docs/status.md",
+        "docs/tasks.md",
+        "reference/turboquant/README.md",
+        "reference/turboquant/bootstrap_environment.py",
+        "reference/turboquant/environment.json",
+        "reference/turboquant/fixtures/checksums.sha256",
+        "reference/turboquant/fixtures/fixture_set.json",
+        "reference/turboquant/generate_fixtures.py",
+        "reference/turboquant/python-freeze.txt",
+        "reference/turboquant/source_manifest.json",
+        "reference/turboquant/validate_fixtures.py",
+        "scripts/validate_phase2.py",
+        "tests/unit/test_phase5_turboquant_reference.py",
+        "third_party/LOCK.json",
+        "third_party/NOTICE.md",
+        *(
+            f"reference/turboquant/fixtures/inputs/{name}"
+            for name in PHASE5_FIXTURE_INPUTS
+        ),
+        *(
+            f"reference/turboquant/fixtures/{configuration}/{name}"
+            for configuration in PHASE5_FIXTURE_CONFIGURATIONS
+            for name in PHASE5_FIXTURE_FILES
+        ),
+    }
+)
+
 RAW_RESULT_SUFFIXES = {
     ".bin",
     ".cc",
@@ -471,9 +531,17 @@ def historical_phase3_paths() -> set[str]:
     )
 
 
-def current_phase4_paths() -> set[str]:
+def historical_phase4_paths() -> set[str]:
+    return git_paths(
+        (
+            "diff", "--name-only", "-z", PHASE4_ENTRY_COMMIT, PHASE5_ENTRY_COMMIT, "--"
+        )
+    )
+
+
+def current_phase5_paths() -> set[str]:
     changed = git_paths(
-        ("diff", "--name-only", "-z", PHASE4_ENTRY_COMMIT, "--")
+        ("diff", "--name-only", "-z", PHASE5_ENTRY_COMMIT, "--")
     )
     untracked = git_paths(
         ("ls-files", "--others", "--exclude-standard", "-z", "--")
@@ -1447,23 +1515,37 @@ def check_scope() -> int:
         errors.append(
             f"files outside the approved Phase 3 plan: {phase3_unexpected!r}"
         )
-    changed = current_phase4_paths()
-    phase4_unexpected = sorted(changed - PHASE4_ALLOWED_PATHS)
+    if not commit_is_ancestor(PHASE5_ENTRY_COMMIT):
+        errors.append(
+            "the accepted Phase 5 entry commit is not an ancestor of HEAD"
+        )
+    phase4 = historical_phase4_paths()
+    phase4_unexpected = sorted(phase4 - PHASE4_ALLOWED_PATHS)
     if phase4_unexpected:
         errors.append(
-            f"files outside the approved Phase 4 plan: {phase4_unexpected!r}"
+            f"historical files outside the approved Phase 4 plan: {phase4_unexpected!r}"
+        )
+    changed = current_phase5_paths()
+    phase5_unexpected = sorted(changed - PHASE5_ALLOWED_PATHS)
+    if phase5_unexpected:
+        errors.append(
+            f"files outside the approved Phase 5 plan: {phase5_unexpected!r}"
         )
     for relative in sorted(changed):
         if relative.startswith("docs/evidence/e00/"):
             errors.append(f"immutable E00 evidence changed: {relative}")
         if relative in QUALITY_PROTOCOL_HASHES:
             errors.append(
-                f"quality protocol changed during Phase 4: {relative}"
+                f"quality protocol changed during Phase 5: {relative}"
             )
-        if Path(relative).suffix in RAW_RESULT_SUFFIXES:
+        is_reference_fixture = (
+            relative in PHASE5_ALLOWED_PATHS
+            and relative.startswith("reference/turboquant/fixtures/")
+        )
+        if Path(relative).suffix in RAW_RESULT_SUFFIXES and not is_reference_fixture:
             errors.append(
                 f"forbidden binary, kernel, model, or profiler artifact "
-                f"in Phase 4 scope: {relative}"
+                f"in Phase 5 scope: {relative}"
             )
         if relative.startswith(
             (
@@ -1475,7 +1557,7 @@ def check_scope() -> int:
             )
         ):
             errors.append(
-                f"forbidden result tree in Phase 4 scope: {relative}"
+                f"forbidden result tree in Phase 5 scope: {relative}"
             )
     e00_changes = git_paths(
         (

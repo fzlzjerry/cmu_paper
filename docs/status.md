@@ -8,23 +8,25 @@ requirements; and AGENTS.md. Decision 0005 records precedence.
 
 ## Current state
 
-- Current phase: Phase 4 common BF16 adapter PASS. Immutable Phase 3 report
-  `phase3-g1-20260723t132609515797z-7f72c95f-f31ccb` independently replays
-  the unchanged post-B-016 campaigns and passes all 20 criteria. The Phase 4
-  adapter delegates to that implementation; formal E02 remains blocked by
-  B-009/B-010 and Phase 5 is closed.
+- Current phase: Phase 5 TurboQuant Reference Lane PASS. Official vLLM
+  `v0.25.1` commit `752a3a504485790a2e8491cacbb35c137339ad34` is pinned,
+  and three mandatory MSE+NC fixtures plus the same-path held-out k8v4 fixture
+  reproduce on SM120. The TurboQuant Measurement Lane remains fail-closed;
+  formal E02 and later measurement admission remain blocked by B-009/B-010.
 - Phase 0 status: PASS
 - Phase 1 remediation status: PASS
-- Next action: preserve the complete Phase 3 and Phase 4 evidence sets. Phase 5
-  TurboQuant Reference Lane may be proposed only in a separate new task; no
-  quantized method, pilot, Full Scan, or quality execution is authorized here
+- Next action: preserve all prior evidence and the finalized Phase 5 fixtures.
+  Phase 6 TurboQuant Measurement Adapter may be proposed only in a separate
+  task; no adapter execution, pilot, Full Scan, or quality execution is
+  authorized here
 - Active admission gate: native-host G0 PASS; container-parity G0 remains a
   later E01 requirement before E02
 - Benchmark implementation changes: exact BF16 static cache, fixed-L and
   growing-context runners, eager and CUDA Graph lanes, timing, allocation,
   telemetry, campaign lifecycle, and source-backed G1 reporting are
   implemented. Phase 4 adds only a thin method adapter, explicit BF16-only
-  factory, shared audit facades, and a strict admission report schema
+  factory, shared audit facades, and a strict admission report schema. Phase 5
+  adds only an isolated upstream TurboQuant reference lane and compact fixtures
 - CUDA builds or executions: the new formal E00 run passed extension build,
   native execution, forced PTX/JIT, numerical golden, CUDA Graph, allocation,
   SASS/PTX inspection, and all required Compute Sanitizer lanes
@@ -40,7 +42,9 @@ requirements; and AGENTS.md. Decision 0005 records precedence.
   source runs without executing timing. Phase 4 produced exactly three
   checksum-bound functional smoke records at B=1/L=128; they contain no
   latency, independent timing replicates, or formal performance data. No
-  profiler campaign or quality evidence was produced.
+  profiler campaign or quality evidence was produced. Phase 5 added only
+  deterministic reference tensors and kernel-name traces; all profiler
+  durations were discarded and no formal timing sample was created.
 - Scientific performance claims: none
 - Quality protocol: preregistered by Decision 0005 before any performance or
   quality result
@@ -48,6 +52,40 @@ requirements; and AGENTS.md. Decision 0005 records precedence.
 - Quality runs or quality-only dependency installations: none
 - Full-scan admission: CLOSED
 - Gate state: G0 PASS; native-host BF16 G1 PASS; G2-G5 NOT EVALUATED
+
+## Phase 5 TurboQuant reference lane
+
+The official vLLM repository is pinned at release `v0.25.1`, commit
+`752a3a504485790a2e8491cacbb35c137339ad34`, tree
+`3ec7a4eb00f9bc8fec399bea6cf7de27a7936372`, under Apache-2.0. Exact Git
+blobs and SHA-256 values bind the preset, cache dtype, store, decode, backend,
+centroid, and upstream-test sources. The installed wheel runtime files match
+the pinned source bytes. No floating branch or local TurboQuant rewrite is
+used.
+
+The isolated reference environment records Python 3.12.3, PyTorch
+2.11.0+cu130, CUDA 13.0, Triton 3.6.0, vLLM 0.25.1, driver 595.71.05, and the
+SM120 GPU. The alternative official vLLM image is pinned by linux/amd64 digest
+`sha256:f0b9a0dc75a9fca3b6811e3279367b2d6a448055a000bfd13859587d74cef268`.
+This environment is not the Measurement Lane and does not close B-010.
+
+With batch 1, 32 query heads, 8 KV heads, head dimension 128, 17 stored
+tokens, one append, block size 16, seed 20260724, and BF16 inputs, the official
+store/append/decode functions produced three mandatory fixtures and the
+same-path optional held-out k8v4 fixture. Actual cache files agree with the
+source-derived 134, 118, 102, and 196-byte slots. Kernel-name traces identify
+the official MSE/FP8 store and split-KV decode kernels, with no observed
+full-prefix dequantization, GQA materialization, or backend fallback in this
+minimal path. Direct graph smoke is deferred to Phase 6; upstream declares
+`AttentionCGSupport.UNIFORM_BATCH`.
+
+`make reference-turboquant` first published the no-replace set, then a second
+identical run returned `verified_existing` without replacing it.
+`make validate-reference-turboquant` validates all manifests, 34 root checksum
+entries, layouts, actual storage sizes, and claim boundaries. TurboQuant remains
+rejected by the Measurement Lane adapter factory. G0/G1 remain PASS, G2-G5
+remain NOT EVALUATED, Full Scan remains CLOSED, quality execution remains
+LOCKED, and `PERFORMANCE_DATA_FROZEN` remains absent.
 
 ## Phase 4 common adapter
 
@@ -347,10 +385,11 @@ recorded in B-008/R-014.
 These are exact source pins, not admission decisions. KVQuant's three embedded
 Transformers-derived trees are fixed by outer-commit tree hashes, while exact
 upstream lineage remains unresolved; LOCK.json also assigns commit-resolution
-plans to the GPTQ, GPTQ-for-LLaMA, and SqueezeLLM attributions. No upstream
-setup, binary, macro, kernel, or benchmark was executed. Temporary source
-snapshots were used only for read-only inspection and are outside the
-repository.
+plans to the GPTQ, GPTQ-for-LLaMA, and SqueezeLLM attributions. During the
+Phase 0 audit, no upstream setup, binary, macro, kernel, or benchmark was
+executed. Its temporary source snapshots were used only for read-only
+inspection and are outside the repository. Phase 5's later bounded vLLM
+reference execution is recorded separately above.
 
 ## Phase and gate ledger
 
@@ -361,11 +400,12 @@ repository.
 | Phase 2 repository/contracts/tooling | PASS | strict schemas and examples; fail-closed CLI; append-only local writer; 54 Phase 2 tests; repository checks |
 | G1 BF16 baseline | PASS | Native-host report `phase3-g1-20260723t132609515797z-7f72c95f-f31ccb` independently replays the unchanged 20 runs and 80 operations and passes all 20 criteria. Formal E02 remains blocked by B-009/B-010. |
 | Phase 4 common method adapter | PASS | BF16 delegates through `KVCacheMethod`; fixed-L/growing, allocation, graph, and path checks pass; `docs/evidence/phase4/method-admission.json`; no quantized method implemented |
+| Phase 5 TurboQuant reference lane | PASS | Exact vLLM v0.25.1 source/environment lock; 3 mandatory and 1 held-out deterministic fixtures; official store/append/decode paths; no measurement adapter or timing |
 | G2-TQ | NOT EVALUATED | requires E05-E06 |
 | G2-KIVI | NOT EVALUATED | requires E07-E08 |
 | G2-KVQ | NOT EVALUATED | requires E09-E11 |
 | G1-G5 unified admission | NOT EVALUATED | requires E12 |
-| Pilot/full-scan gates | CLOSED / NOT EVALUATED | No pilot or Phase 5 method is authorized; native-host evidence remains non-claim admission evidence only |
+| Pilot/full-scan gates | CLOSED / NOT EVALUATED | No pilot or quantized Measurement Lane is authorized; Phase 5 fixtures are reference-only and non-claim |
 | Post-performance quality validation | LOCKED | Decision 0005; `PERFORMANCE_DATA_FROZEN` absent |
 
 ## Phase 0 acceptance
@@ -383,12 +423,12 @@ repository.
 
 ## Next action
 
-Phase 4 is PASS for the common BF16 adapter boundary only. The Phase 3
-campaigns, all 20 runs, every failed report, and the PASS report remain
-unchanged. Phase 5 TurboQuant Reference Lane may be proposed only in a separate
-new task; this record does not authorize it or any other quantized method.
-B-010 still requires a digest-pinned measurement container and container-parity
-G0 before formal E02 closure, ordinary timing, Phase 5 execution, or a
-performance claim. B-009 still requires durable append-only storage and an
-immutable locator/publication mechanism. G2-G5 remain NOT EVALUATED, Full Scan
-is CLOSED, quality execution is LOCKED, and `PERFORMANCE_DATA_FROZEN` is absent.
+Phase 5 is PASS only for the pinned TurboQuant/vLLM Reference Lane. The
+Phase 3 campaigns, all 20 runs, every failed report, the PASS report, and Phase
+4 evidence remain unchanged. Phase 6 TurboQuant Measurement Adapter may be
+proposed only as a separate new task; it has not begun. B-010 still requires a
+digest-pinned measurement container and container-parity G0 before formal E02
+closure, TurboQuant measurement admission, ordinary timing, or a performance
+claim. B-009 still requires durable append-only storage and an immutable
+locator/publication mechanism. G2-G5 remain NOT EVALUATED, Full Scan is CLOSED,
+quality execution is LOCKED, and `PERFORMANCE_DATA_FROZEN` is absent.

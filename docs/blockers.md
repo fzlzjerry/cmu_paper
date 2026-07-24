@@ -4,30 +4,32 @@ Last updated: 2026-07-24.
 
 ## Current disposition
 
-Phase 2 remains PASS, native-host Phase 3 BF16 G1 remains PASS, and the Phase 4
-common BF16 adapter is PASS. The immutable Phase 3 report
+Phase 2 remains PASS, native-host Phase 3 BF16 G1 remains PASS, the Phase 4
+common BF16 adapter is PASS, and the Phase 5 TurboQuant Reference Lane is PASS.
+The immutable Phase 3 report
 `phase3-g1-20260723t132609515797z-7f72c95f-f31ccb`, SHA-256
 `c29aef1d9f22b328201599b3e6cdf9efe7c069e78abaf6b37bc3cb12931414c9`.
 The report independently replays all 80 consolidated raw B-011/B-012 operation
 bundles from the unchanged 20-run campaigns. Every earlier failed report,
 campaign, and run remains immutable. B-011 through B-017 are resolved without
-a silent fallback or weakened scientific gate. Phase 4 does not close or
+a silent fallback or weakened scientific gate. Phase 5 resolves B-003 only
+for the explicitly bounded vLLM reference authority. It does not close or
 weaken B-009 or B-010; both remain open and still block formal/unified
-admission, Phase 5 method execution, ordinary timing, and every performance
-claim.
+admission, TurboQuant Measurement Lane execution, ordinary timing, and every
+performance claim.
 
 | ID | Blocking condition | Blocks | Evidence / next action | Status |
 |---|---|---|---|---|
 | B-001 | No Git commit or code SHA existed after Phase 0. | E00 durable gate evidence and every later run | Resolved by reviewed root commit 9569d938d9023a3e71d98f12234efa1897004533. | resolved 2026-07-22 |
 | B-002 | Formal G0 failed because required SASS inspection could not find `nvdisasm`; runtime and sanitizer lanes were not admitted in that run. | E01 and all non-E00 CUDA or timing work | Resolved without changing E00 semantics: the exact `cuda-nvdisasm-13-0=13.0.85-1` package/tool identity is locked at 6442ba1f7554ea0ebf0b3bb1a920c94567cab689, and new immutable run `e00-20260722T050632.375718Z-6442ba1f7554-02d5bd32` passed every G0 lane. The original failed run remains unchanged. | resolved 2026-07-22 |
-| B-003 | TurboQuant paper has no identified author-owned code repository; vLLM v0.25.1 is only a pinned candidate. | E05 golden fixtures | Establish reference authority/equivalence and record a decision if upstream semantics differ. | open |
+| B-003 | TurboQuant paper has no identified author-owned code repository; a bounded implementation authority was required for E05. | E05 golden fixtures | Resolved by selecting official vLLM release v0.25.1 at exact commit `752a3a504485790a2e8491cacbb35c137339ad34` as authority for this lane only. Source inspection found the preregistered names unchanged, so no decision record was needed. Fixtures claim conformance only to this pinned vLLM implementation, not every paper variant. | resolved 2026-07-24 |
 | B-004 | Primary model ID, immutable revision, config hash, geometry, and context limit were unset. | E02 and method fixtures | Resolved by Decision 0007 and `docs/evidence/phase3/model-identity.md`: all 11 exact-revision artifacts match their frozen SHA-256 values and the full checkpoint/tokenizer load offline with the required BF16 GQA geometry. | resolved 2026-07-22 |
 | B-005 | KVQuant calibration dataset/revision, preprocessing, seed, cap, and artifact do not exist. | E09-E11 | Freeze and checksum them in Phase 9; no calibration during scans. | open |
 | B-006 | KVQuant root licensing and embedded/adapted-source lineage are incomplete. | E10 reference execution, copying, or redistribution | Map recorded embedded trees and attributed files to exact upstream commits/patch deltas; resolve repository-wide license authority. | open |
 | B-007 | Archive acquisition URL and pre-workspace provenance were not supplied. | Exact external reacquisition of literature bundle | Ask the operator for origin metadata if available; retain the local archive/file hashes meanwhile. | open, non-gating for local audit |
 | B-008 | qpdf is not installed for an additional PDF structural scan. | Optional defense-in-depth literature check | Install only in a reviewed environment or use an equivalent static scanner; current pdfinfo/pdfdetach checks are recorded. | open, non-gating |
 | B-009 | Phase 2 implements and tests local no-replace staging, lifecycle records, provenance locking, checksums, inventories, completion markers, and finalized-run validation, but no durable append-only store, external attestation, or immutable locator/publication scheme is selected or demonstrated. | E01 task closure, formal/unified G1-G5 admission, durable evidence claims, and every claim-bearing run. Decision 0007 narrowly permits a Phase 3 engineering G1 verdict from locally finalized checksum-valid non-claim evidence; it does not claim durable immutability. | Select and exercise the durable store; publish an immutable locator plus manifest/ledger digest and verify retrieval before closing. Local chmod and same-user checksums are defense in depth, not durable immutability. Decision 0002 remains limited to Git-tracked E00 evidence. | open; local controls implemented 2026-07-22 |
-| B-010 | No digest-pinned measurement container exists and host G0 cannot certify one. | Formal E02 closure, later method CUDA implementation/admission, formal/unified G1-G5, ordinary timing, and every performance claim. Decision 0007 narrowly permits bounded BF16 Phase 3 implementation and `native_host_admission` engineering timing on the certified host. | After E01, pin the measurement image by digest and rerun the identical preflight inside it before formal measurement or later method admission. | open |
+| B-010 | No digest-pinned measurement container exists and host G0 cannot certify one. | Formal E02 closure, later method Measurement Lane CUDA execution/admission, formal/unified G1-G5, ordinary timing, and every performance claim. Decision 0007 narrowly permits bounded BF16 Phase 3 implementation and `native_host_admission` engineering timing on the certified host. | After E01, pin the measurement image by digest and rerun the identical preflight inside it before formal measurement or later method admission. | open |
 | B-011 | The immutable original report failed because only high-level SDPA names were visible and found no positive materialization evidence. Both complete campaigns at execution SHA `9def265ab613cde7a06b0e51850f066d0564d635` preserve direct CUDA traces for all 80 operations. | BF16 G1, Phase 4, every later method baseline comparison. | Reporting commit `7f72c95f9932c608f9bd68f1971d6e86378596a2` independently replays the checksum-bound raw traces, source/shape evidence, allocation join, and exact operation keys. New immutable report `phase3-g1-20260723t132609515797z-7f72c95f-f31ccb` derives `gqa_nonmaterialization_verified` for all 80 operations, identifies `pytorch_flash::flash_fwd_splitkv` for both controls, and passes `gqa_not_materialized`, `no_torch_cat_growth`, and `no_backend_fallback`. Preserve the corrected taxonomy and direct device-kernel contract. | resolved 2026-07-23 |
 | B-012 | The immutable original eager audits had unexplained transient traffic. Decisions 0013/0014 froze the source-backed eager criterion and geometry-specific split control. | BF16 G1 eager/graph lanes, Phase 4 common baseline. | The new report independently replays every allocator event: all 72 eager operations pass `phase3_eager_attributed_ephemeral_v1` with 1,066 fully attributed events each and no failure reason; all 8 graph operations pass `phase3_graph_zero_allocation_v1` with zero events. `no_unexplained_measured_region_allocation` and `graph_replay_no_allocation` both PASS. Retain Decisions 0013/0014 and strict graph-zero-allocation. | resolved 2026-07-23 |
 | B-013 | The original fixed-L terminal query race and three first-remediation recurrences remain immutable. The exact live race recurred in eight snapshots in the latest complete campaigns; every row joined to the registered GPU/PID/start time and passed as `owned_only`. Targeted tests keep unregistered foreign processes and PID reuse as hard failures. | Complete BF16 G1 process ownership. | Resolved by commit `eb908f6e372d6b232e6079e9344c2103bc90cdea`; retain the exact registered-row rule and all foreign/PID-reuse controls. | resolved 2026-07-23 |
@@ -41,5 +43,14 @@ claim.
 The adapter boundary adds no new blocker and closes none. Its report and three
 functional smoke records remain local, checksum-bound, non-claim evidence.
 B-009 still requires durable append-only publication, and B-010 still requires
-a digest-pinned measurement container with parity G0 before Phase 5 execution
-or any formal performance work.
+a digest-pinned measurement container with parity G0 before any TurboQuant
+Measurement Lane execution or formal performance work. The separate Phase 5
+reference environment does not satisfy measurement-container parity.
+
+## Phase 5 disposition
+
+B-003 is resolved for the narrowly selected vLLM authority. The exact source,
+environment, fixtures, and checksum ledgers reproduce on SM120; no source or
+configuration substitution occurred. Direct CUDA Graph smoke was not exercised
+in the minimal official API and remains Phase 6 work, but is not a Phase 5
+blocker under the frozen acceptance criteria. B-009 and B-010 remain OPEN.
