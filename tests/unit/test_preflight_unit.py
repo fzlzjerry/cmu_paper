@@ -1120,6 +1120,18 @@ class PreflightUnitTests(unittest.TestCase):
         self.assertEqual(row.process_type, "G")
         self.assertEqual(row.process_name, "Xorg")
 
+    def test_process_query_skips_idle_pmon_row(self) -> None:
+        parsed = process_query._parse_pmon(
+            "0 - - - - - - - - -\n"
+        )
+        self.assertEqual(parsed, {})
+
+    def test_process_query_rejects_partial_idle_pmon_row(self) -> None:
+        with self.assertRaises(process_query.SnapshotError):
+            process_query._parse_pmon(
+                "0 - C - - - - - - python\n"
+            )
+
     def test_process_query_rejects_unknown_uuid(self) -> None:
         with self.assertRaises(process_query.SnapshotError):
             process_query._parse_compute_apps(
@@ -2169,6 +2181,58 @@ class PreflightUnitTests(unittest.TestCase):
             run_preflight.verification_outputs_are_empty(
                 command_ok=False, stdout="", stderr=""
             )
+        )
+
+    def test_dpkg_verification_accepts_only_pinned_image_omissions(self) -> None:
+        expected = (
+            "missing     /usr/share/doc/pkg/README\n"
+            "missing     /usr/share/locale/fr/LC_MESSAGES/pkg.mo\n"
+            "missing     /usr/share/man/man1/tool.1.gz\n"
+            "missing     /var/lib/apt/lists/partial\n"
+        )
+        result = run_preflight.dpkg_verification_result(
+            command_ok=True,
+            stdout=expected,
+            stderr="",
+            allow_container_policy_omissions=True,
+        )
+        self.assertEqual(result["status"], "PASS")
+        self.assertFalse(result["byte_empty"])
+        self.assertEqual(result["expected_omission_count"], 4)
+        self.assertEqual(result["unexpected_lines"], [])
+
+        for unexpected in (
+            "missing     /usr/bin/nvcc\n",
+            "??5?????? c /etc/example\n",
+            "missing     /usr/share/doc/../bin/tool\n",
+        ):
+            with self.subTest(unexpected=unexpected):
+                rejected = run_preflight.dpkg_verification_result(
+                    command_ok=True,
+                    stdout=unexpected,
+                    stderr="",
+                    allow_container_policy_omissions=True,
+                )
+                self.assertEqual(rejected["status"], "FAIL")
+                self.assertEqual(len(rejected["unexpected_lines"]), 1)
+
+        command_failure = run_preflight.dpkg_verification_result(
+            command_ok=False,
+            stdout="",
+            stderr="dpkg failed\n",
+            allow_container_policy_omissions=True,
+        )
+        self.assertEqual(command_failure["status"], "FAIL")
+
+        native_rejection = run_preflight.dpkg_verification_result(
+            command_ok=True,
+            stdout=expected,
+            stderr="",
+            allow_container_policy_omissions=False,
+        )
+        self.assertEqual(native_rejection["status"], "FAIL")
+        self.assertFalse(
+            native_rejection["container_policy_omissions_allowed"]
         )
 
     def test_dpkg_ownership_and_nvdisasm_version_fail_closed(self) -> None:

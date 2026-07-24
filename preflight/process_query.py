@@ -262,6 +262,10 @@ def _parse_pmon(stdout: str) -> dict[tuple[int, int], PmonRow]:
             raise SnapshotError(f"pmon line {line_number} has invalid GPU index") from exc
         if gpu_index < 0:
             raise SnapshotError(f"pmon line {line_number} has negative GPU index")
+        # Current NVIDIA drivers emit one all-dash row per idle GPU.  It is an
+        # explicit no-process observation, not a malformed process identity.
+        if all(field == "-" for field in fields[1:]):
+            continue
         pid = _parse_pid(pid_text, source="pmon", line_number=line_number)
         if not process_name or process_name == "-":
             raise SnapshotError(f"pmon line {line_number} has no process name")

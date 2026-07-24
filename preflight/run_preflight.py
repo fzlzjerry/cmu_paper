@@ -62,6 +62,17 @@ IMAGE_SECRET_VARIABLES = (
     "R2_ACCOUNT_ID",
 )
 
+# The pinned NVIDIA base image deliberately configures dpkg to exclude these
+# non-executable payloads.  The Dockerfile also removes apt's transient list
+# directory.  Package versions and the locked executable hashes remain exact;
+# every other dpkg verification line is still rejected.
+DPKG_EXPECTED_MISSING_PREFIXES = (
+    "/usr/share/doc/",
+    "/usr/share/locale/",
+    "/usr/share/man/",
+)
+DPKG_EXPECTED_MISSING_PATHS = frozenset({"/var/lib/apt/lists/partial"})
+
 MEASUREMENT_CONTAINER_LOCK_PURPOSE = (
     "Exact Measurement Container system toolchain observed from an "
     "uncertified candidate build; requires explicit review and promotion"
@@ -2329,6 +2340,55 @@ def verification_outputs_are_empty(
     stderr: str,
 ) -> bool:
     return command_ok and stdout == "" and stderr == ""
+
+
+def dpkg_verification_result(
+    *,
+    command_ok: bool,
+    stdout: str,
+    stderr: str,
+    allow_container_policy_omissions: bool,
+) -> dict[str, Any]:
+    """Accept only dpkg omissions imposed by the pinned image policy."""
+    expected_omissions: list[str] = []
+    unexpected_lines: list[str] = []
+    for line in stdout.splitlines():
+        marker = "missing     "
+        if not line.startswith(marker):
+            unexpected_lines.append(line)
+            continue
+        path_text = line[len(marker) :]
+        path = PurePosixPath(path_text)
+        normalized = path.is_absolute() and not ({".", ".."} & set(path.parts))
+        allowed = allow_container_policy_omissions and (
+            path_text in DPKG_EXPECTED_MISSING_PATHS
+            or any(
+                path_text.startswith(prefix)
+                for prefix in DPKG_EXPECTED_MISSING_PREFIXES
+            )
+        )
+        if normalized and allowed:
+            expected_omissions.append(path_text)
+        else:
+            unexpected_lines.append(line)
+    status = (
+        "PASS"
+        if command_ok and stderr == "" and not unexpected_lines
+        else "FAIL"
+    )
+    return {
+        "status": status,
+        "command_ok": command_ok,
+        "container_policy_omissions_allowed": (
+            allow_container_policy_omissions
+        ),
+        "stderr_empty": stderr == "",
+        "byte_empty": stdout == "" and stderr == "",
+        "expected_omission_count": len(expected_omissions),
+        "allowed_missing_prefixes": list(DPKG_EXPECTED_MISSING_PREFIXES),
+        "allowed_missing_paths": sorted(DPKG_EXPECTED_MISSING_PATHS),
+        "unexpected_lines": unexpected_lines,
+    }
 
 
 def dpkg_ownership_matches(
@@ -4994,15 +5054,21 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
             dependency_validation["reviewed_system_lock_bytes_equal"] = True
 
-        dpkg_verify_clean = verification_outputs_are_empty(
+        dpkg_verify = dpkg_verification_result(
             command_ok=recorder.command_ok("dpkg_verify_locked_files"),
             stdout=recorder.command_stdout("dpkg_verify_locked_files"),
             stderr=recorder.command_stderr("dpkg_verify_locked_files"),
+            allow_container_policy_omissions=measurement_container_mode,
         )
-        dependency_validation["dpkg_verify_clean"] = dpkg_verify_clean
-        if not dpkg_verify_clean:
+        dpkg_verify_ok = dpkg_verify["status"] == "PASS"
+        dependency_validation["dpkg_verify"] = dpkg_verify
+        dependency_validation["dpkg_verify_clean"] = dpkg_verify_ok
+        dependency_validation["dpkg_verify_byte_empty"] = dpkg_verify[
+            "byte_empty"
+        ]
+        if not dpkg_verify_ok:
             dependency_errors.append(
-                "dpkg --verify reported a mismatch or command failure"
+                "dpkg --verify reported an unexpected mismatch or command failure"
             )
 
         python_integrity = recorder.command_payload(
@@ -5084,7 +5150,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             and recorder.command_ok("dpkg_architecture")
             and recorder.command_ok("nvdisasm_package_ownership")
             and nvdisasm_owner_ok
-            and dpkg_verify_clean
+            and dpkg_verify_ok
             and dependency_validation["status"] == "PASS"
         )
 
