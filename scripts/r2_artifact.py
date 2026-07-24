@@ -30,6 +30,8 @@ import xml.etree.ElementTree as ET
 
 REGION = "auto"
 SERVICE = "s3"
+EXPECTED_R2_PREFIX = "kvbench/sha256"
+ENDPOINT_CLASS = "cloudflare_r2_s3"
 CONTROL_FILES = (
     "manifest.json",
     "artifact_inventory.json",
@@ -52,6 +54,9 @@ INVENTORY_EXCLUDED_CONTROLS = (
     "COMPLETE",
 )
 E00_CONTAINER_SCHEMA_VERSION = "e00-manifest-1.1.0"
+PHASE6A_PARITY_SCHEMA_VERSION = (
+    "kvbench-phase6a-bf16-container-parity-1.0.0"
+)
 OBJECT_ACCESS_VARIABLES = (
     "R2_ACCOUNT_ID",
     "R2_BUCKET",
@@ -61,6 +66,15 @@ OBJECT_ACCESS_VARIABLES = (
 )
 LOCK_VARIABLE = "CLOUDFLARE_API_TOKEN"
 REQUIRED_VARIABLES = (*OBJECT_ACCESS_VARIABLES, LOCK_VARIABLE)
+STATUS_VARIABLES = (
+    "R2_ACCOUNT_ID",
+    "R2_BUCKET",
+    "R2_ENDPOINT",
+    "AWS_ACCESS_KEY_ID",
+    "AWS_SECRET_ACCESS_KEY",
+    "CLOUDFLARE_API_TOKEN",
+    "KVBENCH_R2_PREFIX",
+)
 SECRET_VARIABLES = (
     "AWS_ACCESS_KEY_ID",
     "AWS_SECRET_ACCESS_KEY",
@@ -102,13 +116,38 @@ class ObjectConflictError(R2ArtifactError):
 class RemoteRequestError(R2ArtifactError):
     """A provider request failed without retaining a secret-bearing message."""
 
-    def __init__(self, *, status: int | None, code: str) -> None:
+    def __init__(
+        self,
+        *,
+        status: int | None,
+        code: str,
+        failed_check: str | None = None,
+        failed_path: str | None = None,
+        provider_message: str | None = None,
+    ) -> None:
         self.status = status
         self.code = code
+        self.failed_check = failed_check
+        self.failed_path = failed_path
+        self.provider_message = provider_message
         status_text = str(status) if status is not None else "unavailable"
-        super().__init__(
-            f"Cloudflare R2 request failed (HTTP {status_text}, code {code})"
-        )
+        details = [f"HTTP {status_text}", f"code {code}"]
+        if failed_check is not None:
+            details.append(f"check {failed_check}")
+        if failed_path is not None:
+            details.append(f"path {failed_path}")
+        if provider_message is not None:
+            details.append(f"provider message {provider_message}")
+        super().__init__(f"Cloudflare R2 request failed ({', '.join(details)})")
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "http_status": self.status,
+            "provider_error_code": self.code,
+            "provider_error_message": self.provider_message,
+            "failed_check": self.failed_check,
+            "failed_path": self.failed_path,
+        }
 
 
 def sha256_bytes(data: bytes) -> str:
@@ -131,7 +170,7 @@ def required_variable_status(
     source = os.environ if environ is None else environ
     return {
         name: "PRESENT" if bool(source.get(name)) else "MISSING"
-        for name in REQUIRED_VARIABLES
+        for name in STATUS_VARIABLES
     }
 
 
@@ -254,17 +293,32 @@ class R2Config:
         if any(not source.get(name) for name in REQUIRED_VARIABLES):
             raise R2ArtifactError("required R2 variables are missing")
         account_id = source["R2_ACCOUNT_ID"]
+        if re.fullmatch(r"[0-9a-f]{32}", account_id) is None:
+            raise R2ArtifactError("R2_ACCOUNT_ID is invalid")
+        expected_endpoint = (
+            f"https://{account_id}.r2.cloudflarestorage.com"
+        )
         endpoint = source.get(
             "R2_ENDPOINT",
-            f"https://{account_id}.r2.cloudflarestorage.com",
+            expected_endpoint,
         )
+        validated_endpoint = _validate_endpoint(endpoint)
+        if validated_endpoint != expected_endpoint:
+            raise R2ArtifactError(
+                "R2_ENDPOINT does not match the configured Cloudflare account"
+            )
         bucket = source["R2_BUCKET"]
         if _BUCKET_RE.fullmatch(bucket) is None:
             raise R2ArtifactError("R2_BUCKET is invalid")
+        prefix = normalize_prefix(source["KVBENCH_R2_PREFIX"])
+        if prefix != EXPECTED_R2_PREFIX:
+            raise R2ArtifactError(
+                f"KVBENCH_R2_PREFIX must normalize to {EXPECTED_R2_PREFIX}"
+            )
         return cls(
-            endpoint=_validate_endpoint(endpoint),
+            endpoint=validated_endpoint,
             bucket=bucket,
-            prefix=normalize_prefix(source["KVBENCH_R2_PREFIX"]),
+            prefix=prefix,
             account_id=account_id,
             access_key_id=source["AWS_ACCESS_KEY_ID"],
             secret_access_key=source["AWS_SECRET_ACCESS_KEY"],
@@ -279,6 +333,7 @@ class R2Config:
     def public_identity(self) -> dict[str, str]:
         return {
             "provider": "cloudflare_r2",
+            "endpoint_class": ENDPOINT_CLASS,
             "endpoint": self.endpoint_identity(),
             "bucket": self.bucket,
             "prefix": self.prefix,
@@ -641,6 +696,26 @@ def _validate_artifact(
 
     if manifest.get("schema_version") == E00_CONTAINER_SCHEMA_VERSION:
         _validate_e00_artifact(root, manifest, inventory_files)
+    elif manifest.get("schema_version") == PHASE6A_PARITY_SCHEMA_VERSION:
+        from scripts.phase6a_bf16_parity import (
+            Phase6AParityError,
+            validate_finalized_parity_artifact,
+        )
+
+        try:
+            validate_finalized_parity_artifact(
+                root, manifest, inventory_files, relatives
+            )
+        except (
+            Phase6AParityError,
+            IndexError,
+            KeyError,
+            TypeError,
+            ValueError,
+        ) as error:
+            raise ArtifactValidationError(
+                "Phase 6A parity artifact is invalid"
+            ) from error
 
     if "manifest.initial.json" in relatives and require_immutable:
         try:
@@ -1169,6 +1244,37 @@ class R2S3Client:
             continuation = next_token
 
 
+def _cloudflare_error_details(
+    payload: object,
+    *,
+    environ: Mapping[str, str],
+) -> tuple[str, str | None]:
+    if not isinstance(payload, Mapping):
+        return "CloudflareAPIError", None
+    errors = payload.get("errors")
+    if not isinstance(errors, list):
+        return "CloudflareAPIError", None
+    for item in errors:
+        if not isinstance(item, Mapping):
+            continue
+        raw_code = item.get("code")
+        if isinstance(raw_code, int) and not isinstance(raw_code, bool):
+            code = str(raw_code)
+        elif isinstance(raw_code, str) and re.fullmatch(
+            r"[A-Za-z0-9][A-Za-z0-9_.-]{0,79}", raw_code
+        ):
+            code = raw_code
+        else:
+            code = "CloudflareAPIError"
+        raw_message = item.get("message")
+        if not isinstance(raw_message, str):
+            return code, None
+        normalized = " ".join(raw_message.split())
+        message = redact_text(normalized, environ)[:512]
+        return code, message if message else None
+    return "CloudflareAPIError", None
+
+
 class CloudflareReadClient:
     """Read-only Cloudflare management API client for bucket certification."""
 
@@ -1177,13 +1283,33 @@ class CloudflareReadClient:
         api_token: str,
         *,
         opener: Callable[..., Any] | None = None,
+        redaction_environment: Mapping[str, str] | None = None,
     ) -> None:
         self._api_token = api_token
         self._opener = urllib.request.urlopen if opener is None else opener
+        source = (
+            os.environ
+            if redaction_environment is None
+            else redaction_environment
+        )
+        self._redaction_environment = {
+            name: value
+            for name in SECRET_VARIABLES
+            if (value := source.get(name))
+        }
+        self._redaction_environment["CLOUDFLARE_API_TOKEN"] = api_token
 
-    def get_json(self, path: str) -> dict[str, Any]:
+    def get_json(
+        self,
+        path: str,
+        *,
+        check: str = "cloudflare_management",
+    ) -> dict[str, Any]:
         if not path.startswith("/") or ".." in PurePosixPath(path).parts:
             raise R2ArtifactError("Cloudflare API path is unsafe")
+        if re.fullmatch(r"[a-z0-9_]{1,64}", check) is None:
+            raise R2ArtifactError("Cloudflare API check name is unsafe")
+        safe_path = redact_text(path, self._redaction_environment)
         request = urllib.request.Request(
             f"https://api.cloudflare.com/client/v4{path}",
             headers={"Authorization": f"Bearer {self._api_token}"},
@@ -1193,23 +1319,71 @@ class CloudflareReadClient:
             with self._opener(request, timeout=60) as response:
                 raw = response.read(4 * 1024 * 1024 + 1)
         except urllib.error.HTTPError as error:
+            try:
+                response_body = error.read(65536)
+                error_payload: object = json.loads(response_body)
+            except (OSError, UnicodeError, json.JSONDecodeError):
+                error_payload = None
+            provider_code, provider_message = _cloudflare_error_details(
+                error_payload,
+                environ=self._redaction_environment,
+            )
             raise RemoteRequestError(
-                status=error.code, code="CloudflareAPIError"
+                status=error.code,
+                code=provider_code,
+                failed_check=check,
+                failed_path=safe_path,
+                provider_message=provider_message,
             ) from None
         except (urllib.error.URLError, TimeoutError, OSError):
-            raise RemoteRequestError(status=None, code="TransportError") from None
+            raise RemoteRequestError(
+                status=None,
+                code="TransportError",
+                failed_check=check,
+                failed_path=safe_path,
+            ) from None
         if len(raw) > 4 * 1024 * 1024:
-            raise RemoteRequestError(status=200, code="OversizedAPIResponse")
+            raise RemoteRequestError(
+                status=200,
+                code="OversizedAPIResponse",
+                failed_check=check,
+                failed_path=safe_path,
+            )
         try:
             payload = json.loads(raw)
         except (UnicodeError, json.JSONDecodeError) as error:
-            raise RemoteRequestError(status=200, code="MalformedAPIResponse") from error
-        if (
-            not isinstance(payload, dict)
-            or payload.get("success") is not True
-            or not isinstance(payload.get("result"), dict)
-        ):
-            raise RemoteRequestError(status=200, code="RejectedAPIResponse")
+            raise RemoteRequestError(
+                status=200,
+                code="MalformedAPIResponse",
+                failed_check=check,
+                failed_path=safe_path,
+            ) from error
+        if not isinstance(payload, dict):
+            raise RemoteRequestError(
+                status=200,
+                code="MalformedAPIResponse",
+                failed_check=check,
+                failed_path=safe_path,
+            )
+        if payload.get("success") is not True:
+            provider_code, provider_message = _cloudflare_error_details(
+                payload,
+                environ=self._redaction_environment,
+            )
+            raise RemoteRequestError(
+                status=200,
+                code=provider_code,
+                failed_check=check,
+                failed_path=safe_path,
+                provider_message=provider_message,
+            )
+        if not isinstance(payload.get("result"), dict):
+            raise RemoteRequestError(
+                status=200,
+                code="MalformedAPIResponse",
+                failed_check=check,
+                failed_path=safe_path,
+            )
         return payload
 
 
@@ -1217,7 +1391,14 @@ class CloudflareReadClient:
 class BucketLockEvidence:
     bucket: str
     endpoint_identity: str
+    endpoint_class: str
+    bucket_exists: bool
+    managed_r2_dev_enabled: bool
+    custom_domain_count: int
+    enabled_custom_domain_count: int
+    public_state_result: str
     rule_id: str
+    rule_name: str | None
     covered_prefix: str
     rule_prefix: str
     scope_kind: str
@@ -1229,14 +1410,24 @@ class BucketLockEvidence:
             "provider": "cloudflare_r2",
             "bucket": self.bucket,
             "endpoint": self.endpoint_identity,
+            "endpoint_class": self.endpoint_class,
+            "bucket_exists": self.bucket_exists,
             "bucket_public": False,
+            "public_state_result": self.public_state_result,
+            "managed_r2_dev_enabled": self.managed_r2_dev_enabled,
+            "public_r2_dev": self.managed_r2_dev_enabled,
+            "custom_domain_count": self.custom_domain_count,
+            "enabled_custom_domain_count": self.enabled_custom_domain_count,
+            "public_custom_domain": self.enabled_custom_domain_count > 0,
             "lock_rule_id": self.rule_id,
-            "lock_rule_name": self.rule_id,
+            "lock_rule_name": self.rule_name,
             "covered_prefix": self.covered_prefix,
             "lock_prefix": self.rule_prefix,
             "lock_scope": self.scope_kind,
             "enabled": True,
             "retention_type": self.retention_type,
+            "retention_condition": self.retention_type,
+            "verification_result": "PASS",
             "verified_at_utc": self.verified_at_utc,
         }
 
@@ -1256,7 +1447,13 @@ def verify_cloudflare_bucket_lock(
     """Read and verify bucket existence, direct public state, and Bucket Lock."""
 
     reader = (
-        CloudflareReadClient(config.cloudflare_api_token)
+        CloudflareReadClient(
+            config.cloudflare_api_token,
+            redaction_environment={
+                "R2_ACCOUNT_ID": config.account_id,
+                "CLOUDFLARE_API_TOKEN": config.cloudflare_api_token,
+            },
+        )
         if client is None
         else client
     )
@@ -1264,57 +1461,96 @@ def verify_cloudflare_bucket_lock(
     bucket = urllib.parse.quote(config.bucket, safe="")
     base = f"/accounts/{account}/r2/buckets/{bucket}"
 
-    bucket_result = _cloudflare_result(reader.get_json(base))
+    bucket_result = _cloudflare_result(
+        reader.get_json(base, check="bucket_exists")
+    )
     if bucket_result.get("name") != config.bucket:
         raise R2ArtifactError("configured R2 bucket does not exist")
 
-    managed = _cloudflare_result(reader.get_json(f"{base}/domains/managed"))
-    custom = _cloudflare_result(reader.get_json(f"{base}/domains/custom"))
+    managed = _cloudflare_result(
+        reader.get_json(
+            f"{base}/domains/managed",
+            check="managed_r2_dev_public_access",
+        )
+    )
+    custom = _cloudflare_result(
+        reader.get_json(
+            f"{base}/domains/custom",
+            check="custom_domain_public_access",
+        )
+    )
     domains = custom.get("domains")
     if not isinstance(managed.get("enabled"), bool) or not isinstance(domains, list):
         raise R2ArtifactError("R2 public-access response failed validation")
-    if managed["enabled"] or any(
-        isinstance(item, Mapping) and item.get("enabled") is True
-        for item in domains
-    ):
-        raise R2ArtifactError("R2 bucket direct public access is enabled")
     if any(
         not isinstance(item, Mapping) or not isinstance(item.get("enabled"), bool)
         for item in domains
     ):
         raise R2ArtifactError("R2 public-access response failed validation")
+    enabled_custom_domain_count = sum(
+        item.get("enabled") is True
+        for item in domains
+        if isinstance(item, Mapping)
+    )
+    if managed["enabled"] or enabled_custom_domain_count:
+        raise R2ArtifactError("R2 bucket direct public access is enabled")
 
-    lock_result = _cloudflare_result(reader.get_json(f"{base}/lock"))
+    lock_result = _cloudflare_result(
+        reader.get_json(f"{base}/lock", check="bucket_lock")
+    )
     rules = lock_result.get("rules")
     if not isinstance(rules, list):
         raise R2ArtifactError("R2 Bucket Lock response failed validation")
     expected_lock_prefix = f"{config.prefix}/"
-    candidates: list[tuple[str, str]] = []
+    candidates: list[tuple[str, str | None, str]] = []
     for rule in rules:
         if not isinstance(rule, Mapping) or rule.get("enabled") is not True:
             continue
         rule_id = rule.get("id")
+        rule_name = rule.get("name")
         condition = rule.get("condition")
         raw_prefix = rule.get("prefix", "")
         if (
             not isinstance(rule_id, str)
             or not rule_id
+            or (
+                rule_name is not None
+                and (
+                    not isinstance(rule_name, str)
+                    or not rule_name
+                    or rule_name != rule_name.strip()
+                )
+            )
             or not isinstance(condition, Mapping)
             or condition.get("type") != "Indefinite"
             or not isinstance(raw_prefix, str)
         ):
             continue
-        if raw_prefix == expected_lock_prefix:
-            candidates.append((rule_id, raw_prefix))
+        try:
+            normalized_rule_prefix = normalize_prefix(raw_prefix)
+        except R2ArtifactError:
+            continue
+        if normalized_rule_prefix == config.prefix:
+            candidates.append((rule_id, rule_name, raw_prefix))
     if not candidates:
         raise R2ArtifactError(
             "no enabled indefinite Bucket Lock rule exactly matches the evidence prefix"
         )
-    rule_id, rule_prefix = sorted(candidates)[0]
+    rule_id, rule_name, rule_prefix = sorted(
+        candidates,
+        key=lambda item: (item[0], item[1] or "", item[2]),
+    )[0]
     return BucketLockEvidence(
         bucket=config.bucket,
         endpoint_identity=config.endpoint_identity(),
+        endpoint_class=ENDPOINT_CLASS,
+        bucket_exists=True,
+        managed_r2_dev_enabled=managed["enabled"],
+        custom_domain_count=len(domains),
+        enabled_custom_domain_count=enabled_custom_domain_count,
+        public_state_result="PASS",
         rule_id=rule_id,
+        rule_name=rule_name,
         covered_prefix=expected_lock_prefix,
         rule_prefix=rule_prefix,
         scope_kind="exact",
@@ -1347,6 +1583,8 @@ def _parser() -> argparse.ArgumentParser:
 def main(argv: Sequence[str] | None = None) -> int:
     arguments = _parser().parse_args(argv)
     statuses = required_variable_status()
+    config: R2Config | None = None
+    lock: BucketLockEvidence | None = None
     try:
         config = R2Config.from_environment()
         lock = verify_cloudflare_bucket_lock(config)
@@ -1384,14 +1622,19 @@ def main(argv: Sequence[str] | None = None) -> int:
                 )
         return 0
     except (R2ArtifactError, OSError, ValueError) as error:
-        _output(
-            {
-                "status": "FAIL",
-                "required_variables": statuses,
-                "error": redact_text(str(error)),
-                "error_type": type(error).__name__,
-            }
-        )
+        failure: dict[str, object] = {
+            "status": "FAIL",
+            "required_variables": statuses,
+            "error": redact_text(str(error)),
+            "error_type": type(error).__name__,
+        }
+        if config is not None:
+            failure["r2"] = config.public_identity()
+        if lock is not None:
+            failure["bucket_lock"] = lock.to_dict()
+        if isinstance(error, RemoteRequestError):
+            failure["remote_error"] = error.to_dict()
+        _output(failure)
         return 1
 
 

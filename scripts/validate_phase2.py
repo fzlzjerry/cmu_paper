@@ -344,9 +344,11 @@ PHASE6A_ALLOWED_PATHS = frozenset(
         "preflight/measurement-container-system-packages.expected.json",
         "preflight/measurement-container-system-packages.lock.json",
         "preflight/run_preflight.py",
+        "scripts/phase6a_bf16_parity.py",
         "scripts/r2_artifact.py",
         "scripts/validate_phase2.py",
         "tests/unit/test_measurement_container.py",
+        "tests/unit/test_phase6a_bf16_parity.py",
         "tests/unit/test_phase6a_governance.py",
         "tests/unit/test_preflight_unit.py",
         "tests/unit/test_r2_artifact.py",
@@ -610,6 +612,7 @@ def repository_python_paths() -> list[Path]:
         paths.update(SRC.rglob("*.py"))
     paths.add(ROOT / "scripts" / "validate_phase2.py")
     paths.add(ROOT / "scripts" / "r2_artifact.py")
+    paths.add(ROOT / "scripts" / "phase6a_bf16_parity.py")
     schema_tests = ROOT / "tests" / "schema"
     if schema_tests.is_dir():
         paths.update(schema_tests.rglob("*.py"))

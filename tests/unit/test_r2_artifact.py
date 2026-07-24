@@ -181,15 +181,20 @@ class FakeCloudflare:
         self,
         *,
         public: bool = False,
+        bucket_name: str = "phase6a-bucket",
+        custom_domains: list[object] | None = None,
         rules: list[dict[str, object]] | None = None,
     ) -> None:
         self.public = public
+        self.bucket_name = bucket_name
+        self.custom_domains = [] if custom_domains is None else custom_domains
         self.rules = (
             [
                 {
                     "id": "phase6a-indefinite",
+                    "name": "phase6a-indefinite-lock",
                     "enabled": True,
-                    "prefix": "kvbench/evidence/",
+                    "prefix": "kvbench/sha256/",
                     "condition": {"type": "Indefinite"},
                 }
             ]
@@ -197,9 +202,16 @@ class FakeCloudflare:
             else rules
         )
         self.paths: list[str] = []
+        self.checks: list[str] = []
 
-    def get_json(self, path: str) -> dict[str, object]:
+    def get_json(
+        self,
+        path: str,
+        *,
+        check: str = "cloudflare_management",
+    ) -> dict[str, object]:
         self.paths.append(path)
+        self.checks.append(check)
         if path.endswith("/domains/managed"):
             result: object = {
                 "bucketId": "not-recorded",
@@ -207,11 +219,11 @@ class FakeCloudflare:
                 "enabled": self.public,
             }
         elif path.endswith("/domains/custom"):
-            result = {"domains": []}
+            result = {"domains": self.custom_domains}
         elif path.endswith("/lock"):
             result = {"rules": self.rules}
         else:
-            result = {"name": "phase6a-bucket"}
+            result = {"name": self.bucket_name}
         return {"success": True, "result": result}
 
 
@@ -237,9 +249,12 @@ class R2ArtifactTests(unittest.TestCase):
         self.environ = {
             "R2_ACCOUNT_ID": "a" * 32,
             "R2_BUCKET": "phase6a-bucket",
+            "R2_ENDPOINT": (
+                "https://" + "a" * 32 + ".r2.cloudflarestorage.com"
+            ),
             "AWS_ACCESS_KEY_ID": "access-key-id-not-for-network",
             "AWS_SECRET_ACCESS_KEY": "secret-access-key-not-for-network",
-            "KVBENCH_R2_PREFIX": "kvbench/evidence",
+            "KVBENCH_R2_PREFIX": "kvbench/sha256",
             "CLOUDFLARE_API_TOKEN": "cloudflare-token-not-for-network",
         }
         self.config = R2Config.from_environment(self.environ)
@@ -325,24 +340,71 @@ class R2ArtifactTests(unittest.TestCase):
     ) -> None:
         digest = "1" * 64
         self.assertEqual(
-            artifact_object_prefix("kvbench/evidence/", digest),
-            f"kvbench/evidence/{digest}/",
+            artifact_object_prefix("kvbench/sha256/", digest),
+            f"kvbench/sha256/{digest}/",
         )
         self.assertEqual(
             artifact_object_key(
-                "kvbench/evidence", digest, "raw/payload.bin"
+                "kvbench/sha256", digest, "raw/payload.bin"
             ),
-            f"kvbench/evidence/{digest}/raw/payload.bin",
+            f"kvbench/sha256/{digest}/raw/payload.bin",
         )
         for path in ("../escape", "/absolute", "a/../b", "a//b", r"a\b"):
             with self.subTest(path=path), self.assertRaises(
                 ArtifactValidationError
             ):
-                artifact_object_key("kvbench/evidence", digest, path)
+                artifact_object_key("kvbench/sha256", digest, path)
         with self.assertRaises(R2ArtifactError):
             artifact_object_prefix("../outside", digest)
         with self.assertRaises(R2ArtifactError):
-            artifact_object_prefix("kvbench/evidence", "not-a-digest")
+            artifact_object_prefix("kvbench/sha256", "not-a-digest")
+
+    def test_config_requires_the_normalized_production_prefix(self) -> None:
+        trailing = {**self.environ, "KVBENCH_R2_PREFIX": "kvbench/sha256/"}
+        self.assertEqual(
+            R2Config.from_environment(trailing).prefix,
+            "kvbench/sha256",
+        )
+        for value in ("kvbench/evidence", "kvbench/sha256//"):
+            with self.subTest(value=value), self.assertRaises(R2ArtifactError):
+                R2Config.from_environment(
+                    {**self.environ, "KVBENCH_R2_PREFIX": value}
+                )
+
+    def test_config_binds_the_s3_endpoint_to_the_management_account(
+        self,
+    ) -> None:
+        without_endpoint = dict(self.environ)
+        del without_endpoint["R2_ENDPOINT"]
+        expected = self.environ["R2_ENDPOINT"]
+        self.assertEqual(
+            R2Config.from_environment(without_endpoint).endpoint,
+            expected,
+        )
+        self.assertEqual(
+            R2Config.from_environment(self.environ).endpoint,
+            expected,
+        )
+        for endpoint in (
+            "https://example.invalid",
+            "https://" + "b" * 32 + ".r2.cloudflarestorage.com",
+            expected + ":443",
+        ):
+            with self.subTest(endpoint=endpoint), self.assertRaisesRegex(
+                R2ArtifactError,
+                "does not match",
+            ):
+                R2Config.from_environment(
+                    {**self.environ, "R2_ENDPOINT": endpoint}
+                )
+        for account_id in ("A" * 32, "a" * 31, "not-an-account"):
+            with self.subTest(account_id=account_id), self.assertRaisesRegex(
+                R2ArtifactError,
+                "R2_ACCOUNT_ID is invalid",
+            ):
+                R2Config.from_environment(
+                    {**self.environ, "R2_ACCOUNT_ID": account_id}
+                )
 
     def test_publish_uses_conditional_creation_complete_last_and_exact_republish(
         self,
@@ -635,7 +697,7 @@ class R2ArtifactTests(unittest.TestCase):
             clock=lambda: datetime(2026, 7, 24, tzinfo=timezone.utc),
         )
         client.put_object_if_absent(
-            "kvbench/evidence/" + "2" * 64 + "/payload.bin",
+            "kvbench/sha256/" + "2" * 64 + "/payload.bin",
             b"payload",
             content_type="application/octet-stream",
         )
@@ -653,6 +715,12 @@ class R2ArtifactTests(unittest.TestCase):
     def test_secret_presence_and_redaction_never_return_values(self) -> None:
         statuses = required_variable_status(self.environ)
         self.assertEqual(set(statuses.values()), {"PRESENT"})
+        without_endpoint = dict(self.environ)
+        del without_endpoint["R2_ENDPOINT"]
+        self.assertEqual(
+            required_variable_status(without_endpoint)["R2_ENDPOINT"],
+            "MISSING",
+        )
         serialized = json.dumps(statuses)
         representation = repr(self.config)
         public_identity = json.dumps(self.config.public_identity())
@@ -758,6 +826,7 @@ class R2ArtifactTests(unittest.TestCase):
         self,
     ) -> None:
         reader = FakeCloudflare(
+            custom_domains=[{"domain": "disabled.example", "enabled": False}],
             rules=[
                 {
                     "id": "whole-bucket",
@@ -766,22 +835,45 @@ class R2ArtifactTests(unittest.TestCase):
                 },
                 {
                     "id": "exact",
+                    "name": "exact-evidence-lock",
                     "enabled": True,
-                    "prefix": "kvbench/evidence/",
+                    "prefix": "kvbench/sha256",
                     "condition": {"type": "Indefinite"},
                 },
             ]
         )
         evidence = verify_cloudflare_bucket_lock(self.config, reader)
         self.assertEqual(evidence.rule_id, "exact")
+        self.assertEqual(evidence.rule_name, "exact-evidence-lock")
         self.assertEqual(evidence.scope_kind, "exact")
         self.assertEqual(evidence.retention_type, "Indefinite")
+        rendered = evidence.to_dict()
+        self.assertTrue(rendered["bucket_exists"])
+        self.assertEqual(rendered["endpoint_class"], "cloudflare_r2_s3")
+        self.assertFalse(rendered["managed_r2_dev_enabled"])
+        self.assertFalse(rendered["public_r2_dev"])
+        self.assertEqual(rendered["custom_domain_count"], 1)
+        self.assertEqual(rendered["enabled_custom_domain_count"], 0)
+        self.assertFalse(rendered["public_custom_domain"])
+        self.assertEqual(rendered["public_state_result"], "PASS")
+        self.assertEqual(rendered["verification_result"], "PASS")
+        self.assertEqual(rendered["lock_rule_name"], "exact-evidence-lock")
+        self.assertEqual(rendered["lock_prefix"], "kvbench/sha256")
         self.assertNotIn(
             self.environ["R2_ACCOUNT_ID"],
             json.dumps(evidence.to_dict()),
         )
         self.assertTrue(reader.paths)
         self.assertTrue(all("/r2/buckets/" in path for path in reader.paths))
+        self.assertEqual(
+            reader.checks,
+            [
+                "bucket_exists",
+                "managed_r2_dev_public_access",
+                "custom_domain_public_access",
+                "bucket_lock",
+            ],
+        )
 
     def test_public_bucket_or_insufficient_lock_is_rejected(self) -> None:
         with self.assertRaisesRegex(R2ArtifactError, "public access"):
@@ -796,7 +888,7 @@ class R2ArtifactTests(unittest.TestCase):
                         {
                             "id": "finite",
                             "enabled": True,
-                            "prefix": "kvbench/evidence/",
+                            "prefix": "kvbench/sha256/",
                             "condition": {
                                 "type": "Age",
                                 "maxAgeSeconds": 86400,
@@ -821,6 +913,41 @@ class R2ArtifactTests(unittest.TestCase):
                             }
                         ]
                     ),
+                )
+
+        with self.assertRaisesRegex(R2ArtifactError, "no enabled indefinite"):
+            verify_cloudflare_bucket_lock(
+                self.config,
+                FakeCloudflare(
+                    rules=[
+                        {
+                            "id": "disabled",
+                            "enabled": False,
+                            "prefix": "kvbench/sha256/",
+                            "condition": {"type": "Indefinite"},
+                        }
+                    ]
+                ),
+            )
+
+    def test_bucket_and_every_custom_domain_fail_closed(self) -> None:
+        with self.assertRaisesRegex(R2ArtifactError, "does not exist"):
+            verify_cloudflare_bucket_lock(
+                self.config,
+                FakeCloudflare(bucket_name="different-bucket"),
+            )
+        for domains in (
+            [{"domain": "public.example", "enabled": True}],
+            [{"domain": "malformed.example"}],
+            ["not-an-object"],
+        ):
+            with self.subTest(domains=domains), self.assertRaisesRegex(
+                R2ArtifactError,
+                "public access|failed validation",
+            ):
+                verify_cloudflare_bucket_lock(
+                    self.config,
+                    FakeCloudflare(custom_domains=domains),
                 )
 
     def test_untrusted_s3_xml_error_code_is_not_exposed(self) -> None:
@@ -902,6 +1029,7 @@ class R2ArtifactTests(unittest.TestCase):
 
     def test_cloudflare_http_error_body_cannot_enter_exception(self) -> None:
         token = self.environ["CLOUDFLARE_API_TOKEN"]
+        account_id = self.environ["R2_ACCOUNT_ID"]
 
         def opener(request: object, *, timeout: int) -> FakeResponse:
             raise urllib.error.HTTPError(
@@ -909,13 +1037,84 @@ class R2ArtifactTests(unittest.TestCase):
                 403,
                 "forbidden",
                 {},
-                BytesIO(f"secret={token}".encode()),
+                BytesIO(
+                    _json_bytes(
+                        {
+                            "success": False,
+                            "errors": [
+                                {
+                                    "code": 10000,
+                                    "message": (
+                                        f"invalid token {token} for account "
+                                        f"{account_id}"
+                                    ),
+                                }
+                            ],
+                        }
+                    )
+                ),
             )
 
-        client = CloudflareReadClient(token, opener=opener)
+        client = CloudflareReadClient(
+            token,
+            opener=opener,
+            redaction_environment=self.environ,
+        )
         with self.assertRaises(RemoteRequestError) as caught:
-            client.get_json("/accounts/example/r2/buckets/example")
+            client.get_json(
+                f"/accounts/{account_id}/r2/buckets/example",
+                check="bucket_exists",
+            )
+        self.assertEqual(caught.exception.status, 403)
+        self.assertEqual(caught.exception.code, "10000")
+        self.assertEqual(caught.exception.failed_check, "bucket_exists")
+        self.assertIn(
+            "<redacted:R2_ACCOUNT_ID>",
+            caught.exception.failed_path or "",
+        )
+        self.assertIn(
+            "<redacted:CLOUDFLARE_API_TOKEN>",
+            caught.exception.provider_message or "",
+        )
         self.assertNotIn(token, str(caught.exception))
+        self.assertNotIn(account_id, str(caught.exception))
+
+    def test_management_evidence_survives_a_later_s3_failure(self) -> None:
+        output = StringIO()
+        lock = verify_cloudflare_bucket_lock(self.config, FakeCloudflare())
+        with (
+            patch(
+                "scripts.r2_artifact.R2Config.from_environment",
+                return_value=self.config,
+            ),
+            patch(
+                "scripts.r2_artifact.verify_cloudflare_bucket_lock",
+                return_value=lock,
+            ),
+            patch("scripts.r2_artifact.R2S3Client", return_value=object()),
+            patch(
+                "scripts.r2_artifact.verify_remote_artifact",
+                side_effect=RemoteRequestError(
+                    status=503,
+                    code="ServiceUnavailable",
+                ),
+            ),
+            redirect_stdout(output),
+        ):
+            self.assertEqual(main(["verify", "4" * 64]), 1)
+        payload = json.loads(output.getvalue())
+        self.assertEqual(payload["status"], "FAIL")
+        self.assertEqual(
+            payload["bucket_lock"]["verification_result"],
+            "PASS",
+        )
+        self.assertTrue(payload["bucket_lock"]["bucket_exists"])
+        self.assertFalse(payload["bucket_lock"]["public_r2_dev"])
+        self.assertFalse(payload["bucket_lock"]["public_custom_domain"])
+        self.assertEqual(
+            payload["remote_error"]["provider_error_code"],
+            "ServiceUnavailable",
+        )
 
     def test_nonempty_retrieval_destination_is_rejected(self) -> None:
         artifact = validate_local_artifact(
@@ -942,6 +1141,7 @@ class R2ArtifactTests(unittest.TestCase):
 REQUIRED_VARIABLE_NAMES = (
     "R2_ACCOUNT_ID",
     "R2_BUCKET",
+    "R2_ENDPOINT",
     "AWS_ACCESS_KEY_ID",
     "AWS_SECRET_ACCESS_KEY",
     "KVBENCH_R2_PREFIX",

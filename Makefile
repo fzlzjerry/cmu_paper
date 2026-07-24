@@ -35,7 +35,9 @@ R2_ARTIFACT := $(PHASE2_ENV) $(PHASE2_PYTHON) scripts/r2_artifact.py
 .PHONY: smoke pilot full-scan profile-subset
 .PHONY: fit figures reproduce
 .PHONY: reference-turboquant validate-reference-turboquant
-.PHONY: measurement-container verify-measurement-container preflight-container
+.PHONY: measurement-container observe-measurement-container-lock
+.PHONY: measurement-container-lock-review verify-measurement-container
+.PHONY: preflight-container phase6a-bf16-container-parity
 .PHONY: publish-artifact-r2 verify-artifact-r2
 .PHONY: phase6a-source-safety
 
@@ -95,7 +97,7 @@ test: checks
 	@$(PHASE3_ENV) $(PHASE3_PYTHON) -m unittest $(PHASE3_REMEDIATION_UNIT_TESTS) -v
 	@$(PHASE3_ENV) $(PHASE3_PYTHON) -m unittest discover -s tests/unit -p 'test_phase4_*.py' -v
 	@$(PHASE3_ENV) $(PHASE3_PYTHON) -m unittest discover -s tests/unit -p 'test_phase5_*.py' -v
-	@$(PHASE3_ENV) $(PHASE3_PYTHON) -m unittest tests.unit.test_measurement_container tests.unit.test_phase6a_governance tests.unit.test_preflight_unit tests.unit.test_r2_artifact -v
+	@$(PHASE3_ENV) $(PHASE3_PYTHON) -m unittest tests.unit.test_measurement_container tests.unit.test_phase6a_bf16_parity tests.unit.test_phase6a_governance tests.unit.test_preflight_unit tests.unit.test_r2_artifact -v
 	@$(PHASE2_VALIDATE) immutable
 
 test-cuda: phase3-package-lock-check immutable-check
@@ -148,10 +150,51 @@ measurement-container: phase6a-source-safety
 		PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -c 'import os,sys; from pathlib import Path; from preflight.run_preflight import validate_docker_image_save_archive; result=validate_docker_image_save_archive(Path(sys.argv[1]),secret_environment=os.environ); raise SystemExit(0 if result["status"] == "PASS" else 2)' "$$task_root/image-save.tar" || { echo '{"status":"FAIL","reason":"image_layer_secret_validation_failed"}' >&2; exit 2; }; \
 		printf '{"status":"BUILT_UNCERTIFIED","image_reference":"%s","image_config_digest":"%s","base_image_digest":"%s"}\n' "$(MEASUREMENT_IMAGE)" "$$image_id" "$(MEASUREMENT_BASE_IMAGE_DIGEST)"
 
-verify-measurement-container: phase6a-source-safety
+observe-measurement-container-lock: phase6a-source-safety
+	@[[ "$(MEASUREMENT_IMAGE_CONFIG_DIGEST)" =~ ^sha256:[0-9a-f]{64}$$ ]] || { echo '{"status":"BLOCKED","reason":"MEASUREMENT_IMAGE_CONFIG_DIGEST_required"}' >&2; exit 2; }
+	@test ! -e preflight/measurement-container-system-packages.lock.json && test ! -L preflight/measurement-container-system-packages.lock.json || { echo '{"status":"BLOCKED","reason":"observed_container_system_lock_exists"}' >&2; exit 2; }
+	@test ! -e preflight/measurement-container-system-packages.expected.json && test ! -L preflight/measurement-container-system-packages.expected.json || { echo '{"status":"BLOCKED","reason":"expected_container_system_lock_exists"}' >&2; exit 2; }
+	@command -v docker >/dev/null || { echo '{"status":"BLOCKED","reason":"docker_cli_unavailable"}' >&2; exit 2; }
+	@docker info >/dev/null || { echo '{"status":"BLOCKED","reason":"docker_daemon_unavailable"}' >&2; exit 2; }
+	@task_root="$$(mktemp -d /tmp/kvbench-phase6a-lock.XXXXXX)"; \
+		trap 'chmod -R u+w "$$task_root" 2>/dev/null || true; rm -rf -- "$$task_root"' EXIT; \
+		mkdir "$$task_root/source"; \
+		head="$$(git rev-parse HEAD)"; \
+		image_id="$(MEASUREMENT_IMAGE_CONFIG_DIGEST)"; \
+		git archive --format=tar "$$head" | tar -xf - -C "$$task_root/source"; \
+		test ! -e "$$task_root/source/.env"; \
+		docker image inspect "$$image_id" > "$$task_root/image-inspect.json"; \
+		docker history --no-trunc --format '{{json .}}' "$$image_id" > "$$task_root/image-history.jsonl"; \
+		PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -c 'import os,sys; from pathlib import Path; from preflight.run_preflight import configured_secret_value_names,validate_container_image_inspect; _,result=validate_container_image_inspect(Path(sys.argv[1]),expected_image_config_digest=sys.argv[2],expected_base_image_digest=sys.argv[3],expected_revision=sys.argv[4],secret_environment=os.environ); history=Path(sys.argv[5]).read_bytes(); raise SystemExit(0 if result["status"] == "PASS" and not configured_secret_value_names(history,os.environ) else 2)' "$$task_root/image-inspect.json" "$$image_id" "$(MEASUREMENT_BASE_IMAGE_DIGEST)" "$$head" "$$task_root/image-history.jsonl" || { echo '{"status":"FAIL","reason":"candidate_image_identity_or_secret_validation_failed"}' >&2; exit 2; }; \
+		chmod 0444 "$$task_root/image-inspect.json"; \
+		docker run --rm --read-only --network=none \
+			--tmpfs /tmp:rw,nosuid,nodev,size=1g \
+			--mount "type=bind,src=$$task_root/source,dst=/workspace,readonly" \
+			--mount "type=bind,src=$$task_root/image-inspect.json,dst=/run/kvbench/image-inspect.json,readonly" \
+			--workdir /workspace \
+			--entrypoint /opt/kvbench/.venv/bin/python "$$image_id" \
+			-m preflight.run_preflight \
+			--observe-measurement-container-system-lock \
+			--container-image-reference "$(MEASUREMENT_IMAGE)" \
+			--container-image-config-digest "$$image_id" \
+			--container-base-image-digest "$(MEASUREMENT_BASE_IMAGE_DIGEST)" \
+			--container-image-inspect-json /run/kvbench/image-inspect.json \
+			--container-source-revision "$$head" \
+			> "$$task_root/observed.json"; \
+		PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -c 'import os,sys; from pathlib import Path; from preflight.run_preflight import configured_secret_value_names,json_bytes,load_measurement_container_system_lock,publish_atomic_exclusive; source=Path(sys.argv[1]); payload,result=load_measurement_container_system_lock(source,expected_image_config_digest=sys.argv[3],expected_source_revision=sys.argv[4]); raw=json_bytes(payload) if payload is not None else b""; valid=payload is not None and result["status"] == "PASS" and not configured_secret_value_names(raw,os.environ); valid and publish_atomic_exclusive(Path(sys.argv[2]),raw); raise SystemExit(0 if valid else 2)' "$$task_root/observed.json" "preflight/measurement-container-system-packages.lock.json" "$$image_id" "$$head" || { echo '{"status":"FAIL","reason":"observed_container_system_lock_invalid"}' >&2; exit 2; }; \
+		printf '{"status":"OBSERVED_UNTRUSTED_REVIEW_REQUIRED","path":"preflight/measurement-container-system-packages.lock.json","candidate_image_config_digest":"%s","candidate_source_revision":"%s"}\n' "$$image_id" "$$head"
+
+measurement-container-lock-review: phase6a-source-safety
+	@for lock_path in preflight/measurement-container-system-packages.lock.json preflight/measurement-container-system-packages.expected.json; do \
+		test -f "$$lock_path" && test ! -L "$$lock_path" && git ls-files --error-unmatch "$$lock_path" >/dev/null || { echo '{"status":"BLOCKED","reason":"reviewed_container_system_locks_absent_or_untracked"}' >&2; exit 2; }; \
+	done
+	@cmp -s preflight/measurement-container-system-packages.lock.json preflight/measurement-container-system-packages.expected.json || { echo '{"status":"BLOCKED","reason":"reviewed_container_system_locks_differ"}' >&2; exit 2; }
+	@PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -c 'import os; from pathlib import Path; from preflight.run_preflight import configured_secret_value_names,load_measurement_container_system_lock; paths=[Path("preflight/measurement-container-system-packages.lock.json"),Path("preflight/measurement-container-system-packages.expected.json")]; loaded=[load_measurement_container_system_lock(path) for path in paths]; raw=[path.read_bytes() for path in paths]; valid=all(payload is not None and result["status"] == "PASS" for payload,result in loaded) and raw[0] == raw[1] and all(not configured_secret_value_names(item,os.environ) for item in raw); raise SystemExit(0 if valid else 2)' || { echo '{"status":"FAIL","reason":"reviewed_container_system_lock_invalid"}' >&2; exit 2; }
+	@printf '{"status":"REVIEWED_LOCK_BYTES_EQUAL","authority":"rebuild_and_exact_runtime_verification_still_required"}\n'
+
+verify-measurement-container: measurement-container-lock-review
 	@PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src .venv/bin/python -m unittest tests.unit.test_measurement_container -v
 	@[[ "$(MEASUREMENT_IMAGE_CONFIG_DIGEST)" =~ ^sha256:[0-9a-f]{64}$$ ]] || { echo '{"status":"BLOCKED","reason":"MEASUREMENT_IMAGE_CONFIG_DIGEST_required"}' >&2; exit 2; }
-	@test -f preflight/measurement-container-system-packages.expected.json && test ! -L preflight/measurement-container-system-packages.expected.json && git ls-files --error-unmatch preflight/measurement-container-system-packages.expected.json >/dev/null || { echo '{"status":"BLOCKED","reason":"expected_container_system_lock_absent"}' >&2; exit 2; }
 	@command -v docker >/dev/null || { echo '{"status":"BLOCKED","reason":"docker_cli_unavailable"}' >&2; exit 2; }
 	@docker info >/dev/null || { echo '{"status":"BLOCKED","reason":"docker_daemon_unavailable"}' >&2; exit 2; }
 	@task_root="$$(mktemp -d /tmp/kvbench-phase6a-verify.XXXXXX)"; \
@@ -160,7 +203,15 @@ verify-measurement-container: phase6a-source-safety
 		image_id="$(MEASUREMENT_IMAGE_CONFIG_DIGEST)"; \
 		docker image inspect "$$image_id" > "$$task_root/image-inspect.json"; \
 		docker history --no-trunc --format '{{json .}}' "$$image_id" > "$$task_root/image-history.jsonl"; \
-		PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -c 'import os,sys; from pathlib import Path; from preflight.run_preflight import configured_secret_value_names,validate_container_image_inspect; _,result=validate_container_image_inspect(Path(sys.argv[1]),expected_image_config_digest=sys.argv[2],expected_base_image_digest=sys.argv[3],expected_revision=sys.argv[4],secret_environment=os.environ); history=Path(sys.argv[5]).read_bytes(); raise SystemExit(0 if result["status"] == "PASS" and not configured_secret_value_names(history,os.environ) else 2)' "$$task_root/image-inspect.json" "$$image_id" "$(MEASUREMENT_BASE_IMAGE_DIGEST)" "$$head" "$$task_root/image-history.jsonl" || { echo '{"status":"FAIL","reason":"image_identity_or_secret_validation_failed"}' >&2; exit 2; }; \
+		PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -c 'import os,re,sys; from pathlib import Path; from preflight.run_preflight import configured_secret_value_names,validate_container_image_inspect; _,result=validate_container_image_inspect(Path(sys.argv[1]),expected_image_config_digest=sys.argv[2],expected_base_image_digest=sys.argv[3],expected_revision=None,secret_environment=os.environ); history=Path(sys.argv[4]).read_bytes(); revision=result.get("source_revision"); valid=result["status"] == "PASS" and isinstance(revision,str) and re.fullmatch(r"[0-9a-f]{40}",revision) is not None and not configured_secret_value_names(history,os.environ); valid and Path(sys.argv[5]).write_text(revision+"\n",encoding="ascii"); raise SystemExit(0 if valid else 2)' "$$task_root/image-inspect.json" "$$image_id" "$(MEASUREMENT_BASE_IMAGE_DIGEST)" "$$task_root/image-history.jsonl" "$$task_root/image-revision" || { echo '{"status":"FAIL","reason":"image_identity_or_secret_validation_failed"}' >&2; exit 2; }; \
+		image_revision="$$(tr -d '\r\n' < "$$task_root/image-revision")"; \
+		git cat-file -e "$$image_revision^{commit}"; \
+		git merge-base --is-ancestor "$$image_revision" "$$head"; \
+		git diff --quiet "$$image_revision" "$$head" -- docker/measurement.Dockerfile preflight/requirements-e00.txt preflight/requirements-phase3.txt; \
+		for lock_path in preflight/measurement-container-system-packages.lock.json preflight/measurement-container-system-packages.expected.json; do \
+			git cat-file -e "$$image_revision:$$lock_path"; \
+			test "$$(git rev-parse "$$image_revision:$$lock_path")" = "$$(git rev-parse "HEAD:$$lock_path")"; \
+		done; \
 		docker image save --output "$$task_root/image-save.tar" "$$image_id"; \
 		PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -c 'import os,sys; from pathlib import Path; from preflight.run_preflight import validate_docker_image_save_archive; result=validate_docker_image_save_archive(Path(sys.argv[1]),secret_environment=os.environ); raise SystemExit(0 if result["status"] == "PASS" else 2)' "$$task_root/image-save.tar" || { echo '{"status":"FAIL","reason":"image_layer_secret_validation_failed"}' >&2; exit 2; }; \
 		docker run --rm --network=none --gpus "device=$(MEASUREMENT_GPU_UUID)" --entrypoint /usr/bin/nvidia-smi "$$image_id" --query-gpu=uuid,name,compute_cap --format=csv,noheader,nounits > "$$task_root/gpu.csv"; \
@@ -183,8 +234,23 @@ preflight-container: verify-measurement-container
 		mkdir -p "$$task_root/source/artifacts/phase6a/container_g0"; \
 		mkdir -p "$(CURDIR)/artifacts/phase6a/container_g0"; \
 		docker image inspect "$$image_id" > "$$task_root/image-inspect.json"; \
+		PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -c 'import re,sys; from pathlib import Path; from preflight.run_preflight import validate_container_image_inspect; _,result=validate_container_image_inspect(Path(sys.argv[1]),expected_image_config_digest=sys.argv[2],expected_base_image_digest=sys.argv[3],expected_revision=None); revision=result.get("source_revision"); valid=result["status"] == "PASS" and isinstance(revision,str) and re.fullmatch(r"[0-9a-f]{40}",revision) is not None; valid and Path(sys.argv[4]).write_text(revision+"\n",encoding="ascii"); raise SystemExit(0 if valid else 2)' "$$task_root/image-inspect.json" "$$image_id" "$(MEASUREMENT_BASE_IMAGE_DIGEST)" "$$task_root/image-revision"; \
+		image_revision="$$(tr -d '\r\n' < "$$task_root/image-revision")"; \
+		git cat-file -e "$$image_revision^{commit}"; \
+		git merge-base --is-ancestor "$$image_revision" "$$head"; \
+		git diff --quiet "$$image_revision" "$$head" -- docker/measurement.Dockerfile preflight/requirements-e00.txt preflight/requirements-phase3.txt; \
+		for lock_path in preflight/measurement-container-system-packages.lock.json preflight/measurement-container-system-packages.expected.json; do \
+			git cat-file -e "$$image_revision:$$lock_path"; \
+			test "$$(git rev-parse "$$image_revision:$$lock_path")" = "$$(git rev-parse "HEAD:$$lock_path")"; \
+		done; \
+		docker history --no-trunc --format '{{json .}}' "$$image_id" > "$$task_root/image-history.jsonl"; \
+		docker image save --output "$$task_root/image-save.tar" "$$image_id"; \
+		scan_status=0; \
+		PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -c 'import os,sys; from pathlib import Path; from preflight.run_preflight import configured_secret_value_names,json_bytes,sha256_bytes,validate_docker_image_save_archive; history=Path(sys.argv[1]).read_bytes(); history_secrets=configured_secret_value_names(history,os.environ); layers=validate_docker_image_save_archive(Path(sys.argv[2]),secret_environment=os.environ); record={"schema_version":"kvbench-measurement-container-build-scan-1.0.0","image_config_digest":sys.argv[3],"image_history":{"sha256":sha256_bytes(history),"size_bytes":len(history),"line_count":len(history.splitlines()),"configured_secret_variables":history_secrets},"image_layers":layers}; Path(sys.argv[4]).write_bytes(json_bytes(record)); valid=layers["status"] == "PASS" and not history_secrets and layers["model_weight_path_count"] == 0; raise SystemExit(0 if valid else 2)' "$$task_root/image-history.jsonl" "$$task_root/image-save.tar" "$$image_id" "$$task_root/image-build-scan.json" || scan_status=$$?; \
+		rm -f -- "$$task_root/image-save.tar"; \
+		if (( scan_status != 0 )); then rm -f -- "$$task_root/image-history.jsonl"; echo '{"status":"FAIL","reason":"image_build_scan_failed"}' >&2; exit 2; fi; \
 		touch "$$task_root/runtime-inspect.json"; \
-		chmod 0444 "$$task_root/image-inspect.json"; \
+		chmod 0444 "$$task_root/image-inspect.json" "$$task_root/image-history.jsonl" "$$task_root/image-build-scan.json"; \
 		cid="$$(docker create --read-only --network=none --pid=host \
 			--gpus "device=$(MEASUREMENT_GPU_UUID)" \
 			--tmpfs /tmp:rw,nosuid,nodev,size=8g \
@@ -193,6 +259,8 @@ preflight-container: verify-measurement-container
 			--mount "type=bind,src=$(CURDIR)/artifacts/phase6a/container_g0,dst=/workspace/artifacts/phase6a/container_g0" \
 			--mount "type=bind,src=$$task_root/image-inspect.json,dst=/run/kvbench/image-inspect.json,readonly" \
 			--mount "type=bind,src=$$task_root/runtime-inspect.json,dst=/run/kvbench/runtime-inspect.json,readonly" \
+			--mount "type=bind,src=$$task_root/image-history.jsonl,dst=/run/kvbench/image-history.jsonl,readonly" \
+			--mount "type=bind,src=$$task_root/image-build-scan.json,dst=/run/kvbench/image-build-scan.json,readonly" \
 			--workdir /workspace "$$image_id" \
 			/opt/kvbench/.venv/bin/python preflight/run_preflight.py \
 			--measurement-container \
@@ -200,13 +268,61 @@ preflight-container: verify-measurement-container
 			--container-image-config-digest "$$image_id" \
 			--container-base-image-digest "$(MEASUREMENT_BASE_IMAGE_DIGEST)" \
 			--container-image-inspect-json /run/kvbench/image-inspect.json \
-			--container-runtime-inspect-json /run/kvbench/runtime-inspect.json)"; \
+			--container-runtime-inspect-json /run/kvbench/runtime-inspect.json \
+			--container-image-history-jsonl /run/kvbench/image-history.jsonl \
+			--container-image-build-scan-json /run/kvbench/image-build-scan.json \
+			--container-source-revision "$$image_revision")"; \
 		[[ "$$cid" =~ ^[0-9a-f]{64}$$ ]] || { echo '{"status":"FAIL","reason":"invalid_runtime_container_id"}' >&2; exit 2; }; \
 		chmod 0644 "$$task_root/runtime-inspect.json"; \
 		docker container inspect "$$cid" > "$$task_root/runtime-inspect.json"; \
 		chmod 0444 "$$task_root/runtime-inspect.json"; \
 		PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -c 'import os,sys; from pathlib import Path; from preflight.run_preflight import validate_container_runtime_inspect; _,result=validate_container_runtime_inspect(Path(sys.argv[1]),expected_image_config_digest=sys.argv[2],expected_hostname=sys.argv[3][:12],secret_environment=os.environ); raise SystemExit(0 if result["status"] == "PASS" else 2)' "$$task_root/runtime-inspect.json" "$$image_id" "$$cid" || { echo '{"status":"FAIL","reason":"runtime_identity_or_secret_validation_failed"}' >&2; exit 2; }; \
 		docker start --attach "$$cid"; \
+		preserve=0
+
+phase6a-bf16-container-parity: verify-measurement-container
+	@[[ "$(MEASUREMENT_IMAGE_CONFIG_DIGEST)" =~ ^sha256:[0-9a-f]{64}$$ ]] || { echo '{"status":"BLOCKED","reason":"MEASUREMENT_IMAGE_CONFIG_DIGEST_required"}' >&2; exit 2; }
+	@test -n "$(CONTAINER_G0_ARTIFACT)" || { echo '{"status":"BLOCKED","reason":"CONTAINER_G0_ARTIFACT_required"}' >&2; exit 2; }
+	@task_root="$$(mktemp -d /tmp/kvbench-phase6a-parity.XXXXXX)"; \
+		cid=""; preserve=1; \
+		cleanup() { if [[ -n "$$cid" ]]; then docker rm -f "$$cid" >/dev/null 2>&1 || true; fi; if (( preserve == 0 )); then chmod -R u+w "$$task_root" 2>/dev/null || true; rm -rf -- "$$task_root"; else printf '{"status":"FAILED_PARITY_LAUNCH_EVIDENCE_PRESERVED","path":"%s"}\n' "$$task_root" >&2; fi; }; \
+		trap cleanup EXIT; \
+		head="$$(git rev-parse HEAD)"; image_id="$(MEASUREMENT_IMAGE_CONFIG_DIGEST)"; \
+		git clone --quiet --no-local --no-checkout "$(CURDIR)" "$$task_root/source"; \
+		git -C "$$task_root/source" checkout --quiet --detach "$$head"; \
+		git -C "$$task_root/source" remote remove origin; \
+		test "$$(git -C "$$task_root/source" rev-parse HEAD)" = "$$head"; \
+		test -z "$$(git -C "$$task_root/source" status --porcelain=v1 --untracked-files=all)"; \
+		test ! -e "$$task_root/source/.env"; \
+		mkdir -p "$$task_root/source/artifacts/phase6a/bf16_parity"; \
+		mkdir -p "$(CURDIR)/artifacts/phase6a/bf16_parity"; \
+		g0="$$(realpath "$(CONTAINER_G0_ARTIFACT)")"; \
+		model_root="$$(realpath /root/.cache/huggingface/hub/models--meta-llama--Llama-3.1-8B-Instruct)"; \
+		model_snapshot="$$model_root/snapshots/0e9e39f249a16976918f6564b8830bc894c89659"; \
+		test -d "$$g0" && test -d "$$model_root" && test -d "$$model_snapshot"; \
+		overall=0; \
+		for graph_mode in eager cuda_graph; do \
+			cid="$$(docker create --read-only --network=none --pid=host \
+				--gpus "device=$(MEASUREMENT_GPU_UUID)" \
+				--tmpfs /tmp:rw,nosuid,nodev,size=8g \
+				--tmpfs /root:rw,nosuid,nodev,size=2g \
+				--mount "type=bind,src=$$task_root/source,dst=/workspace,readonly" \
+				--mount "type=bind,src=$$task_root/source,dst=/home/rockrock/cmu_paper,readonly" \
+				--mount "type=bind,src=$(CURDIR)/artifacts/phase6a/bf16_parity,dst=/workspace/artifacts/phase6a/bf16_parity" \
+				--mount "type=bind,src=$$g0,dst=/run/kvbench/container-g0,readonly" \
+				--mount "type=bind,src=$$model_root,dst=/root/.cache/huggingface/hub/models--meta-llama--Llama-3.1-8B-Instruct,readonly" \
+				--env PYTHONPATH=/opt/kvbench/.phase3/site-packages:/workspace/src:/workspace \
+				--workdir /workspace "$$image_id" \
+				/opt/kvbench/.venv/bin/python scripts/phase6a_bf16_parity.py \
+				--graph-mode "$$graph_mode" \
+				--image-reference "$(MEASUREMENT_IMAGE)" \
+				--image-config-digest "$$image_id" \
+				--container-g0-artifact /run/kvbench/container-g0)"; \
+			[[ "$$cid" =~ ^[0-9a-f]{64}$$ ]]; \
+			if ! docker start --attach "$$cid"; then overall=1; fi; \
+			docker rm -f "$$cid" >/dev/null; cid=""; \
+		done; \
+		(( overall == 0 )) || exit 1; \
 		preserve=0
 
 publish-artifact-r2:

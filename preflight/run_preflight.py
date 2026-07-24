@@ -38,6 +38,11 @@ MEASUREMENT_CONTAINER_SYSTEM_LOCK_PATH = (
     / "preflight"
     / "measurement-container-system-packages.expected.json"
 )
+MEASUREMENT_CONTAINER_OBSERVED_SYSTEM_LOCK_PATH = (
+    ROOT
+    / "preflight"
+    / "measurement-container-system-packages.lock.json"
+)
 PROCESS_QUERY_PATH = ROOT / "preflight" / "process_query.py"
 PYTHON_PROBE_PATH = ROOT / "preflight" / "python_probe.py"
 VENV_PYTHON = ROOT / ".venv" / "bin" / "python"
@@ -55,6 +60,86 @@ IMAGE_SECRET_VARIABLES = (
     "HF_TOKEN",
     "HUGGING_FACE_HUB_TOKEN",
     "R2_ACCOUNT_ID",
+)
+
+MEASUREMENT_CONTAINER_LOCK_PURPOSE = (
+    "Exact Measurement Container system toolchain observed from an "
+    "uncertified candidate build; requires explicit review and promotion"
+)
+MEASUREMENT_CONTAINER_LOCK_AUTHORITY = (
+    "candidate_observation_requires_explicit_review_and_promotion"
+)
+MEASUREMENT_CONTAINER_LOCK_TOOL_SPECS = (
+    ("bash", "/usr/bin/bash", "bash", None),
+    ("cat", "/usr/bin/cat", "coreutils", None),
+    ("cc", "/usr/bin/gcc", "gcc-13-x86-64-linux-gnu", None),
+    (
+        "compute-sanitizer-real",
+        "/usr/local/cuda-13.0/compute-sanitizer/compute-sanitizer",
+        "cuda-sanitizer-13-0",
+        "compute-sanitizer",
+    ),
+    ("dpkg", "/usr/bin/dpkg", "dpkg", None),
+    ("dpkg-query", "/usr/bin/dpkg-query", "dpkg", None),
+    ("env", "/usr/bin/env", "coreutils", None),
+    ("git", "/usr/bin/git", "git", None),
+    ("hostname", "/usr/bin/hostname", "hostname", None),
+    ("lscpu", "/usr/bin/lscpu", "util-linux", None),
+    ("readlink", "/usr/bin/readlink", "coreutils", None),
+    ("sha256sum", "/usr/bin/sha256sum", "coreutils", None),
+    ("sh", "/bin/sh", "dash", None),
+    (
+        "systemd-detect-virt",
+        "/usr/bin/systemd-detect-virt",
+        "systemd",
+        None,
+    ),
+    ("uname", "/usr/bin/uname", "coreutils", None),
+    (
+        "compute-sanitizer",
+        "/usr/local/cuda-13.0/bin/compute-sanitizer",
+        "cuda-sanitizer-13-0",
+        None,
+    ),
+    (
+        "cuobjdump",
+        "/usr/local/cuda-13.0/bin/cuobjdump",
+        "cuda-cuobjdump-13-0",
+        "cuobjdump",
+    ),
+    (
+        "nvdisasm",
+        "/usr/local/cuda-13.0/bin/nvdisasm",
+        "cuda-nvdisasm-13-0",
+        "nvdisasm",
+    ),
+    ("c++", "/usr/bin/c++", "g++-13-x86-64-linux-gnu", "c++"),
+    ("ld", "/usr/bin/ld", "binutils-x86-64-linux-gnu", None),
+    (
+        "ncu",
+        "/opt/nvidia/nsight-compute/2026.2.1/ncu",
+        "nsight-compute-2026.2.1",
+        "ncu",
+    ),
+    ("ninja", "/usr/bin/ninja", "ninja-build", "ninja"),
+    (
+        "nsys",
+        "/usr/local/bin/nsys",
+        "nsight-systems-2026.1.3",
+        "nsys",
+    ),
+    (
+        "nvcc",
+        "/usr/local/cuda-13.0/bin/nvcc",
+        "cuda-nvcc-13-0",
+        "nvcc",
+    ),
+    (
+        "python",
+        "/opt/kvbench/.venv/bin/python",
+        "python3.12-minimal",
+        "python",
+    ),
 )
 
 GPU_QUERY_FIELDS = (
@@ -182,6 +267,7 @@ MEASUREMENT_CONTAINER_CONTRACT_PATHS = (
         )
         for path in CONTRACT_PATHS
     ),
+    "preflight/measurement-container-system-packages.lock.json",
     ".dockerignore",
     "docker/measurement.Dockerfile",
     "preflight/requirements-phase3.txt",
@@ -521,6 +607,18 @@ def _contains_operator_env_filename(parts: Sequence[str]) -> bool:
     return any(part == ".env" or part.startswith(".env.") for part in parts)
 
 
+def _contains_model_weight_filename(parts: Sequence[str]) -> bool:
+    name = parts[-1].lower()
+    return (
+        name.endswith((".safetensors", ".gguf"))
+        or (
+            name.endswith(".bin")
+            and name.startswith(("pytorch_model", "adapter_model"))
+        )
+        or (name.endswith(".pth") and name.startswith("consolidated"))
+    )
+
+
 def validate_docker_image_save_archive(
     path: Path,
     *,
@@ -534,6 +632,7 @@ def validate_docker_image_save_archive(
     layer_count = 0
     layer_member_count = 0
     operator_env_path_count = 0
+    model_weight_path_count = 0
     source_size_bytes: int | None = None
 
     try:
@@ -557,6 +656,7 @@ def validate_docker_image_save_archive(
                 outer_member_count = len(outer_members)
                 members_by_name: dict[str, list[tarfile.TarInfo]] = {}
                 for member_index, member in enumerate(outer_members):
+                    skip_member_content = False
                     members_by_name.setdefault(member.name, []).append(member)
                     parts = _safe_tar_parts(member.name)
                     if parts is None:
@@ -565,6 +665,7 @@ def validate_docker_image_save_archive(
                             f"member[{member_index}]"
                         )
                     elif _contains_operator_env_filename(parts):
+                        skip_member_content = True
                         operator_env_path_count += 1
                         errors.append(
                             "operator environment file present in outer "
@@ -589,7 +690,7 @@ def validate_docker_image_save_archive(
                             secret_environment,
                         )
                     )
-                    if member.isfile():
+                    if member.isfile() and not skip_member_content:
                         stream = outer.extractfile(member)
                         if stream is None:
                             errors.append(
@@ -677,6 +778,7 @@ def validate_docker_image_save_archive(
                                 mode="r|*",
                             ) as layer:
                                 for member_index, member in enumerate(layer):
+                                    skip_member_content = False
                                     layer_member_count += 1
                                     parts = _safe_tar_parts(member.name)
                                     if parts is None:
@@ -686,10 +788,19 @@ def validate_docker_image_save_archive(
                                             f"[{member_index}]"
                                         )
                                     elif _contains_operator_env_filename(parts):
+                                        skip_member_content = True
                                         operator_env_path_count += 1
                                         errors.append(
                                             "operator environment file present "
                                             "in image layer at "
+                                            f"layer[{layer_index}].member"
+                                            f"[{member_index}]"
+                                        )
+                                    elif _contains_model_weight_filename(parts):
+                                        model_weight_path_count += 1
+                                        errors.append(
+                                            "model weight file present in image "
+                                            "layer at "
                                             f"layer[{layer_index}].member"
                                             f"[{member_index}]"
                                         )
@@ -715,7 +826,7 @@ def validate_docker_image_save_archive(
                                             secret_environment,
                                         )
                                     )
-                                    if member.isfile():
+                                    if member.isfile() and not skip_member_content:
                                         member_stream = layer.extractfile(
                                             member
                                         )
@@ -756,7 +867,131 @@ def validate_docker_image_save_archive(
         "layer_count": layer_count,
         "layer_member_count": layer_member_count,
         "operator_env_path_count": operator_env_path_count,
+        "model_weight_path_count": model_weight_path_count,
         "configured_secret_variables": sorted(configured_secret_names),
+    }
+
+
+def validate_container_image_build_record(
+    history_path: Path,
+    scan_path: Path,
+    *,
+    expected_image_config_digest: str,
+    secret_environment: Mapping[str, str] | None = None,
+) -> tuple[bytes | None, bytes | None, dict[str, Any]]:
+    """Validate bounded host-derived image history and layer scan evidence."""
+
+    errors: list[str] = []
+
+    def bounded(path: Path, limit: int, label: str) -> bytes | None:
+        try:
+            metadata = path.lstat()
+            if not stat.S_ISREG(metadata.st_mode):
+                errors.append(f"{label} is not a regular file")
+            elif metadata.st_size <= 0 or metadata.st_size > limit:
+                errors.append(f"{label} size is invalid")
+            else:
+                return path.read_bytes()
+        except OSError as error:
+            errors.append(f"{label} is unavailable: {type(error).__name__}")
+        return None
+
+    history_raw = bounded(history_path, 16 * 1024 * 1024, "image history")
+    scan_raw = bounded(scan_path, 1024 * 1024, "image build scan")
+    payload: Any = None
+    if scan_raw is not None:
+        try:
+            payload = json.loads(scan_raw.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError) as error:
+            errors.append(
+                "image build scan is invalid JSON: "
+                f"{type(error).__name__}"
+            )
+    if isinstance(payload, dict) and scan_raw != json_bytes(payload):
+        errors.append("image build scan is not canonical")
+    if not isinstance(payload, dict) or set(payload) != {
+        "schema_version",
+        "image_config_digest",
+        "image_history",
+        "image_layers",
+    }:
+        errors.append("image build scan field closure differs")
+        payload = {}
+    history = payload.get("image_history")
+    layers = payload.get("image_layers")
+    history_keys = {
+        "sha256",
+        "size_bytes",
+        "line_count",
+        "configured_secret_variables",
+    }
+    layer_keys = {
+        "status",
+        "errors",
+        "source_size_bytes",
+        "outer_member_count",
+        "layer_count",
+        "layer_member_count",
+        "operator_env_path_count",
+        "model_weight_path_count",
+        "configured_secret_variables",
+    }
+    if not isinstance(history, dict) or set(history) != history_keys:
+        errors.append("image history scan field closure differs")
+        history = {}
+    if not isinstance(layers, dict) or set(layers) != layer_keys:
+        errors.append("image layer scan field closure differs")
+        layers = {}
+    if (
+        payload.get("schema_version")
+        != "kvbench-measurement-container-build-scan-1.0.0"
+        or payload.get("image_config_digest")
+        != expected_image_config_digest
+        or history_raw is None
+        or history.get("sha256") != sha256_bytes(history_raw or b"")
+        or history.get("size_bytes") != len(history_raw or b"")
+        or history.get("line_count") != len((history_raw or b"").splitlines())
+        or history.get("configured_secret_variables") != []
+        or layers.get("status") != "PASS"
+        or layers.get("errors") != []
+        or type(layers.get("source_size_bytes")) is not int
+        or int(layers.get("source_size_bytes", 0)) <= 0
+        or type(layers.get("outer_member_count")) is not int
+        or int(layers.get("outer_member_count", 0)) <= 0
+        or type(layers.get("layer_count")) is not int
+        or int(layers.get("layer_count", 0)) <= 0
+        or type(layers.get("layer_member_count")) is not int
+        or int(layers.get("layer_member_count", 0)) <= 0
+        or layers.get("operator_env_path_count") != 0
+        or layers.get("model_weight_path_count") != 0
+        or layers.get("configured_secret_variables") != []
+    ):
+        errors.append("image build scan did not pass exact requirements")
+    if secret_environment is not None:
+        leaked_names = set()
+        for raw in (history_raw, scan_raw):
+            if raw is not None:
+                leaked_names.update(
+                    configured_secret_value_names(raw, secret_environment)
+                )
+        if leaked_names:
+            errors.append(
+                "image build evidence contains configured credential bytes"
+            )
+    return history_raw, scan_raw, {
+        "status": "PASS" if not errors else "FAIL",
+        "errors": errors,
+        "image_config_digest": expected_image_config_digest,
+        "history_sha256": (
+            sha256_bytes(history_raw) if history_raw is not None else None
+        ),
+        "build_scan_sha256": (
+            sha256_bytes(scan_raw) if scan_raw is not None else None
+        ),
+        "model_weight_path_count": layers.get("model_weight_path_count"),
+        "configured_secret_variables": layers.get(
+            "configured_secret_variables"
+        ),
     }
 
 
@@ -1274,6 +1509,8 @@ def validate_container_runtime_inspect(
                 "/workspace/artifacts/phase6a/container_g0": True,
                 "/run/kvbench/image-inspect.json": False,
                 "/run/kvbench/runtime-inspect.json": False,
+                "/run/kvbench/image-history.jsonl": False,
+                "/run/kvbench/image-build-scan.json": False,
             }
             expected_tmpfs_modes = {
                 "/root": True,
@@ -2457,6 +2694,562 @@ def verify_platform_lock(
     }
 
 
+def validate_measurement_container_system_lock(
+    payload: Any,
+    *,
+    expected_image_config_digest: str | None = None,
+    expected_source_revision: str | None = None,
+) -> dict[str, Any]:
+    """Validate the reviewed, build-observed container lock schema."""
+
+    errors: list[str] = []
+    if not isinstance(payload, dict):
+        return {
+            "status": "FAIL",
+            "errors": [
+                "Measurement Container system lock root is not an object"
+            ],
+            "dpkg_package_count": 0,
+            "tool_count": 0,
+        }
+
+    expected_top_level = {
+        "schema_version",
+        "purpose",
+        "scope",
+        "platform",
+        "environment",
+        "dpkg_packages",
+        "tools",
+        "observation",
+    }
+    if set(payload) != expected_top_level:
+        errors.append("Measurement Container system lock top-level keys differ")
+    if type(payload.get("schema_version")) is not int or payload.get(
+        "schema_version"
+    ) != 1:
+        errors.append("Measurement Container system lock schema version differs")
+    if payload.get("purpose") != MEASUREMENT_CONTAINER_LOCK_PURPOSE:
+        errors.append("Measurement Container system lock purpose differs")
+    if payload.get("scope") != {
+        "execution_environment_kind": "measurement_container",
+        "container_digest_status": (
+            "verified_against_sanitized_image_inspect"
+        ),
+        "performance_claim_eligible": False,
+    }:
+        errors.append("Measurement Container system lock scope differs")
+    if payload.get("platform") != {
+        "distribution": "ubuntu",
+        "distribution_version": "24.04",
+        "dpkg_architecture": "amd64",
+        "machine": "x86_64",
+        "python_abi": "cp312",
+    }:
+        errors.append("Measurement Container system lock platform differs")
+    if payload.get("environment") != {
+        "cuda_home": "/usr/local/cuda-13.0",
+        "python_environment": "/opt/kvbench/.venv",
+        "python_requirements_lock": "preflight/requirements-e00.txt",
+    }:
+        errors.append("Measurement Container system lock environment differs")
+
+    packages = payload.get("dpkg_packages")
+    package_names: list[str] = []
+    if not isinstance(packages, list) or not packages:
+        errors.append("Measurement Container dpkg inventory is absent")
+        packages = []
+    for index, package in enumerate(packages):
+        if not isinstance(package, dict) or set(package) != {
+            "name",
+            "version",
+            "architecture",
+        }:
+            errors.append(f"invalid dpkg inventory item at index {index}")
+            continue
+        values = tuple(
+            package.get(field) for field in ("name", "version", "architecture")
+        )
+        if not all(
+            isinstance(value, str)
+            and bool(value)
+            and re.search(r"[\x00-\x1f\x7f]", value) is None
+            for value in values
+        ):
+            errors.append(f"invalid dpkg inventory fields at index {index}")
+            continue
+        package_names.append(package["name"])
+        if package["architecture"] not in {"all", "amd64"}:
+            errors.append(f"invalid dpkg architecture at index {index}")
+    if package_names != sorted(package_names):
+        errors.append("Measurement Container dpkg inventory is not sorted")
+    if len(package_names) != len(set(package_names)):
+        errors.append("Measurement Container dpkg inventory has duplicate names")
+
+    expected_specs = {
+        name: (invocation_path, dpkg_package, version_parser)
+        for name, invocation_path, dpkg_package, version_parser in (
+            MEASUREMENT_CONTAINER_LOCK_TOOL_SPECS
+        )
+    }
+    tools = payload.get("tools")
+    tool_names: list[str] = []
+    if not isinstance(tools, list):
+        errors.append("Measurement Container tool inventory is absent")
+        tools = []
+    for index, tool in enumerate(tools):
+        if not isinstance(tool, dict):
+            errors.append(f"invalid tool inventory item at index {index}")
+            continue
+        name = tool.get("name")
+        tool_names.append(name if isinstance(name, str) else "")
+        spec = expected_specs.get(name)
+        if spec is None:
+            errors.append(f"unexpected tool inventory item at index {index}")
+            continue
+        invocation_path, dpkg_package, version_parser = spec
+        expected_fields = {
+            "name",
+            "invocation_path",
+            "resolved_path",
+            "dpkg_package",
+            "version",
+            "sha256",
+        }
+        if version_parser is not None:
+            expected_fields.add("reported_version")
+        if set(tool) != expected_fields:
+            errors.append(f"tool inventory fields differ for {name}")
+        if tool.get("invocation_path") != invocation_path:
+            errors.append(f"tool invocation path differs for {name}")
+        if tool.get("dpkg_package") != dpkg_package:
+            errors.append(f"tool package owner differs for {name}")
+        resolved_path = tool.get("resolved_path")
+        if (
+            not isinstance(resolved_path, str)
+            or not PurePosixPath(resolved_path).is_absolute()
+            or str(PurePosixPath(resolved_path)) != resolved_path
+        ):
+            errors.append(f"tool resolved path is invalid for {name}")
+        if not isinstance(tool.get("version"), str) or not tool.get("version"):
+            errors.append(f"tool version is invalid for {name}")
+        if re.fullmatch(r"[0-9a-f]{64}", str(tool.get("sha256", ""))) is None:
+            errors.append(f"tool SHA-256 is invalid for {name}")
+        if version_parser is not None and (
+            not isinstance(tool.get("reported_version"), str)
+            or not tool.get("reported_version")
+        ):
+            errors.append(f"reported tool version is invalid for {name}")
+        if dpkg_package not in package_names:
+            errors.append(f"tool package owner is absent for {name}")
+    expected_tool_names = sorted(expected_specs)
+    if tool_names != expected_tool_names:
+        errors.append("Measurement Container tool inventory set/order differs")
+    if len(tool_names) != len(set(tool_names)):
+        errors.append("Measurement Container tool inventory has duplicate names")
+
+    observation = payload.get("observation")
+    if not isinstance(observation, dict) or set(observation) != {
+        "authority",
+        "candidate_image_config_digest",
+        "candidate_source_revision",
+    }:
+        errors.append("Measurement Container lock observation metadata differs")
+        observation = {}
+    if observation.get("authority") != MEASUREMENT_CONTAINER_LOCK_AUTHORITY:
+        errors.append("Measurement Container lock observation authority differs")
+    candidate_digest = observation.get("candidate_image_config_digest")
+    candidate_revision = observation.get("candidate_source_revision")
+    if re.fullmatch(r"sha256:[0-9a-f]{64}", str(candidate_digest)) is None:
+        errors.append("candidate image config digest is invalid")
+    if re.fullmatch(r"[0-9a-f]{40}", str(candidate_revision)) is None:
+        errors.append("candidate source revision is invalid")
+    if (
+        expected_image_config_digest is not None
+        and candidate_digest != expected_image_config_digest
+    ):
+        errors.append("candidate image config digest differs")
+    if (
+        expected_source_revision is not None
+        and candidate_revision != expected_source_revision
+    ):
+        errors.append("candidate source revision differs")
+    return {
+        "status": "PASS" if not errors else "FAIL",
+        "errors": errors,
+        "dpkg_package_count": len(packages),
+        "tool_count": len(tools),
+    }
+
+
+def load_measurement_container_system_lock(
+    path: Path,
+    *,
+    expected_image_config_digest: str | None = None,
+    expected_source_revision: str | None = None,
+) -> tuple[dict[str, Any] | None, dict[str, Any]]:
+    """Load only a regular, canonical, structurally valid container lock."""
+
+    errors: list[str] = []
+    raw: bytes | None = None
+    payload: Any = None
+    try:
+        metadata = path.lstat()
+        if not stat.S_ISREG(metadata.st_mode):
+            errors.append("Measurement Container system lock is not regular")
+        elif metadata.st_size <= 0 or metadata.st_size > 16 * 1024 * 1024:
+            errors.append("Measurement Container system lock size is invalid")
+        else:
+            raw = path.read_bytes()
+    except OSError as error:
+        errors.append(
+            "Measurement Container system lock is unavailable: "
+            f"{type(error).__name__}"
+        )
+
+    duplicate_key_count = 0
+
+    def reject_duplicate_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+        nonlocal duplicate_key_count
+        result: dict[str, Any] = {}
+        for key, value in pairs:
+            if key in result:
+                duplicate_key_count += 1
+            result[key] = value
+        return result
+
+    if raw is not None:
+        try:
+            payload = json.loads(
+                raw.decode("utf-8"), object_pairs_hook=reject_duplicate_keys
+            )
+        except (UnicodeDecodeError, json.JSONDecodeError) as error:
+            errors.append(
+                "Measurement Container system lock JSON is invalid: "
+                f"{type(error).__name__}"
+            )
+    if duplicate_key_count:
+        errors.append("Measurement Container system lock has duplicate keys")
+    validation = validate_measurement_container_system_lock(
+        payload,
+        expected_image_config_digest=expected_image_config_digest,
+        expected_source_revision=expected_source_revision,
+    )
+    errors.extend(validation["errors"])
+    if raw is not None and isinstance(payload, dict) and raw != json_bytes(payload):
+        errors.append("Measurement Container system lock is not canonical JSON")
+    result = {
+        **validation,
+        "status": "PASS" if not errors else "FAIL",
+        "errors": errors,
+        "canonical_json": not errors,
+    }
+    return (payload if not errors else None), result
+
+
+def _run_measurement_lock_observation_command(
+    command_id: str,
+    command: Sequence[str],
+    *,
+    environment: Mapping[str, str],
+) -> tuple[bytes, bytes]:
+    try:
+        result = subprocess.run(
+            list(command),
+            cwd=ROOT,
+            env=dict(environment),
+            check=False,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=120.0,
+        )
+    except (OSError, subprocess.TimeoutExpired) as error:
+        raise RuntimeError(
+            f"lock observation command unavailable: {command_id}; "
+            f"error={type(error).__name__}"
+        ) from None
+    if result.returncode != 0:
+        raise RuntimeError(
+            f"lock observation command failed: {command_id}; "
+            f"exit_code={result.returncode}"
+        )
+    if (
+        len(result.stdout) > 16 * 1024 * 1024
+        or len(result.stderr) > 16 * 1024 * 1024
+    ):
+        raise RuntimeError(f"lock observation output is too large: {command_id}")
+    return result.stdout, result.stderr
+
+
+def _measurement_lock_owner_matches(
+    text: str,
+    *,
+    expected_package: str,
+    expected_path: str,
+) -> bool:
+    for line in text.splitlines():
+        owner_text, separator, owned_path = line.partition(": ")
+        if not separator or owned_path != expected_path:
+            continue
+        owners = {
+            item.strip().split(":", 1)[0]
+            for item in owner_text.split(",")
+            if item.strip()
+        }
+        if expected_package in owners:
+            return True
+    return False
+
+
+def observe_measurement_container_system_lock(
+    *,
+    image_config_digest: str,
+    base_image_digest: str,
+    source_revision: str,
+    image_inspect_path: Path,
+) -> dict[str, Any]:
+    """Observe one untrusted candidate; this does not promote authority."""
+
+    if any(os.environ.get(name) for name in IMAGE_SECRET_VARIABLES):
+        raise RuntimeError("credential variables reached the lock observer")
+    _raw_inspect, image_validation = validate_container_image_inspect(
+        image_inspect_path,
+        expected_image_config_digest=image_config_digest,
+        expected_base_image_digest=base_image_digest,
+        expected_revision=source_revision,
+        secret_environment=os.environ,
+    )
+    if image_validation["status"] != "PASS":
+        raise RuntimeError("candidate image identity validation failed")
+    if not Path("/.dockerenv").is_file():
+        raise RuntimeError("lock observation is not running inside Docker")
+
+    environment = {
+        "LC_ALL": "C",
+        "LANG": "C",
+        "TZ": "UTC",
+        "PATH": (
+            "/opt/kvbench/.venv/bin:/usr/local/cuda-13.0/bin:"
+            "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+        ),
+        "CUDA_HOME": "/usr/local/cuda-13.0",
+        "LD_LIBRARY_PATH": "",
+        "PIP_DISABLE_PIP_VERSION_CHECK": "1",
+        "PYTHONDONTWRITEBYTECODE": "1",
+        "PYTHONNOUSERSITE": "1",
+    }
+    detection_stdout, detection_stderr = (
+        _run_measurement_lock_observation_command(
+            "container_detection",
+            ["/usr/bin/systemd-detect-virt", "--container"],
+            environment=environment,
+        )
+    )
+    if decode(detection_stdout).strip() != "docker" or detection_stderr:
+        raise RuntimeError("Docker runtime detection did not match")
+
+    dpkg_format = "${Package}\t${Version}\t${Architecture}\n"
+    dpkg_stdout, dpkg_stderr = _run_measurement_lock_observation_command(
+        "complete_dpkg_inventory",
+        ["/usr/bin/dpkg-query", "-W", f"-f={dpkg_format}"],
+        environment=environment,
+    )
+    if dpkg_stderr:
+        raise RuntimeError("complete dpkg inventory wrote stderr")
+    dpkg_text = decode(dpkg_stdout)
+    observed_dpkg, dpkg_errors = parse_exact_dpkg_inventory(dpkg_text)
+    if dpkg_errors or not observed_dpkg:
+        raise RuntimeError("complete dpkg inventory is malformed")
+    packages = [
+        {"name": name, "version": values[0], "architecture": values[1]}
+        for name, values in sorted(observed_dpkg.items())
+    ]
+
+    tools: list[dict[str, Any]] = []
+    for name, invocation_text, dpkg_package, version_parser in sorted(
+        MEASUREMENT_CONTAINER_LOCK_TOOL_SPECS
+    ):
+        invocation = Path(invocation_text)
+        try:
+            resolved = invocation.resolve(strict=True)
+        except OSError as error:
+            raise RuntimeError(
+                f"required tool is unavailable: {name}; "
+                f"error={type(error).__name__}"
+            ) from None
+        if not resolved.is_file():
+            raise RuntimeError(f"required tool is not a regular file: {name}")
+        if dpkg_package not in observed_dpkg:
+            raise RuntimeError(f"tool owner package is absent: {name}")
+        owner_stdout, owner_stderr = _run_measurement_lock_observation_command(
+            f"owner_{safe_id(name)}",
+            ["/usr/bin/dpkg-query", "-S", str(resolved)],
+            environment=environment,
+        )
+        if owner_stderr or not _measurement_lock_owner_matches(
+            decode(owner_stdout),
+            expected_package=dpkg_package,
+            expected_path=str(resolved),
+        ):
+            raise RuntimeError(f"tool package ownership differs: {name}")
+        tool: dict[str, Any] = {
+            "name": name,
+            "invocation_path": invocation_text,
+            "resolved_path": str(resolved),
+            "dpkg_package": dpkg_package,
+            "version": observed_dpkg[dpkg_package][0],
+            "sha256": sha256_file(resolved),
+        }
+        if version_parser is not None:
+            version_stdout, version_stderr = (
+                _run_measurement_lock_observation_command(
+                    f"version_{safe_id(name)}",
+                    [invocation_text, "--version"],
+                    environment=environment,
+                )
+            )
+            reported_version = extract_version(
+                version_parser,
+                decode(version_stdout + b"\n" + version_stderr),
+            )
+            if reported_version is None:
+                raise RuntimeError(f"tool version is unparseable: {name}")
+            tool["version"] = reported_version
+            tool["reported_version"] = reported_version
+        tools.append(tool)
+
+    pip_stdout, _pip_stderr = _run_measurement_lock_observation_command(
+        "base_pip_list",
+        [
+            str(MEASUREMENT_CONTAINER_PYTHON),
+            "-m",
+            "pip",
+            "list",
+            "--format=json",
+        ],
+        environment=environment,
+    )
+    try:
+        pip_payload = json.loads(decode(pip_stdout))
+    except json.JSONDecodeError:
+        raise RuntimeError("base Python inventory is invalid JSON") from None
+    _run_measurement_lock_observation_command(
+        "base_pip_check",
+        [str(MEASUREMENT_CONTAINER_PYTHON), "-m", "pip", "check"],
+        environment=environment,
+    )
+    phase3_stdout, _phase3_stderr = (
+        _run_measurement_lock_observation_command(
+            "phase3_python_freeze",
+            [
+                str(MEASUREMENT_CONTAINER_PYTHON),
+                "-m",
+                "pip",
+                "freeze",
+                "--path",
+                "/opt/kvbench/.phase3/site-packages",
+            ],
+            environment=environment,
+        )
+    )
+    phase3_environment = dict(environment)
+    phase3_environment["PYTHONPATH"] = (
+        "/opt/kvbench/.phase3/site-packages"
+    )
+    _run_measurement_lock_observation_command(
+        "phase3_pip_check",
+        [str(MEASUREMENT_CONTAINER_PYTHON), "-m", "pip", "check"],
+        environment=phase3_environment,
+    )
+
+    lock = {
+        "schema_version": 1,
+        "purpose": MEASUREMENT_CONTAINER_LOCK_PURPOSE,
+        "scope": {
+            "execution_environment_kind": "measurement_container",
+            "container_digest_status": (
+                "verified_against_sanitized_image_inspect"
+            ),
+            "performance_claim_eligible": False,
+        },
+        "platform": {
+            "distribution": "ubuntu",
+            "distribution_version": "24.04",
+            "dpkg_architecture": "amd64",
+            "machine": "x86_64",
+            "python_abi": "cp312",
+        },
+        "environment": {
+            "cuda_home": "/usr/local/cuda-13.0",
+            "python_environment": "/opt/kvbench/.venv",
+            "python_requirements_lock": "preflight/requirements-e00.txt",
+        },
+        "dpkg_packages": packages,
+        "tools": tools,
+        "observation": {
+            "authority": MEASUREMENT_CONTAINER_LOCK_AUTHORITY,
+            "candidate_image_config_digest": image_config_digest,
+            "candidate_source_revision": source_revision,
+        },
+    }
+    structure_validation = validate_measurement_container_system_lock(
+        lock,
+        expected_image_config_digest=image_config_digest,
+        expected_source_revision=source_revision,
+    )
+    if structure_validation["status"] != "PASS":
+        raise RuntimeError("observed container lock is structurally invalid")
+    dependency_validation = verify_dependency_locks(
+        lock,
+        dpkg_text,
+        pip_payload,
+        full_dpkg_text=dpkg_text,
+        phase3_freeze_text=decode(phase3_stdout),
+        phase3_dependency_check_ok=True,
+    )
+    if dependency_validation["status"] != "PASS":
+        raise RuntimeError("candidate package/tool/Python identity differs")
+    os_release = parse_key_value_file(
+        Path("/etc/os-release").read_text(encoding="utf-8")
+    )
+    architecture_stdout, architecture_stderr = (
+        _run_measurement_lock_observation_command(
+            "dpkg_architecture",
+            ["/usr/bin/dpkg", "--print-architecture"],
+            environment=environment,
+        )
+    )
+    machine_stdout, machine_stderr = _run_measurement_lock_observation_command(
+        "machine_architecture",
+        ["/usr/bin/uname", "-m"],
+        environment=environment,
+    )
+    if architecture_stderr or machine_stderr:
+        raise RuntimeError("platform identity commands wrote stderr")
+    platform_validation = verify_platform_lock(
+        lock,
+        {
+            "distribution": str(os_release.get("ID", "")).lower(),
+            "distribution_version": os_release.get("VERSION_ID"),
+            "dpkg_architecture": decode(architecture_stdout).strip(),
+            "machine": decode(machine_stdout).strip(),
+            "python_abi": f"cp{sys.version_info.major}{sys.version_info.minor}",
+            "execution_environment_kind": "measurement_container",
+            "container_digest_status": (
+                "verified_against_sanitized_image_inspect"
+            ),
+            "performance_claim_eligible": False,
+            "cuda_home": "/usr/local/cuda-13.0",
+            "python_environment": "/opt/kvbench/.venv",
+            "python_requirements_lock": "preflight/requirements-e00.txt",
+        },
+    )
+    if platform_validation["status"] != "PASS":
+        raise RuntimeError("candidate platform identity differs")
+    return lock
+
+
 def result_envelope(
     status: str,
     *,
@@ -2526,7 +3319,10 @@ def file_role(relative: str) -> str:
 
 def enumerate_evidence_files(stage: Path) -> list[dict[str, Any]]:
     records: list[dict[str, Any]] = []
-    for path in sorted(stage.rglob("*")):
+    for path in sorted(
+        stage.rglob("*"),
+        key=lambda item: item.relative_to(stage).as_posix(),
+    ):
         if not path.is_file():
             continue
         if path.is_symlink():
@@ -2817,10 +3613,16 @@ def finalize_stage(
     reference_errors = evidence_reference_errors(stage, manifest)
     if reference_errors:
         raise RuntimeError(f"manifest evidence cross-reference failed: {reference_errors[0]}")
-    container_inventory = manifest.get("schema_version") == "e00-manifest-1.1.0"
+    container_inventory = manifest.get("schema_version") in {
+        "e00-manifest-1.1.0",
+        "kvbench-phase6a-bf16-container-parity-1.0.0",
+    }
     if container_inventory:
         inventory_items = []
-        for path in sorted(stage.rglob("*")):
+        for path in sorted(
+            stage.rglob("*"),
+            key=lambda item: item.relative_to(stage).as_posix(),
+        ):
             if not path.is_file():
                 continue
             relative = path.relative_to(stage).as_posix()
@@ -2858,7 +3660,10 @@ def finalize_stage(
             ),
         )
     ledger_entries: list[tuple[str, str]] = []
-    for path in sorted(stage.rglob("*")):
+    for path in sorted(
+        stage.rglob("*"),
+        key=lambda item: item.relative_to(stage).as_posix(),
+    ):
         if not path.is_file():
             continue
         relative = path.relative_to(stage).as_posix()
@@ -2925,10 +3730,16 @@ def finalize_stage(
 
 def parse_args(argv: Sequence[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument(
+    mode_group = parser.add_mutually_exclusive_group()
+    mode_group.add_argument(
         "--measurement-container",
         action="store_true",
         help="run E00 inside the certified Measurement Container candidate",
+    )
+    mode_group.add_argument(
+        "--observe-measurement-container-system-lock",
+        action="store_true",
+        help="observe an untrusted candidate lock without granting authority",
     )
     parser.add_argument(
         "--container-image-reference",
@@ -2958,31 +3769,114 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
             "container inspect JSON document"
         ),
     )
+    parser.add_argument(
+        "--container-image-history-jsonl",
+        type=Path,
+        help="absolute path to sanitized host-generated Docker image history",
+    )
+    parser.add_argument(
+        "--container-image-build-scan-json",
+        type=Path,
+        help="absolute path to the host-generated image layer scan record",
+    )
+    parser.add_argument(
+        "--container-source-revision",
+        help="source revision recorded in the immutable container image",
+    )
     args = parser.parse_args(list(argv))
-    identity_values = {
+    common_identity_values = {
         "--container-image-reference": args.container_image_reference,
         "--container-image-config-digest": args.container_image_config_digest,
         "--container-base-image-digest": args.container_base_image_digest,
         "--container-image-inspect-json": args.container_image_inspect_json,
+    }
+    all_identity_values = {
+        **common_identity_values,
         "--container-runtime-inspect-json": (
             args.container_runtime_inspect_json
         ),
+        "--container-image-history-jsonl": (
+            args.container_image_history_jsonl
+        ),
+        "--container-image-build-scan-json": (
+            args.container_image_build_scan_json
+        ),
+        "--container-source-revision": args.container_source_revision,
     }
+    container_mode = bool(
+        args.measurement_container
+        or args.observe_measurement_container_system_lock
+    )
     if args.measurement_container:
-        missing = [
-            name for name, value in identity_values.items() if not value
-        ]
+        required = {
+            **common_identity_values,
+            "--container-runtime-inspect-json": (
+                args.container_runtime_inspect_json
+            ),
+            "--container-source-revision": args.container_source_revision,
+            "--container-image-history-jsonl": (
+                args.container_image_history_jsonl
+            ),
+            "--container-image-build-scan-json": (
+                args.container_image_build_scan_json
+            ),
+        }
+        missing = [name for name, value in required.items() if not value]
         if missing:
             parser.error(
                 "--measurement-container requires " + ", ".join(missing)
             )
+    elif args.observe_measurement_container_system_lock:
+        required = {
+            **common_identity_values,
+            "--container-source-revision": args.container_source_revision,
+        }
+        missing = [name for name, value in required.items() if not value]
+        if missing:
+            parser.error(
+                "--observe-measurement-container-system-lock requires "
+                + ", ".join(missing)
+            )
+        forbidden = {
+            "--container-runtime-inspect-json": (
+                args.container_runtime_inspect_json
+            ),
+            "--container-image-history-jsonl": (
+                args.container_image_history_jsonl
+            ),
+            "--container-image-build-scan-json": (
+                args.container_image_build_scan_json
+            ),
+        }
+        supplied_forbidden = [
+            name for name, value in forbidden.items() if value is not None
+        ]
+        if supplied_forbidden:
+            parser.error(
+                "runtime/build evidence is forbidden during lock observation: "
+                + ", ".join(supplied_forbidden)
+            )
+    else:
+        supplied = [
+            name for name, value in all_identity_values.items() if value
+        ]
+        if supplied:
+            parser.error(
+                "container identity arguments require a container mode: "
+                + ", ".join(supplied)
+            )
+
+    if container_mode:
         digest_pattern = re.compile(r"sha256:[0-9a-f]{64}")
         for name in (
             "--container-image-config-digest",
             "--container-base-image-digest",
         ):
-            value = identity_values[name]
-            if not isinstance(value, str) or digest_pattern.fullmatch(value) is None:
+            value = all_identity_values[name]
+            if (
+                not isinstance(value, str)
+                or digest_pattern.fullmatch(value) is None
+            ):
                 parser.error(f"{name} must be sha256:<64 lowercase hex>")
         image_reference = args.container_image_reference
         if (
@@ -2994,16 +3888,30 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
                 "--container-image-reference must be a non-empty "
                 "single-line OCI reference"
             )
-        for name, inspect_path in (
+        inspect_paths = [
             (
                 "--container-image-inspect-json",
                 args.container_image_inspect_json,
-            ),
-            (
-                "--container-runtime-inspect-json",
-                args.container_runtime_inspect_json,
-            ),
-        ):
+            )
+        ]
+        if args.measurement_container:
+            inspect_paths.extend(
+                (
+                    (
+                        "--container-runtime-inspect-json",
+                        args.container_runtime_inspect_json,
+                    ),
+                    (
+                        "--container-image-history-jsonl",
+                        args.container_image_history_jsonl,
+                    ),
+                    (
+                        "--container-image-build-scan-json",
+                        args.container_image_build_scan_json,
+                    ),
+                )
+            )
+        for name, inspect_path in inspect_paths:
             if (
                 not isinstance(inspect_path, Path)
                 or not inspect_path.is_absolute()
@@ -3013,18 +3921,36 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
                 parser.error(
                     f"{name} must be outside the repository checkout"
                 )
-    else:
-        supplied = [name for name, value in identity_values.items() if value]
-        if supplied:
+        if (
+            not isinstance(args.container_source_revision, str)
+            or re.fullmatch(r"[0-9a-f]{40}", args.container_source_revision)
+            is None
+        ):
             parser.error(
-                "container identity arguments require --measurement-container: "
-                + ", ".join(supplied)
+                "--container-source-revision must be 40 lowercase hex"
             )
     return args
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = parse_args(sys.argv[1:] if argv is None else argv)
+    if args.observe_measurement_container_system_lock:
+        try:
+            lock = observe_measurement_container_system_lock(
+                image_config_digest=args.container_image_config_digest,
+                base_image_digest=args.container_base_image_digest,
+                source_revision=args.container_source_revision,
+                image_inspect_path=args.container_image_inspect_json,
+            )
+        except (OSError, RuntimeError, ValueError) as error:
+            print(
+                "Measurement Container lock observation failed: "
+                f"{error}",
+                file=sys.stderr,
+            )
+            return 2
+        sys.stdout.buffer.write(json_bytes(lock))
+        return 0
     measurement_container_mode = bool(args.measurement_container)
     evidence_root = (
         MEASUREMENT_CONTAINER_EVIDENCE_ROOT
@@ -3252,6 +4178,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         container_runtime_inspect_relative: str | None = None
         container_runtime_validation_relative: str | None = None
         container_runtime_validation: dict[str, Any] | None = None
+        container_image_history_relative: str | None = None
+        container_image_build_scan_relative: str | None = None
+        container_image_build_validation_relative: str | None = None
+        container_image_build_validation: dict[str, Any] | None = None
         if measurement_container_mode:
             container_inspect_relative = (
                 "inputs/container_image_inspect.json"
@@ -3265,6 +4195,15 @@ def main(argv: Sequence[str] | None = None) -> int:
             container_runtime_validation_relative = (
                 "validation/container_runtime_identity.json"
             )
+            container_image_history_relative = (
+                "inputs/container_image_history.jsonl"
+            )
+            container_image_build_scan_relative = (
+                "inputs/container_image_build_scan.json"
+            )
+            container_image_build_validation_relative = (
+                "validation/container_image_build_record.json"
+            )
             inspect_raw, container_identity_validation = (
                 validate_container_image_inspect(
                     args.container_image_inspect_json,
@@ -3274,7 +4213,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                     expected_base_image_digest=(
                         args.container_base_image_digest
                     ),
-                    expected_revision=git_sha,
+                    expected_revision=args.container_source_revision,
                 )
             )
             if inspect_raw is not None:
@@ -3316,6 +4255,40 @@ def main(argv: Sequence[str] | None = None) -> int:
                 stage / container_runtime_validation_relative,
                 json_bytes(container_runtime_validation),
             )
+            history_raw, build_scan_raw, container_image_build_validation = (
+                validate_container_image_build_record(
+                    args.container_image_history_jsonl,
+                    args.container_image_build_scan_json,
+                    expected_image_config_digest=(
+                        args.container_image_config_digest
+                    ),
+                    secret_environment=original_environment,
+                )
+            )
+            if history_raw is not None:
+                write_exclusive(
+                    stage / container_image_history_relative,
+                    history_raw,
+                )
+                container_image_build_validation["history_evidence"] = (
+                    output_ref(stage, container_image_history_relative)
+                )
+            else:
+                container_image_build_validation["history_evidence"] = None
+            if build_scan_raw is not None:
+                write_exclusive(
+                    stage / container_image_build_scan_relative,
+                    build_scan_raw,
+                )
+                container_image_build_validation["scan_evidence"] = (
+                    output_ref(stage, container_image_build_scan_relative)
+                )
+            else:
+                container_image_build_validation["scan_evidence"] = None
+            write_exclusive(
+                stage / container_image_build_validation_relative,
+                json_bytes(container_image_build_validation),
+            )
         container_identity_ok = (
             not measurement_container_mode
             or (
@@ -3323,6 +4296,8 @@ def main(argv: Sequence[str] | None = None) -> int:
                 and container_identity_validation["status"] == "PASS"
                 and container_runtime_validation is not None
                 and container_runtime_validation["status"] == "PASS"
+                and container_image_build_validation is not None
+                and container_image_build_validation["status"] == "PASS"
             )
         )
         if measurement_container_mode and not container_identity_ok:
@@ -3340,7 +4315,34 @@ def main(argv: Sequence[str] | None = None) -> int:
             command_record=initial_process_command
         )
 
-        system_lock = json.loads(system_lock_path.read_text(encoding="utf-8"))
+        if measurement_container_mode:
+            system_lock, system_lock_validation = (
+                load_measurement_container_system_lock(system_lock_path)
+            )
+            observed_system_lock, observed_system_lock_validation = (
+                load_measurement_container_system_lock(
+                    MEASUREMENT_CONTAINER_OBSERVED_SYSTEM_LOCK_PATH
+                )
+            )
+            if system_lock is None or observed_system_lock is None:
+                raise RuntimeError(
+                    "reviewed Measurement Container system locks are invalid; "
+                    f"expected_errors={system_lock_validation['errors']!r}; "
+                    "observed_errors="
+                    f"{observed_system_lock_validation['errors']!r}"
+                )
+            if (
+                system_lock != observed_system_lock
+                or system_lock_path.read_bytes()
+                != MEASUREMENT_CONTAINER_OBSERVED_SYSTEM_LOCK_PATH.read_bytes()
+            ):
+                raise RuntimeError(
+                    "reviewed Measurement Container system lock bytes differ"
+                )
+        else:
+            system_lock = json.loads(
+                system_lock_path.read_text(encoding="utf-8")
+            )
         lock_tools = {
             item["name"]: item for item in system_lock.get("tools", [])
         }
@@ -3982,6 +4984,15 @@ def main(argv: Sequence[str] | None = None) -> int:
             dependency_validation["system_lock_sha256"] = sha256_file(
                 system_lock_path
             )
+            dependency_validation["observed_system_lock_path"] = (
+                MEASUREMENT_CONTAINER_OBSERVED_SYSTEM_LOCK_PATH.relative_to(
+                    ROOT
+                ).as_posix()
+            )
+            dependency_validation["observed_system_lock_sha256"] = sha256_file(
+                MEASUREMENT_CONTAINER_OBSERVED_SYSTEM_LOCK_PATH
+            )
+            dependency_validation["reviewed_system_lock_bytes_equal"] = True
 
         dpkg_verify_clean = verification_outputs_are_empty(
             command_ok=recorder.command_ok("dpkg_verify_locked_files"),

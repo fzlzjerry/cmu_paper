@@ -198,6 +198,8 @@ class MeasurementContainerDefinitionTests(unittest.TestCase):
         text = _text(MAKEFILE)
         for target in (
             "measurement-container:",
+            "observe-measurement-container-lock:",
+            "measurement-container-lock-review:",
             "verify-measurement-container:",
             "preflight-container:",
             "publish-artifact-r2:",
@@ -222,9 +224,78 @@ class MeasurementContainerDefinitionTests(unittest.TestCase):
             "/run/kvbench/runtime-inspect.json",
             text,
         )
+        self.assertIn(
+            '--container-source-revision "$$image_revision"',
+            text,
+        )
+        self.assertIn(
+            "--container-image-history-jsonl "
+            "/run/kvbench/image-history.jsonl",
+            text,
+        )
+        self.assertIn(
+            "--container-image-build-scan-json "
+            "/run/kvbench/image-build-scan.json",
+            text,
+        )
+        self.assertGreaterEqual(
+            text.count('git merge-base --is-ancestor "$$image_revision" "$$head"'),
+            2,
+        )
+        self.assertGreaterEqual(
+            text.count(
+                'git diff --quiet "$$image_revision" "$$head" -- '
+                "docker/measurement.Dockerfile "
+                "preflight/requirements-e00.txt "
+                "preflight/requirements-phase3.txt"
+            ),
+            2,
+        )
+        self.assertGreaterEqual(
+            text.count('git cat-file -e "$$image_revision:$$lock_path"'),
+            2,
+        )
+        self.assertIn('rm -f -- "$$task_root/image-save.tar"', text)
         self.assertIn('image_id="$(MEASUREMENT_IMAGE_CONFIG_DIGEST)"', text)
         self.assertNotIn("--env-file", text)
         self.assertNotIn("--build-arg", text)
+
+    def test_container_lock_bootstrap_is_two_pass_and_fail_closed(self) -> None:
+        text = _text(MAKEFILE)
+        self.assertIn(
+            "observe-measurement-container-lock: phase6a-source-safety",
+            text,
+        )
+        self.assertIn(
+            "measurement-container-lock-review: phase6a-source-safety",
+            text,
+        )
+        self.assertIn(
+            "verify-measurement-container: measurement-container-lock-review",
+            text,
+        )
+        observation = text.split(
+            "observe-measurement-container-lock:", 1
+        )[1].split("measurement-container-lock-review:", 1)[0]
+        self.assertIn("--read-only --network=none", observation)
+        self.assertIn(
+            "--observe-measurement-container-system-lock", observation
+        )
+        self.assertIn("publish_atomic_exclusive", observation)
+        self.assertIn(
+            "measurement-container-system-packages.lock.json", observation
+        )
+        self.assertNotIn(
+            "cp preflight/measurement-container-system-packages.lock.json",
+            observation,
+        )
+        review = text.split(
+            "measurement-container-lock-review:", 1
+        )[1].split("verify-measurement-container:", 1)[0]
+        self.assertIn("git ls-files --error-unmatch", review)
+        self.assertIn("cmp -s", review)
+        self.assertIn("load_measurement_container_system_lock", review)
+        self.assertIn("REVIEWED_LOCK_BYTES_EQUAL", review)
 
 
 if __name__ == "__main__":

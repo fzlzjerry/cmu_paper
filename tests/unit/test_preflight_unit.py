@@ -27,6 +27,69 @@ from preflight.audit_checkpoint import audit_checkpoint
 ROOT = Path(__file__).resolve().parents[2]
 
 
+def measurement_container_lock_fixture() -> dict[str, object]:
+    package_names = sorted(
+        {
+            dpkg_package
+            for _name, _path, dpkg_package, _parser in (
+                run_preflight.MEASUREMENT_CONTAINER_LOCK_TOOL_SPECS
+            )
+        }
+    )
+    tools: list[dict[str, object]] = []
+    for name, invocation_path, dpkg_package, parser in sorted(
+        run_preflight.MEASUREMENT_CONTAINER_LOCK_TOOL_SPECS
+    ):
+        tool: dict[str, object] = {
+            "name": name,
+            "invocation_path": invocation_path,
+            "resolved_path": invocation_path,
+            "dpkg_package": dpkg_package,
+            "version": "1.0",
+            "sha256": "a" * 64,
+        }
+        if parser is not None:
+            tool["reported_version"] = "1.0"
+        tools.append(tool)
+    return {
+        "schema_version": 1,
+        "purpose": run_preflight.MEASUREMENT_CONTAINER_LOCK_PURPOSE,
+        "scope": {
+            "execution_environment_kind": "measurement_container",
+            "container_digest_status": (
+                "verified_against_sanitized_image_inspect"
+            ),
+            "performance_claim_eligible": False,
+        },
+        "platform": {
+            "distribution": "ubuntu",
+            "distribution_version": "24.04",
+            "dpkg_architecture": "amd64",
+            "machine": "x86_64",
+            "python_abi": "cp312",
+        },
+        "environment": {
+            "cuda_home": "/usr/local/cuda-13.0",
+            "python_environment": "/opt/kvbench/.venv",
+            "python_requirements_lock": "preflight/requirements-e00.txt",
+        },
+        "dpkg_packages": [
+            {
+                "name": name,
+                "version": "1.0-1",
+                "architecture": "amd64",
+            }
+            for name in package_names
+        ],
+        "tools": tools,
+        "observation": {
+            "authority": run_preflight.MEASUREMENT_CONTAINER_LOCK_AUTHORITY,
+            "candidate_image_config_digest": "sha256:" + "b" * 64,
+            "candidate_source_revision": "c" * 40,
+        },
+    }
+
+
 class PreflightUnitTests(unittest.TestCase):
     def test_measurement_container_contract_binds_image_inputs(self) -> None:
         self.assertEqual(
@@ -39,6 +102,10 @@ class PreflightUnitTests(unittest.TestCase):
         )
         self.assertIn(
             "preflight/measurement-container-system-packages.expected.json",
+            run_preflight.MEASUREMENT_CONTAINER_CONTRACT_PATHS,
+        )
+        self.assertIn(
+            "preflight/measurement-container-system-packages.lock.json",
             run_preflight.MEASUREMENT_CONTAINER_CONTRACT_PATHS,
         )
         self.assertNotIn(
@@ -110,9 +177,11 @@ class PreflightUnitTests(unittest.TestCase):
     def test_container_cli_is_explicit_and_digest_strict(self) -> None:
         native = run_preflight.parse_args([])
         self.assertFalse(native.measurement_container)
+        self.assertFalse(native.observe_measurement_container_system_lock)
         self.assertIsNone(native.container_image_reference)
         self.assertIsNone(native.container_image_config_digest)
         self.assertIsNone(native.container_base_image_digest)
+        self.assertIsNone(native.container_source_revision)
 
         digest = "sha256:" + "a" * 64
         container = run_preflight.parse_args(
@@ -128,15 +197,43 @@ class PreflightUnitTests(unittest.TestCase):
                 "/run/kvbench/container-image-inspect.json",
                 "--container-runtime-inspect-json",
                 "/run/kvbench/container-runtime-inspect.json",
+                "--container-source-revision",
+                "b" * 40,
+                "--container-image-history-jsonl",
+                "/run/kvbench/container-image-history.jsonl",
+                "--container-image-build-scan-json",
+                "/run/kvbench/container-image-build-scan.json",
             ]
         )
         self.assertTrue(container.measurement_container)
+        self.assertFalse(container.observe_measurement_container_system_lock)
         self.assertEqual(container.container_image_config_digest, digest)
         self.assertEqual(container.container_base_image_digest, digest)
+        self.assertEqual(container.container_source_revision, "b" * 40)
         self.assertEqual(
             container.container_runtime_inspect_json,
             Path("/run/kvbench/container-runtime-inspect.json"),
         )
+
+        observer = run_preflight.parse_args(
+            [
+                "--observe-measurement-container-system-lock",
+                "--container-image-reference",
+                "kvbench-measurement:phase6a",
+                "--container-image-config-digest",
+                digest,
+                "--container-base-image-digest",
+                digest,
+                "--container-image-inspect-json",
+                "/run/kvbench/container-image-inspect.json",
+                "--container-source-revision",
+                "b" * 40,
+            ]
+        )
+        self.assertTrue(observer.observe_measurement_container_system_lock)
+        self.assertFalse(observer.measurement_container)
+        self.assertEqual(observer.container_source_revision, "b" * 40)
+        self.assertIsNone(observer.container_runtime_inspect_json)
 
         invalid_argv = (
             ["--measurement-container"],
@@ -166,6 +263,32 @@ class PreflightUnitTests(unittest.TestCase):
                 "--container-image-inspect-json",
                 "relative/image-inspect.json",
             ],
+            [
+                "--observe-measurement-container-system-lock",
+                "--container-image-reference",
+                "kvbench-measurement:phase6a",
+                "--container-image-config-digest",
+                digest,
+                "--container-base-image-digest",
+                digest,
+                "--container-image-inspect-json",
+                "/run/kvbench/container-image-inspect.json",
+            ],
+            [
+                "--observe-measurement-container-system-lock",
+                "--container-image-reference",
+                "kvbench-measurement:phase6a",
+                "--container-image-config-digest",
+                digest,
+                "--container-base-image-digest",
+                digest,
+                "--container-image-inspect-json",
+                "/run/kvbench/container-image-inspect.json",
+                "--container-runtime-inspect-json",
+                "/run/kvbench/container-runtime-inspect.json",
+                "--container-source-revision",
+                "b" * 40,
+            ],
         )
         for argv in invalid_argv:
             with self.subTest(argv=argv), mock.patch("sys.stderr"):
@@ -187,12 +310,22 @@ class PreflightUnitTests(unittest.TestCase):
             / "preflight"
             / "measurement-container-system-packages.expected.json",
         )
+        self.assertEqual(
+            run_preflight.MEASUREMENT_CONTAINER_OBSERVED_SYSTEM_LOCK_PATH,
+            ROOT
+            / "preflight"
+            / "measurement-container-system-packages.lock.json",
+        )
         self.assertNotEqual(
             run_preflight.MEASUREMENT_CONTAINER_SYSTEM_LOCK_PATH,
             run_preflight.SYSTEM_LOCK_PATH,
         )
         self.assertIn(
             "preflight/measurement-container-system-packages.expected.json",
+            run_preflight.MEASUREMENT_CONTAINER_CONTRACT_PATHS,
+        )
+        self.assertIn(
+            "preflight/measurement-container-system-packages.lock.json",
             run_preflight.MEASUREMENT_CONTAINER_CONTRACT_PATHS,
         )
         self.assertNotIn(
@@ -441,6 +574,7 @@ class PreflightUnitTests(unittest.TestCase):
             )
             self.assertEqual(clean["status"], "PASS")
             self.assertEqual(clean["layer_count"], 1)
+            self.assertEqual(clean["model_weight_path_count"], 0)
 
             write_image_save(
                 path,
@@ -471,6 +605,73 @@ class PreflightUnitTests(unittest.TestCase):
                 [secret_name],
             )
             self.assertNotIn(secret_value, json.dumps(secret))
+
+            write_image_save(
+                path,
+                layer_name="opt/model/model-00001-of-00002.safetensors",
+                layer_content=b"synthetic-not-a-real-weight",
+            )
+            model_weight = (
+                run_preflight.validate_docker_image_save_archive(
+                    path,
+                    secret_environment=secret_environment,
+                )
+            )
+            self.assertEqual(model_weight["status"], "FAIL")
+            self.assertEqual(model_weight["model_weight_path_count"], 1)
+
+    def test_container_build_record_is_exact_and_model_free(self) -> None:
+        digest = "sha256:" + "a" * 64
+        history = b'{"CreatedBy":"safe"}\n'
+        scan = {
+            "schema_version": (
+                "kvbench-measurement-container-build-scan-1.0.0"
+            ),
+            "image_config_digest": digest,
+            "image_history": {
+                "sha256": run_preflight.sha256_bytes(history),
+                "size_bytes": len(history),
+                "line_count": 1,
+                "configured_secret_variables": [],
+            },
+            "image_layers": {
+                "status": "PASS",
+                "errors": [],
+                "source_size_bytes": 4096,
+                "outer_member_count": 3,
+                "layer_count": 1,
+                "layer_member_count": 2,
+                "operator_env_path_count": 0,
+                "model_weight_path_count": 0,
+                "configured_secret_variables": [],
+            },
+        }
+        with tempfile.TemporaryDirectory() as raw_directory:
+            root = Path(raw_directory)
+            history_path = root / "history.jsonl"
+            scan_path = root / "scan.json"
+            history_path.write_bytes(history)
+            scan_path.write_bytes(run_preflight.json_bytes(scan))
+            history_raw, scan_raw, validation = (
+                run_preflight.validate_container_image_build_record(
+                    history_path,
+                    scan_path,
+                    expected_image_config_digest=digest,
+                )
+            )
+            self.assertEqual(history_raw, history)
+            self.assertEqual(scan_raw, run_preflight.json_bytes(scan))
+            self.assertEqual(validation["status"], "PASS")
+            scan["image_layers"]["model_weight_path_count"] = 1
+            scan_path.write_bytes(run_preflight.json_bytes(scan))
+            _history, _scan, failure = (
+                run_preflight.validate_container_image_build_record(
+                    history_path,
+                    scan_path,
+                    expected_image_config_digest=digest,
+                )
+            )
+            self.assertEqual(failure["status"], "FAIL")
 
     def test_runtime_inspect_binds_running_container_and_exact_image(
         self,
@@ -528,6 +729,16 @@ class PreflightUnitTests(unittest.TestCase):
                         "Destination": (
                             "/run/kvbench/runtime-inspect.json"
                         ),
+                        "RW": False,
+                    },
+                    {
+                        "Type": "bind",
+                        "Destination": "/run/kvbench/image-history.jsonl",
+                        "RW": False,
+                    },
+                    {
+                        "Type": "bind",
+                        "Destination": "/run/kvbench/image-build-scan.json",
                         "RW": False,
                     },
                 ],
@@ -2516,6 +2727,73 @@ Build cuda_13.0.r13.0/compiler.36400806_0
             self.assertFalse(outcome["checkpoint_verified"])
             self.assertFalse(outcome["release_published_by_collector"])
             self.assertTrue(recorder.audit_errors)
+
+    def test_measurement_container_system_lock_schema_is_fail_closed(
+        self,
+    ) -> None:
+        payload = measurement_container_lock_fixture()
+        digest = "sha256:" + "b" * 64
+        result = run_preflight.validate_measurement_container_system_lock(
+            payload,
+            expected_image_config_digest=digest,
+            expected_source_revision="c" * 40,
+        )
+        self.assertEqual(result["status"], "PASS")
+        self.assertFalse(result["errors"])
+
+        wrong_scope = copy.deepcopy(payload)
+        wrong_scope["scope"]["execution_environment_kind"] = "native_host"
+        self.assertEqual(
+            run_preflight.validate_measurement_container_system_lock(
+                wrong_scope
+            )["status"],
+            "FAIL",
+        )
+        missing_tool = copy.deepcopy(payload)
+        missing_tool["tools"].pop()
+        self.assertEqual(
+            run_preflight.validate_measurement_container_system_lock(
+                missing_tool
+            )["status"],
+            "FAIL",
+        )
+        reversed_packages = copy.deepcopy(payload)
+        reversed_packages["dpkg_packages"].reverse()
+        self.assertEqual(
+            run_preflight.validate_measurement_container_system_lock(
+                reversed_packages
+            )["status"],
+            "FAIL",
+        )
+        self.assertEqual(
+            run_preflight.validate_measurement_container_system_lock(
+                payload,
+                expected_image_config_digest="sha256:" + "d" * 64,
+            )["status"],
+            "FAIL",
+        )
+
+    def test_measurement_container_system_lock_file_is_canonical(self) -> None:
+        payload = measurement_container_lock_fixture()
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "lock.json"
+            path.write_bytes(run_preflight.json_bytes(payload))
+            loaded, result = (
+                run_preflight.load_measurement_container_system_lock(path)
+            )
+            self.assertEqual(result["status"], "PASS")
+            self.assertEqual(loaded, payload)
+
+            noncanonical = Path(temporary) / "noncanonical.json"
+            noncanonical.write_text(json.dumps(payload), encoding="utf-8")
+            loaded, result = (
+                run_preflight.load_measurement_container_system_lock(
+                    noncanonical
+                )
+            )
+            self.assertIsNone(loaded)
+            self.assertEqual(result["status"], "FAIL")
+            self.assertIn("not canonical JSON", result["errors"][-1])
 
     def test_container_finalization_adds_r2_inventory_complete_last(self) -> None:
         from scripts.r2_artifact import validate_local_artifact
