@@ -17,3 +17,5 @@
 *.egg-info/
 *.nsys-rep
 *.ncu-rep
+
+.env
