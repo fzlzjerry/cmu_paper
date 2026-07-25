@@ -2,11 +2,15 @@
 
 from __future__ import annotations
 
+from contextlib import redirect_stderr, redirect_stdout
+import io
 import json
 from pathlib import Path
 import unittest
+from unittest import mock
 
 from kvbench.schema import MethodAdmissionReportV2
+from scripts import phase6_turboquant_admission
 from scripts.validate_phase2 import (
     APPROVED_ARTIFACT_ROOT_NAMES,
     PHASE6_ALLOWED_PATHS,
@@ -15,6 +19,20 @@ from scripts.validate_phase2 import (
 
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
+
+
+class _FakeB018Run:
+    def __init__(self, name: str) -> None:
+        self.stage = Path("/tmp") / name
+        self.payloads: dict[str, object] = {}
+        self.finalized: list[object] = []
+
+    def write_json(self, relative: str, payload: object) -> None:
+        self.payloads[relative] = payload
+
+    def finalize(self, manifest: object) -> Path:
+        self.finalized.append(manifest)
+        return self.stage
 
 
 class Phase6GovernanceTests(unittest.TestCase):
@@ -124,6 +142,243 @@ class Phase6GovernanceTests(unittest.TestCase):
             makefile,
         )
 
+    def test_b018_mode_cannot_enter_the_bounded_grid(self) -> None:
+        with (
+            mock.patch.object(
+                phase6_turboquant_admission,
+                "run_b018_sanitizer_only",
+                return_value={"status": "PASS"},
+            ) as sanitizer_only,
+            mock.patch.object(
+                phase6_turboquant_admission,
+                "run_admission",
+            ) as full_admission,
+            redirect_stdout(io.StringIO()),
+            redirect_stderr(io.StringIO()),
+        ):
+            exit_code = phase6_turboquant_admission.main(
+                ["--b018-sanitizer-only"]
+            )
+        self.assertEqual(exit_code, 0)
+        sanitizer_only.assert_called_once_with()
+        full_admission.assert_not_called()
+        with redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+            phase6_turboquant_admission._parse_args(
+                ["--b018-sanitizer-only", "--validate-only"]
+            )
+
+    def test_b018_first_sanitizer_failure_stops_later_configs(self) -> None:
+        run = _FakeB018Run("b018-first-failure")
+        initial = mock.Mock(run_id="b018-first-failure")
+        failed = {
+            "passed": False,
+            "probe_passed": True,
+            "exit_code": 99,
+            "memcheck_summaries_passed": False,
+        }
+        with (
+            mock.patch.object(
+                phase6_turboquant_admission,
+                "_require_clean_git",
+                return_value="1" * 40,
+            ),
+            mock.patch.object(
+                phase6_turboquant_admission,
+                "require_authorized_cuda_environment",
+                return_value={"container_digest": "authorized"},
+            ),
+            mock.patch.object(
+                phase6_turboquant_admission,
+                "phase6_artifact_store",
+                return_value=object(),
+            ),
+            mock.patch.object(
+                phase6_turboquant_admission,
+                "_sanitizer_tool_identity",
+                return_value={"sha256": "2" * 64},
+            ),
+            mock.patch.object(
+                phase6_turboquant_admission,
+                "_b018_cache_identity",
+                return_value=("3" * 64, "4" * 64),
+            ) as cache_identity,
+            mock.patch.object(
+                phase6_turboquant_admission,
+                "_create_started_run",
+                return_value=(run, initial, "2026-07-25T00:00:00Z"),
+            ),
+            mock.patch.object(
+                phase6_turboquant_admission,
+                "_run_sanitizer_configuration",
+                return_value=failed,
+            ) as sanitizer,
+            mock.patch.object(
+                phase6_turboquant_admission,
+                "_terminal_manifest",
+                side_effect=lambda _initial, **kwargs: kwargs["status"],
+            ),
+        ):
+            with self.assertRaisesRegex(
+                RuntimeError,
+                "turboquant_4bit_nc",
+            ):
+                phase6_turboquant_admission.run_b018_sanitizer_only()
+        self.assertEqual(cache_identity.call_count, 1)
+        sanitizer.assert_called_once()
+        self.assertEqual(
+            sanitizer.call_args.args[1],
+            "turboquant_4bit_nc",
+        )
+        self.assertEqual(
+            run.finalized,
+            [phase6_turboquant_admission.RunStatus.RUNTIME_FAILED],
+        )
+
+    def test_b018_success_finalizes_one_artifact_per_configuration(
+        self,
+    ) -> None:
+        configurations = (
+            "turboquant_4bit_nc",
+            "turboquant_k3v4_nc",
+            "turboquant_3bit_nc",
+        )
+        runs = tuple(_FakeB018Run(f"b018-pass-{index}") for index in range(3))
+        initials = tuple(
+            mock.Mock(run_id=f"b018-pass-{index}") for index in range(3)
+        )
+        created = tuple(
+            (run, initial, "2026-07-25T00:00:00Z")
+            for run, initial in zip(runs, initials, strict=True)
+        )
+        passed = {
+            "passed": True,
+            "probe_passed": True,
+            "exit_code": 0,
+            "memcheck_summaries_passed": True,
+        }
+        with (
+            mock.patch.object(
+                phase6_turboquant_admission,
+                "_require_clean_git",
+                return_value="1" * 40,
+            ),
+            mock.patch.object(
+                phase6_turboquant_admission,
+                "require_authorized_cuda_environment",
+                return_value={"container_digest": "authorized"},
+            ),
+            mock.patch.object(
+                phase6_turboquant_admission,
+                "phase6_artifact_store",
+                return_value=object(),
+            ),
+            mock.patch.object(
+                phase6_turboquant_admission,
+                "_sanitizer_tool_identity",
+                return_value={"sha256": "2" * 64},
+            ),
+            mock.patch.object(
+                phase6_turboquant_admission,
+                "_b018_cache_identity",
+                return_value=("3" * 64, "4" * 64),
+            ),
+            mock.patch.object(
+                phase6_turboquant_admission,
+                "_create_started_run",
+                side_effect=created,
+            ),
+            mock.patch.object(
+                phase6_turboquant_admission,
+                "_run_sanitizer_configuration",
+                return_value=passed,
+            ) as sanitizer,
+            mock.patch.object(
+                phase6_turboquant_admission,
+                "_terminal_manifest",
+                side_effect=lambda _initial, **kwargs: kwargs["status"],
+            ),
+            mock.patch.object(
+                phase6_turboquant_admission,
+                "validate_run_directory",
+                return_value=mock.Mock(valid=True, complete=True),
+            ),
+            mock.patch.object(
+                phase6_turboquant_admission,
+                "_b018_artifact_checksums",
+                return_value={"checksums.sha256": "5" * 64},
+            ),
+        ):
+            result = phase6_turboquant_admission.run_b018_sanitizer_only()
+        self.assertEqual(result["status"], "PASS")
+        self.assertEqual(
+            tuple(item["configuration"] for item in result["configurations"]),
+            configurations,
+        )
+        self.assertEqual(sanitizer.call_count, 3)
+        self.assertTrue(
+            all(
+                run.finalized
+                == [phase6_turboquant_admission.RunStatus.ABORTED]
+                for run in runs
+            )
+        )
+
+    def test_b018_target_is_exact_digest_offline_and_sanitizer_only(
+        self,
+    ) -> None:
+        makefile = (REPOSITORY_ROOT / "Makefile").read_text(encoding="utf-8")
+        start = makefile.index(
+            "remediate-b018-turboquant: verify-measurement-container"
+        )
+        end = makefile.index(
+            "\nadmit-turboquant: verify-measurement-container",
+            start,
+        )
+        target = makefile[start:end]
+        self.assertIn("--network=none", target)
+        self.assertIn(
+            'test "$(MEASUREMENT_IMAGE_CONFIG_DIGEST)" = '
+            '"$(PHASE6_AUTHORIZED_IMAGE_CONFIG_DIGEST)"',
+            target,
+        )
+        self.assertIn("--b018-sanitizer-only", target)
+        self.assertNotIn("test-cuda", target)
+        self.assertNotIn("test-graph", target)
+        self.assertNotIn("run_admission", target)
+
+    def test_sanitizer_probe_cleans_up_after_evaluator_exception(self) -> None:
+        from tests.cuda import phase6_turboquant_sanitizer_probe as probe
+
+        with (
+            mock.patch.object(
+                probe,
+                "require_authorized_cuda_environment",
+                return_value={"container_digest": "authorized"},
+            ),
+            mock.patch.object(
+                probe,
+                "evaluate_fixture_configuration",
+                side_effect=ValueError("evaluator failure"),
+            ),
+            mock.patch.object(
+                probe,
+                "_release_sanitizer_cuda_state",
+            ) as release,
+        ):
+            with self.assertRaisesRegex(
+                RuntimeError,
+                "ValueError: evaluator failure",
+            ):
+                probe.main(
+                    [
+                        "--configuration",
+                        "turboquant_4bit_nc",
+                        "--image-config-digest",
+                        "authorized",
+                    ]
+                )
+        release.assert_called_once_with()
+
     def test_sanitizer_probe_resets_only_its_isolated_cuda_context(
         self,
     ) -> None:
@@ -140,6 +395,15 @@ class Phase6GovernanceTests(unittest.TestCase):
         self.assertIn("torch._C._cuda_clearCublasWorkspaces()", probe)
         self.assertIn("torch._C._host_emptyCache()", probe)
         self.assertIn("_build_hadamard_cached.cache_clear()", probe)
+        self.assertIn(
+            "release_cuda_resources_for_sanitizer=True",
+            probe,
+        )
+        self.assertIn("finally:", probe)
+        self.assertLess(
+            probe.index("release_cuda_resources_for_sanitizer=True"),
+            probe.rindex("_release_sanitizer_cuda_state()"),
+        )
         self.assertIn("os._exit(exit_code)", probe)
 
     def test_plan_freezes_tolerance_and_later_phases(self) -> None:

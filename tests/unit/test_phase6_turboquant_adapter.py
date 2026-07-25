@@ -133,6 +133,38 @@ class TurboQuantAdapterTests(unittest.TestCase):
                 )
                 self.assertEqual(cache.pointers(), cache.pointers())
 
+    def test_sanitizer_release_breaks_all_tensor_owners(self) -> None:
+        method = build_method_adapter("turboquant_4bit_nc", _context())
+        cache = method.allocate(
+            batch_size=1,
+            capacity=18,
+            device="cpu",
+        )
+        owned_references = tuple(
+            weakref.ref(tensor) for tensor in cache._owned_tensors()
+        )
+        handle = cache.attended_handle(
+            2,
+            key_states=cache.store_key_float,
+            value_states=cache.store_value_float,
+            prefill=False,
+        )
+
+        cache.release_owned_cuda_resources_for_sanitizer()
+        cache.release_owned_cuda_resources_for_sanitizer()
+        gc.collect()
+
+        self.assertEqual(cache.mode, "released")
+        self.assertIsNone(cache.bf16_cache)
+        self.assertEqual(cache._handles, {})
+        self.assertEqual(cache._single_slot_mappings, ())
+        self.assertEqual(cache._single_seq_lens, ())
+        self.assertIsNone(cache._current_slot_mapping)
+        self.assertIsNone(cache._current_seq_lens)
+        self.assertIsNone(handle.key_states)
+        self.assertIsNone(handle.value_states)
+        self.assertTrue(all(reference() is None for reference in owned_references))
+
     def test_attention_handles_do_not_own_the_cache(self) -> None:
         method = build_method_adapter("turboquant_4bit_nc", _context())
         cache = method.allocate(

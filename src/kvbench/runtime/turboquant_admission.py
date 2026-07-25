@@ -339,12 +339,17 @@ def evaluate_fixture_configuration(
     configuration: str,
     *,
     evidence_directory: Path | None = None,
+    release_cuda_resources_for_sanitizer: bool = False,
 ) -> dict[str, Any]:
     """Replay one mandatory fixture; optional evidence enables all CUDA audits."""
 
     if configuration not in TURBOQUANT_MANDATORY_CONFIGS:
         raise TurboQuantAdmissionError(
             "fixture configuration is not in the mandatory family"
+        )
+    if release_cuda_resources_for_sanitizer and evidence_directory is not None:
+        raise TurboQuantAdmissionError(
+            "sanitizer resource release requires the graph-free fixture path"
         )
     torch = _torch()
     device = torch.device("cuda:0")
@@ -518,6 +523,23 @@ def evaluate_fixture_configuration(
                 pointers_before == cache.pointers(),
             )
         )
+        if release_cuda_resources_for_sanitizer:
+            torch.cuda.synchronize(device=device)
+            store = None
+            hot_operation = None
+            handle = None
+            output = None
+            prefill_key = None
+            prefill_value = None
+            append_key = None
+            append_value = None
+            query = None
+            prefill_positions = None
+            append_position = None
+            inputs.clear()
+            cache.release_owned_cuda_resources_for_sanitizer()
+            cache = None
+            method = None
         return base_result
 
     if (

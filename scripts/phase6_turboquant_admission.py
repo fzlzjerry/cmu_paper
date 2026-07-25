@@ -229,6 +229,15 @@ def _run_id(
     )
 
 
+def _b018_sanitizer_run_id(*, git_sha: str, configuration: str) -> str:
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dt%H%M%S%f")[:-3] + "z"
+    config = configuration.removeprefix("turboquant_")
+    return (
+        f"phase6-b018-{stamp}-{git_sha[:8]}-{secrets.token_hex(3)}-"
+        f"{config}-sanitizer"
+    )
+
+
 def _manifest(
     *,
     run_id: str,
@@ -453,80 +462,100 @@ def _memcheck_summaries_pass(stdout: bytes, stderr: bytes) -> bool:
     return sanitizer_error_count("memcheck", text) == 0
 
 
-def _run_sanitizers(run: ArtifactRun) -> dict[str, Any]:
-    identity = _sanitizer_tool_identity()
+def _run_sanitizer_configuration(
+    run: ArtifactRun,
+    configuration: str,
+    *,
+    identity: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    if configuration not in TURBOQUANT_MANDATORY_CONFIGS:
+        raise ValueError("sanitizer configuration is not mandatory")
+    tool_identity = (
+        _sanitizer_tool_identity() if identity is None else dict(identity)
+    )
     sanitizer_environment = {"PYTORCH_NO_CUDA_MEMORY_CACHING": "1"}
     child_environment = os.environ.copy()
     child_environment.update(sanitizer_environment)
+    command = (
+        str(SANITIZER),
+        "--tool",
+        "memcheck",
+        "--error-exitcode",
+        "99",
+        "--target-processes",
+        "application-only",
+        "--leak-check",
+        "full",
+        str(CONTAINER_PYTHON),
+        str(SANITIZER_PROBE),
+        "--configuration",
+        configuration,
+        "--image-config-digest",
+        AUTHORIZED_CONTAINER_DIGEST,
+    )
+    started = _utc_now()
+    monotonic_started = time.monotonic()
+    try:
+        result = subprocess.run(
+            command,
+            cwd=REPOSITORY_ROOT,
+            check=False,
+            capture_output=True,
+            timeout=900,
+            env=child_environment,
+        )
+        stdout = result.stdout
+        stderr = result.stderr
+        exit_code: int | None = result.returncode
+        timed_out = False
+    except subprocess.TimeoutExpired as error:
+        stdout = error.stdout or b""
+        stderr = error.stderr or b""
+        exit_code = None
+        timed_out = True
+    summaries_passed = _memcheck_summaries_pass(stdout, stderr)
+    probe_passed = b'"status":"pass"' in stdout
+    passed = (
+        not timed_out
+        and exit_code == 0
+        and probe_passed
+        and summaries_passed
+    )
+    prefix = f"validation/sanitizer/{configuration}"
+    run.write_bytes(f"{prefix}/stdout.txt", stdout)
+    run.write_bytes(f"{prefix}/stderr.txt", stderr)
+    record = {
+        "schema_version": "kvbench-phase6-sanitizer-result-1.0.0",
+        "configuration": configuration,
+        "command": list(command),
+        "tool_identity": tool_identity,
+        "environment": sanitizer_environment,
+        "started_at_utc": started,
+        "finished_at_utc": _utc_now(),
+        "duration_seconds": float(time.monotonic() - monotonic_started),
+        "exit_code": exit_code,
+        "timed_out": timed_out,
+        "stdout_sha256": hashlib.sha256(stdout).hexdigest(),
+        "stderr_sha256": hashlib.sha256(stderr).hexdigest(),
+        "memcheck_summaries_passed": summaries_passed,
+        "probe_passed": probe_passed,
+        "passed": passed,
+    }
+    run.write_json(f"{prefix}/result.json", record)
+    return record
+
+
+def _run_sanitizers(run: ArtifactRun) -> dict[str, Any]:
+    identity = _sanitizer_tool_identity()
     records: dict[str, Any] = {}
     for configuration in TURBOQUANT_MANDATORY_CONFIGS:
-        command = (
-            str(SANITIZER),
-            "--tool",
-            "memcheck",
-            "--error-exitcode",
-            "99",
-            "--target-processes",
-            "application-only",
-            "--leak-check",
-            "full",
-            str(CONTAINER_PYTHON),
-            str(SANITIZER_PROBE),
-            "--configuration",
+        record = _run_sanitizer_configuration(
+            run,
             configuration,
-            "--image-config-digest",
-            AUTHORIZED_CONTAINER_DIGEST,
+            identity=identity,
         )
-        started = _utc_now()
-        monotonic_started = time.monotonic()
-        try:
-            result = subprocess.run(
-                command,
-                cwd=REPOSITORY_ROOT,
-                check=False,
-                capture_output=True,
-                timeout=900,
-                env=child_environment,
-            )
-            stdout = result.stdout
-            stderr = result.stderr
-            exit_code: int | None = result.returncode
-            timed_out = False
-        except subprocess.TimeoutExpired as error:
-            stdout = error.stdout or b""
-            stderr = error.stderr or b""
-            exit_code = None
-            timed_out = True
-        summaries_passed = _memcheck_summaries_pass(stdout, stderr)
-        passed = (
-            not timed_out
-            and exit_code == 0
-            and b'"status":"pass"' in stdout
-            and summaries_passed
-        )
-        prefix = f"validation/sanitizer/{configuration}"
-        run.write_bytes(f"{prefix}/stdout.txt", stdout)
-        run.write_bytes(f"{prefix}/stderr.txt", stderr)
-        record = {
-            "schema_version": "kvbench-phase6-sanitizer-result-1.0.0",
-            "configuration": configuration,
-            "command": list(command),
-            "tool_identity": identity,
-            "environment": sanitizer_environment,
-            "started_at_utc": started,
-            "finished_at_utc": _utc_now(),
-            "duration_seconds": float(time.monotonic() - monotonic_started),
-            "exit_code": exit_code,
-            "timed_out": timed_out,
-            "stdout_sha256": hashlib.sha256(stdout).hexdigest(),
-            "stderr_sha256": hashlib.sha256(stderr).hexdigest(),
-            "memcheck_summaries_passed": summaries_passed,
-            "probe_passed": b'"status":"pass"' in stdout,
-            "passed": passed,
-        }
-        run.write_json(f"{prefix}/result.json", record)
         records[configuration] = record
-        if not passed:
+        if record["passed"] is not True:
             raise TurboQuantAdmissionError(
                 f"Compute Sanitizer failed for {configuration}"
             )
@@ -867,9 +896,10 @@ def _create_started_run(
     output_steps: int,
     cache_layout_fingerprint: str,
     adapter_config_fingerprint: str,
+    run_id_override: str | None = None,
 ) -> tuple[ArtifactRun, Phase6RunManifest, str]:
     created = _utc_now()
-    identifier = _run_id(
+    identifier = run_id_override or _run_id(
         git_sha=git_sha,
         configuration=configuration,
         runner_kind=runner_kind,
@@ -1384,12 +1414,237 @@ def run_admission() -> dict[str, Any]:
         raise
 
 
+def _b018_cache_identity(configuration: str) -> tuple[str, str]:
+    method = TurboQuantMethodAdapter(
+        turboquant_runtime_context(),
+        configuration,
+    )
+    cache: Any | None = None
+    try:
+        cache = method.allocate(
+            batch_size=1,
+            capacity=18,
+            device="cuda:0",
+            workspace_bytes=0,
+        )
+        layout_fingerprint = cache.layout_fingerprint()
+        adapter_fingerprint = method.config_fingerprint(layout_fingerprint)
+        return layout_fingerprint, adapter_fingerprint
+    finally:
+        if cache is not None:
+            import torch
+
+            torch.cuda.synchronize(device=cache.device)
+            cache.release_owned_cuda_resources_for_sanitizer()
+        cache = None
+        method = None
+        from kvbench.third_party.vllm_turboquant.compat import (
+            _build_hadamard_cached,
+        )
+
+        _build_hadamard_cached.cache_clear()
+        _release_cuda_objects()
+
+
+def _b018_artifact_checksums(
+    completed: Path,
+    configuration: str,
+) -> dict[str, str]:
+    prefix = Path("validation") / "sanitizer" / configuration
+    relatives = (
+        Path("manifest.json"),
+        Path("artifact_inventory.json"),
+        Path("checksums.sha256"),
+        Path("COMPLETE"),
+        prefix / "stdout.txt",
+        prefix / "stderr.txt",
+        prefix / "result.json",
+    )
+    return {
+        relative.as_posix(): sha256_file(completed / relative)
+        for relative in relatives
+    }
+
+
+def run_b018_sanitizer_only() -> dict[str, Any]:
+    """Run only the three sequential B-018 memcheck probes."""
+
+    git_sha = _require_clean_git()
+    environment = require_authorized_cuda_environment(
+        AUTHORIZED_CONTAINER_DIGEST
+    )
+    store = phase6_artifact_store(REPOSITORY_ROOT)
+    identity = _sanitizer_tool_identity()
+    records: list[dict[str, Any]] = []
+    for configuration in TURBOQUANT_MANDATORY_CONFIGS:
+        layout_fingerprint, adapter_fingerprint = _b018_cache_identity(
+            configuration
+        )
+        run, initial, started = _create_started_run(
+            store=store,
+            git_sha=git_sha,
+            environment=environment,
+            configuration=configuration,
+            runner_kind=RunnerKind.FIXED_L,
+            graph_mode=GraphMode.EAGER,
+            context_length=128,
+            output_steps=1,
+            cache_layout_fingerprint=layout_fingerprint,
+            adapter_config_fingerprint=adapter_fingerprint,
+            run_id_override=_b018_sanitizer_run_id(
+                git_sha=git_sha,
+                configuration=configuration,
+            ),
+        )
+        finalized = False
+        try:
+            sanitizer = _run_sanitizer_configuration(
+                run,
+                configuration,
+                identity=identity,
+            )
+            summary = {
+                "schema_version": (
+                    "kvbench-phase6-b018-sanitizer-summary-1.0.0"
+                ),
+                "configuration": configuration,
+                "sanitizer_only": True,
+                "cuda_graph_created": False,
+                "bounded_grid_attempted": False,
+                "result": sanitizer,
+                "passed": sanitizer["passed"],
+            }
+            run.write_json("validation/sanitizer-summary.json", summary)
+            run.write_json(
+                "raw/runner.json",
+                {
+                    "schema_version": (
+                        "kvbench-phase6-b018-sanitizer-runner-1.0.0"
+                    ),
+                    "configuration": configuration,
+                    "operation": "store_append_decode",
+                    "sanitizer_only": True,
+                    "cuda_graph_created": False,
+                    "bounded_grid_attempted": False,
+                    "probe_passed": sanitizer["probe_passed"],
+                    "exit_code": sanitizer["exit_code"],
+                    "memcheck_summaries_passed": sanitizer[
+                        "memcheck_summaries_passed"
+                    ],
+                    "performance_claim_eligible": False,
+                },
+            )
+            run.write_json(
+                "validation/point.json",
+                {
+                    "schema_version": (
+                        "kvbench-phase6-b018-sanitizer-validation-1.0.0"
+                    ),
+                    "configuration": configuration,
+                    "passed": sanitizer["passed"],
+                    "sanitizer_only": True,
+                    "bounded_grid": "NOT_EVALUATED",
+                    "g2_tq": "BLOCKED",
+                    "quality_execution": "LOCKED",
+                    "full_scan": "CLOSED",
+                    "performance_claim_eligible": False,
+                    "speedup_calculated": False,
+                    "r_hbm": None,
+                },
+            )
+            if sanitizer["passed"] is not True:
+                raise TurboQuantAdmissionError(
+                    f"Compute Sanitizer failed for {configuration}; "
+                    f"run_id={initial.run_id}"
+                )
+            completed = run.finalize(
+                _terminal_manifest(
+                    initial,
+                    started_at_utc=started,
+                    status=RunStatus.ABORTED,
+                    failure_reason=(
+                        "b018_sanitizer_only_scope_complete_"
+                        "bounded_grid_not_authorized"
+                    ),
+                )
+            )
+            finalized = True
+            validation = validate_run_directory(completed)
+            if not validation.valid or not validation.complete:
+                raise Phase6DriverError(
+                    f"B-018 artifact validation failed: {initial.run_id}"
+                )
+            records.append(
+                {
+                    "configuration": configuration,
+                    "run_id": initial.run_id,
+                    "artifact_path": str(completed),
+                    "artifact_status": RunStatus.ABORTED.value,
+                    "probe_passed": True,
+                    "exit_code": 0,
+                    "memcheck_summaries_passed": True,
+                    "checksums": _b018_artifact_checksums(
+                        completed,
+                        configuration,
+                    ),
+                }
+            )
+        except Exception as error:
+            if not finalized:
+                reason = _safe_reason(error)
+                try:
+                    _write_failure_payloads(
+                        run,
+                        stage="b018_compute_sanitizer",
+                        reason=reason,
+                    )
+                    run.write_json(
+                        "validation/admission-failure.json",
+                        {
+                            "stage": "b018_compute_sanitizer",
+                            "reason": reason,
+                            "g2_tq": "BLOCKED",
+                            "bounded_grid_attempted": False,
+                            "performance_claim_eligible": False,
+                        },
+                    )
+                    run.finalize(
+                        _terminal_manifest(
+                            initial,
+                            started_at_utc=started,
+                            status=RunStatus.RUNTIME_FAILED,
+                            failure_reason=reason,
+                        )
+                    )
+                except Exception:
+                    pass
+            raise
+    return {
+        "status": "PASS",
+        "scope": "phase6_b018_sanitizer_only",
+        "git_sha": git_sha,
+        "container_digest": AUTHORIZED_CONTAINER_DIGEST,
+        "configurations": records,
+        "bounded_grid_attempted": False,
+        "g2_tq": "BLOCKED",
+        "quality_execution": "LOCKED",
+        "full_scan": "CLOSED",
+        "performance_claim_eligible": False,
+        "speedup_calculated": False,
+    }
+
 def _parse_args(argv: Sequence[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument(
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument(
         "--validate-only",
         action="store_true",
         help="validate finalized local Phase 6 admission artifacts",
+    )
+    mode.add_argument(
+        "--b018-sanitizer-only",
+        action="store_true",
+        help="run only the three sequential B-018 sanitizer probes",
     )
     return parser.parse_args(list(argv))
 
@@ -1401,6 +1656,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             result = _validate_completed_grid(
                 REPOSITORY_ROOT / "artifacts" / "phase6"
             )
+        elif arguments.b018_sanitizer_only:
+            result = run_b018_sanitizer_only()
         else:
             result = run_admission()
         print(json.dumps(result, indent=2, sort_keys=True, allow_nan=False))

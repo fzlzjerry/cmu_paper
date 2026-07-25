@@ -72,11 +72,27 @@ def main(argv: list[str] | None = None) -> int:
     environment = require_authorized_cuda_environment(
         arguments.image_config_digest
     )
-    result = evaluate_fixture_configuration(arguments.configuration)
-    if result.get("passed") is not True:
-        raise RuntimeError("TurboQuant sanitizer probe did not conform")
-    del result
-    _release_sanitizer_cuda_state()
+    failure: tuple[str, str] | None = None
+    result: dict[str, object] | None = None
+    try:
+        result = evaluate_fixture_configuration(
+            arguments.configuration,
+            release_cuda_resources_for_sanitizer=True,
+        )
+        if result.get("passed") is not True:
+            failure = (
+                "RuntimeError",
+                "TurboQuant sanitizer probe did not conform",
+            )
+    except Exception as error:
+        failure = (type(error).__name__, str(error))
+        error.__traceback__ = None
+        del error
+    finally:
+        result = None
+        _release_sanitizer_cuda_state()
+    if failure is not None:
+        raise RuntimeError(f"{failure[0]}: {failure[1]}") from None
     print(
         json.dumps(
             {

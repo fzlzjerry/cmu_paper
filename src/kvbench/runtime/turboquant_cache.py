@@ -425,6 +425,51 @@ class TurboQuantStaticCache:
             self.reserved_workspace,
         )
 
+    def release_owned_cuda_resources_for_sanitizer(self) -> None:
+        """Irreversibly release probe-owned tensors before context teardown."""
+
+        for handle in self._handles.values():
+            handle.key_states = None
+            handle.value_states = None
+            handle.prefill = False
+        self._handles.clear()
+        self._current_slot_mapping = None
+        self._current_seq_lens = None
+        self._single_slot_mappings = ()
+        self._single_seq_lens = ()
+
+        bf16_cache = self.bf16_cache
+        if bf16_cache is not None:
+            bf16_cache.reset_active_length(0)
+            bf16_cache.keys = None
+            bf16_cache.values = None
+            self.bf16_cache = None
+
+        for name in (
+            "packed_cache",
+            "block_table",
+            "slot_mapping",
+            "_seq_lens",
+            "Pi",
+            "PiT",
+            "centroids",
+            "midpoints",
+            "store_key_float",
+            "store_value_float",
+            "store_rotated_key",
+            "store_norms",
+            "store_norm_denominator",
+            "decode_query_float",
+            "decode_rotated_query",
+            "decode_mid_o",
+            "decode_output",
+            "decode_lse",
+            "reserved_workspace",
+        ):
+            setattr(self, name, None)
+        self._active_context = 0
+        self._mode = "released"
+
     def byte_breakdown(self) -> dict[str, int]:
         components = _SLOT_COMPONENTS[self.config_name]
         requested_slots = (

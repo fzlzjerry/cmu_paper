@@ -41,6 +41,7 @@ R2_ARTIFACT := /usr/bin/env PYTHONDONTWRITEBYTECODE=1 PYTHONNOUSERSITE=1 PYTHONP
 .PHONY: preflight-container phase6a-bf16-container-parity
 .PHONY: publish-artifact-r2 verify-artifact-r2
 .PHONY: phase6a-source-safety admit-turboquant validate-admission-turboquant
+.PHONY: remediate-b018-turboquant
 
 preflight:
 	@/usr/bin/env -i PATH=/usr/bin:/bin LC_ALL=C LANG=C TZ=UTC \
@@ -324,6 +325,47 @@ phase6a-bf16-container-parity: verify-measurement-container
 			docker rm -f "$$cid" >/dev/null; cid=""; \
 		done; \
 		(( overall == 0 )) || exit 1; \
+		preserve=0
+
+remediate-b018-turboquant: verify-measurement-container
+	@test "$(MEASUREMENT_IMAGE_CONFIG_DIGEST)" = "$(PHASE6_AUTHORIZED_IMAGE_CONFIG_DIGEST)" || { echo '{"status":"BLOCKED","reason":"authorized_image_digest_required"}' >&2; exit 2; }
+	@test -z "$$(git status --porcelain=v1 --untracked-files=all)" || { echo '{"status":"BLOCKED","reason":"source_tree_not_clean"}' >&2; exit 2; }
+	@task_root="$$(mktemp -d /tmp/kvbench-phase6-b018.XXXXXX)"; \
+		cid=""; preserve=1; \
+		cleanup() { if [[ -n "$$cid" ]]; then docker rm -f "$$cid" >/dev/null 2>&1 || true; fi; if (( preserve == 0 )); then chmod -R u+w "$$task_root" 2>/dev/null || true; rm -rf -- "$$task_root"; else printf '{"status":"FAILED_B018_LAUNCH_EVIDENCE_PRESERVED","path":"%s"}\n' "$$task_root" >&2; fi; }; \
+		trap cleanup EXIT; \
+		head="$$(git rev-parse HEAD)"; image_id="$(MEASUREMENT_IMAGE_CONFIG_DIGEST)"; \
+		git clone --quiet --no-local --no-checkout "$(CURDIR)" "$$task_root/source"; \
+		git -C "$$task_root/source" checkout --quiet --detach "$$head"; \
+		git -C "$$task_root/source" remote remove origin; \
+		test "$$(git -C "$$task_root/source" rev-parse HEAD)" = "$$head"; \
+		test -z "$$(git -C "$$task_root/source" status --porcelain=v1 --untracked-files=all)"; \
+		mkdir -p "$$task_root/source/artifacts/phase6" "$(CURDIR)/artifacts/phase6"; \
+		test ! -e "$$task_root/source/.env"; \
+		cid="$$(docker create --read-only --network=none --pid=host \
+			--gpus "device=$(MEASUREMENT_GPU_UUID)" \
+			--tmpfs /tmp:rw,nosuid,nodev,size=8g \
+			--tmpfs /root:rw,exec,nosuid,nodev,size=8g \
+			--mount "type=bind,src=$$task_root/source,dst=/home/rockrock/cmu_paper,readonly" \
+			--mount "type=bind,src=$(CURDIR)/artifacts/phase6,dst=/home/rockrock/cmu_paper/artifacts/phase6" \
+			--env PYTHONDONTWRITEBYTECODE=1 \
+			--env PYTHONNOUSERSITE=1 \
+			--env PYTHONPATH=/opt/kvbench/.phase3/site-packages:/home/rockrock/cmu_paper/src:/home/rockrock/cmu_paper \
+			--env HF_HUB_OFFLINE=1 \
+			--env TRANSFORMERS_OFFLINE=1 \
+			--env HF_HUB_DISABLE_TELEMETRY=1 \
+			--env TOKENIZERS_PARALLELISM=false \
+			--env CUBLAS_WORKSPACE_CONFIG=:4096:8 \
+			--env TRITON_CACHE_DIR=/root/.triton \
+			--env KVBENCH_AUTHORIZED_IMAGE_DIGEST="$$image_id" \
+			--env KVBENCH_EXECUTION_ENVIRONMENT=measurement_container \
+			--workdir /home/rockrock/cmu_paper \
+			--entrypoint /opt/kvbench/.venv/bin/python "$$image_id" \
+			-m scripts.phase6_turboquant_admission \
+			--b018-sanitizer-only)"; \
+		[[ "$$cid" =~ ^[0-9a-f]{64}$$ ]]; \
+		docker start --attach "$$cid"; \
+		docker rm -f "$$cid" >/dev/null; cid=""; \
 		preserve=0
 
 admit-turboquant: verify-measurement-container
