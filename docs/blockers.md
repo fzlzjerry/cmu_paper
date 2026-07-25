@@ -17,9 +17,10 @@ for the explicitly bounded vLLM reference authority. It does not close or
 weaken B-009 or B-010. Phase 6A remediation separately resolves both: the exact
 Decision 0016 image passed container G0 and both BF16 parity smokes, and the
 private indefinite-locked R2 path passed synthetic plus container-G0 clean
-retrieval. No TurboQuant Measurement Adapter implementation is present. G2-TQ
-is `NOT EVALUATED / READY`; global G2-G5 remain NOT EVALUATED; later execution
-requires its own gates.
+retrieval. The TurboQuant Measurement Adapter is now implemented, but final
+run `phase6-20260725t065153714z-ace9261a-083f14-4bit_nc-fixed-l128-eager` fails the mandatory 4bit Compute Sanitizer leak check before the
+bounded grid. B-018 is OPEN and G2-TQ is BLOCKED; global G2-G5 remain NOT
+EVALUATED.
 
 | ID | Blocking condition | Blocks | Evidence / next action | Status |
 |---|---|---|---|---|
@@ -40,6 +41,8 @@ requires its own gates.
 | B-015 | Fifteen second-remediation workers aborted before measurement because raw-audit production did not complete; two exposed the old 1 GiB run bound and thirteen hid their lower producer cause. Untimed worst-case diagnostics preserved `WorkerProtocolError: paired allocator controls did not verify`, proved geometry-specific GQA=11/MHA=5 split counts, measured the 16-step bundle, and supported Decision 0014's 1,152 MiB envelope. The new fixed-L campaign had no size-bound or generic-wrapper failure, and every new producer failure retained its exact decode step and `ChromeTraceValidationError` cause. | Complete B-011/B-012 coverage, BF16 G1, Phase 4, every later baseline comparison. | Resolved by commit `52f41ce9d9be4edc07a833e00fe3404fbfa80b89`; retain the hard-bound/+1-byte, geometry-specific split, and exception-preservation tests. | resolved 2026-07-23 |
 | B-016 | Three B-015 fixed-L graph controls (`B1/L16384`, `B4/L4096`, and `B4/L16384`) aborted before measurement with preserved `ChromeTraceValidationError: graph GPU marker is not contained by its host marker`. Decision 0015's untimed `B1/L16384` diagnostic reproduced the exact error: the host contained the unique asynchronous `cudaGraphLaunch`, while the valid MHA GPU range extended 150.023 microseconds past host return. In-memory removal of only that invalid relation recovered the exact two correlated Flash split-K nodes. | Complete B-011/B-012 graph coverage, BF16 G1, the growing campaign, Phase 4, and every later baseline comparison. | Resolved by commit `e7219e0dd714149e3eea783ce7a8602c4bf9bc54`: allow asynchronous GPU completion while retaining and strengthening launch-correlation, stream, External-ID, graph/node, unknown-category, kernel-family, and materialization checks. Deterministic parser tests, the real `B1/L16385` CUDA control, `make checks`, `make test`, `make test-cuda` (14/14), and `make test-graph` (3/3) pass. Retain these controls in both new complete campaigns. | resolved 2026-07-23 |
 | B-017 | Immutable report `phase3-g1-20260723t123322160580z-9def265a-08dc69` remains valid FAIL evidence for the former legacy-summary/raw-bundle disconnect. | BF16 G1, B-011/B-012 closure, Phase 4, every later method baseline comparison. | Commit `7f72c95f9932c608f9bd68f1971d6e86378596a2` binds report behavior to its recorded generator SHA, reuses coordinator raw replay, rejects missing/tampered/mismatched evidence, ignores serialized worker `passed` booleans, and derives the five criteria from raw bytes. `make checks`, `make test`, `make test-cuda` (14/14), and `make test-graph` (3/3) pass. New no-replace report `phase3-g1-20260723t132609515797z-7f72c95f-f31ccb` independently validates PASS with no errors; the two campaigns and 20 source runs were not rerun or modified. | resolved 2026-07-23 |
+
+| B-018 | The exact pinned TurboQuant store-append-decode probe completes functionally, but Compute Sanitizer memcheck reports 2,093,260 leaked bytes in 28 allocations and exits 99 in final run `phase6-20260725t065153714z-ace9261a-083f14-4bit_nc-fixed-l128-eager`. | G2-TQ, the bounded admission grid, and Phase 7 | Keep the leak/error parser strict. Under the unchanged Decision 0016 image, release every adapter-owned CUDA tensor before context teardown and obtain one zero ERROR SUMMARY plus one zero LEAK SUMMARY for each mandatory configuration; then retry with new run IDs. | open 2026-07-25 |
 
 ## Phase 4 disposition
 
@@ -81,6 +84,19 @@ state is private, and exact enabled rule `kvbench-evidence-indefinite` retains
 `85e1f49dea76d08b2cba4477d089a71759d529f03b2bc3538da3d15d8639455c`
 both cleanly retrieve and validate.
 
-Blocker closure supplies environment and durable-store authority only. Phase 6
-was not restarted; G2-TQ is `NOT EVALUATED / READY`; global G2-G5 remain NOT
-EVALUATED; Full Scan remains CLOSED; and quality execution remains LOCKED.
+At Phase 6A completion, blocker closure supplied environment and durable-store
+authority only; Phase 6 had not yet been restarted and G2-TQ was
+`NOT EVALUATED / READY`. The later Phase 6 disposition below supersedes that
+historical entry state.
+
+
+## Phase 6 measurement-adapter disposition
+
+The minimal adapter and all three frozen fixture audits pass, including exact
+packed bytes, byte accounting, execution path, eager allocation, and fixture
+Graph replay. The mandatory sanitizer gate fails in finalized run `phase6-20260725t065153714z-ace9261a-083f14-4bit_nc-fixed-l128-eager`.
+The stop rule prohibited the remaining sanitizer configurations and the entire
+bounded grid. The failed artifact is immutable, independently valid, and
+durably published at `r2://kvbench-artifacts/kvbench/sha256/f319c4b05054ee2f31bdcbfe15fa67850ea784c17718192b82e527567c5cf343/`. This durable failure does not admit any
+configuration. B-018 is OPEN, G2-TQ is BLOCKED, global G2-G5 remain NOT
+EVALUATED, Full Scan remains CLOSED, and quality execution remains LOCKED.

@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 import unittest
 
+from kvbench.schema import MethodAdmissionReportV2
 from scripts.validate_phase2 import (
     APPROVED_ARTIFACT_ROOT_NAMES,
     PHASE6_ALLOWED_PATHS,
@@ -109,6 +111,19 @@ class Phase6GovernanceTests(unittest.TestCase):
         self.assertEqual(makefile.count(f"{command}test-cuda"), 1)
         self.assertEqual(makefile.count(f"{command}test-graph"), 1)
 
+    def test_validation_target_imports_from_the_repository_root(self) -> None:
+        makefile = (REPOSITORY_ROOT / "Makefile").read_text(encoding="utf-8")
+        self.assertIn(
+            "$(PHASE3_PYTHON) -m scripts.phase6_turboquant_admission "
+            "--validate-only",
+            makefile,
+        )
+        self.assertNotIn(
+            "$(PHASE3_PYTHON) scripts/phase6_turboquant_admission.py "
+            "--validate-only",
+            makefile,
+        )
+
     def test_sanitizer_probe_resets_only_its_isolated_cuda_context(
         self,
     ) -> None:
@@ -138,6 +153,35 @@ class Phase6GovernanceTests(unittest.TestCase):
         self.assertIn("Phase 7 is explicitly deferred", plan)
         self.assertIn("Full Scan remains closed", plan)
         self.assertIn("`r_hbm` null", plan)
+
+    def test_blocked_method_report_is_strict_and_evidence_backed(
+        self,
+    ) -> None:
+        report_path = (
+            REPOSITORY_ROOT
+            / "docs"
+            / "evidence"
+            / "phase6"
+            / "turboquant-method-admission.json"
+        )
+        payload = json.loads(report_path.read_text(encoding="utf-8"))
+        report = MethodAdmissionReportV2.from_dict(payload)
+        self.assertEqual(report.status.value, "BLOCKED")
+        self.assertEqual(report.blockers, ("B-018",))
+        self.assertEqual(report.admitted_config_ids, ())
+        self.assertFalse(report.performance_claim_eligible)
+        publication = json.loads(
+            (
+                REPOSITORY_ROOT
+                / "docs"
+                / "evidence"
+                / "phase6"
+                / "r2-publication.json"
+            ).read_text(encoding="utf-8")
+        )
+        self.assertEqual(publication["admission_status"], "BLOCKED")
+        self.assertEqual(publication["clean_retrieval"]["result"], "PASS")
+        self.assertFalse(publication["credential_values_recorded"])
 
     def test_quality_and_full_scan_remain_locked(self) -> None:
         status = (REPOSITORY_ROOT / "docs" / "status.md").read_text(

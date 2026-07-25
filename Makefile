@@ -381,7 +381,7 @@ admit-turboquant: verify-measurement-container
 		preserve=0
 
 validate-admission-turboquant:
-	@$(PHASE3_ENV) $(PHASE3_PYTHON) scripts/phase6_turboquant_admission.py --validate-only
+	@$(PHASE3_ENV) $(PHASE3_PYTHON) -m scripts.phase6_turboquant_admission --validate-only
 
 publish-artifact-r2:
 	@test -n "$(ARTIFACT)" || { echo '{"status":"FAIL","reason":"ARTIFACT_required"}' >&2; exit 2; }

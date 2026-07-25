@@ -14,14 +14,12 @@ requirements; and AGENTS.md. Decision 0005 records precedence.
   container G0 and both BF16 parity smokes pass, and Decision 0016 binds
   Measurement Lane CUDA execution to that digest only. Phase 5 remains the
   latest completed method reference lane. Official vLLM
-  `v0.25.1` commit `752a3a504485790a2e8491cacbb35c137339ad34` is pinned,
-  and three mandatory MSE+NC fixtures plus the same-path held-out k8v4 fixture
-  reproduce on SM120. The TurboQuant Measurement Adapter remains absent and
-  G2-TQ is `NOT EVALUATED / READY`.
-- Phase 6 status: attempted and BLOCKED at entry because B-009 and B-010 were
-  unresolved. The retrospective record is
-  `docs/phase_reports/phase6-turboquant-measurement-blocked.md`. No Phase 6
-  implementation is present.
+  `v0.25.1` commit `752a3a504485790a2e8491cacbb35c137339ad34` is pinned.
+- Phase 6 status: BLOCKED at the Compute Sanitizer gate. The minimal adapter,
+  static cache, common-runner integration, fixture/path/allocation/Graph
+  audits, and focused tests are present. Final run `phase6-20260725t065153714z-ace9261a-083f14-4bit_nc-fixed-l128-eager` passes all three
+  fixture audit families but records a nonzero 4bit memcheck leak summary.
+  The nine-point bounded grid was not attempted. G2-TQ is BLOCKED by B-018.
 - Phase 6A prerequisite status: PASS. B-010 is RESOLVED for the exact Decision
   0016 image after full image identity/layer verification, container G0, and
   separate BF16 eager and CUDA Graph parity runs.
@@ -35,18 +33,19 @@ requirements; and AGENTS.md. Decision 0005 records precedence.
   was published COMPLETE-last and cleanly retrieved. B-009 is RESOLVED.
 - Phase 0 status: PASS
 - Phase 1 remediation status: PASS
-- Next authorized task: restart the Phase 6 TurboQuant Measurement Adapter only
-  in a separate new task. Pilot, Full Scan, profiling, fitting, figures, and
-  quality execution remain unauthorized
+- Next authorized task: remediate only B-018's sanitizer resource lifecycle,
+  then retry the mandatory sanitizer matrix with new run IDs. Phase 7, Pilot,
+  Full Scan, profiling, fitting, figures, and quality remain unauthorized
 - Active admission gate: native-host G0 PASS; authorized-container G0 PASS;
-  native-host BF16 G1 PASS; G2-TQ `NOT EVALUATED / READY`
+  native-host BF16 G1 PASS; G2-TQ BLOCKED
 - Benchmark implementation changes: exact BF16 static cache, fixed-L and
   growing-context runners, eager and CUDA Graph lanes, timing, allocation,
   telemetry, campaign lifecycle, and source-backed G1 reporting are
   implemented. Phase 4 adds only a thin method adapter, explicit BF16-only
   factory, shared audit facades, and a strict admission report schema. Phase 5
   adds only an isolated upstream TurboQuant reference lane and compact
-  fixtures. No Phase 6 implementation is present
+  fixtures. Phase 6 adds one TurboQuant adapter and static cache through the
+  same runners; it is implemented but not admitted
 - CUDA builds or executions: the new formal E00 run passed extension build,
   native execution, forced PTX/JIT, numerical golden, CUDA Graph, allocation,
   SASS/PTX inspection, and all required Compute Sanitizer lanes
@@ -65,7 +64,9 @@ requirements; and AGENTS.md. Decision 0005 records precedence.
   profiler campaign or quality evidence was produced. Phase 5 added only
   deterministic reference tensors and kernel-name traces; all profiler
   durations were discarded and no formal timing sample was created. Phase 6A
-  added only untimed container certification and parity artifacts; no formal
+  added only untimed container certification and parity artifacts. Phase 6
+  added only correctness/audit/sanitizer admission evidence; the sanitizer
+  failure stopped the grid before any engineering timing. No formal
   performance sample, Nsight result, or quality result was created.
 - Scientific performance claims: none
 - Quality protocol: preregistered by Decision 0005 before any performance or
@@ -74,8 +75,7 @@ requirements; and AGENTS.md. Decision 0005 records precedence.
 - Quality runs or quality-only dependency installations: none
 - Full-scan admission: CLOSED
 - Gate state: native-host and authorized-container G0 PASS; native-host BF16 G1
-  PASS; method-specific G2-TQ `NOT EVALUATED / READY`; global G2-G5 NOT
-  EVALUATED
+  PASS; method-specific G2-TQ BLOCKED; global G2-G5 NOT EVALUATED
 
 ## Phase 5 TurboQuant reference lane
 
@@ -106,11 +106,10 @@ minimal path. Direct graph smoke is deferred to Phase 6; upstream declares
 `make reference-turboquant` first published the no-replace set, then a second
 identical run returned `verified_existing` without replacing it.
 `make validate-reference-turboquant` validates all manifests, 34 root checksum
-entries, layouts, actual storage sizes, and claim boundaries. TurboQuant remains
-rejected by the Measurement Lane adapter factory. Native-host G0/G1 remain PASS,
-method-specific G2-TQ is now `NOT EVALUATED / READY`, global G2-G5 remain NOT
-EVALUATED, Full Scan remains CLOSED, quality execution remains LOCKED, and
-`PERFORMANCE_DATA_FROZEN` remains absent.
+entries, layouts, actual storage sizes, and claim boundaries. At Phase 5
+completion, TurboQuant remained rejected by the Measurement Lane adapter
+factory and G2-TQ was `NOT EVALUATED / READY`. The current Phase 6 state below
+supersedes that historical entry state.
 
 ## Phase 6 retrospective entry-blocked record
 
@@ -179,9 +178,9 @@ was conditionally published with COMPLETE last and cleanly retrieved with all
 exact image digest. B-009 and B-010 are RESOLVED. The complete report is
 `docs/phase_reports/phase6a-measurement-container-and-r2.md`.
 
-Phase 6 was not restarted. G2-TQ is `NOT EVALUATED / READY`; global G2-G5 are
-NOT EVALUATED; Full Scan remains CLOSED; quality execution remains LOCKED; and
-`PERFORMANCE_DATA_FROZEN` remains absent.
+At Phase 6A completion, Phase 6 had not yet been restarted and G2-TQ was
+`NOT EVALUATED / READY`. The current Phase 6 state below supersedes that
+historical entry state.
 
 ## Phase 4 common adapter
 
@@ -503,13 +502,13 @@ reference execution is recorded separately above.
 | G1 BF16 baseline | PASS — native_host_admission only | Native-host report `phase3-g1-20260723t132609515797z-7f72c95f-f31ccb` independently replays the unchanged 20 runs and 80 operations and passes all 20 criteria. Phase 6A eager/graph artifacts establish container parity only; no new unified or claim-bearing G1 result was created. |
 | Phase 4 common method adapter | PASS | BF16 delegates through `KVCacheMethod`; fixed-L/growing, allocation, graph, and path checks pass; `docs/evidence/phase4/method-admission.json`; no quantized method implemented |
 | Phase 5 TurboQuant reference lane | PASS | Exact vLLM v0.25.1 source/environment lock; 3 mandatory and 1 held-out deterministic fixtures; official store/append/decode paths; no measurement adapter or timing |
-| Phase 6 TurboQuant measurement adapter | NOT STARTED after retrospective BLOCKED attempt | Prior attempt remains an immutable entry-blocked record; no implementation is present. Restart requires a separate new task. |
+| Phase 6 TurboQuant measurement adapter | BLOCKED | Minimal adapter and static cache are implemented; all mandatory fixture audits pass, but final Compute Sanitizer evidence fails before the bounded grid. |
 | Phase 6A Measurement Container and R2 prerequisites | PASS | Exact image built and scanned; container G0 and both BF16 parity smokes PASS; private R2 state and indefinite lock verified; synthetic and 222-object G0 roots cleanly retrieved; Decision 0016 accepted. B-009/B-010 RESOLVED. |
-| G2-TQ | NOT EVALUATED / READY | Method-specific gate is ready for a separate Phase 6 task; no TurboQuant adapter or admission evidence exists. |
+| G2-TQ | BLOCKED | B-018: final 4bit memcheck reports 2,093,260 leaked bytes in 28 allocations; no mandatory configuration is admitted. |
 | G2-KIVI | NOT EVALUATED | requires E07-E08 |
 | G2-KVQ | NOT EVALUATED | requires E09-E11 |
 | G1-G5 unified admission | NOT EVALUATED | requires E12 |
-| Pilot/full-scan gates | CLOSED / NOT EVALUATED | No pilot or quantized Measurement Lane is authorized; Phase 5 fixtures are reference-only and non-claim |
+| Pilot/full-scan gates | CLOSED / NOT EVALUATED | Phase 6 stopped before its bounded grid; no Pilot or Full Scan is authorized |
 | Post-performance quality validation | LOCKED | Decision 0005; `PERFORMANCE_DATA_FROZEN` absent |
 
 ## Phase 0 acceptance
@@ -532,9 +531,12 @@ the exact recorded image digest. The Phase 3 campaigns, all 20 runs, every
 failed report, the PASS report, Phase 4 evidence, Phase 5 fixtures, the Phase 6
 retrospective, and the initial blocked Phase 6A report remain unchanged.
 
-The next action is to restart the Phase 6 TurboQuant Measurement Adapter in a
-separate new task. Native-host G0, authorized-container G0, and native-host
-BF16 G1 remain PASS; method-specific G2-TQ is `NOT EVALUATED / READY`; global
-G2-G5 remain NOT EVALUATED; Full Scan remains CLOSED; quality execution
-remains LOCKED; and `PERFORMANCE_DATA_FROZEN` remains absent. Pilot, profiling,
-fitting, figures, and quality execution remain unauthorized.
+The next action is the minimum B-018 remediation: under the unchanged
+authorized image and pinned source, release every sanitizer-probe CUDA
+allocation before teardown and obtain unique zero ERROR and LEAK summaries for
+all three mandatory configurations using new run IDs. Only then may the frozen
+bounded grid be attempted. Native-host and authorized-container G0 plus
+native-host BF16 G1 remain PASS; G2-TQ is BLOCKED; global G2-G5 remain NOT
+EVALUATED; Full Scan remains CLOSED; quality execution remains LOCKED; and
+`PERFORMANCE_DATA_FROZEN` remains absent. Phase 7, Pilot, profiling, fitting,
+figures, and quality execution remain unauthorized.
