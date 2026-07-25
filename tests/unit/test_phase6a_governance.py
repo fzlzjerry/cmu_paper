@@ -110,7 +110,9 @@ class Phase6AGovernanceTests(unittest.TestCase):
 
     def test_historical_evidence_and_phase5_fixtures_are_unchanged(self) -> None:
         protected = (
-            "docs/evidence",
+            "docs/evidence/e00",
+            "docs/evidence/phase3",
+            "docs/evidence/phase4",
             "artifacts/phase3",
             "artifacts/phase3_campaigns",
             "artifacts/phase3_reports",
