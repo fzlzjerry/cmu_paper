@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import gc
 import hashlib
 import json
 from pathlib import Path
 import unittest
+import weakref
 
 from kvbench.adapters import (
     BF16MethodAdapter,
@@ -130,6 +132,26 @@ class TurboQuantAdapterTests(unittest.TestCase):
                     adapter.config_fingerprint(second_layout),
                 )
                 self.assertEqual(cache.pointers(), cache.pointers())
+
+    def test_attention_handles_do_not_own_the_cache(self) -> None:
+        method = build_method_adapter("turboquant_4bit_nc", _context())
+        cache = method.allocate(
+            batch_size=1,
+            capacity=18,
+            device="cpu",
+        )
+        handle = cache.attended_handle(
+            2,
+            key_states=None,
+            value_states=None,
+            prefill=False,
+        )
+        cache_reference = weakref.ref(cache)
+        del cache
+        gc.collect()
+        self.assertIsNone(cache_reference())
+        with self.assertRaises(ReferenceError):
+            _ = handle.cache.config_name
 
     def test_unsupported_geometry_and_wrong_variant_rejected(self) -> None:
         with self.assertRaises(ValueError):

@@ -7,6 +7,7 @@ import argparse
 import ctypes
 import gc
 import json
+import os
 import sys
 
 import torch
@@ -16,6 +17,9 @@ from kvbench.runtime.turboquant_admission import (
     require_authorized_cuda_environment,
 )
 from kvbench.runtime.turboquant_cache import TURBOQUANT_MANDATORY_CONFIGS
+from kvbench.third_party.vllm_turboquant.compat import (
+    _build_hadamard_cached,
+)
 
 
 def _parse_args(argv: list[str]) -> argparse.Namespace:
@@ -33,6 +37,8 @@ def _release_sanitizer_cuda_state() -> None:
     """Release the isolated probe context before memcheck leak reporting."""
 
     torch.cuda.synchronize()
+    blas_handle = int(torch.cuda.current_blas_handle())
+    _build_hadamard_cached.cache_clear()
     gc.collect()
     torch._C._cuda_clearCublasWorkspaces()
     torch.cuda.empty_cache()
@@ -40,13 +46,25 @@ def _release_sanitizer_cuda_state() -> None:
     torch.cuda.synchronize()
     gc.collect()
 
+    cublas = ctypes.CDLL("libcublas.so.13")
+    destroy = cublas.cublasDestroy_v2
+    destroy.argtypes = [ctypes.c_void_p]
+    destroy.restype = ctypes.c_int
+    destroy_result = int(destroy(ctypes.c_void_p(blas_handle)))
+    if destroy_result != 0:
+        raise RuntimeError(
+            f"cublasDestroy_v2 failed with status {destroy_result}"
+        )
+
     cudart = ctypes.CDLL("libcudart.so.13")
     reset = cudart.cudaDeviceReset
     reset.argtypes = []
     reset.restype = ctypes.c_int
-    result = int(reset())
-    if result != 0:
-        raise RuntimeError(f"cudaDeviceReset failed with status {result}")
+    reset_result = int(reset())
+    if reset_result != 0:
+        raise RuntimeError(
+            f"cudaDeviceReset failed with status {reset_result}"
+        )
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -75,4 +93,7 @@ def main(argv: list[str] | None = None) -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    exit_code = main()
+    sys.stdout.flush()
+    sys.stderr.flush()
+    os._exit(exit_code)

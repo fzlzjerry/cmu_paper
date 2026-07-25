@@ -119,9 +119,13 @@ class Phase6GovernanceTests(unittest.TestCase):
             / "phase6_turboquant_sanitizer_probe.py"
         ).read_text(encoding="utf-8")
         self.assertEqual(probe.count('ctypes.CDLL("libcudart.so.13")'), 1)
+        self.assertEqual(probe.count('ctypes.CDLL("libcublas.so.13")'), 1)
         self.assertEqual(probe.count("cudaDeviceReset"), 2)
+        self.assertEqual(probe.count("cublasDestroy_v2"), 2)
         self.assertIn("torch._C._cuda_clearCublasWorkspaces()", probe)
         self.assertIn("torch._C._host_emptyCache()", probe)
+        self.assertIn("_build_hadamard_cached.cache_clear()", probe)
+        self.assertIn("os._exit(exit_code)", probe)
 
     def test_plan_freezes_tolerance_and_later_phases(self) -> None:
         plan = (

@@ -9,6 +9,7 @@ import json
 import math
 from pathlib import Path
 from typing import Any, Mapping
+import weakref
 
 from kvbench.runtime.static_cache import (
     BF16StaticCache,
@@ -321,8 +322,9 @@ class TurboQuantStaticCache:
         self._bf16_layer_slots = {
             layer: slot for slot, layer in enumerate(self.bf16_layers)
         }
+        cache_proxy = weakref.proxy(self)
         self._handles = {
-            layer: TurboQuantAttentionHandle(self, layer)
+            layer: TurboQuantAttentionHandle(cache_proxy, layer)
             for layer in self.compressed_layers
         }
         self._active_context = 0
