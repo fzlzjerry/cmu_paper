@@ -91,10 +91,12 @@ class RunKind(StrEnum):
     NCU = "ncu"
     SYNTHETIC = "synthetic"
     PHASE3_ADMISSION = "phase3_admission"
+    PHASE6_ADMISSION = "phase6_admission"
 
 
 class MeasurementScope(StrEnum):
     NATIVE_HOST_ADMISSION = "native_host_admission"
+    MEASUREMENT_CONTAINER_ADMISSION = "measurement_container_admission"
 
 
 class ClaimClass(StrEnum):

@@ -15,7 +15,12 @@ from kvbench.runtime.numerical import (
     NumericalComparison,
     tensor_sha256_untimed,
 )
-from kvbench.runtime.phase3_endpoint_audit import Phase3EndpointSession
+from kvbench.runtime.turboquant_session import (
+    EndpointSessionError,
+    MeasurementEndpointSession,
+    require_endpoint_session,
+    session_measurement_scope,
+)
 from kvbench.runtime.telemetry import (
     TelemetryError,
     TelemetrySnapshot,
@@ -59,6 +64,7 @@ class FixedLRunResult:
     telemetry_before: dict[str, Any]
     telemetry_after: dict[str, Any]
     telemetry_sampling_interval_seconds: float | None
+    measurement_scope: str
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -101,7 +107,7 @@ class FixedLRunResult:
             "quality_status": "unvalidated",
             "claim_eligibility": "performance_only",
             "performance_claim_eligible": False,
-            "measurement_scope": "native_host_admission",
+            "measurement_scope": self.measurement_scope,
         }
 
 
@@ -132,15 +138,20 @@ def _telemetry_or_error() -> tuple[dict[str, Any], TelemetrySnapshot | None]:
 
 
 def run_fixed_l(
-    session: Phase3EndpointSession,
+    session: MeasurementEndpointSession,
     *,
     measured_steps: int = 32,
     measured_batches: int = 5,
 ) -> FixedLRunResult:
     """Time only the exact callable retained by one admitted fixed-L session."""
 
-    if type(session) is not Phase3EndpointSession:
-        raise FixedLRunnerError("fixed-L runner requires an endpoint session")
+    try:
+        session = require_endpoint_session(session)
+        measurement_scope = session_measurement_scope(session).value
+    except EndpointSessionError as error:
+        raise FixedLRunnerError(
+            "fixed-L runner requires an endpoint session"
+        ) from error
     operation_key = session.operation_keys[0]
     if (
         len(session.operation_keys) != 1
@@ -236,4 +247,5 @@ def run_fixed_l(
         telemetry_before=telemetry_before,
         telemetry_after=telemetry_after,
         telemetry_sampling_interval_seconds=telemetry_interval,
+        measurement_scope=measurement_scope,
     )

@@ -12,7 +12,12 @@ from kvbench.runtime.allocation import (
 )
 from kvbench.runtime.backend import forced_flash_execution
 from kvbench.runtime.numerical import tensor_sha256_untimed
-from kvbench.runtime.phase3_endpoint_audit import Phase3EndpointSession
+from kvbench.runtime.turboquant_session import (
+    EndpointSessionError,
+    MeasurementEndpointSession,
+    require_endpoint_session,
+    session_measurement_scope,
+)
 from kvbench.runtime.telemetry import (
     TelemetryError,
     TelemetrySnapshot,
@@ -73,6 +78,7 @@ class GrowingContextRunResult:
     telemetry_before: dict[str, Any]
     telemetry_after: dict[str, Any]
     telemetry_sampling_interval_seconds: float | None
+    measurement_scope: str
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -111,7 +117,7 @@ class GrowingContextRunResult:
             "quality_status": "unvalidated",
             "claim_eligibility": "performance_only",
             "performance_claim_eligible": False,
-            "measurement_scope": "native_host_admission",
+            "measurement_scope": self.measurement_scope,
         }
 
 
@@ -142,19 +148,32 @@ def _telemetry_or_error() -> tuple[dict[str, Any], TelemetrySnapshot | None]:
 
 
 def run_growing_context(
-    session: Phase3EndpointSession,
+    session: MeasurementEndpointSession,
+    *,
+    expected_steps: int = 16,
 ) -> GrowingContextRunResult:
     """Time one ordered trajectory from one admitted growing session."""
 
-    if type(session) is not Phase3EndpointSession:
+    if (
+        isinstance(expected_steps, bool)
+        or not isinstance(expected_steps, int)
+        or expected_steps <= 0
+    ):
+        raise GrowingContextRunnerError(
+            "expected_steps must be a positive integer"
+        )
+    try:
+        session = require_endpoint_session(session)
+        measurement_scope = session_measurement_scope(session).value
+    except EndpointSessionError as error:
         raise GrowingContextRunnerError(
             "growing runner requires an endpoint session"
-        )
+        ) from error
     first = session.operation_keys[0]
     output_steps = len(session.operation_keys)
     if (
         first.runner_kind is not RunnerKind.GROWING_CONTEXT
-        or output_steps != 16
+        or output_steps != expected_steps
         or session.state != "ready"
     ):
         raise GrowingContextRunnerError("growing session is not admitted")
@@ -265,4 +284,5 @@ def run_growing_context(
         telemetry_before=telemetry_before,
         telemetry_after=telemetry_after,
         telemetry_sampling_interval_seconds=telemetry_interval,
+        measurement_scope=measurement_scope,
     )

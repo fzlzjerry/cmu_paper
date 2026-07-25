@@ -6,7 +6,7 @@ from dataclasses import dataclass
 import hashlib
 import importlib
 import json
-from typing import Any
+from typing import Any, Protocol, runtime_checkable
 
 from kvbench.adapters import KVCacheMethod
 
@@ -200,6 +200,13 @@ def tensor_sha256_untimed(tensor: Any) -> str:
     return digest.hexdigest()
 
 
+@runtime_checkable
+class CacheHistoryCapability(Protocol):
+    """Cache state that can hash its own exact untimed historical prefix."""
+
+    def history_sha256(self, historical_length: int) -> str: ...
+
+
 def cache_history_sha256_untimed(
     keys: Any,
     values: Any,
@@ -229,6 +236,40 @@ def cache_history_sha256_untimed(
                 )
                 digest.update(chunk.numpy().tobytes(order="C"))
     return digest.hexdigest()
+
+
+def cache_state_history_sha256_untimed(
+    cache_state: Any,
+    *,
+    historical_length: int,
+) -> str:
+    """Dispatch untimed history hashing without assuming a BF16 layout."""
+
+    if (
+        isinstance(historical_length, bool)
+        or not isinstance(historical_length, int)
+        or historical_length <= 0
+    ):
+        raise ValueError("historical_length must be a positive integer")
+    if isinstance(cache_state, CacheHistoryCapability):
+        digest = cache_state.history_sha256(historical_length)
+        if (
+            type(digest) is not str
+            or len(digest) != 64
+            or any(character not in "0123456789abcdef" for character in digest)
+        ):
+            raise ValueError("cache history capability returned an invalid digest")
+        return digest
+    try:
+        keys = cache_state.keys
+        values = cache_state.values
+    except AttributeError as error:
+        raise TypeError("cache state has no exact history capability") from error
+    return cache_history_sha256_untimed(
+        keys,
+        values,
+        historical_length=historical_length,
+    )
 
 
 def validate_full_model_reference(
@@ -353,9 +394,8 @@ def validate_full_model_reference(
         fixed_embeddings = fixed_endpoint.prepare_position_embeddings(
             fixed_position.unsqueeze(0)
         )
-        historical_before = cache_history_sha256_untimed(
-            fixed_cache.keys,
-            fixed_cache.values,
+        historical_before = cache_state_history_sha256_untimed(
+            fixed_cache,
             historical_length=prefix_length,
         )
         for _ in range(steps):
@@ -369,9 +409,8 @@ def validate_full_model_reference(
                 .cpu()
                 .clone()
             )
-        historical_after = cache_history_sha256_untimed(
-            fixed_cache.keys,
-            fixed_cache.values,
+        historical_after = cache_state_history_sha256_untimed(
+            fixed_cache,
             historical_length=prefix_length,
         )
 

@@ -167,7 +167,7 @@ def validate_full_model_fixed_graph(
     from kvbench.runtime.backend import forced_flash_execution
     from kvbench.runtime.bf16_endpoint import BF16DecodeEndpoint
     from kvbench.runtime.numerical import (
-        cache_history_sha256_untimed,
+        cache_state_history_sha256_untimed,
         compare_tensors_untimed,
         tensor_sha256_untimed,
     )
@@ -207,9 +207,8 @@ def validate_full_model_fixed_graph(
             return endpoint.decode(current_input_ids, position, embeddings)
 
         pointers_before = cache.pointers()
-        history_before = cache_history_sha256_untimed(
-            cache.keys,
-            cache.values,
+        history_before = cache_state_history_sha256_untimed(
+            cache,
             historical_length=prefix_length,
         )
         eager_output = operation()
@@ -231,9 +230,8 @@ def validate_full_model_fixed_graph(
             device=prefix_input_ids.device,
         )
         pointers_after = cache.pointers()
-        history_after = cache_history_sha256_untimed(
-            cache.keys,
-            cache.values,
+        history_after = cache_state_history_sha256_untimed(
+            cache,
             historical_length=prefix_length,
         )
 
