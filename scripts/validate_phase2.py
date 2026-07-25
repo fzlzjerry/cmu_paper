@@ -34,6 +34,7 @@ PHASE2_FINAL_COMMIT = "7c36d130565acef0883acb638c6b6c731b3f32ad"
 PHASE4_ENTRY_COMMIT = "89189297992947b7a8b79252add551c9321e5f33"
 PHASE5_ENTRY_COMMIT = "9eeabe787060e84c20cd7f88da8f7bca68eae1d4"
 PHASE6A_ENTRY_COMMIT = "a25a76a052a918428e8eb56cdfde63470cf6a152"
+PHASE6_ENTRY_COMMIT = "e06f638f4b913f9bd1be2975a478657f5bf2338e"
 QUALITY_COMMIT = "a7b8285dd8ed2fb598efbb3312e9f55064a0ee64"
 ENVIRONMENT_COMMIT = "ea176994921c793789ebbd9d42515ce20ae4baee"
 EVIDENCE_COMMIT = "fb164b5ea96031ca40b21f4b8436a49a3bb5b8d2"
@@ -365,6 +366,57 @@ PHASE6A_E00_ALLOWED_PATHS = frozenset(
         "tests/unit/test_preflight_unit.py",
     }
 )
+PHASE6_ALLOWED_PATHS = frozenset(
+    {
+        "Makefile",
+        "configs/methods/turboquant.yaml",
+        "docs/blockers.md",
+        "docs/evidence/phase6/r2-publication.json",
+        "docs/evidence/phase6/turboquant-method-admission.json",
+        "docs/phase_reports/phase6-turboquant-measurement-adapter.md",
+        "docs/plans/phase6-turboquant-measurement-adapter.md",
+        "docs/risk_register.md",
+        "docs/status.md",
+        "docs/tasks.md",
+        "scripts/phase6_turboquant_admission.py",
+        "scripts/validate_phase2.py",
+        "src/kvbench/adapters/__init__.py",
+        "src/kvbench/adapters/factory.py",
+        "src/kvbench/adapters/turboquant.py",
+        "src/kvbench/runtime/artifacts.py",
+        "src/kvbench/runtime/cuda_graph.py",
+        "src/kvbench/runtime/fixed_l_runner.py",
+        "src/kvbench/runtime/growing_context_runner.py",
+        "src/kvbench/runtime/numerical.py",
+        "src/kvbench/runtime/turboquant_admission.py",
+        "src/kvbench/runtime/turboquant_audit.py",
+        "src/kvbench/runtime/turboquant_cache.py",
+        "src/kvbench/runtime/turboquant_session.py",
+        "src/kvbench/schema/__init__.py",
+        "src/kvbench/schema/base.py",
+        "src/kvbench/schema/method_admission.py",
+        "src/kvbench/schema/phase6.py",
+        "src/kvbench/third_party/__init__.py",
+        "src/kvbench/third_party/vllm_turboquant/__init__.py",
+        "src/kvbench/third_party/vllm_turboquant/centroids.py",
+        "src/kvbench/third_party/vllm_turboquant/compat.py",
+        "src/kvbench/third_party/vllm_turboquant/config.py",
+        "src/kvbench/third_party/vllm_turboquant/provenance.json",
+        "src/kvbench/third_party/vllm_turboquant/triton_decode_attention.py",
+        "src/kvbench/third_party/vllm_turboquant/triton_turboquant_decode.py",
+        "src/kvbench/third_party/vllm_turboquant/triton_turboquant_store.py",
+        "tests/cuda/phase6_turboquant_sanitizer_probe.py",
+        "tests/cuda/test_phase6_turboquant_cuda.py",
+        "tests/graph/test_phase6_turboquant_graph.py",
+        "tests/schema/test_config_schema.py",
+        "tests/schema/test_phase6_schema.py",
+        "tests/unit/test_phase4_adapter.py",
+        "tests/unit/test_phase5_turboquant_reference.py",
+        "tests/unit/test_phase6_artifacts.py",
+        "tests/unit/test_phase6_governance.py",
+        "tests/unit/test_phase6_turboquant_adapter.py",
+    }
+)
 
 RAW_RESULT_SUFFIXES = {
     ".bin",
@@ -588,9 +640,22 @@ def historical_phase5_paths() -> set[str]:
     )
 
 
-def current_phase6a_paths() -> set[str]:
+def historical_phase6a_paths() -> set[str]:
+    return git_paths(
+        (
+            "diff",
+            "--name-only",
+            "-z",
+            PHASE6A_ENTRY_COMMIT,
+            PHASE6_ENTRY_COMMIT,
+            "--",
+        )
+    )
+
+
+def current_phase6_paths() -> set[str]:
     changed = git_paths(
-        ("diff", "--name-only", "-z", PHASE6A_ENTRY_COMMIT, "--")
+        ("diff", "--name-only", "-z", PHASE6_ENTRY_COMMIT, "--")
     )
     untracked = git_paths(
         ("ls-files", "--others", "--exclude-standard", "-z", "--")
@@ -598,14 +663,24 @@ def current_phase6a_paths() -> set[str]:
     return changed | untracked
 
 
+def current_phase6a_paths() -> set[str]:
+    """Compatibility alias for callers predating the Phase 6 boundary."""
+
+    return historical_phase6a_paths()
+
+
 def current_phase5_paths() -> set[str]:
     """Compatibility alias for callers predating the Phase 6A boundary."""
 
-    return historical_phase5_paths() | current_phase6a_paths()
+    return (
+        historical_phase5_paths()
+        | historical_phase6a_paths()
+        | current_phase6_paths()
+    )
 
 
 def changed_paths() -> set[str]:
-    return current_phase6a_paths()
+    return current_phase6_paths()
 
 
 def repository_python_paths() -> list[Path]:
@@ -625,6 +700,7 @@ def repository_python_paths() -> list[Path]:
         paths.update(unit_tests.glob("test_phase4_*.py"))
         paths.update(unit_tests.glob("test_phase5_*.py"))
         paths.update(unit_tests.glob("test_phase6a_*.py"))
+        paths.update(unit_tests.glob("test_phase6_*.py"))
         paths.update(
             unit_tests / name
             for name in (
@@ -1615,6 +1691,10 @@ def check_scope() -> int:
         errors.append(
             "the accepted Phase 6A entry commit is not an ancestor of HEAD"
         )
+    if not commit_is_ancestor(PHASE6_ENTRY_COMMIT):
+        errors.append(
+            "the accepted Phase 6 entry commit is not an ancestor of HEAD"
+        )
     phase5 = historical_phase5_paths()
     phase5_unexpected = sorted(phase5 - PHASE5_ALLOWED_PATHS)
     if phase5_unexpected:
@@ -1622,23 +1702,30 @@ def check_scope() -> int:
             f"historical files outside the approved Phase 5 plan: "
             f"{phase5_unexpected!r}"
         )
-    changed = current_phase6a_paths()
-    phase6a_unexpected = sorted(changed - PHASE6A_ALLOWED_PATHS)
+    phase6a = historical_phase6a_paths()
+    phase6a_unexpected = sorted(phase6a - PHASE6A_ALLOWED_PATHS)
     if phase6a_unexpected:
         errors.append(
-            f"files outside the approved Phase 6A plan: {phase6a_unexpected!r}"
+            "historical files outside the approved Phase 6A plan: "
+            f"{phase6a_unexpected!r}"
+        )
+    changed = current_phase6_paths()
+    phase6_unexpected = sorted(changed - PHASE6_ALLOWED_PATHS)
+    if phase6_unexpected:
+        errors.append(
+            f"files outside the approved Phase 6 plan: {phase6_unexpected!r}"
         )
     for relative in sorted(changed):
         if relative.startswith("docs/evidence/e00/"):
             errors.append(f"immutable E00 evidence changed: {relative}")
         if relative in QUALITY_PROTOCOL_HASHES:
             errors.append(
-                f"quality protocol changed during Phase 6A: {relative}"
+                f"quality protocol changed during Phase 6: {relative}"
             )
         if Path(relative).suffix in RAW_RESULT_SUFFIXES:
             errors.append(
                 f"forbidden binary, kernel, model, or profiler artifact "
-                f"in Phase 6A scope: {relative}"
+                f"in Phase 6 scope: {relative}"
             )
         if relative.startswith(
             (
@@ -1650,7 +1737,7 @@ def check_scope() -> int:
             )
         ):
             errors.append(
-                f"forbidden result tree in Phase 6A scope: {relative}"
+                f"forbidden result tree in Phase 6 scope: {relative}"
             )
     e00_changes = git_paths(
         (
