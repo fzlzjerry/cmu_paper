@@ -414,6 +414,7 @@ PHASE6_ALLOWED_PATHS = frozenset(
         "tests/schema/test_phase6_schema.py",
         "tests/unit/test_phase4_adapter.py",
         "tests/unit/test_phase5_turboquant_reference.py",
+        "tests/unit/test_phase6a_governance.py",
         "tests/unit/test_process_supervision.py",
         "tests/unit/test_phase6_artifacts.py",
         "tests/unit/test_phase6_governance.py",

@@ -48,6 +48,7 @@ class Phase6GovernanceTests(unittest.TestCase):
             "src/kvbench/runtime/turboquant_cache.py",
             "src/kvbench/runtime/turboquant_session.py",
             "tests/unit/test_process_supervision.py",
+            "tests/unit/test_phase6a_governance.py",
             "tests/unit/test_phase6_governance.py",
         }
         self.assertLessEqual(required, PHASE6_ALLOWED_PATHS)
@@ -57,6 +58,7 @@ class Phase6GovernanceTests(unittest.TestCase):
             "src/kvbench/plugins/turboquant.py",
             "scripts/phase7_kivi.py",
             "artifacts/quality/result.json",
+            "tests/unit/test_phase6a_bf16_parity.py",
             "results/turboquant.json",
         ):
             with self.subTest(rejected=rejected):
