@@ -523,9 +523,18 @@ class Phase6GovernanceTests(unittest.TestCase):
         payload = json.loads(report_path.read_text(encoding="utf-8"))
         report = MethodAdmissionReportV2.from_dict(payload)
         self.assertEqual(report.status.value, "BLOCKED")
-        self.assertEqual(report.blockers, ("B-018",))
+        self.assertEqual(
+            report.blockers,
+            ("bounded_admission_grid_not_evaluated",),
+        )
         self.assertEqual(report.admitted_config_ids, ())
         self.assertFalse(report.performance_claim_eligible)
+        checks = {check.check_id: check for check in report.checks}
+        self.assertEqual(checks["compute_sanitizer"].status.value, "PASS")
+        self.assertEqual(
+            checks["bounded_admission_grid"].status.value,
+            "NOT_EVALUATED",
+        )
         publication = json.loads(
             (
                 REPOSITORY_ROOT

@@ -12,7 +12,7 @@ authoritative local task index until issues are created elsewhere.
 | E03 | Fixed-L benchmark | E02; Decision 0007 permits only bounded Phase 3 admission runner | fixed-L and growing-context runners; timing-boundary tests | Execution SHA `9def265ab613cde7a06b0e51850f066d0564d635` completed all 16 fixed-L and all 4 growing-context runs with new IDs, no abort/failure, no unattempted point, and no selective rerun. The results remain non-claim admission evidence. |
 | E04 | Common cache-method and CUDA Graph harness | E02-E03 | stable method protocol; correctness/allocation/path facades; capture/replay correctness; no replay allocation | complete for Phase 4 BF16 at `0cf160caa532c7cac23275c8a14fd8694789a86f`; `docs/evidence/phase4/method-admission.json` validates. TurboQuant reference work is complete, but later Measurement Lane adapters still require their own G2 evidence. |
 | E05 | TurboQuant reference lane | E00-E04 | authoritative pinned source; isolated container; golden fixtures | complete: official vLLM v0.25.1 commit `752a3a504485790a2e8491cacbb35c137339ad34`; isolated SM120 environment; 3 mandatory MSE+NC and 1 held-out deterministic fixture; exact regeneration and validation PASS |
-| E06 | TurboQuant measurement adapter | E05 | numerical, byte, graph, path, sanitizer, smoke evidence; G2-TQ | BLOCKED by B-018: adapter and fixture/path/allocation/Graph audits implemented; final immutable run `phase6-20260725t065153714z-ace9261a-083f14-4bit_nc-fixed-l128-eager` fails 4bit memcheck leak summary before the bounded grid; G2-TQ BLOCKED |
+| E06 | TurboQuant measurement adapter | E05 | numerical, byte, graph, path, sanitizer, smoke evidence; G2-TQ | BLOCKED pending bounded admission grid: B-018 RESOLVED after all three mandatory sanitizer-only probes passed with exit code 0, zero errors, zero leaked bytes, and valid immutable ledgers; bounded grid NOT EVALUATED; G2-TQ BLOCKED |
 | E07 | KIVI reference lane | G2-TQ | pinned legacy container; rollover and K/V asymmetry fixtures | pending; unopened |
 | E08 | KIVI measurement adapter | E07 | static buffers; r_alloc(L); GQA indexing; G2-KIVI | pending |
 | E09 | KVQuant calibration | G2-KIVI | frozen dataset/revision/seed/cap/artifacts/checksums | pending |
@@ -52,8 +52,9 @@ task list. E16 remains closed until its evidence is reviewed.
   only after pilot admission and keeps method/cache/backend/shape fixed.
 - Phase 4 adds only the BF16 adapter/factory and reusable admission facades.
   Phase 5 adds only the TurboQuant reference lane. Phase 6A remediation is
-  PASS. Phase 6 now has a minimal implementation but is BLOCKED by B-018 at
-  Compute Sanitizer; the bounded grid was not entered.
+  PASS. Phase 6 has a minimal implementation, and B-018 is RESOLVED after all
+  three mandatory sanitizer probes passed under the exact authorized image.
+  The bounded grid remains NOT EVALUATED, so G2-TQ remains BLOCKED.
   E07 and later tasks, KIVI, KVQuant, pilot, performance profiler, Full Scan,
   and quality execution remain unopened and unauthorized.
 - E12 includes an operator-level MHA control with identical head dimension and
