@@ -7,6 +7,11 @@ from types import SimpleNamespace
 import unittest
 from unittest import mock
 
+from kvbench.runtime.backend import (
+    BackendFallbackError,
+    BackendUnsupportedError,
+    flash_attention_forward,
+)
 from kvbench.runtime.turboquant_admission import (
     PHASE6_CONTAINER_ENVIRONMENT_VARIABLE,
     PHASE6_IMAGE_ENVIRONMENT_VARIABLE,
@@ -22,6 +27,7 @@ from kvbench.schema import GraphMode, MeasurementScope, RunnerKind
 from kvbench.schema.phase6 import AUTHORIZED_CONTAINER_DIGEST
 from scripts.phase6_turboquant_admission import (
     GRID,
+    _execute_point,
     _full_model_allocation_criterion,
     _memcheck_summaries_pass,
     _method_config_fingerprint,
@@ -262,6 +268,115 @@ class Phase6TurboQuantSessionTests(unittest.TestCase):
                 require_authorized_cuda_environment(
                     AUTHORIZED_CONTAINER_DIGEST
                 )
+
+    def test_execute_point_scopes_forced_flash_to_untimed_setup(
+        self,
+    ) -> None:
+        import torch
+
+        class FocusedStop(RuntimeError):
+            pass
+
+        query = torch.zeros((1, 2, 1, 8), dtype=torch.bfloat16)
+        key = torch.zeros((1, 1, 1, 8), dtype=torch.bfloat16)
+        value = torch.zeros((1, 1, 1, 8), dtype=torch.bfloat16)
+        module = SimpleNamespace(training=False)
+        events: list[str] = []
+
+        def probe_inside_context() -> None:
+            with self.assertRaisesRegex(
+                BackendUnsupportedError,
+                "requires a CUDA device",
+            ):
+                flash_attention_forward(
+                    module,
+                    query,
+                    key,
+                    value,
+                    attention_mask=None,
+                    scaling=1.0,
+                )
+
+        def build_session(**_: object) -> SimpleNamespace:
+            events.append("build")
+            probe_inside_context()
+
+            def admit(**__: object) -> None:
+                events.append("admit")
+                probe_inside_context()
+
+            return SimpleNamespace(admit=admit)
+
+        def audit_session(
+            *_: object,
+            **__: object,
+        ) -> tuple[list[str], dict[str, bool]]:
+            events.append("audit")
+            probe_inside_context()
+            return ["observed"], {"passed": True, "graph_passed": True}
+
+        def stop_before_timing(*_: object, **__: object) -> None:
+            events.append("runner")
+            with self.assertRaisesRegex(
+                BackendFallbackError,
+                "outside the forced backend context",
+            ):
+                flash_attention_forward(
+                    module,
+                    query,
+                    key,
+                    value,
+                    attention_mask=None,
+                    scaling=1.0,
+                )
+            raise FocusedStop("timing runner intentionally not entered")
+
+        with (
+            mock.patch(
+                "scripts.phase6_turboquant_admission._deterministic_ids",
+                return_value=object(),
+            ),
+            mock.patch(
+                "scripts.phase6_turboquant_admission."
+                "build_turboquant_endpoint_session",
+                side_effect=build_session,
+            ),
+            mock.patch(
+                "scripts.phase6_turboquant_admission._audit_session",
+                side_effect=audit_session,
+            ),
+            mock.patch(
+                "scripts.phase6_turboquant_admission.run_fixed_l",
+                side_effect=stop_before_timing,
+            ),
+        ):
+            with self.assertRaisesRegex(
+                FocusedStop,
+                "timing runner intentionally not entered",
+            ):
+                _execute_point(
+                    loaded=object(),
+                    configuration="turboquant_4bit_nc",
+                    runner_kind=RunnerKind.FIXED_L,
+                    graph_mode=GraphMode.EAGER,
+                    context_length=128,
+                    output_steps=1,
+                    global_audits_passed=True,
+                )
+
+        self.assertEqual(events, ["build", "audit", "admit", "runner"])
+        with self.assertRaisesRegex(
+            BackendFallbackError,
+            "outside the forced backend context",
+        ):
+            flash_attention_forward(
+                module,
+                query,
+                key,
+                value,
+                attention_mask=None,
+                scaling=1.0,
+            )
 
 
 if __name__ == "__main__":

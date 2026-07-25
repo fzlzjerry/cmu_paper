@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import gc
 import os
 from pathlib import Path
 import unittest
+from unittest import mock
 
+from kvbench.runtime.model_loader import load_frozen_model
 from kvbench.runtime.turboquant_admission import (
     PHASE6_CONTAINER_ENVIRONMENT_VALUE,
     PHASE6_CONTAINER_ENVIRONMENT_VARIABLE,
@@ -14,7 +17,9 @@ from kvbench.runtime.turboquant_admission import (
     require_authorized_cuda_environment,
 )
 from kvbench.runtime.turboquant_cache import TURBOQUANT_MANDATORY_CONFIGS
+from kvbench.schema import GraphMode, RunnerKind
 from kvbench.schema.phase6 import AUTHORIZED_CONTAINER_DIGEST
+from scripts.phase6_turboquant_admission import _execute_point
 
 
 def _authorized_environment_declared() -> bool:
@@ -68,6 +73,39 @@ class Phase6TurboQuantCudaTests(unittest.TestCase):
                     result["gqa_geometry"]["gqa_materialized"]
                 )
                 self.assertIsNone(result["r_hbm"])
+
+    def test_4bit_l128_eager_forced_flash_context_non_timing(self) -> None:
+        class FocusedStop(RuntimeError):
+            pass
+
+        loaded = load_frozen_model()
+        try:
+            with mock.patch(
+                "scripts.phase6_turboquant_admission.run_fixed_l",
+                side_effect=FocusedStop(
+                    "focused reproduction stopped before timing"
+                ),
+            ) as runner:
+                with self.assertRaisesRegex(
+                    FocusedStop,
+                    "focused reproduction stopped before timing",
+                ):
+                    _execute_point(
+                        loaded=loaded,
+                        configuration="turboquant_4bit_nc",
+                        runner_kind=RunnerKind.FIXED_L,
+                        graph_mode=GraphMode.EAGER,
+                        context_length=128,
+                        output_steps=1,
+                        global_audits_passed=True,
+                    )
+                runner.assert_called_once()
+        finally:
+            loaded = None
+            gc.collect()
+            torch = __import__("torch")
+            torch.cuda.synchronize()
+            torch.cuda.empty_cache()
 
 
 if __name__ == "__main__":

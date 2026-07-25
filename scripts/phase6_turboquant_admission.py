@@ -28,6 +28,7 @@ from kvbench.runtime.artifacts import (
     sha256_file,
     validate_run_directory,
 )
+from kvbench.runtime.backend import forced_flash_execution
 from kvbench.runtime.fixed_l_runner import run_fixed_l
 from kvbench.runtime.growing_context_runner import run_growing_context
 from kvbench.runtime.model_loader import (
@@ -808,22 +809,23 @@ def _execute_point(
         offset=offset + context_length + 257,
         device=torch.device("cuda:0"),
     )
-    session = build_turboquant_endpoint_session(
-        loaded=loaded,
-        operation_keys=keys,
-        prefix_input_ids=prefix,
-        decode_input_ids=decode,
-    )
-    observed, audit = _audit_session(
-        session,
-        turboquant_hot_path_zero_allocation=global_audits_passed,
-    )
-    session.admit(
-        observed_outputs=observed,
-        execution_path_passed=global_audits_passed,
-        allocation_passed=audit["passed"],
-        graph_passed=audit["graph_passed"],
-    )
+    with forced_flash_execution():
+        session = build_turboquant_endpoint_session(
+            loaded=loaded,
+            operation_keys=keys,
+            prefix_input_ids=prefix,
+            decode_input_ids=decode,
+        )
+        observed, audit = _audit_session(
+            session,
+            turboquant_hot_path_zero_allocation=global_audits_passed,
+        )
+        session.admit(
+            observed_outputs=observed,
+            execution_path_passed=global_audits_passed,
+            allocation_passed=audit["passed"],
+            graph_passed=audit["graph_passed"],
+        )
     if runner_kind is RunnerKind.FIXED_L:
         result = run_fixed_l(
             session,
