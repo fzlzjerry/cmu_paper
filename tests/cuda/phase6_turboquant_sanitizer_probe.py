@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import ctypes
 import gc
 import json
 import sys
@@ -29,14 +30,23 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
 
 
 def _release_sanitizer_cuda_state() -> None:
-    """Release library and allocator state before memcheck leak reporting."""
+    """Release the isolated probe context before memcheck leak reporting."""
 
     torch.cuda.synchronize()
     gc.collect()
     torch._C._cuda_clearCublasWorkspaces()
     torch.cuda.empty_cache()
+    torch._C._host_emptyCache()
     torch.cuda.synchronize()
     gc.collect()
+
+    cudart = ctypes.CDLL("libcudart.so.13")
+    reset = cudart.cudaDeviceReset
+    reset.argtypes = []
+    reset.restype = ctypes.c_int
+    result = int(reset())
+    if result != 0:
+        raise RuntimeError(f"cudaDeviceReset failed with status {result}")
 
 
 def main(argv: list[str] | None = None) -> int:

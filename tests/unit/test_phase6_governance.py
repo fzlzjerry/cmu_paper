@@ -109,6 +109,20 @@ class Phase6GovernanceTests(unittest.TestCase):
         self.assertEqual(makefile.count(f"{command}test-cuda"), 1)
         self.assertEqual(makefile.count(f"{command}test-graph"), 1)
 
+    def test_sanitizer_probe_resets_only_its_isolated_cuda_context(
+        self,
+    ) -> None:
+        probe = (
+            REPOSITORY_ROOT
+            / "tests"
+            / "cuda"
+            / "phase6_turboquant_sanitizer_probe.py"
+        ).read_text(encoding="utf-8")
+        self.assertEqual(probe.count('ctypes.CDLL("libcudart.so.13")'), 1)
+        self.assertEqual(probe.count("cudaDeviceReset"), 2)
+        self.assertIn("torch._C._cuda_clearCublasWorkspaces()", probe)
+        self.assertIn("torch._C._host_emptyCache()", probe)
+
     def test_plan_freezes_tolerance_and_later_phases(self) -> None:
         plan = (
             REPOSITORY_ROOT
