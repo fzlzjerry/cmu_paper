@@ -252,7 +252,10 @@ def _file_role(relative: str) -> str:
 
 def _payload_files(stage: Path, exclusions: set[str]) -> list[Path]:
     files: list[Path] = []
-    for path in sorted(stage.rglob("*")):
+    for path in sorted(
+        stage.rglob("*"),
+        key=lambda candidate: candidate.relative_to(stage).as_posix(),
+    ):
         metadata = path.lstat()
         if stat.S_ISLNK(metadata.st_mode):
             raise ArtifactSafetyError("symlinks are forbidden in run artifacts")

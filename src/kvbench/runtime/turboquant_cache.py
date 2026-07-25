@@ -70,6 +70,23 @@ def _torch() -> Any:
     return _TORCH
 
 
+def _release_tensor_storages_for_sanitizer(
+    tensors: tuple[Any, ...],
+) -> None:
+    """Irreversibly release unique tensor storages in an isolated probe."""
+
+    storages: dict[int, Any] = {}
+    for tensor in tensors:
+        if tensor is None:
+            continue
+        storage = tensor.untyped_storage()
+        if int(storage.nbytes()) == 0:
+            continue
+        storages.setdefault(int(storage._cdata), storage)
+    for storage in storages.values():
+        storage.resize_(0)
+
+
 def _positive_int(value: int, name: str) -> int:
     if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
         raise ValueError(f"{name} must be a positive integer")
@@ -255,6 +272,7 @@ class TurboQuantStaticCache:
         )
 
         hadamard = build_hadamard(self.head_dim, str(self.device))
+        self._sanitizer_hadamard_source = weakref.ref(hadamard)
         self.Pi = hadamard.detach().clone()
         self.PiT = self.Pi.T.contiguous()
         centroids, midpoints = solve_lloyd_max(
@@ -428,6 +446,19 @@ class TurboQuantStaticCache:
     def release_owned_cuda_resources_for_sanitizer(self) -> None:
         """Irreversibly release probe-owned tensors before context teardown."""
 
+        if self._mode == "released":
+            return
+        hadamard_source = self._sanitizer_hadamard_source()
+        owned_tensors = self._owned_tensors()
+        if hadamard_source is not None:
+            owned_tensors = (*owned_tensors, hadamard_source)
+        _release_tensor_storages_for_sanitizer(owned_tensors)
+        from kvbench.third_party.vllm_turboquant.compat import (
+            _build_hadamard_cached,
+        )
+
+        _build_hadamard_cached.cache_clear()
+        self._sanitizer_hadamard_source = None
         for handle in self._handles.values():
             handle.key_states = None
             handle.value_states = None

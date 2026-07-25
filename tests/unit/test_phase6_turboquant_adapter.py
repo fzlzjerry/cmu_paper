@@ -18,6 +18,9 @@ from kvbench.adapters import (
 )
 from kvbench.config import load_config
 from kvbench.errors import ConfigLoadError, PhaseNotImplementedError
+from kvbench.runtime.turboquant_admission import (
+    release_fixture_cuda_resources_for_sanitizer,
+)
 from kvbench.runtime.turboquant_cache import (
     TURBOQUANT_BF16_LAYERS,
     TURBOQUANT_COMPRESSED_LAYERS,
@@ -164,6 +167,57 @@ class TurboQuantAdapterTests(unittest.TestCase):
         self.assertIsNone(handle.key_states)
         self.assertIsNone(handle.value_states)
         self.assertTrue(all(reference() is None for reference in owned_references))
+
+    def test_sanitizer_release_zeroes_shared_storage_aliases(self) -> None:
+        method = build_method_adapter("turboquant_4bit_nc", _context())
+        cache = method.allocate(
+            batch_size=1,
+            capacity=18,
+            device="cpu",
+        )
+        alias = cache.packed_cache.view(-1)
+        source = cache._sanitizer_hadamard_source()
+        self.assertIsNotNone(source)
+        retained = (*cache._owned_tensors(), alias, source)
+
+        cache.release_owned_cuda_resources_for_sanitizer()
+
+        self.assertTrue(
+            all(
+                int(tensor.untyped_storage().nbytes()) == 0
+                for tensor in retained
+            )
+        )
+
+    def test_fixture_release_zeroes_inputs_and_positions(self) -> None:
+        method = build_method_adapter("turboquant_4bit_nc", _context())
+        cache = method.allocate(
+            batch_size=1,
+            capacity=18,
+            device="cpu",
+        )
+        fixture_input = cache.packed_cache.new_empty((5,))
+        position = cache.block_table.new_empty((1,))
+        fixture_alias = fixture_input.view(-1)
+        position_alias = position.view(-1)
+        resources = {
+            "inputs": {"fixture": fixture_input},
+            "positions": [position],
+            "cache": cache,
+        }
+
+        release_fixture_cuda_resources_for_sanitizer(resources)
+
+        self.assertEqual(resources, {})
+        self.assertEqual(
+            int(fixture_alias.untyped_storage().nbytes()),
+            0,
+        )
+        self.assertEqual(
+            int(position_alias.untyped_storage().nbytes()),
+            0,
+        )
+        self.assertEqual(cache.mode, "released")
 
     def test_attention_handles_do_not_own_the_cache(self) -> None:
         method = build_method_adapter("turboquant_4bit_nc", _context())

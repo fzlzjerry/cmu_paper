@@ -14,6 +14,7 @@ import torch
 
 from kvbench.runtime.turboquant_admission import (
     evaluate_fixture_configuration,
+    release_fixture_cuda_resources_for_sanitizer,
     require_authorized_cuda_environment,
 )
 from kvbench.runtime.turboquant_cache import TURBOQUANT_MANDATORY_CONFIGS
@@ -33,18 +34,37 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
+def _drain_sanitizer_allocator(*, max_passes: int = 4) -> None:
+    """Require the PyTorch allocator to reach an observable zero state."""
+
+    last_state = (-1, -1)
+    for _ in range(max_passes):
+        gc.collect()
+        torch._C._cuda_clearCublasWorkspaces()
+        torch.cuda.synchronize()
+        torch.cuda.empty_cache()
+        torch._C._host_emptyCache()
+        torch.cuda.synchronize()
+        torch.cuda.empty_cache()
+        last_state = (
+            int(torch.cuda.memory_allocated()),
+            int(torch.cuda.memory_reserved()),
+        )
+        if last_state == (0, 0):
+            return
+    raise RuntimeError(
+        "CUDA allocator did not drain before reset: "
+        f"allocated={last_state[0]} reserved={last_state[1]}"
+    )
+
+
 def _release_sanitizer_cuda_state() -> None:
     """Release the isolated probe context before memcheck leak reporting."""
 
     torch.cuda.synchronize()
     blas_handle = int(torch.cuda.current_blas_handle())
     _build_hadamard_cached.cache_clear()
-    gc.collect()
-    torch._C._cuda_clearCublasWorkspaces()
-    torch.cuda.empty_cache()
-    torch._C._host_emptyCache()
-    torch.cuda.synchronize()
-    gc.collect()
+    _drain_sanitizer_allocator()
 
     cublas = ctypes.CDLL("libcublas.so.13")
     destroy = cublas.cublasDestroy_v2
@@ -72,27 +92,57 @@ def main(argv: list[str] | None = None) -> int:
     environment = require_authorized_cuda_environment(
         arguments.image_config_digest
     )
-    failure: tuple[str, str] | None = None
+    failures: list[tuple[str, str]] = []
+    resources: dict[str, object] = {}
     result: dict[str, object] | None = None
     try:
         result = evaluate_fixture_configuration(
             arguments.configuration,
             release_cuda_resources_for_sanitizer=True,
+            sanitizer_resources=resources,
         )
         if result.get("passed") is not True:
-            failure = (
-                "RuntimeError",
-                "TurboQuant sanitizer probe did not conform",
+            failures.append(
+                (
+                    "RuntimeError",
+                    "TurboQuant sanitizer probe did not conform",
+                )
             )
     except Exception as error:
-        failure = (type(error).__name__, str(error))
+        failures.append((type(error).__name__, str(error)))
         error.__traceback__ = None
         del error
     finally:
         result = None
-        _release_sanitizer_cuda_state()
-    if failure is not None:
-        raise RuntimeError(f"{failure[0]}: {failure[1]}") from None
+        try:
+            release_fixture_cuda_resources_for_sanitizer(resources)
+        except Exception as error:
+            failures.append((type(error).__name__, str(error)))
+            error.__traceback__ = None
+            del error
+        try:
+            _release_sanitizer_cuda_state()
+        except Exception as error:
+            failures.append((type(error).__name__, str(error)))
+            error.__traceback__ = None
+            del error
+    if failures:
+        print(
+            json.dumps(
+                {
+                    "configuration": arguments.configuration,
+                    "failures": [
+                        {"type": name, "message": message}
+                        for name, message in failures
+                    ],
+                    "status": "fail",
+                },
+                sort_keys=True,
+                separators=(",", ":"),
+            ),
+            file=sys.stderr,
+        )
+        return 2
     print(
         json.dumps(
             {

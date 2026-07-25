@@ -349,6 +349,18 @@ class Phase6GovernanceTests(unittest.TestCase):
     def test_sanitizer_probe_cleans_up_after_evaluator_exception(self) -> None:
         from tests.cuda import phase6_turboquant_sanitizer_probe as probe
 
+        partial = object()
+
+        def fail_evaluator(
+            configuration: str,
+            *,
+            release_cuda_resources_for_sanitizer: bool,
+            sanitizer_resources: dict[str, object],
+        ) -> dict[str, object]:
+            self.assertTrue(release_cuda_resources_for_sanitizer)
+            sanitizer_resources["partial"] = partial
+            raise ValueError(f"evaluator failure: {configuration}")
+
         with (
             mock.patch.object(
                 probe,
@@ -358,18 +370,20 @@ class Phase6GovernanceTests(unittest.TestCase):
             mock.patch.object(
                 probe,
                 "evaluate_fixture_configuration",
-                side_effect=ValueError("evaluator failure"),
+                side_effect=fail_evaluator,
             ),
+            mock.patch.object(
+                probe,
+                "release_fixture_cuda_resources_for_sanitizer",
+            ) as release_resources,
             mock.patch.object(
                 probe,
                 "_release_sanitizer_cuda_state",
             ) as release,
         ):
-            with self.assertRaisesRegex(
-                RuntimeError,
-                "ValueError: evaluator failure",
-            ):
-                probe.main(
+            stderr = io.StringIO()
+            with redirect_stderr(stderr):
+                exit_code = probe.main(
                     [
                         "--configuration",
                         "turboquant_4bit_nc",
@@ -377,7 +391,85 @@ class Phase6GovernanceTests(unittest.TestCase):
                         "authorized",
                     ]
                 )
+        self.assertEqual(exit_code, 2)
+        self.assertIn("evaluator failure", stderr.getvalue())
+        release_resources.assert_called_once_with(
+            {"partial": partial}
+        )
         release.assert_called_once_with()
+
+    def test_sanitizer_allocator_drain_reaches_zero_fixed_point(self) -> None:
+        from tests.cuda import phase6_turboquant_sanitizer_probe as probe
+
+        fake_torch = mock.Mock()
+        fake_torch.cuda.memory_allocated.side_effect = [1, 0]
+        fake_torch.cuda.memory_reserved.side_effect = [1, 0]
+        with (
+            mock.patch.object(probe, "torch", fake_torch),
+            mock.patch.object(probe, "gc") as fake_gc,
+        ):
+            probe._drain_sanitizer_allocator(max_passes=2)
+
+        self.assertEqual(fake_gc.collect.call_count, 2)
+        self.assertEqual(fake_torch.cuda.synchronize.call_count, 4)
+        self.assertEqual(fake_torch.cuda.empty_cache.call_count, 4)
+
+    def test_sanitizer_allocator_drain_fails_closed_if_nonzero(self) -> None:
+        from tests.cuda import phase6_turboquant_sanitizer_probe as probe
+
+        fake_torch = mock.Mock()
+        fake_torch.cuda.memory_allocated.return_value = 4
+        fake_torch.cuda.memory_reserved.return_value = 8
+        with (
+            mock.patch.object(probe, "torch", fake_torch),
+            mock.patch.object(probe, "gc") as fake_gc,
+        ):
+            with self.assertRaisesRegex(RuntimeError, "allocated=4 reserved=8"):
+                probe._drain_sanitizer_allocator(max_passes=2)
+
+        self.assertEqual(fake_gc.collect.call_count, 2)
+
+    def test_sanitizer_release_orders_drain_destroy_and_reset(self) -> None:
+        from tests.cuda import phase6_turboquant_sanitizer_probe as probe
+
+        events: list[str] = []
+        fake_torch = mock.Mock()
+        fake_torch.cuda.synchronize.side_effect = lambda: events.append("sync")
+        fake_torch.cuda.current_blas_handle.side_effect = (
+            lambda: events.append("handle") or 7
+        )
+        cublas = mock.Mock()
+        cublas.cublasDestroy_v2.side_effect = (
+            lambda _handle: events.append("destroy") or 0
+        )
+        cudart = mock.Mock()
+        cudart.cudaDeviceReset.side_effect = (
+            lambda: events.append("reset") or 0
+        )
+        with (
+            mock.patch.object(probe, "torch", fake_torch),
+            mock.patch.object(
+                probe._build_hadamard_cached,
+                "cache_clear",
+                side_effect=lambda: events.append("cache_clear"),
+            ),
+            mock.patch.object(
+                probe,
+                "_drain_sanitizer_allocator",
+                side_effect=lambda: events.append("drain"),
+            ),
+            mock.patch.object(
+                probe.ctypes,
+                "CDLL",
+                side_effect=[cublas, cudart],
+            ),
+        ):
+            probe._release_sanitizer_cuda_state()
+
+        self.assertEqual(
+            events,
+            ["sync", "handle", "cache_clear", "drain", "destroy", "reset"],
+        )
 
     def test_sanitizer_probe_resets_only_its_isolated_cuda_context(
         self,

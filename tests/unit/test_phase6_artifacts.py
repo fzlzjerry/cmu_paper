@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
+import json
 from pathlib import Path
 import tempfile
 import unittest
@@ -83,6 +84,55 @@ class Phase6ArtifactTests(unittest.TestCase):
                     str(payload["run_id"]),
                     Phase6RunManifest.from_dict(payload),
                 )
+
+    def test_nested_sanitizer_paths_use_posix_lexical_order(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            payload = _run_payload()
+            run = phase6_artifact_store(root).create(
+                str(payload["run_id"]),
+                Phase6RunManifest.from_dict(payload),
+            )
+            run.start()
+            for relative in (
+                "config/method.json",
+                "environment/container_identity.json",
+                "raw/runner.json",
+                "validation/point.json",
+                "validation/sanitizer-summary.json",
+                "validation/sanitizer/turboquant_4bit_nc/result.json",
+                "validation/sanitizer/turboquant_4bit_nc/stdout.txt",
+                "validation/sanitizer/turboquant_4bit_nc/stderr.txt",
+            ):
+                run.write_json(relative, {"relative": relative})
+            final = run.finalize(
+                Phase6RunManifest.from_dict(_completed(payload))
+            )
+            self.addCleanup(_restore_writable, root)
+
+            validation = validate_run_directory(final)
+            self.assertTrue(validation.valid, validation.errors)
+            self.assertTrue(validation.complete)
+            inventory = json.loads(
+                (final / "artifact_inventory.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+            inventory_paths = [item["path"] for item in inventory["files"]]
+            self.assertEqual(inventory_paths, sorted(inventory_paths))
+            self.assertLess(
+                inventory_paths.index("validation/sanitizer-summary.json"),
+                inventory_paths.index(
+                    "validation/sanitizer/turboquant_4bit_nc/result.json"
+                ),
+            )
+            ledger_paths = [
+                line.split("  ", 1)[1]
+                for line in (final / "checksums.sha256")
+                .read_text(encoding="utf-8")
+                .splitlines()
+            ]
+            self.assertEqual(ledger_paths, sorted(ledger_paths))
 
     def test_missing_required_payload_fails_closed(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

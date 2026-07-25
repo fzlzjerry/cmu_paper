@@ -28,6 +28,7 @@ from kvbench.runtime.turboquant_cache import (
     TURBOQUANT_COMPRESSED_LAYERS,
     TURBOQUANT_MANDATORY_CONFIGS,
     TURBOQUANT_SLOT_SIZES,
+    _release_tensor_storages_for_sanitizer,
 )
 from kvbench.runtime.turboquant_session import turboquant_runtime_context
 from kvbench.runtime.turboquant_fixture import (
@@ -231,6 +232,48 @@ def _load_inputs(configuration: str, device: Any) -> tuple[Any, dict[str, Any]]:
     return fixture, inputs
 
 
+def release_fixture_cuda_resources_for_sanitizer(
+    resources: dict[str, Any],
+) -> None:
+    """Release graph-free fixture storages after all results are materialized."""
+
+    inputs = resources.get("inputs")
+    positions = resources.get("positions")
+    cache = resources.get("cache")
+    input_tensors = (
+        tuple(inputs.values())
+        if isinstance(inputs, dict)
+        else ()
+    )
+    position_tensors = (
+        tuple(positions)
+        if isinstance(positions, list)
+        else ()
+    )
+
+    cuda_device = getattr(cache, "device", None)
+    if getattr(cuda_device, "type", None) != "cuda":
+        for tensor in (*input_tensors, *position_tensors):
+            tensor_device = getattr(tensor, "device", None)
+            if getattr(tensor_device, "type", None) == "cuda":
+                cuda_device = tensor_device
+                break
+    if getattr(cuda_device, "type", None) == "cuda":
+        torch = _torch()
+        torch.cuda.synchronize(device=cuda_device)
+
+    _release_tensor_storages_for_sanitizer(
+        (*input_tensors, *position_tensors)
+    )
+    if cache is not None:
+        cache.release_owned_cuda_resources_for_sanitizer()
+    if isinstance(inputs, dict):
+        inputs.clear()
+    if isinstance(positions, list):
+        positions.clear()
+    resources.clear()
+
+
 def _slot_layout(cache: Any) -> dict[str, int]:
     config = cache.tq_config
     key_bytes = math.ceil(cache.head_dim * int(config.key_mse_bits) / 8)
@@ -340,6 +383,7 @@ def evaluate_fixture_configuration(
     *,
     evidence_directory: Path | None = None,
     release_cuda_resources_for_sanitizer: bool = False,
+    sanitizer_resources: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Replay one mandatory fixture; optional evidence enables all CUDA audits."""
 
@@ -351,9 +395,22 @@ def evaluate_fixture_configuration(
         raise TurboQuantAdmissionError(
             "sanitizer resource release requires the graph-free fixture path"
         )
+    if release_cuda_resources_for_sanitizer:
+        if sanitizer_resources is None:
+            raise TurboQuantAdmissionError(
+                "sanitizer release requires an explicit resource registry"
+            )
+        if sanitizer_resources:
+            raise TurboQuantAdmissionError(
+                "sanitizer resource registry must start empty"
+            )
+    elif sanitizer_resources is not None:
+        raise TurboQuantAdmissionError("unexpected sanitizer resource registry")
     torch = _torch()
     device = torch.device("cuda:0")
     fixture, inputs = _load_inputs(configuration, device)
+    if sanitizer_resources is not None:
+        sanitizer_resources["inputs"] = inputs
     method = TurboQuantMethodAdapter(turboquant_runtime_context(), configuration)
     cache = method.allocate(
         batch_size=1,
@@ -361,14 +418,22 @@ def evaluate_fixture_configuration(
         device=device,
         workspace_bytes=0,
     )
+    if sanitizer_resources is not None:
+        sanitizer_resources["cache"] = cache
     cache.initialize_deterministic()
     pointers_before = cache.pointers()
+    if sanitizer_resources is not None:
+        sanitizer_resources["positions"] = []
     prefill_positions = torch.arange(
         17,
         dtype=torch.int32,
         device=device,
     )
+    if sanitizer_resources is not None:
+        sanitizer_resources["positions"].append(prefill_positions)
     append_position = torch.tensor([17], dtype=torch.int32, device=device)
+    if sanitizer_resources is not None:
+        sanitizer_resources["positions"].append(append_position)
     prefill_key = inputs["prefill_key"].transpose(0, 1).unsqueeze(0)
     prefill_value = inputs["prefill_value"].transpose(0, 1).unsqueeze(0)
     append_key = inputs["append_key"].transpose(0, 1).unsqueeze(0)
@@ -524,7 +589,6 @@ def evaluate_fixture_configuration(
             )
         )
         if release_cuda_resources_for_sanitizer:
-            torch.cuda.synchronize(device=device)
             store = None
             hot_operation = None
             handle = None
@@ -536,8 +600,13 @@ def evaluate_fixture_configuration(
             query = None
             prefill_positions = None
             append_position = None
-            inputs.clear()
-            cache.release_owned_cuda_resources_for_sanitizer()
+            if sanitizer_resources is None:
+                raise TurboQuantAdmissionError(
+                    "sanitizer resource registry disappeared"
+                )
+            release_fixture_cuda_resources_for_sanitizer(
+                sanitizer_resources
+            )
             cache = None
             method = None
         return base_result
