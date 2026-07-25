@@ -4,8 +4,11 @@
 from __future__ import annotations
 
 import argparse
+import gc
 import json
 import sys
+
+import torch
 
 from kvbench.runtime.turboquant_admission import (
     evaluate_fixture_configuration,
@@ -25,6 +28,17 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
+def _release_sanitizer_cuda_state() -> None:
+    """Release library and allocator state before memcheck leak reporting."""
+
+    torch.cuda.synchronize()
+    gc.collect()
+    torch._C._cuda_clearCublasWorkspaces()
+    torch.cuda.empty_cache()
+    torch.cuda.synchronize()
+    gc.collect()
+
+
 def main(argv: list[str] | None = None) -> int:
     arguments = _parse_args(sys.argv[1:] if argv is None else argv)
     environment = require_authorized_cuda_environment(
@@ -33,6 +47,8 @@ def main(argv: list[str] | None = None) -> int:
     result = evaluate_fixture_configuration(arguments.configuration)
     if result.get("passed") is not True:
         raise RuntimeError("TurboQuant sanitizer probe did not conform")
+    del result
+    _release_sanitizer_cuda_state()
     print(
         json.dumps(
             {

@@ -23,6 +23,7 @@ from kvbench.schema.phase6 import AUTHORIZED_CONTAINER_DIGEST
 from scripts.phase6_turboquant_admission import (
     GRID,
     _full_model_allocation_criterion,
+    _memcheck_summaries_pass,
     _method_config_fingerprint,
 )
 
@@ -220,6 +221,33 @@ class Phase6TurboQuantSessionTests(unittest.TestCase):
         )
         self.assertTrue(graph_result["passed"])
         self.assertTrue(graph_result["strict_graph_zero_events"])
+
+    def test_memcheck_summaries_require_unique_zero_error_and_leak(self) -> None:
+        passing = (
+            b"========= LEAK SUMMARY: 0 bytes leaked in 0 allocations\n"
+            b"========= ERROR SUMMARY: 0 errors\n"
+        )
+        self.assertTrue(_memcheck_summaries_pass(passing, b""))
+        self.assertFalse(
+            _memcheck_summaries_pass(
+                b"========= ERROR SUMMARY: 0 errors\n",
+                b"",
+            )
+        )
+        self.assertFalse(
+            _memcheck_summaries_pass(
+                passing
+                + b"========= ERROR SUMMARY: 0 errors\n",
+                b"",
+            )
+        )
+        self.assertFalse(
+            _memcheck_summaries_pass(
+                b"========= LEAK SUMMARY: 1 bytes leaked in 1 allocation\n"
+                b"========= ERROR SUMMARY: 0 errors\n",
+                b"",
+            )
+        )
 
     def test_native_or_undeclared_cuda_environment_fails_closed(self) -> None:
         cleared = {

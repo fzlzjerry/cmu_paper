@@ -71,6 +71,8 @@ from kvbench.schema import (
     canonical_json_bytes,
     sha256_hex,
 )
+from preflight.run_preflight import sanitizer_error_count
+
 from kvbench.schema.phase6 import (
     AUTHORIZED_CONTAINER_DIGEST,
     DECODE_SOURCE_SHA256,
@@ -445,8 +447,17 @@ def _sanitizer_tool_identity() -> dict[str, Any]:
     }
 
 
+def _memcheck_summaries_pass(stdout: bytes, stderr: bytes) -> bool:
+    combined = stdout + b"\n" + stderr
+    text = combined.decode("utf-8", errors="replace")
+    return sanitizer_error_count("memcheck", text) == 0
+
+
 def _run_sanitizers(run: ArtifactRun) -> dict[str, Any]:
     identity = _sanitizer_tool_identity()
+    sanitizer_environment = {"PYTORCH_NO_CUDA_MEMORY_CACHING": "1"}
+    child_environment = os.environ.copy()
+    child_environment.update(sanitizer_environment)
     records: dict[str, Any] = {}
     for configuration in TURBOQUANT_MANDATORY_CONFIGS:
         command = (
@@ -475,6 +486,7 @@ def _run_sanitizers(run: ArtifactRun) -> dict[str, Any]:
                 check=False,
                 capture_output=True,
                 timeout=900,
+                env=child_environment,
             )
             stdout = result.stdout
             stderr = result.stderr
@@ -485,12 +497,12 @@ def _run_sanitizers(run: ArtifactRun) -> dict[str, Any]:
             stderr = error.stderr or b""
             exit_code = None
             timed_out = True
-        combined = stdout + b"\n" + stderr
+        summaries_passed = _memcheck_summaries_pass(stdout, stderr)
         passed = (
             not timed_out
             and exit_code == 0
             and b'"status":"pass"' in stdout
-            and b"ERROR SUMMARY: 0 errors" in combined
+            and summaries_passed
         )
         prefix = f"validation/sanitizer/{configuration}"
         run.write_bytes(f"{prefix}/stdout.txt", stdout)
@@ -500,6 +512,7 @@ def _run_sanitizers(run: ArtifactRun) -> dict[str, Any]:
             "configuration": configuration,
             "command": list(command),
             "tool_identity": identity,
+            "environment": sanitizer_environment,
             "started_at_utc": started,
             "finished_at_utc": _utc_now(),
             "duration_seconds": float(time.monotonic() - monotonic_started),
@@ -507,7 +520,7 @@ def _run_sanitizers(run: ArtifactRun) -> dict[str, Any]:
             "timed_out": timed_out,
             "stdout_sha256": hashlib.sha256(stdout).hexdigest(),
             "stderr_sha256": hashlib.sha256(stderr).hexdigest(),
-            "error_summary_zero": b"ERROR SUMMARY: 0 errors" in combined,
+            "memcheck_summaries_passed": summaries_passed,
             "probe_passed": b'"status":"pass"' in stdout,
             "passed": passed,
         }
