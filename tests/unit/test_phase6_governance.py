@@ -6,6 +6,7 @@ from pathlib import Path
 import unittest
 
 from scripts.validate_phase2 import (
+    APPROVED_ARTIFACT_ROOT_NAMES,
     PHASE6_ALLOWED_PATHS,
     PHASE6_ENTRY_COMMIT,
 )
@@ -23,8 +24,10 @@ class Phase6GovernanceTests(unittest.TestCase):
         required = {
             "docs/plans/phase6-turboquant-measurement-adapter.md",
             "src/kvbench/adapters/turboquant.py",
+            "src/kvbench/runtime/phase3_coordinator.py",
             "src/kvbench/runtime/turboquant_cache.py",
             "src/kvbench/runtime/turboquant_session.py",
+            "tests/unit/test_process_supervision.py",
             "tests/unit/test_phase6_governance.py",
         }
         self.assertLessEqual(required, PHASE6_ALLOWED_PATHS)
@@ -38,6 +41,73 @@ class Phase6GovernanceTests(unittest.TestCase):
         ):
             with self.subTest(rejected=rejected):
                 self.assertNotIn(rejected, PHASE6_ALLOWED_PATHS)
+
+    def test_artifact_root_allowlist_is_exact(self) -> None:
+        self.assertEqual(
+            APPROVED_ARTIFACT_ROOT_NAMES,
+            frozenset(
+                {
+                    "README.md",
+                    "phase3",
+                    "phase3_campaigns",
+                    "phase3_reports",
+                    "phase4_smoke",
+                    "phase6",
+                    "phase6a",
+                }
+            ),
+        )
+
+    def test_admission_runtime_venv_stays_inside_ignored_directory(self) -> None:
+        makefile = (REPOSITORY_ROOT / "Makefile").read_text(encoding="utf-8")
+        self.assertIn(
+            'mkdir "$$task_root/source/.venv"',
+            makefile,
+        )
+        self.assertIn(
+            'ln -s /opt/kvbench/.venv/bin '
+            '"$$task_root/source/.venv/bin"',
+            makefile,
+        )
+        self.assertIn(
+            'ln -s /opt/kvbench/.venv/lib '
+            '"$$task_root/source/.venv/lib"',
+            makefile,
+        )
+        self.assertIn(
+            'ln -s /opt/kvbench/.venv/pyvenv.cfg '
+            '"$$task_root/source/.venv/pyvenv.cfg"',
+            makefile,
+        )
+        self.assertNotIn(
+            'ln -s /opt/kvbench/.venv "$$task_root/source/.venv"',
+            makefile,
+        )
+
+    def test_admission_rehydrates_e00_immutable_modes_in_clone(self) -> None:
+        makefile = (REPOSITORY_ROOT / "Makefile").read_text(encoding="utf-8")
+        self.assertEqual(
+            makefile.count(
+                'chmod -R a-w "$$task_root/source/docs/evidence/e00"'
+            ),
+            1,
+        )
+        self.assertEqual(
+            makefile.count(
+                'find "$$task_root/source/docs/evidence/e00" '
+                "-perm /222 -print -quit"
+            ),
+            1,
+        )
+
+    def test_admission_uses_only_the_locked_container_python(self) -> None:
+        makefile = (REPOSITORY_ROOT / "Makefile").read_text(encoding="utf-8")
+        command = (
+            "make PHASE2_PYTHON=/opt/kvbench/.venv/bin/python "
+            "PHASE3_PYTHON=/opt/kvbench/.venv/bin/python "
+        )
+        self.assertEqual(makefile.count(f"{command}test-cuda"), 1)
+        self.assertEqual(makefile.count(f"{command}test-graph"), 1)
 
     def test_plan_freezes_tolerance_and_later_phases(self) -> None:
         plan = (

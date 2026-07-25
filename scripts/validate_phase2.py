@@ -388,9 +388,11 @@ PHASE6_ALLOWED_PATHS = frozenset(
         "src/kvbench/runtime/fixed_l_runner.py",
         "src/kvbench/runtime/growing_context_runner.py",
         "src/kvbench/runtime/numerical.py",
+        "src/kvbench/runtime/phase3_coordinator.py",
         "src/kvbench/runtime/turboquant_admission.py",
         "src/kvbench/runtime/turboquant_audit.py",
         "src/kvbench/runtime/turboquant_cache.py",
+        "src/kvbench/runtime/turboquant_fixture.py",
         "src/kvbench/runtime/turboquant_session.py",
         "src/kvbench/schema/__init__.py",
         "src/kvbench/schema/base.py",
@@ -412,9 +414,12 @@ PHASE6_ALLOWED_PATHS = frozenset(
         "tests/schema/test_phase6_schema.py",
         "tests/unit/test_phase4_adapter.py",
         "tests/unit/test_phase5_turboquant_reference.py",
+        "tests/unit/test_process_supervision.py",
         "tests/unit/test_phase6_artifacts.py",
         "tests/unit/test_phase6_governance.py",
         "tests/unit/test_phase6_turboquant_adapter.py",
+        "tests/unit/test_phase6_turboquant_fixture.py",
+        "tests/unit/test_phase6_turboquant_session.py",
     }
 )
 
@@ -432,6 +437,22 @@ RAW_RESULT_SUFFIXES = {
     ".pt",
     ".pth",
 }
+PINNED_TURBOQUANT_SOURCE_PATHS = frozenset(
+    {
+        "src/kvbench/third_party/vllm_turboquant/centroids.py",
+        "src/kvbench/third_party/vllm_turboquant/config.py",
+        "src/kvbench/third_party/vllm_turboquant/triton_decode_attention.py",
+        "src/kvbench/third_party/vllm_turboquant/triton_turboquant_decode.py",
+        "src/kvbench/third_party/vllm_turboquant/triton_turboquant_store.py",
+    }
+)
+PINNED_TURBOQUANT_ANNOTATION_EXEMPTIONS = (
+    PINNED_TURBOQUANT_SOURCE_PATHS
+    | frozenset(
+        {"src/kvbench/third_party/vllm_turboquant/__init__.py"}
+    )
+)
+
 BANNED_IMPORTS = {
     "datasets",
     "evaluate",
@@ -452,12 +473,34 @@ PHASE3_EXTERNAL_IMPORTS = {
     "src/kvbench/runtime/model_loader.py": {"torch", "transformers"},
     "src/kvbench/runtime/numerical.py": {"torch"},
     "src/kvbench/runtime/static_cache.py": {"torch"},
+    "src/kvbench/runtime/turboquant_admission.py": {"torch", "triton"},
     "src/kvbench/runtime/timing.py": {"torch"},
+    "src/kvbench/third_party/vllm_turboquant/centroids.py": {"torch"},
+    "src/kvbench/third_party/vllm_turboquant/compat.py": {"torch"},
+    "src/kvbench/third_party/vllm_turboquant/config.py": {"vllm"},
+    "src/kvbench/third_party/vllm_turboquant/triton_decode_attention.py": {
+        "triton"
+    },
+    "src/kvbench/third_party/vllm_turboquant/triton_turboquant_decode.py": {
+        "torch",
+        "triton",
+    },
+    "src/kvbench/third_party/vllm_turboquant/triton_turboquant_store.py": {
+        "torch",
+        "triton",
+    },
 }
 HOT_PATH_FUNCTIONS = {
     "src/kvbench/adapters/bf16.py": {
         "store_prefill",
         "append_decode",
+        "decode_attention",
+    },
+    "src/kvbench/adapters/turboquant.py": {
+        "_store_compressed",
+        "store_prefill",
+        "append_decode",
+        "_decode_compressed",
         "decode_attention",
     },
     "src/kvbench/runtime/backend.py": {
@@ -689,6 +732,7 @@ def repository_python_paths() -> list[Path]:
         paths.update(SRC.rglob("*.py"))
     paths.add(ROOT / "scripts" / "validate_phase2.py")
     paths.add(ROOT / "scripts" / "r2_artifact.py")
+    paths.add(ROOT / "scripts" / "phase6_turboquant_admission.py")
     paths.add(ROOT / "scripts" / "phase6a_bf16_parity.py")
     schema_tests = ROOT / "tests" / "schema"
     if schema_tests.is_dir():
@@ -716,9 +760,14 @@ def repository_python_paths() -> list[Path]:
     cuda_tests = ROOT / "tests" / "cuda"
     if cuda_tests.is_dir():
         paths.update(cuda_tests.glob("test_phase3_*.py"))
+        paths.update(cuda_tests.glob("test_phase6_*.py"))
+        sanitizer_probe = cuda_tests / "phase6_turboquant_sanitizer_probe.py"
+        if sanitizer_probe.is_file():
+            paths.add(sanitizer_probe)
     graph_tests = ROOT / "tests" / "graph"
     if graph_tests.is_dir():
         paths.update(graph_tests.glob("test_phase3_*.py"))
+        paths.update(graph_tests.glob("test_phase6_*.py"))
     return sorted(path for path in paths if path.is_file())
 
 
@@ -776,8 +825,13 @@ def check_lint() -> int:
             isinstance(node, (ast.AnnAssign, ast.ClassDef, ast.FunctionDef))
             for node in tree.body
         )
-        if defines_typed_code and (
-            path.is_relative_to(SRC) or path.name == "validate_phase2.py"
+        if (
+            defines_typed_code
+            and relative not in PINNED_TURBOQUANT_SOURCE_PATHS
+            and (
+                path.is_relative_to(SRC)
+                or path.name == "validate_phase2.py"
+            )
         ):
             has_future_annotations = any(
                 isinstance(node, ast.ImportFrom)
@@ -812,7 +866,8 @@ def check_lint() -> int:
                 )
             elif node.level == 0 and node.module:
                 imported.add(node.module.split(".", 1)[0])
-            banned = imported & BANNED_IMPORTS
+            allowed_external = PHASE3_EXTERNAL_IMPORTS.get(relative, set())
+            banned = (imported & BANNED_IMPORTS) - allowed_external
             if banned:
                 errors.append(
                     f"out-of-scope import {sorted(banned)!r}: "
@@ -823,7 +878,6 @@ def check_lint() -> int:
                 for name in imported
                 if name not in sys.stdlib_module_names and name != "kvbench"
             }
-            allowed_external = PHASE3_EXTERNAL_IMPORTS.get(relative, set())
             undeclared = external - allowed_external
             if undeclared and (
                 path.is_relative_to(SRC) or path.name == "validate_phase2.py"
@@ -1085,6 +1139,8 @@ def check_annotations() -> int:
     modules: list[Any] = []
     for path in sorted(SRC.rglob("*.py")):
         relative = path.relative_to(ROOT).as_posix()
+        if relative in PINNED_TURBOQUANT_ANNOTATION_EXEMPTIONS:
+            continue
         is_phase3_external = relative in PHASE3_EXTERNAL_IMPORTS
         if phase3_child != is_phase3_external:
             continue
@@ -1545,6 +1601,19 @@ def validate_phase3_campaign_and_report_roots(artifacts: Path) -> list[str]:
     return errors
 
 
+APPROVED_ARTIFACT_ROOT_NAMES = frozenset(
+    {
+        "README.md",
+        "phase3",
+        "phase3_campaigns",
+        "phase3_reports",
+        "phase4_smoke",
+        "phase6",
+        "phase6a",
+    }
+)
+
+
 def validate_phase3_artifact_root() -> list[str]:
     errors: list[str] = []
     artifacts = ROOT / "artifacts"
@@ -1569,15 +1638,7 @@ def validate_phase3_artifact_root() -> list[str]:
         unexpected = sorted(
             path.name
             for path in artifacts.iterdir()
-            if path.name
-            not in {
-                "README.md",
-                "phase3",
-                "phase3_campaigns",
-                "phase3_reports",
-                "phase4_smoke",
-                "phase6a",
-            }
+            if path.name not in APPROVED_ARTIFACT_ROOT_NAMES
         )
         if unexpected:
             errors.append(
@@ -1648,6 +1709,48 @@ def validate_phase6a_artifact_root() -> list[str]:
         elif child.is_symlink() or not child.is_dir():
             errors.append(
                 f"unsafe Phase 6A artifact root: {child.name}"
+            )
+    return errors
+
+
+def validate_phase6_artifact_root() -> list[str]:
+    """Require every ignored Phase 6 run to retain complete checksums."""
+
+    root = ROOT / "artifacts" / "phase6"
+    if not root.exists() and not root.is_symlink():
+        return []
+    if root.is_symlink() or not root.is_dir():
+        return ["Phase 6 artifact root is unsafe"]
+    errors: list[str] = []
+    controls = {".kvbench-staging", ".kvbench-reservations"}
+    for control_name in sorted(controls):
+        control = root / control_name
+        if control.is_symlink() or (
+            control.exists() and not control.is_dir()
+        ):
+            errors.append(f"Phase 6 control path is unsafe: {control_name}")
+    staging = root / ".kvbench-staging"
+    if staging.is_dir() and any(staging.iterdir()):
+        errors.append("Phase 6 contains incomplete staging runs")
+    for child in sorted(root.iterdir()):
+        if child.name in controls:
+            continue
+        if child.is_symlink() or not child.is_dir():
+            errors.append(f"unsafe Phase 6 artifact child: {child.name}")
+            continue
+        result = run(
+            (
+                "/usr/bin/python3",
+                "-m",
+                "kvbench",
+                "validate-run",
+                str(child),
+            ),
+            environment=phase2_environment(),
+        )
+        if result.returncode != 0:
+            errors.append(
+                f"invalid or incomplete Phase 6 run: {child.name}"
             )
     return errors
 
@@ -1772,6 +1875,7 @@ def check_scope() -> int:
                 )
     errors.extend(validate_phase3_artifact_root())
     errors.extend(validate_phase6a_artifact_root())
+    errors.extend(validate_phase6_artifact_root())
     forbidden_modules = (
         "src/kvbench/methods/turboquant",
         "src/kvbench/methods/kivi",

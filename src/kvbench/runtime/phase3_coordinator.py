@@ -1569,7 +1569,7 @@ def _ingest_worker_evidence_v2(
 
 
 def _process_snapshot(*, pid: int | None = None, start_ticks: int | None = None) -> dict[str, Any]:
-    argv = ["/usr/bin/python3", str(PROCESS_QUERY)]
+    argv = [str(PYTHON_EXECUTABLE), str(PROCESS_QUERY)]
     if pid is not None or start_ticks is not None:
         if pid is None or start_ticks is None:
             raise Phase3CoordinatorError("supervised process identity is incomplete")

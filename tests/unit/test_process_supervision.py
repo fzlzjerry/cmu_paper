@@ -12,8 +12,10 @@ from unittest import mock
 
 from kvbench.runtime import process_supervision
 from kvbench.runtime.phase3_coordinator import (
+    PYTHON_EXECUTABLE,
     Phase3CoordinatorError,
     _nonreaping_exit_observed,
+    _process_snapshot,
     _reap_registered_worker,
     _registry_snapshot_verdict,
     _terminate_registered_worker,
@@ -136,6 +138,28 @@ def process_snapshot(
         "errors": list(errors),
         "query_exit_code": query_exit_code,
     }
+
+
+class ProcessSnapshotInterpreterTests(unittest.TestCase):
+    def test_process_snapshot_uses_frozen_project_python(self) -> None:
+        completed = SimpleNamespace(
+            returncode=0,
+            stdout=(
+                b'{"allowed_compute_processes":[],"errors":[],'
+                b'"foreign_compute_processes":[],"query_exit_code":0,'
+                b'"unknown_processes":[]}\n'
+            ),
+            stderr=b"",
+        )
+        with mock.patch(
+            "kvbench.runtime.phase3_coordinator.subprocess.run",
+            return_value=completed,
+        ) as run:
+            result = _process_snapshot()
+
+        self.assertEqual(result["query_exit_code"], 0)
+        argv = run.call_args.args[0]
+        self.assertEqual(argv[0], str(PYTHON_EXECUTABLE))
 
 
 class ProcessIdentityTests(unittest.TestCase):
