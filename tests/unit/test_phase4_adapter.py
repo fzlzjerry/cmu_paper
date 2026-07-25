@@ -94,13 +94,15 @@ class Phase4AdapterTests(unittest.TestCase):
         adapter = build_method_adapter(MethodName.BF16, _context())
         self.assertIsInstance(adapter, BF16MethodAdapter)
         self.assertEqual(adapter.name, "bf16")
-        for method in ("turboquant", "kivi", "kvquant"):
+        for method in ("kivi", "kvquant"):
             with self.subTest(method=method):
                 with self.assertRaises(PhaseNotImplementedError) as caught:
                     build_method_adapter(method, _context())
                 self.assertEqual(caught.exception.code, ErrorCode.PHASE_NOT_IMPLEMENTED)
-        with self.assertRaises(ConfigLoadError):
-            build_method_adapter("unknown", _context())
+        for method in ("turboquant", "turboquant_k8v4", "unknown"):
+            with self.subTest(method=method):
+                with self.assertRaises(ConfigLoadError):
+                    build_method_adapter(method, _context())
 
     def test_protocol_conforming_fake(self) -> None:
         self.assertIsInstance(_ProtocolFake(), KVCacheMethod)

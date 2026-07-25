@@ -8,6 +8,10 @@ from kvbench.adapters.bf16 import (
     declared_bf16_runtime_context,
 )
 from kvbench.adapters.factory import build_method_adapter
+from kvbench.adapters.turboquant import (
+    TURBOQUANT_ADAPTER_VERSION,
+    TurboQuantMethodAdapter,
+)
 
 __all__ = [
     "BF16_ADAPTER_FINGERPRINT_SCHEMA_VERSION",
@@ -15,6 +19,8 @@ __all__ = [
     "BF16MethodAdapter",
     "KVCacheMethod",
     "MethodRuntimeContext",
+    "TURBOQUANT_ADAPTER_VERSION",
+    "TurboQuantMethodAdapter",
     "build_method_adapter",
     "declared_bf16_runtime_context",
 ]

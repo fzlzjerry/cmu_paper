@@ -10,7 +10,7 @@ import tempfile
 import unittest
 
 from kvbench.adapters import MethodRuntimeContext, build_method_adapter
-from kvbench.errors import ArtifactConflictError, PhaseNotImplementedError
+from kvbench.errors import ArtifactConflictError, ConfigLoadError
 from reference.turboquant.generate_fixtures import publish_staged
 from reference.turboquant.validate_fixtures import validate_reference
 from scripts.validate_phase2 import PHASE5_ALLOWED_PATHS
@@ -167,8 +167,8 @@ class Phase5GovernanceTests(unittest.TestCase):
             with self.subTest(existing=existing):
                 self.assertIn(existing, PHASE5_ALLOWED_PATHS)
 
-    def test_turboquant_measurement_adapter_remains_fail_closed(self) -> None:
-        with self.assertRaises(PhaseNotImplementedError):
+    def test_turboquant_requires_an_explicit_phase6_configuration(self) -> None:
+        with self.assertRaises(ConfigLoadError):
             build_method_adapter("turboquant", _context())
         self.assertFalse((REPOSITORY_ROOT / "src/kvbench/methods/turboquant").exists())
 
