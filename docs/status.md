@@ -1,6 +1,6 @@
 # Project status
 
-Last updated: 2026-07-25
+Last updated: 2026-07-26
 Authoritative contracts: CODEX_WORKFLOW.md for active performance engineering;
 CODEX_POST_PERFORMANCE_QUALITY_VALIDATION.md for post-performance quality
 scheduling; CODEX_QUALITY_EVALUATION_ADDENDUM.md for non-conflicting quality
@@ -15,14 +15,21 @@ requirements; and AGENTS.md. Decision 0005 records precedence.
   Measurement Lane CUDA execution to that digest only. Phase 5 remains the
   latest completed method reference lane. Official vLLM
   `v0.25.1` commit `752a3a504485790a2e8491cacbb35c137339ad34` is pinned.
-- Phase 6 status: BLOCKED pending the bounded admission grid. The minimal adapter,
-  static cache, common-runner integration, fixture/path/allocation/Graph
-  audits, and focused tests are present. The B-018-only remediation under
-  commit `aac794c21b01b3e43ff93e317286285d21dbcd47` produced one new
-  sanitizer-only artifact for each mandatory configuration. Every probe passes
-  with exit code 0, zero errors, and zero leaked bytes. B-018 is RESOLVED. The
-  nine-point bounded grid was intentionally not attempted, so G2-TQ remains
-  BLOCKED by `bounded_admission_grid_not_evaluated`.
+- Phase 6 status: PASS for method-specific G2-TQ at execution commit
+  `0df5bb4d445d48e6cba17e30723733f8de35cb14`. The approved admission driver
+  reran all three mandatory Compute Sanitizer probes against that clean HEAD
+  before executing the unchanged frozen bounded grid; sanitizer passed 3/3
+  and the grid passed 9/9. Final bundle
+  `phase6-20260726t035257468z-0df5bb4d-4139a6-4bit_nc-fixed-l128-eager`
+  contains the complete grid and remains admission-only evidence. Its
+  167-object root
+  `f003bc3dc5de6b67a6d8f1b8bed7fa49b7f90f9d7edc4d1383e2d97c8aa19d6d`
+  was published to the existing R2 content-addressed prefix with `COMPLETE`
+  last and passed clean retrieval. The first publication invocation preserved
+  a `TransportError`; an explicit rerun of the same conditional publisher
+  verified already-present identical objects, created only missing objects,
+  and completed without replacement. B-018 remains RESOLVED and all earlier
+  failed evidence remains immutable.
 - Phase 6A prerequisite status: PASS. B-010 is RESOLVED for the exact Decision
   0016 image after full image identity/layer verification, container G0, and
   separate BF16 eager and CUDA Graph parity runs.
@@ -36,11 +43,11 @@ requirements; and AGENTS.md. Decision 0005 records precedence.
   was published COMPLETE-last and cleanly retrieved. B-009 is RESOLVED.
 - Phase 0 status: PASS
 - Phase 1 remediation status: PASS
-- Next authorized task: a separately scoped Phase 6 bounded-admission task may
-  be proposed. Phase 7, Pilot,
-  Full Scan, profiling, fitting, figures, and quality remain unauthorized
+- Next authorized task: a separately scoped Phase 7 KIVI Reference Lane may be
+  proposed. Phase 7/E07 has not started. Pilot, Full Scan, profiling, fitting,
+  figures, and quality remain unauthorized
 - Active admission gate: native-host G0 PASS; authorized-container G0 PASS;
-  native-host BF16 G1 PASS; G2-TQ BLOCKED
+  native-host BF16 G1 PASS; G2-TQ PASS
 - Benchmark implementation changes: exact BF16 static cache, fixed-L and
   growing-context runners, eager and CUDA Graph lanes, timing, allocation,
   telemetry, campaign lifecycle, and source-backed G1 reporting are
@@ -48,7 +55,7 @@ requirements; and AGENTS.md. Decision 0005 records precedence.
   factory, shared audit facades, and a strict admission report schema. Phase 5
   adds only an isolated upstream TurboQuant reference lane and compact
   fixtures. Phase 6 adds one TurboQuant adapter and static cache through the
-  same runners; it is implemented but not admitted
+  same runners; it is admitted only at method-specific G2-TQ
 - CUDA builds or executions: the new formal E00 run passed extension build,
   native execution, forced PTX/JIT, numerical golden, CUDA Graph, allocation,
   SASS/PTX inspection, and all required Compute Sanitizer lanes
@@ -68,8 +75,8 @@ requirements; and AGENTS.md. Decision 0005 records precedence.
   deterministic reference tensors and kernel-name traces; all profiler
   durations were discarded and no formal timing sample was created. Phase 6A
   added only untimed container certification and parity artifacts. Phase 6
-  added only correctness/audit/sanitizer admission evidence; B-018 remediation
-  remained sanitizer-only and did not enter the grid. No formal
+  added only correctness/audit/sanitizer and bounded-admission evidence; the
+  frozen grid completed 9/9 without opening Pilot or Full Scan. No formal
   performance sample, Nsight result, or quality result was created.
 - Scientific performance claims: none
 - Quality protocol: preregistered by Decision 0005 before any performance or
@@ -78,7 +85,7 @@ requirements; and AGENTS.md. Decision 0005 records precedence.
 - Quality runs or quality-only dependency installations: none
 - Full-scan admission: CLOSED
 - Gate state: native-host and authorized-container G0 PASS; native-host BF16 G1
-  PASS; method-specific G2-TQ BLOCKED; global G2-G5 NOT EVALUATED
+  PASS; method-specific G2-TQ PASS; global G2-G5 NOT EVALUATED
 
 ## Phase 5 TurboQuant reference lane
 
@@ -505,13 +512,13 @@ reference execution is recorded separately above.
 | G1 BF16 baseline | PASS — native_host_admission only | Native-host report `phase3-g1-20260723t132609515797z-7f72c95f-f31ccb` independently replays the unchanged 20 runs and 80 operations and passes all 20 criteria. Phase 6A eager/graph artifacts establish container parity only; no new unified or claim-bearing G1 result was created. |
 | Phase 4 common method adapter | PASS | BF16 delegates through `KVCacheMethod`; fixed-L/growing, allocation, graph, and path checks pass; `docs/evidence/phase4/method-admission.json`; no quantized method implemented |
 | Phase 5 TurboQuant reference lane | PASS | Exact vLLM v0.25.1 source/environment lock; 3 mandatory and 1 held-out deterministic fixtures; official store/append/decode paths; no measurement adapter or timing |
-| Phase 6 TurboQuant measurement adapter | BLOCKED | Minimal adapter and static cache are implemented; all mandatory fixture audits and all three mandatory Compute Sanitizer probes pass. B-018 is RESOLVED, but the bounded grid is NOT EVALUATED. |
+| Phase 6 TurboQuant measurement adapter | PASS | Execution HEAD `0df5bb4d445d48e6cba17e30723733f8de35cb14`; current-HEAD sanitizer 3/3 PASS; frozen bounded grid 9/9 PASS; 167-object admission root published COMPLETE-last and cleanly retrieved. |
 | Phase 6A Measurement Container and R2 prerequisites | PASS | Exact image built and scanned; container G0 and both BF16 parity smokes PASS; private R2 state and indefinite lock verified; synthetic and 222-object G0 roots cleanly retrieved; Decision 0016 accepted. B-009/B-010 RESOLVED. |
-| G2-TQ | BLOCKED | B-018 is RESOLVED. The bounded admission grid remains NOT EVALUATED, so no mandatory configuration is admitted. |
+| G2-TQ | PASS | All three mandatory configurations pass the frozen admission criteria; final root `f003bc3dc5de6b67a6d8f1b8bed7fa49b7f90f9d7edc4d1383e2d97c8aa19d6d` is durably published and cleanly retrieved. Global G2 remains NOT EVALUATED. |
 | G2-KIVI | NOT EVALUATED | requires E07-E08 |
 | G2-KVQ | NOT EVALUATED | requires E09-E11 |
 | G1-G5 unified admission | NOT EVALUATED | requires E12 |
-| Pilot/full-scan gates | CLOSED / NOT EVALUATED | Phase 6 stopped before its bounded grid; no Pilot or Full Scan is authorized |
+| Pilot/full-scan gates | CLOSED / NOT EVALUATED | Phase 6 method admission does not authorize Pilot or Full Scan |
 | Post-performance quality validation | LOCKED | Decision 0005; `PERFORMANCE_DATA_FROZEN` absent |
 
 ## Phase 0 acceptance
@@ -534,13 +541,18 @@ the exact recorded image digest. The Phase 3 campaigns, all 20 runs, every
 failed report, the PASS report, Phase 4 evidence, Phase 5 fixtures, the Phase 6
 retrospective, and the initial blocked Phase 6A report remain unchanged.
 
-B-018 remediation is complete under the unchanged authorized image and pinned
-source. All three mandatory sanitizer-only artifacts use new run IDs and record
-unique zero ERROR and LEAK summaries with valid ledgers. Their intentional
-`aborted` lifecycle records completion of the sanitizer-only scope without
-entering the bounded grid. A separately authorized Phase 6 task may next run
-that frozen grid. Native-host and authorized-container G0 plus native-host BF16
-G1 remain PASS; G2-TQ is BLOCKED; global G2-G5 remain NOT EVALUATED; Full Scan
-remains CLOSED; quality execution remains LOCKED; and
-`PERFORMANCE_DATA_FROZEN` remains absent. Phase 7, Pilot, profiling, fitting,
-figures, and quality execution remain unauthorized.
+B-018 remediation remains complete under the unchanged authorized image and
+pinned source, and every historical failed or sanitizer-only artifact remains
+unchanged. At clean execution HEAD
+`0df5bb4d445d48e6cba17e30723733f8de35cb14`, the approved driver reran the
+three mandatory sanitizers successfully and completed the frozen grid 9/9.
+The final 167-object admission root
+`f003bc3dc5de6b67a6d8f1b8bed7fa49b7f90f9d7edc4d1383e2d97c8aa19d6d`
+is COMPLETE-last and passes clean R2 retrieval after an initial preserved
+`TransportError` and an explicit conditional continuation. Native-host and
+authorized-container G0 plus native-host BF16 G1 remain PASS; G2-TQ is PASS;
+global G2-G5 remain NOT EVALUATED; Full Scan remains CLOSED; quality execution
+remains LOCKED; and `PERFORMANCE_DATA_FROZEN` remains absent. A separately
+scoped Phase 7 KIVI Reference Lane may be proposed, but Phase 7/E07 has not
+started. Pilot, profiling, fitting, figures, and quality execution remain
+unauthorized.

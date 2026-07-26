@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from contextlib import redirect_stderr, redirect_stdout
+import hashlib
 import io
 import json
 from pathlib import Path
@@ -42,6 +43,10 @@ class Phase6GovernanceTests(unittest.TestCase):
             "e06f638f4b913f9bd1be2975a478657f5bf2338e",
         )
         required = {
+            "docs/evidence/phase6/r2-admission-publication.json",
+            "docs/evidence/phase6/r2-publication.json",
+            "docs/phase_reports/phase6-turboquant-measurement-adapter.md",
+            "docs/phase_reports/phase6-turboquant-measurement-adapter-pass.md",
             "docs/plans/phase6-turboquant-measurement-adapter.md",
             "src/kvbench/adapters/turboquant.py",
             "src/kvbench/runtime/phase3_coordinator.py",
@@ -58,6 +63,8 @@ class Phase6GovernanceTests(unittest.TestCase):
             "src/kvbench/plugins/turboquant.py",
             "scripts/phase7_kivi.py",
             "artifacts/quality/result.json",
+            "docs/evidence/phase6/r2-admission-publication-v2.json",
+            "docs/phase_reports/phase6-turboquant-measurement-adapter-final.md",
             "tests/unit/test_phase6a_bf16_parity.py",
             "results/turboquant.json",
         ):
@@ -512,7 +519,7 @@ class Phase6GovernanceTests(unittest.TestCase):
         self.assertIn("Full Scan remains closed", plan)
         self.assertIn("`r_hbm` null", plan)
 
-    def test_blocked_method_report_is_strict_and_evidence_backed(
+    def test_pass_method_report_is_strict_and_evidence_backed(
         self,
     ) -> None:
         report_path = (
@@ -524,31 +531,123 @@ class Phase6GovernanceTests(unittest.TestCase):
         )
         payload = json.loads(report_path.read_text(encoding="utf-8"))
         report = MethodAdmissionReportV2.from_dict(payload)
-        self.assertEqual(report.status.value, "BLOCKED")
+        self.assertEqual(report.status.value, "PASS")
+        self.assertEqual(report.blockers, ())
         self.assertEqual(
-            report.blockers,
-            ("bounded_admission_grid_not_evaluated",),
+            report.admitted_config_ids,
+            report.mandatory_config_ids,
         )
-        self.assertEqual(report.admitted_config_ids, ())
+        self.assertEqual(report.reproducibility_status.value, "PASS")
+        self.assertEqual(report.gates.g2_tq.value, "PASS")
+        self.assertEqual(report.gates.global_g2.value, "NOT_EVALUATED")
+        self.assertEqual(report.gates.g3.value, "NOT_EVALUATED")
+        self.assertEqual(report.gates.g4.value, "NOT_EVALUATED")
+        self.assertEqual(report.gates.g5.value, "NOT_EVALUATED")
+        self.assertEqual(report.gates.full_scan_state, "CLOSED")
         self.assertFalse(report.performance_claim_eligible)
-        checks = {check.check_id: check for check in report.checks}
-        self.assertEqual(checks["compute_sanitizer"].status.value, "PASS")
-        self.assertEqual(
-            checks["bounded_admission_grid"].status.value,
-            "NOT_EVALUATED",
+        self.assertFalse(report.performance_data_frozen)
+        self.assertFalse(report.quality_benchmark_executed)
+        self.assertFalse(report.speedup_calculated)
+        self.assertIsNone(report.r_hbm)
+        self.assertEqual(report.quality_execution.value, "locked")
+        self.assertTrue(
+            all(check.status.value == "PASS" for check in report.checks)
+        )
+        references = {
+            reference.evidence_id: reference
+            for reference in report.evidence_references
+        }
+        self.assertIn("phase6_r2_admission_publication", references)
+        for reference in report.evidence_references:
+            evidence_path = REPOSITORY_ROOT / reference.path
+            self.assertTrue(evidence_path.is_file())
+            self.assertEqual(
+                hashlib.sha256(evidence_path.read_bytes()).hexdigest(),
+                reference.sha256,
+            )
+
+        publication_path = (
+            REPOSITORY_ROOT
+            / "docs"
+            / "evidence"
+            / "phase6"
+            / "r2-admission-publication.json"
         )
         publication = json.loads(
-            (
-                REPOSITORY_ROOT
-                / "docs"
-                / "evidence"
-                / "phase6"
-                / "r2-publication.json"
-            ).read_text(encoding="utf-8")
+            publication_path.read_text(encoding="utf-8")
         )
-        self.assertEqual(publication["admission_status"], "BLOCKED")
+        self.assertEqual(
+            publication["schema_version"],
+            "kvbench-phase6-admission-r2-publication-1.0.0",
+        )
+        self.assertEqual(publication["admission_status"], "PASS")
+        self.assertEqual(
+            publication["initial_publication_attempt"]["result"],
+            "FAIL",
+        )
+        self.assertEqual(
+            publication["initial_publication_attempt"]["error_type"],
+            "TransportError",
+        )
+        self.assertFalse(
+            publication["initial_publication_attempt"][
+                "complete_object_published"
+            ]
+        )
+        self.assertEqual(publication["publication"]["result"], "PASS")
+        self.assertTrue(publication["publication"]["complete_last"])
+        self.assertEqual(publication["publication"]["object_count"], 167)
+        self.assertEqual(publication["publication"]["uploaded_count"], 89)
+        self.assertEqual(
+            publication["publication"]["verified_existing_count"],
+            78,
+        )
+        self.assertEqual(
+            publication["publication"]["root_sha256"],
+            "f003bc3dc5de6b67a6d8f1b8bed7fa49b7f90f9d7edc4d1383e2d97c8aa19d6d",
+        )
         self.assertEqual(publication["clean_retrieval"]["result"], "PASS")
+        self.assertTrue(
+            publication["clean_retrieval"]["checksum_ledger_valid"]
+        )
+        self.assertEqual(
+            publication["bucket_lock"]["retention_type"],
+            "Indefinite",
+        )
         self.assertFalse(publication["credential_values_recorded"])
+
+    def test_blocked_publication_and_report_remain_byte_identical(
+        self,
+    ) -> None:
+        historical = {
+            "docs/evidence/phase6/r2-publication.json": (
+                "22465ab91ace2030d0b825e122e5128b34396080de45775f4abe455f4505dc41"
+            ),
+            "docs/phase_reports/phase6-turboquant-measurement-adapter.md": (
+                "1b184cb336e2ee7d3d32952ea4f5886ac1999d32068d614508f4ddad160fb285"
+            ),
+        }
+        for relative, expected in historical.items():
+            with self.subTest(relative=relative):
+                observed = hashlib.sha256(
+                    (REPOSITORY_ROOT / relative).read_bytes()
+                ).hexdigest()
+                self.assertEqual(observed, expected)
+
+    def test_pass_report_is_separate_and_nonclaim_bearing(self) -> None:
+        report = (
+            REPOSITORY_ROOT
+            / "docs"
+            / "phase_reports"
+            / "phase6-turboquant-measurement-adapter-pass.md"
+        ).read_text(encoding="utf-8")
+        self.assertIn("- Status: PASS", report)
+        self.assertIn("- G2-TQ: PASS", report)
+        self.assertIn("- Global G2-G5: NOT EVALUATED", report)
+        self.assertIn("- Full Scan: CLOSED", report)
+        self.assertIn("- Quality execution: LOCKED", report)
+        self.assertIn("makes no speedup", report)
+        self.assertIn("physical-HBM-traffic", report)
 
     def test_quality_and_full_scan_remain_locked(self) -> None:
         status = (REPOSITORY_ROOT / "docs" / "status.md").read_text(

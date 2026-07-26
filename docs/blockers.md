@@ -1,6 +1,6 @@
 # Blockers
 
-Last updated: 2026-07-25.
+Last updated: 2026-07-26.
 
 ## Current disposition
 
@@ -23,9 +23,15 @@ final run
 remains immutable failed evidence. The narrow B-018 remediation produced one
 new sanitizer-only artifact for each mandatory configuration; all three probes
 pass with exit code 0, `ERROR SUMMARY: 0 errors`, and
-`LEAK SUMMARY: 0 bytes leaked`. B-018 is RESOLVED. The bounded admission grid
-was intentionally not attempted, so G2-TQ remains BLOCKED; global G2-G5 remain
-NOT EVALUATED.
+`LEAK SUMMARY: 0 bytes leaked`. B-018 is RESOLVED. The later approved admission
+at clean execution HEAD `0df5bb4d445d48e6cba17e30723733f8de35cb14`
+reran all three sanitizers successfully and completed the frozen bounded grid
+9/9. Its 167-object root
+`f003bc3dc5de6b67a6d8f1b8bed7fa49b7f90f9d7edc4d1383e2d97c8aa19d6d`
+was published COMPLETE-last and passed clean R2 retrieval. The first
+publication invocation recorded `TransportError`; an explicit rerun used the
+existing conditional-write path to verify identical existing objects and
+create only missing objects. G2-TQ is PASS; global G2-G5 remain NOT EVALUATED.
 
 | ID | Blocking condition | Blocks | Evidence / next action | Status |
 |---|---|---|---|---|
@@ -47,7 +53,7 @@ NOT EVALUATED.
 | B-016 | Three B-015 fixed-L graph controls (`B1/L16384`, `B4/L4096`, and `B4/L16384`) aborted before measurement with preserved `ChromeTraceValidationError: graph GPU marker is not contained by its host marker`. Decision 0015's untimed `B1/L16384` diagnostic reproduced the exact error: the host contained the unique asynchronous `cudaGraphLaunch`, while the valid MHA GPU range extended 150.023 microseconds past host return. In-memory removal of only that invalid relation recovered the exact two correlated Flash split-K nodes. | Complete B-011/B-012 graph coverage, BF16 G1, the growing campaign, Phase 4, and every later baseline comparison. | Resolved by commit `e7219e0dd714149e3eea783ce7a8602c4bf9bc54`: allow asynchronous GPU completion while retaining and strengthening launch-correlation, stream, External-ID, graph/node, unknown-category, kernel-family, and materialization checks. Deterministic parser tests, the real `B1/L16385` CUDA control, `make checks`, `make test`, `make test-cuda` (14/14), and `make test-graph` (3/3) pass. Retain these controls in both new complete campaigns. | resolved 2026-07-23 |
 | B-017 | Immutable report `phase3-g1-20260723t123322160580z-9def265a-08dc69` remains valid FAIL evidence for the former legacy-summary/raw-bundle disconnect. | BF16 G1, B-011/B-012 closure, Phase 4, every later method baseline comparison. | Commit `7f72c95f9932c608f9bd68f1971d6e86378596a2` binds report behavior to its recorded generator SHA, reuses coordinator raw replay, rejects missing/tampered/mismatched evidence, ignores serialized worker `passed` booleans, and derives the five criteria from raw bytes. `make checks`, `make test`, `make test-cuda` (14/14), and `make test-graph` (3/3) pass. New no-replace report `phase3-g1-20260723t132609515797z-7f72c95f-f31ccb` independently validates PASS with no errors; the two campaigns and 20 source runs were not rerun or modified. | resolved 2026-07-23 |
 
-| B-018 | The exact pinned TurboQuant store-append-decode probe completed functionally, but Compute Sanitizer memcheck reported 2,093,260 leaked bytes in 28 allocations and exited 99 in final run `phase6-20260725t065153714z-ace9261a-083f14-4bit_nc-fixed-l128-eager`. | G2-TQ and the bounded admission grid | Resolved without changing the algorithm, fixtures, container, runner, timing, or sanitizer criteria. Commit `aac794c21b01b3e43ff93e317286285d21dbcd47` explicitly releases sanitizer-only CUDA storages and library resources. New runs `phase6-b018-20260725t141636785z-aac794c2-6444b4-4bit_nc-sanitizer`, `phase6-b018-20260725t141640440z-aac794c2-eb5675-k3v4_nc-sanitizer`, and `phase6-b018-20260725t141643545z-aac794c2-4d7433-3bit_nc-sanitizer` each pass the probe, exit 0, and record zero errors and zero leaked bytes with valid COMPLETE/inventory/checksum ledgers. The grid remains separately unevaluated. | resolved 2026-07-25 |
+| B-018 | The exact pinned TurboQuant store-append-decode probe completed functionally, but Compute Sanitizer memcheck reported 2,093,260 leaked bytes in 28 allocations and exited 99 in final run `phase6-20260725t065153714z-ace9261a-083f14-4bit_nc-fixed-l128-eager`. | G2-TQ and the bounded admission grid | Resolved without changing the algorithm, fixtures, container, runner, timing, or sanitizer criteria. Commit `aac794c21b01b3e43ff93e317286285d21dbcd47` explicitly releases sanitizer-only CUDA storages and library resources. New runs `phase6-b018-20260725t141636785z-aac794c2-6444b4-4bit_nc-sanitizer`, `phase6-b018-20260725t141640440z-aac794c2-eb5675-k3v4_nc-sanitizer`, and `phase6-b018-20260725t141643545z-aac794c2-4d7433-3bit_nc-sanitizer` each pass the probe, exit 0, and record zero errors and zero leaked bytes with valid COMPLETE/inventory/checksum ledgers. Current-HEAD admission at `0df5bb4d445d48e6cba17e30723733f8de35cb14` independently reran all three probes successfully before the frozen grid passed 9/9. | resolved 2026-07-25; current-HEAD confirmation 2026-07-26 |
 
 ## Phase 4 disposition
 
@@ -110,6 +116,8 @@ run IDs under the same authorized image. All three mandatory sanitizer probes
 now pass with zero errors and zero leaked bytes, and each finalized
 sanitizer-only bundle independently validates. Their `aborted` lifecycle is
 intentional: it records that the authorized B-018-only scope completed without
-entering the bounded grid. B-018 is RESOLVED. G2-TQ remains BLOCKED only because
-the bounded admission grid is NOT EVALUATED; global G2-G5 remain NOT EVALUATED,
-Full Scan remains CLOSED, and quality execution remains LOCKED.
+entering the bounded grid. B-018 is RESOLVED. A later clean-HEAD admission
+reran all three sanitizers, passed the frozen grid 9/9, and durably published
+and cleanly retrieved the 167-object admission bundle. G2-TQ is PASS; global
+G2-G5 remain NOT EVALUATED, Full Scan remains CLOSED, quality execution remains
+LOCKED, and all original failures remain immutable.

@@ -1,0 +1,62 @@
+{
+  "admission_status": "PASS",
+  "artifact_status": "completed",
+  "bucket_lock": {
+    "bucket_public": false,
+    "enabled": true,
+    "lock_prefix": "kvbench/sha256/",
+    "lock_rule_id": "kvbench-evidence-indefinite",
+    "lock_scope": "exact",
+    "public_custom_domain": false,
+    "public_r2_dev": false,
+    "retention_type": "Indefinite",
+    "verification_result": "PASS",
+    "verified_at_utc": "2026-07-26T04:06:24.226508Z"
+  },
+  "clean_retrieval": {
+    "bucket_lock_verification_result": "PASS",
+    "bucket_lock_verified_at_utc": "2026-07-26T04:09:26.775486Z",
+    "checksum_ledger_valid": true,
+    "complete_marker_valid": true,
+    "inventory_valid": true,
+    "object_count": 167,
+    "result": "PASS",
+    "retrieved_at_utc": "2026-07-26T04:10:48.742578Z",
+    "unexpected_objects": false
+  },
+  "credential_values_recorded": false,
+  "initial_publication_attempt": {
+    "bucket_lock_verification_result": "PASS",
+    "bucket_lock_verified_at_utc": "2026-07-26T04:01:45.864636Z",
+    "complete_object_published": false,
+    "error_type": "TransportError",
+    "result": "FAIL"
+  },
+  "local_validation": {
+    "artifact_count": 164,
+    "complete": true,
+    "object_count": 167,
+    "root_sha256": "f003bc3dc5de6b67a6d8f1b8bed7fa49b7f90f9d7edc4d1383e2d97c8aa19d6d",
+    "status": "completed",
+    "valid": true
+  },
+  "performance_claim_eligible": false,
+  "publication": {
+    "bucket": "kvbench-artifacts",
+    "complete_last": true,
+    "object_count": 167,
+    "prefix": "kvbench/sha256/",
+    "publication_order_sha256": "040c81e41dde596f3bc2cae0bfabb03a5246f6d1cde020d93e1e767f9c5cce44",
+    "published_at_utc": "2026-07-26T04:09:12.433378Z",
+    "result": "PASS",
+    "root_sha256": "f003bc3dc5de6b67a6d8f1b8bed7fa49b7f90f9d7edc4d1383e2d97c8aa19d6d",
+    "uploaded_count": 89,
+    "uri": "r2://kvbench-artifacts/kvbench/sha256/f003bc3dc5de6b67a6d8f1b8bed7fa49b7f90f9d7edc4d1383e2d97c8aa19d6d/",
+    "verified_existing_count": 78
+  },
+  "recorded_at_utc": "2026-07-26T04:17:52Z",
+  "schema_version": "kvbench-phase6-admission-r2-publication-1.0.0",
+  "scope": "Durable COMPLETE-last publication and clean retrieval of the finalized successful Phase 6 bounded-admission bundle.",
+  "source_git_sha": "0df5bb4d445d48e6cba17e30723733f8de35cb14",
+  "source_run_id": "phase6-20260726t035257468z-0df5bb4d-4139a6-4bit_nc-fixed-l128-eager"
+}
