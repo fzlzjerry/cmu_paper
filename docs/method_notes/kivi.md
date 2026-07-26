@@ -1,6 +1,7 @@
 # KIVI source note
 
-Status: Phase 7 source audit BLOCKED by mandatory GQA non-materialization.
+Status: B-019 RESOLVED under checksum-bound patched-source authority; Phase 7
+reference execution remains NOT STARTED.
 
 ## Paper and source
 
@@ -14,8 +15,10 @@ Status: Phase 7 source audit BLOCKED by mandatory GQA non-materialization.
 - Commit authored: 2025-11-20, after arXiv v2 dated 2024-07-25
 - Selection rationale: exact official-repository snapshot visible during the
   audit and the default branch that advertises Llama 3/GQA support. Decision
-  0017 rejects the older `develop` and `lmeval` heads as substitutes. This
-  selection is not presumed to be paper-era equivalent.
+  0017 rejects the older `develop` and `lmeval` heads as substitutes. Decision
+  0018 authorizes one checksum-bound project patch on that exact commit after
+  a fresh remote-ref audit found no newer official revision. This selection is
+  patched official source and is not presumed to be paper-era equivalent.
 - License: MIT
 - Paper-reported backend/hardware: Hugging Face Transformers with custom
   quantization/GEMV paths; efficiency results on one NVIDIA A100 80GB GPU.
@@ -57,12 +60,14 @@ grows.
 Relevant pinned paths include:
 
 - models/llama_kivi.py
+- models/kivi_gqa.py (added by the Decision 0018 patch)
 - models/mistral_kivi.py
 - quant/new_pack.py
 - quant/matmul.py
 - quant/csrc/gemv_cuda.cu
 - quant/csrc/pybind.cpp
 - quant/setup.py
+- third_party/patches/kivi/manifest.json
 
 The pinned main commit includes GQA-aware configuration and kernels that accept
 query-head and KV-head counts. Every relevant file is bound by Git blob and
@@ -90,13 +95,35 @@ expansion. Phase 7 therefore stops as BLOCKED under Decision 0017. No reference
 environment, CUDA build, fixture, byte-layout result, trace, sanitizer result,
 or R2 fixture root was produced.
 
+## B-019 remediation result
+
+A fresh author-maintained-ref audit found no newer official revision: `main`,
+`develop`, and `lmeval` remain at the Decision 0017 commits. Decision 0018
+therefore authorizes one project patch on the exact official commit. The patch
+SHA-256 is `c9c2dd52d4c81b844d1d1d7218ad2cd60a5b31574a387f716d466cb01310423d`
+and the resulting tree is `b617493dea5aff1a754cd27ad6be12ac512b2aee`.
+
+The patch groups the 32 query heads under their eight owning KV heads and runs
+both residual contractions as BMMs with leading dimension `batch * H_KV`.
+Attention scores and outputs retain H_Q geometry, while K/V operands and cache
+storage remain H_KV=8. CPU and SM120 BF16 checks at contexts 17 and 33 are
+exactly equal to the original repeat formula and observe no H_Q-sized K/V
+operand.
+
+This resolves B-019 under the explicit patched-source authority. It does not
+make the code an unmodified official implementation and does not complete
+Phase 7. Reference environment, official extension build, fixtures, sanitizer,
+trace, byte accounting, graph information, and durable publication remain
+unstarted.
+
 ## Dependency and porting risks
 
 1. The reference model path dynamically grows caches with torch.cat. It cannot
    be used as Measurement Lane timing code.
-2. The official advertised GQA path calls `repeat_kv` or an equivalent
-   expand/reshape helper. Physical materialization is directly confirmed at
-   8/32 heads and is the Phase 7 hard blocker; it is not deferred to Phase 8.
+2. The unpatched official GQA path calls `repeat_kv`; its physical 8-to-32-head
+   materialization remains proven historical evidence. The Decision 0018 patch
+   removes that path under checksum-bound project authority, but it is not
+   upstream. Any patch drift or upstream replacement requires a new audit.
 3. The requirements file pins torch 2.1.2, transformers 4.36.2, Triton 2.1.0,
    FlashAttention 2.5.6, and CUDA 12.1 packages. It also contains conflicting
    duplicate packaging pins and directly pins lm-evaluation-harness at commit

@@ -27,6 +27,7 @@ AUDIT_PATH = (
 LOCK_PATH = REPOSITORY_ROOT / "third_party/LOCK.json"
 SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
 GIT_OBJECT_PATTERN = re.compile(r"^[0-9a-f]{40}$")
+B019_ENTRY_COMMIT = "755c1bdb87af3e7becda792bd5d300ab877fee7e"
 
 
 def _load_json(path: Path) -> object:
@@ -35,6 +36,18 @@ def _load_json(path: Path) -> object:
 
 def _sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _sha256_at_commit(commit: str, path: str) -> str:
+    result = subprocess.run(
+        ("git", "show", f"{commit}:{path}"),
+        cwd=REPOSITORY_ROOT,
+        check=False,
+        stdout=subprocess.PIPE,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(f"cannot read {path} at {commit}")
+    return hashlib.sha256(result.stdout).hexdigest()
 
 
 class Phase7KiviSourceAuditTests(unittest.TestCase):
@@ -56,17 +69,25 @@ class Phase7KiviSourceAuditTests(unittest.TestCase):
                     "docs/decisions/"
                     "0017-kivi-source-authority-and-gqa-materialization.md"
                 ),
+                "docs/decisions/0018-kivi-b019-native-gqa-patch-authority.md",
+                "docs/evidence/phase7/kivi-b019-remediation.json",
                 "docs/evidence/phase7/kivi-source-audit.json",
                 "docs/method_notes/kivi.md",
+                "docs/phase_reports/phase7-kivi-b019-remediation.md",
                 "docs/phase_reports/phase7-kivi-reference-blocked.md",
+                "docs/plans/phase7-kivi-b019-remediation.md",
                 "docs/plans/phase7-kivi-reference.md",
                 "docs/risk_register.md",
                 "docs/status.md",
                 "docs/tasks.md",
+                "scripts/validate_kivi_b019_patch.py",
                 "scripts/validate_phase2.py",
+                "tests/unit/test_phase7_kivi_b019_remediation.py",
                 "tests/unit/test_phase7_kivi_source_audit.py",
                 "third_party/LOCK.json",
                 "third_party/NOTICE.md",
+                "third_party/patches/kivi/0001-preserve-native-gqa-kv-storage.patch",
+                "third_party/patches/kivi/manifest.json",
             }
         )
         self.assertEqual(PHASE7_ALLOWED_PATHS, expected)
@@ -106,7 +127,12 @@ class Phase7KiviSourceAuditTests(unittest.TestCase):
         )
         self.assertFalse(source["floating_branch_used"])
         self.assertFalse(source["unofficial_fork_used"])
-        self.assertEqual(source["source_lock_sha256"], _sha256(LOCK_PATH))
+        self.assertEqual(
+            source["source_lock_sha256"],
+            _sha256_at_commit(
+                B019_ENTRY_COMMIT, "third_party/LOCK.json"
+            ),
+        )
 
         lock = self.lock
         self.assertIsInstance(lock, dict)
@@ -268,8 +294,10 @@ class Phase7KiviSourceAuditTests(unittest.TestCase):
         )
         self.assertIn("Quality execution: LOCKED", status)
         self.assertIn("Full-scan admission: CLOSED", status)
-        self.assertIn("Phase 7 status: BLOCKED", status)
-        self.assertIn("Phase 8 remains unstarted", status)
+        self.assertIn("Phase 7 status: PARTIAL", status)
+        self.assertIn("B-019 is RESOLVED under patched-source authority", status)
+        self.assertIn("Phase 8, Pilot", status)
+        self.assertIn("KIVI Measurement Adapter remains fail-closed", status)
 
     def test_report_and_decision_state_the_stop_condition(self) -> None:
         report = (

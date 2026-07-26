@@ -43,7 +43,8 @@ copy, benchmark timing, or quality result is vendored here.
 - Commit: 876b4d2d08e3b1d5f70d0969c299d8c7c42ddfb6
 - Tree: c94c31b2cfd44eeb9a18cff9dcdf03adff4ac49b
 - Declared license: MIT
-- Intended use: exact Phase 7 source audit only in the current blocked attempt.
+- Intended use: exact Phase 7 reference source with the one Decision 0018
+  checksum-bound GQA remediation patch.
 
 The selected commit was authored on 2025-11-20, after arXiv v2 dated 2024-07-25.
 Decision 0017 selects the default `main` implementation because it is the
@@ -52,11 +53,19 @@ official branch that advertises Llama 3/GQA support; the older official
 presumed equivalent to the paper-era implementation. Exact relevant-file Git
 blobs and SHA-256 values are recorded in `third_party/LOCK.json`.
 
-The advertised Llama GQA path materializes recent eight-head K/V storage as a
-32-head temporary through Transformers `repeat_kv`. Phase 7 is therefore
-BLOCKED before reference-environment construction. No KIVI source is vendored,
-no KIVI CUDA or model code was executed, and no fixture or R2 fixture bundle
-was created.
+The unpatched advertised Llama GQA path materializes recent eight-head K/V
+storage as a 32-head temporary through Transformers `repeat_kv`; Decision 0017
+and its evidence remain the immutable record of that defect. Decision 0018
+authorizes one project-maintained patch on the exact official commit. The patch
+uses grouped BMM contractions while retaining eight-head K/V operands. It is
+not merged upstream and must be described as patched official source, not as an
+unmodified author-maintained implementation.
+
+Only the patch, manifest, and validation code are stored here; the upstream
+repository is not vendored. The patch passed non-timing BF16 formula and
+operand-shape checks on CPU and SM120. No KIVI reference environment, official
+extension build, fixture, sanitizer result, trace, byte-layout result, or R2
+fixture bundle has been created.
 
 ### KIVI direct Git dependency
 

@@ -13,8 +13,8 @@ authoritative local task index until issues are created elsewhere.
 | E04 | Common cache-method and CUDA Graph harness | E02-E03 | stable method protocol; correctness/allocation/path facades; capture/replay correctness; no replay allocation | complete for Phase 4 BF16 at `0cf160caa532c7cac23275c8a14fd8694789a86f`; `docs/evidence/phase4/method-admission.json` validates. TurboQuant reference work is complete, but later Measurement Lane adapters still require their own G2 evidence. |
 | E05 | TurboQuant reference lane | E00-E04 | authoritative pinned source; isolated container; golden fixtures | complete: official vLLM v0.25.1 commit `752a3a504485790a2e8491cacbb35c137339ad34`; isolated SM120 environment; 3 mandatory MSE+NC and 1 held-out deterministic fixture; exact regeneration and validation PASS |
 | E06 | TurboQuant measurement adapter | E05 | numerical, byte, graph, path, sanitizer, smoke evidence; G2-TQ | complete: execution HEAD `0df5bb4d445d48e6cba17e30723733f8de35cb14`; current-HEAD sanitizer 3/3 PASS; frozen bounded grid 9/9 PASS; 167-object root `f003bc3dc5de6b67a6d8f1b8bed7fa49b7f90f9d7edc4d1383e2d97c8aa19d6d` COMPLETE-last and cleanly retrieved; G2-TQ PASS |
-| E07 | KIVI reference lane | G2-TQ | official source authority; isolated environment; rollover and K/V asymmetry fixtures; native eight-head GQA storage | BLOCKED at source audit by B-019: official `main` commit `876b4d2d08e3b1d5f70d0969c299d8c7c42ddfb6` calls `repeat_kv` for recent K/V and physically materializes H_Q=32 storage from H_KV=8; no environment, CUDA build, fixture, trace, or R2 publication was started |
-| E08 | KIVI measurement adapter | E07 | static buffers; r_alloc(L); GQA indexing; G2-KIVI | blocked by E07/B-019; Phase 8 remains unstarted |
+| E07 | KIVI reference lane | G2-TQ | exact patched-source authority; isolated environment; rollover and K/V asymmetry fixtures; native eight-head GQA storage | partial: Decision 0018 checksum-binds one patch on the exact official commit; B-019 CPU/SM120 BF16 formula and native-eight-head operand checks PASS. Environment, official extension, fixture, sanitizer, trace, byte accounting, and R2 publication remain unstarted. |
+| E08 | KIVI measurement adapter | E07 | static buffers; r_alloc(L); GQA indexing; G2-KIVI | blocked by incomplete E07; Phase 8 remains unstarted |
 | E09 | KVQuant calibration | G2-KIVI | frozen dataset/revision/seed/cap/artifacts/checksums | pending |
 | E10 | KVQuant reference lane | E09 | dense/sparse/sink fixtures for 4/3/2-bit and cap cases | pending |
 | E11 | KVQuant measurement adapter | E10 | fixed sparse buffers; byte breakdown; graph/path tests; G2-KVQ | pending |
@@ -54,11 +54,13 @@ task list. E16 remains closed until its evidence is reviewed.
   Phase 5 adds only the TurboQuant reference lane. Phase 6A remediation is
   PASS. Phase 6 has a minimal implementation; current-HEAD sanitizer passed
   3/3, the frozen bounded grid passed 9/9, durable publication and clean
-  retrieval passed, and G2-TQ is PASS. Phase 7/E07 stopped BLOCKED at its
-  official-source GQA audit under B-019 before any environment, CUDA, fixture,
-  trace, or publication work. E08 and later tasks, KIVI adapter work, KVQuant,
-  Pilot, performance profiler, Full Scan, and quality execution remain unopened
-  and unauthorized.
+  retrieval passed, and G2-TQ is PASS. Decision 0018 authorizes exactly one
+  checksum-bound GQA patch on the official KIVI commit after no newer official
+  revision was found. B-019 CPU/SM120 checks pass under that patched-source
+  authority. E07 remains partial before environment, official extension,
+  fixture, sanitizer, trace, byte accounting, and publication work. E08 and
+  later tasks, KIVI adapter work, KVQuant, Pilot, performance profiler, Full
+  Scan, and quality execution remain unopened and unauthorized.
 - E12 includes an operator-level MHA control with identical head dimension and
   no GQA repetition.
 - B-011 through B-017 are resolved for native-host BF16 G1. The reporting-only

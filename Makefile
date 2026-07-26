@@ -31,6 +31,8 @@ PHASE6_AUTHORIZED_IMAGE_CONFIG_DIGEST := sha256:059bc9be89387369d7de9e3e9b26d85b
 PHASE6_R2_OUTER_RUN_ID ?=
 PHASE6_R2_OUTER_ARTIFACT ?=
 R2_ARTIFACT := /usr/bin/env PYTHONDONTWRITEBYTECODE=1 PYTHONNOUSERSITE=1 PYTHONPATH=$(CURDIR):$(CURDIR)/src $(PHASE2_PYTHON) scripts/r2_artifact.py
+KIVI_B019_DEVICE ?= cpu
+KIVI_B019_SOURCE_ROOT ?=
 
 .PHONY: bootstrap bootstrap-phase3 test checks format-check lint hot-path-check typecheck config-check
 .PHONY: provenance-check scope-check immutable-check package-lock-check
@@ -45,6 +47,7 @@ R2_ARTIFACT := /usr/bin/env PYTHONDONTWRITEBYTECODE=1 PYTHONNOUSERSITE=1 PYTHONP
 .PHONY: phase6a-source-safety admit-turboquant validate-admission-turboquant
 .PHONY: remediate-b018-turboquant
 .PHONY: phase6-r2-outer-bundle validate-phase6-r2-outer-bundle
+.PHONY: validate-kivi-b019-patch
 
 preflight:
 	@/usr/bin/env -i PATH=/usr/bin:/bin LC_ALL=C LANG=C TZ=UTC \
@@ -104,6 +107,7 @@ test: checks
 	@$(PHASE3_ENV) $(PHASE3_PYTHON) -m unittest discover -s tests/unit -p 'test_phase5_*.py' -v
 	@$(PHASE3_ENV) $(PHASE3_PYTHON) -m unittest tests.unit.test_phase6_r2_outer_bundle -v
 	@$(PHASE3_ENV) $(PHASE3_PYTHON) -m unittest tests.unit.test_phase7_kivi_source_audit -v
+	@$(PHASE3_ENV) $(PHASE3_PYTHON) -m unittest tests.unit.test_phase7_kivi_b019_remediation -v
 	@$(PHASE3_ENV) $(PHASE3_PYTHON) -m unittest tests.unit.test_measurement_container tests.unit.test_phase6a_bf16_parity tests.unit.test_phase6a_governance tests.unit.test_preflight_unit tests.unit.test_r2_artifact -v
 	@$(PHASE2_VALIDATE) immutable
 
@@ -122,6 +126,9 @@ reference-turboquant:
 
 validate-reference-turboquant:
 	@$(TURBOQUANT_REFERENCE_ENV) $(PHASE2_PYTHON) reference/turboquant/validate_fixtures.py
+
+validate-kivi-b019-patch:
+	@$(PHASE3_ENV) $(PHASE3_PYTHON) scripts/validate_kivi_b019_patch.py --device "$(KIVI_B019_DEVICE)" $(if $(strip $(KIVI_B019_SOURCE_ROOT)),--source-root "$(KIVI_B019_SOURCE_ROOT)")
 
 phase6a-source-safety:
 	@test -z "$$(git status --porcelain=v1 --untracked-files=all)" || { echo '{"status":"BLOCKED","reason":"source_tree_not_clean"}' >&2; exit 2; }

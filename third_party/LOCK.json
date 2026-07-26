@@ -1,7 +1,7 @@
 {
   "schema_version": 2,
   "generated_at_utc": "2026-07-21T17:13:29Z",
-  "last_updated_at_utc": "2026-07-26T11:50:33Z",
+  "last_updated_at_utc": "2026-07-26T14:57:59Z",
   "policy": {
     "checkout_by_commit_only": true,
     "floating_default_branches_forbidden": true,
@@ -118,9 +118,27 @@
       "revision_verified_with": "exact shallow checkout, git ls-remote, tree inspection, Git blob hashes, and SHA-256",
       "declared_license": "MIT",
       "license_verification_status": "verified_from_root_license",
-      "authority_status": "selected_for_phase7_source_audit",
-      "authority_scope": "The official default main implementation defines the blocked Phase 7 source audit only; paper-era equivalence is not asserted.",
-      "acquisition_status": "source_audit_blocked_gqa_materialization",
+      "authority_status": "selected_for_phase7_with_checksum_bound_b019_patch",
+      "authority_scope": "The official default main commit plus the single Decision 0018 patch defines the Phase 7 reference source. It is patched official source, not an unmodified author-maintained implementation, and paper-era equivalence is not asserted.",
+      "acquisition_status": "b019_patch_validated_reference_runtime_not_started",
+      "source_patch": {
+        "authority_decision": "docs/decisions/0018-kivi-b019-native-gqa-patch-authority.md",
+        "manifest_path": "third_party/patches/kivi/manifest.json",
+        "manifest_sha256": "44edc55492e39b8ba1207a32eda1641abcbae91ae0d01c55110c0096ed1b4a41",
+        "patch_path": "third_party/patches/kivi/0001-preserve-native-gqa-kv-storage.patch",
+        "patch_sha256": "c9c2dd52d4c81b844d1d1d7218ad2cd60a5b31574a387f716d466cb01310423d",
+        "patched_tree": "b617493dea5aff1a754cd27ad6be12ac512b2aee",
+        "upstream_status": "not_merged",
+        "unofficial_fork": false,
+        "semantic_scope": {
+          "quantization_changed": false,
+          "packing_changed": false,
+          "cache_layout_changed": false,
+          "rollover_changed": false,
+          "cuda_extension_changed": false,
+          "residual_kv_materialization_removed": true
+        }
+      },
       "official_branch_heads": {
         "main": {
           "revision": "876b4d2d08e3b1d5f70d0969c299d8c7c42ddfb6",
@@ -230,10 +248,11 @@
       "notes": [
         "Repository URL is stated in arXiv:2402.02750v2.",
         "Checkout commands must use the revision, never the observed branch.",
-        "Decision 0017 selects the official default main implementation because it is the branch that advertises Llama 3 and GQA support; develop and lmeval are incompatible, older official scopes and are not substitutes.",
+        "Decision 0017 selected the official default main implementation because it is the branch that advertises Llama 3 and GQA support; develop and lmeval remain incompatible, older official scopes and are not substitutes.",
         "This post-paper snapshot is source authority only; paper-era equivalence is not assumed.",
-        "The main Llama GQA residual path calls Transformers repeat_kv and materializes H_KV=8 storage as an H_Q=32 temporary.",
-        "Phase 7 stops before environment construction, CUDA execution, fixtures, or R2 publication."
+        "The unpatched main Llama GQA residual path calls Transformers repeat_kv and materializes H_KV=8 storage as an H_Q=32 temporary; the immutable Decision 0017 audit retains that evidence.",
+        "Decision 0018 authorizes one checksum-bound project patch that replaces only the residual GQA contractions with native-KV-head grouped BMM operations.",
+        "The patch passed exact BF16 formula equivalence and eight-head operand-shape checks on CPU and SM120, but no reference environment, official CUDA extension, fixture, sanitizer, trace, byte accounting, or R2 fixture publication has started."
       ]
     },
     {

@@ -51,10 +51,12 @@ requirements; and AGENTS.md. Decision 0005 records precedence.
   was published COMPLETE-last and cleanly retrieved. B-009 is RESOLVED.
 - Phase 0 status: PASS
 - Phase 1 remediation status: PASS
-- Phase 7 status: BLOCKED at the official-source GQA audit by B-019. No KIVI
-  environment, CUDA build, fixture, trace, R2 publication, or Measurement
-  Adapter was started. Phase 8, Pilot, Full Scan, profiling, fitting, figures,
-  and quality remain unauthorized.
+- Phase 7 status: PARTIAL. B-019 source remediation PASS under the exact
+  Decision 0018 patched-source authority; CPU and SM120 BF16 formula, native
+  eight-head operand, head-mapping, and forbidden-operation checks pass. The
+  environment, official extension, fixtures, sanitizer, trace, byte accounting,
+  Graph information, and R2 publication remain unstarted. Phase 8, Pilot, Full
+  Scan, profiling, fitting, figures, and quality remain unauthorized.
 - Active admission gate: native-host G0 PASS; authorized-container G0 PASS;
   native-host BF16 G1 PASS; G2-TQ PASS
 - Benchmark implementation changes: exact BF16 static cache, fixed-L and
@@ -111,9 +113,24 @@ audited official head advertising the required Llama 3/GQA scope. That path
 calls Transformers 4.43.1 `repeat_kv` for recent K/V. The dependency's
 `expand(...).reshape(...)` produces a distinct contiguous H_Q=32 tensor from
 H_KV=8 storage; the exact BF16 audit observed four times the eight-head storage.
-This violates the mandatory native eight-head GQA acceptance criterion. B-019
-therefore blocks Phase 7 before environment, CUDA, fixture, trace, byte-layout,
-sanitizer, Graph, or R2 work. Phase 8 remains unstarted.
+This violated the mandatory native eight-head GQA acceptance criterion and
+created B-019. The original attempt stopped before environment, CUDA, fixture,
+trace, byte-layout, sanitizer, Graph, or R2 work; its evidence remains immutable.
+
+The B-019 remediation restarted entry at clean commit
+`755c1bdb87af3e7becda792bd5d300ab877fee7e`. A fresh remote-ref audit found no
+new author-maintained revision. Decision 0018 therefore authorizes exactly one
+checksum-bound project patch on the same official base commit. Patch, manifest,
+patched files, and resulting tree
+`b617493dea5aff1a754cd27ad6be12ac512b2aee` are bound in the source lock.
+
+CPU and SM120 BF16 checks at contexts 17 and 33 match the original repeat
+formula exactly. Both residual BMMs operate at `batch * H_KV=8`, preserve the
+explicit `query_head // 4` mapping, and add no prohibited expansion operation.
+B-019 is RESOLVED under patched-source authority. Phase 7 remains PARTIAL:
+reference environment, official extension, fixtures, sanitizer, trace, graph
+information, byte accounting, and R2 fixture publication are unstarted. Phase
+8 remains unstarted and the KIVI Measurement Adapter remains fail-closed.
 
 ## Phase 5 TurboQuant reference lane
 
@@ -517,7 +534,7 @@ recorded in B-008/R-014.
 | Source | Exact revision | Phase 0 role |
 |---|---|---|
 | vLLM v0.25.1 | 752a3a504485790a2e8491cacbb35c137339ad34 | TurboQuant source/reference candidate |
-| KIVI | 876b4d2d08e3b1d5f70d0969c299d8c7c42ddfb6 | official-main source-audit authority; Phase 7 blocked by GQA materialization; no paper-era equivalence claim |
+| KIVI | 876b4d2d08e3b1d5f70d0969c299d8c7c42ddfb6 + Decision 0018 patch | patched official-source authority; B-019 resolved; Phase 7 runtime incomplete; no paper-era equivalence claim |
 | KVQuant | 57a238357f0ffe50084670fcd5781c9848f80ea2 | official-paper calibration/reference candidate |
 | lm-evaluation-harness | c9bbec6e7de418b9082379da82797522eb173054 | direct KIVI Reference Lane dependency |
 
@@ -543,8 +560,8 @@ reference execution is recorded separately above.
 | Phase 6 TurboQuant measurement adapter | PASS | Execution HEAD `0df5bb4d445d48e6cba17e30723733f8de35cb14`; current-HEAD sanitizer 3/3 PASS; frozen bounded grid 9/9 PASS; 167-object admission root published COMPLETE-last and cleanly retrieved. |
 | Phase 6A Measurement Container and R2 prerequisites | PASS | Exact image built and scanned; container G0 and both BF16 parity smokes PASS; private R2 state and indefinite lock verified; synthetic and 222-object G0 roots cleanly retrieved; Decision 0016 accepted. B-009/B-010 RESOLVED. |
 | G2-TQ | PASS | All three mandatory configurations pass the frozen admission criteria; final root `f003bc3dc5de6b67a6d8f1b8bed7fa49b7f90f9d7edc4d1383e2d97c8aa19d6d` is durably published and cleanly retrieved. Global G2 remains NOT EVALUATED. |
-| Phase 7 KIVI reference lane | BLOCKED | Entry passed; exact official-main source audit found `repeat_kv` physically materializes H_Q=32 recent K/V from H_KV=8 storage. B-019; no runtime or fixture work began. |
-| G2-KIVI | BLOCKED / NOT EVALUATED | E07 cannot pass under the selected authority; E08 remains unstarted |
+| Phase 7 KIVI reference lane | PARTIAL | Original source audit found B-019; Decision 0018 exact patch passes CPU/SM120 BF16 formula and native-eight-head GQA checks. Environment, official extension, fixtures, sanitizer, trace, byte accounting, graph information, and R2 publication remain unstarted. |
+| G2-KIVI | NOT EVALUATED | E07 remains incomplete after B-019 source remediation; E08 remains unstarted |
 | G2-KVQ | NOT EVALUATED | requires E09-E11 |
 | G1-G5 unified admission | NOT EVALUATED | requires E12 |
 | Pilot/full-scan gates | CLOSED / NOT EVALUATED | Phase 6 method admission does not authorize Pilot or Full Scan |
@@ -581,9 +598,9 @@ is COMPLETE-last and passes clean R2 retrieval after an initial preserved
 `TransportError` and an explicit conditional continuation. Native-host and
 authorized-container G0 plus native-host BF16 G1 remain PASS; G2-TQ is PASS;
 global G2-G5 remain NOT EVALUATED; Full Scan remains CLOSED; quality execution
-remains LOCKED; and `PERFORMANCE_DATA_FROZEN` remains absent. Phase 7/E07 is
-BLOCKED by B-019 before runtime execution. The minimum remediation is a new
-author-maintained KIVI revision whose official Llama 3/GQA path consumes
-eight-head K/V storage without `repeat_kv` or equivalent H_Q materialization,
-followed by a fresh exact source audit. Phase 8, Pilot, profiling, fitting,
-figures, and quality execution remain unauthorized.
+remains LOCKED; and `PERFORMANCE_DATA_FROZEN` remains absent. B-019 is RESOLVED
+under the exact Decision 0018 patched-source authority, while E07 remains
+PARTIAL. A separate Phase 7 continuation must rerun clean entry, then complete
+the isolated environment, official extension build, deterministic fixtures,
+rollover/layout checks, sanitizer, trace, graph information, byte accounting,
+durable R2 publication, and clean retrieval. Phase 8, Pilot, profiling, fitting,
