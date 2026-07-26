@@ -79,6 +79,7 @@ class Phase6TurboQuantCudaTests(unittest.TestCase):
             pass
 
         loaded = load_frozen_model()
+        runner = None
         try:
             with mock.patch(
                 "scripts.phase6_turboquant_admission.run_fixed_l",
@@ -101,6 +102,69 @@ class Phase6TurboQuantCudaTests(unittest.TestCase):
                     )
                 runner.assert_called_once()
         finally:
+            if runner is not None:
+                runner.reset_mock()
+                runner = None
+            loaded = None
+            gc.collect()
+            torch = __import__("torch")
+            torch.cuda.synchronize()
+            torch.cuda.empty_cache()
+
+    def test_4bit_growing_l128_o4_eager_non_timing(self) -> None:
+        class FocusedStop(RuntimeError):
+            pass
+
+        loaded = load_frozen_model()
+        runner = None
+        session = None
+        try:
+            with mock.patch(
+                "scripts.phase6_turboquant_admission.run_growing_context",
+                side_effect=FocusedStop(
+                    "focused reproduction stopped before timing"
+                ),
+            ) as runner:
+                with self.assertRaisesRegex(
+                    FocusedStop,
+                    "focused reproduction stopped before timing",
+                ):
+                    _execute_point(
+                        loaded=loaded,
+                        configuration="turboquant_4bit_nc",
+                        runner_kind=RunnerKind.GROWING_CONTEXT,
+                        graph_mode=GraphMode.EAGER,
+                        context_length=128,
+                        output_steps=4,
+                        global_audits_passed=True,
+                    )
+                runner.assert_called_once()
+                self.assertEqual(
+                    runner.call_args.kwargs,
+                    {"expected_steps": 4},
+                )
+                session = runner.call_args.args[0]
+                self.assertEqual(session.state, "ready")
+                self.assertEqual(
+                    [
+                        operation.historical_context
+                        for operation in session.operation_keys
+                    ],
+                    [128, 129, 130, 131],
+                )
+                self.assertTrue(
+                    all(
+                        handle.key_states is None
+                        and handle.value_states is None
+                        and handle.prefill is False
+                        for handle in session.cache._handles.values()
+                    )
+                )
+        finally:
+            if runner is not None:
+                runner.reset_mock()
+                runner = None
+            session = None
             loaded = None
             gc.collect()
             torch = __import__("torch")

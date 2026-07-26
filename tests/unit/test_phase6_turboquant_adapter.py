@@ -6,7 +6,9 @@ import gc
 import hashlib
 import json
 from pathlib import Path
+from types import SimpleNamespace
 import unittest
+from unittest import mock
 import weakref
 
 from kvbench.adapters import (
@@ -18,6 +20,7 @@ from kvbench.adapters import (
 )
 from kvbench.config import load_config
 from kvbench.errors import ConfigLoadError, PhaseNotImplementedError
+from kvbench.runtime.static_cache import CacheStateError
 from kvbench.runtime.turboquant_admission import (
     release_fixture_cuda_resources_for_sanitizer,
 )
@@ -238,6 +241,113 @@ class TurboQuantAdapterTests(unittest.TestCase):
         self.assertIsNone(cache_reference())
         with self.assertRaises(ReferenceError):
             _ = handle.cache.config_name
+
+    def test_prefill_attention_handle_is_one_shot(self) -> None:
+        method = build_method_adapter("turboquant_4bit_nc", _context())
+        cache = method.allocate(
+            batch_size=1,
+            capacity=18,
+            device="cpu",
+        )
+        attention = SimpleNamespace(layer_idx=2)
+        query_states = object()
+
+        key_states = object()
+        value_states = object()
+        handle = cache.attended_handle(
+            2,
+            key_states=key_states,
+            value_states=value_states,
+            prefill=True,
+        )
+        output = object()
+        with mock.patch(
+            "kvbench.adapters.turboquant.flash_attention_forward",
+            return_value=(output, None),
+        ) as flash:
+            self.assertIs(
+                method.decode_attention(
+                    attention,
+                    query_states,
+                    handle,
+                    handle,
+                    scaling=0.125,
+                ),
+                output,
+            )
+            flash.assert_called_once_with(
+                attention,
+                query_states,
+                key_states,
+                value_states,
+                None,
+                0.125,
+                dropout=0.0,
+            )
+        self.assertIs(cache._handles[2], handle)
+        self.assertIsNone(handle.key_states)
+        self.assertIsNone(handle.value_states)
+        self.assertFalse(handle.prefill)
+
+        key_states = object()
+        value_states = object()
+        handle = cache.attended_handle(
+            2,
+            key_states=key_states,
+            value_states=value_states,
+            prefill=True,
+        )
+        with mock.patch(
+            "kvbench.adapters.turboquant.flash_attention_forward",
+            side_effect=RuntimeError("forced Flash failure"),
+        ) as flash:
+            with self.assertRaisesRegex(
+                RuntimeError,
+                "forced Flash failure",
+            ):
+                method.decode_attention(
+                    attention,
+                    query_states,
+                    handle,
+                    handle,
+                    scaling=0.125,
+                )
+            flash.assert_called_once_with(
+                attention,
+                query_states,
+                key_states,
+                value_states,
+                None,
+                0.125,
+                dropout=0.0,
+            )
+        self.assertIs(cache._handles[2], handle)
+        self.assertIsNone(handle.key_states)
+        self.assertIsNone(handle.value_states)
+        self.assertFalse(handle.prefill)
+
+        key_states = object()
+        handle = cache.attended_handle(
+            2,
+            key_states=key_states,
+            value_states=None,
+            prefill=True,
+        )
+        with self.assertRaisesRegex(
+            CacheStateError,
+            "TurboQuant prefill handle lost raw K/V",
+        ):
+            method.decode_attention(
+                attention,
+                query_states,
+                handle,
+                handle,
+                scaling=0.125,
+            )
+        self.assertIs(cache._handles[2], handle)
+        self.assertIsNone(handle.key_states)
+        self.assertIsNone(handle.value_states)
+        self.assertFalse(handle.prefill)
 
     def test_unsupported_geometry_and_wrong_variant_rejected(self) -> None:
         with self.assertRaises(ValueError):

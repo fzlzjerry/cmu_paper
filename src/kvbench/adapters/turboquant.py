@@ -472,23 +472,28 @@ class TurboQuantMethodAdapter:
                     "TurboQuant attended handle identity mismatch"
                 )
             if handle.prefill:
-                if (
-                    handle.key_states is None
-                    or handle.value_states is None
-                ):
-                    raise CacheStateError(
-                        "TurboQuant prefill handle lost raw K/V"
+                try:
+                    if (
+                        handle.key_states is None
+                        or handle.value_states is None
+                    ):
+                        raise CacheStateError(
+                            "TurboQuant prefill handle lost raw K/V"
+                        )
+                    output, _ = flash_attention_forward(
+                        attention,
+                        query_states,
+                        handle.key_states,
+                        handle.value_states,
+                        None,
+                        scaling,
+                        dropout=0.0,
                     )
-                output, _ = flash_attention_forward(
-                    attention,
-                    query_states,
-                    handle.key_states,
-                    handle.value_states,
-                    None,
-                    scaling,
-                    dropout=0.0,
-                )
-                return output
+                    return output
+                finally:
+                    handle.key_states = None
+                    handle.value_states = None
+                    handle.prefill = False
             return self._decode_compressed(
                 handle,
                 query_states,
