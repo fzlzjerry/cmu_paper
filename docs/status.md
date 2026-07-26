@@ -12,8 +12,8 @@ requirements; and AGENTS.md. Decision 0005 records precedence.
   Measurement Container Docker image ID / OCI image-index digest is
   `sha256:059bc9be89387369d7de9e3e9b26d85b6e9902c41e7dbf002ebc45edd188fb7e`;
   container G0 and both BF16 parity smokes pass, and Decision 0016 binds
-  Measurement Lane CUDA execution to that digest only. Phase 5 remains the
-  latest completed method reference lane. Official vLLM
+  Measurement Lane CUDA execution to that digest only. Phase 7 is the latest
+  completed method reference lane. Official vLLM
   `v0.25.1` commit `752a3a504485790a2e8491cacbb35c137339ad34` is pinned.
 - Phase 6 status: PASS for method-specific G2-TQ at execution commit
   `0df5bb4d445d48e6cba17e30723733f8de35cb14`. The approved admission driver
@@ -51,12 +51,13 @@ requirements; and AGENTS.md. Decision 0005 records precedence.
   was published COMPLETE-last and cleanly retrieved. B-009 is RESOLVED.
 - Phase 0 status: PASS
 - Phase 1 remediation status: PASS
-- Phase 7 status: PARTIAL. B-019 source remediation PASS under the exact
-  Decision 0018 patched-source authority; CPU and SM120 BF16 formula, native
-  eight-head operand, head-mapping, and forbidden-operation checks pass. The
-  environment, official extension, fixtures, sanitizer, trace, byte accounting,
-  Graph information, and R2 publication remain unstarted. Phase 8, Pilot, Full
-  Scan, profiling, fitting, figures, and quality remain unauthorized.
+- Phase 7 status: PASS under exact Decision 0018 patched-source authority.
+  The isolated reference image, official extension, native SM120, PTX/JIT,
+  zero-error sanitizer, four deterministic fixtures, rollover, actual bytes,
+  native eight-head GQA, and non-performance trace pass. Final 30-object R2
+  root `abd164da0adf9e0c1404e8fba1f6a6e42e57944481cdf060b91e8cef175ed302`
+  is COMPLETE-last and cleanly retrieved. Phase 8, Pilot, Full Scan, profiling,
+  fitting, figures, performance, and quality remain unauthorized.
 - Active admission gate: native-host G0 PASS; authorized-container G0 PASS;
   native-host BF16 G1 PASS; G2-TQ PASS
 - Benchmark implementation changes: exact BF16 static cache, fixed-L and
@@ -127,10 +128,14 @@ patched files, and resulting tree
 CPU and SM120 BF16 checks at contexts 17 and 33 match the original repeat
 formula exactly. Both residual BMMs operate at `batch * H_KV=8`, preserve the
 explicit `query_head // 4` mapping, and add no prohibited expansion operation.
-B-019 is RESOLVED under patched-source authority. Phase 7 remains PARTIAL:
-reference environment, official extension, fixtures, sanitizer, trace, graph
-information, byte accounting, and R2 fixture publication are unstarted. Phase
-8 remains unstarted and the KIVI Measurement Adapter remains fail-closed.
+B-019 is RESOLVED under patched-source authority. The continuation from clean
+commit `3417ea0e7f322369eed21bb787a9a9a19b0a69bd` completes Phase 7: the locked
+reference image, unchanged official extension, native SM120 and PTX/JIT,
+sanitizer, four fixtures, rollover, byte ownership, native eight-head GQA,
+duration-free trace, durable publication, and clean retrieval all pass. The
+final 30-object root is
+`abd164da0adf9e0c1404e8fba1f6a6e42e57944481cdf060b91e8cef175ed302`.
+Phase 8 remains unstarted and the KIVI Measurement Adapter remains fail-closed.
 
 ## Phase 5 TurboQuant reference lane
 
@@ -534,7 +539,7 @@ recorded in B-008/R-014.
 | Source | Exact revision | Phase 0 role |
 |---|---|---|
 | vLLM v0.25.1 | 752a3a504485790a2e8491cacbb35c137339ad34 | TurboQuant source/reference candidate |
-| KIVI | 876b4d2d08e3b1d5f70d0969c299d8c7c42ddfb6 + Decision 0018 patch | patched official-source authority; B-019 resolved; Phase 7 runtime incomplete; no paper-era equivalence claim |
+| KIVI | 876b4d2d08e3b1d5f70d0969c299d8c7c42ddfb6 + Decision 0018 patch | patched official-source authority; B-019 resolved; Phase 7 reference PASS; no paper-era equivalence claim |
 | KVQuant | 57a238357f0ffe50084670fcd5781c9848f80ea2 | official-paper calibration/reference candidate |
 | lm-evaluation-harness | c9bbec6e7de418b9082379da82797522eb173054 | direct KIVI Reference Lane dependency |
 
@@ -560,8 +565,8 @@ reference execution is recorded separately above.
 | Phase 6 TurboQuant measurement adapter | PASS | Execution HEAD `0df5bb4d445d48e6cba17e30723733f8de35cb14`; current-HEAD sanitizer 3/3 PASS; frozen bounded grid 9/9 PASS; 167-object admission root published COMPLETE-last and cleanly retrieved. |
 | Phase 6A Measurement Container and R2 prerequisites | PASS | Exact image built and scanned; container G0 and both BF16 parity smokes PASS; private R2 state and indefinite lock verified; synthetic and 222-object G0 roots cleanly retrieved; Decision 0016 accepted. B-009/B-010 RESOLVED. |
 | G2-TQ | PASS | All three mandatory configurations pass the frozen admission criteria; final root `f003bc3dc5de6b67a6d8f1b8bed7fa49b7f90f9d7edc4d1383e2d97c8aa19d6d` is durably published and cleanly retrieved. Global G2 remains NOT EVALUATED. |
-| Phase 7 KIVI reference lane | PARTIAL | Original source audit found B-019; Decision 0018 exact patch passes CPU/SM120 BF16 formula and native-eight-head GQA checks. Environment, official extension, fixtures, sanitizer, trace, byte accounting, graph information, and R2 publication remain unstarted. |
-| G2-KIVI | NOT EVALUATED | E07 remains incomplete after B-019 source remediation; E08 remains unstarted |
+| Phase 7 KIVI reference lane | PASS | Exact patched source, locked image, official extension, SM120/PTX/JIT, sanitizer, four fixtures, rollover/bytes/GQA/trace, and 30-object R2 publication plus clean retrieval pass. |
+| G2-KIVI | NOT EVALUATED | Reference completion does not admit a Measurement Adapter; E08 remains unstarted and fail-closed. |
 | G2-KVQ | NOT EVALUATED | requires E09-E11 |
 | G1-G5 unified admission | NOT EVALUATED | requires E12 |
 | Pilot/full-scan gates | CLOSED / NOT EVALUATED | Phase 6 method admission does not authorize Pilot or Full Scan |
@@ -599,8 +604,8 @@ is COMPLETE-last and passes clean R2 retrieval after an initial preserved
 authorized-container G0 plus native-host BF16 G1 remain PASS; G2-TQ is PASS;
 global G2-G5 remain NOT EVALUATED; Full Scan remains CLOSED; quality execution
 remains LOCKED; and `PERFORMANCE_DATA_FROZEN` remains absent. B-019 is RESOLVED
-under the exact Decision 0018 patched-source authority, while E07 remains
-PARTIAL. A separate Phase 7 continuation must rerun clean entry, then complete
-the isolated environment, official extension build, deterministic fixtures,
-rollover/layout checks, sanitizer, trace, graph information, byte accounting,
-durable R2 publication, and clean retrieval. Phase 8, Pilot, profiling, fitting,
+under the exact Decision 0018 patched-source authority, and E07 is PASS. The
+exact 30-object root `abd164da0adf9e0c1404e8fba1f6a6e42e57944481cdf060b91e8cef175ed302`
+is COMPLETE-last and passes clean retrieval. Phase 8, Pilot, profiling, fitting,
+figures, Full Scan, performance execution, and quality execution remain closed
+or unauthorized; the KIVI Measurement Adapter remains fail-closed.

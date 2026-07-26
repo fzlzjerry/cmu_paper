@@ -83,7 +83,7 @@ def _run_git(source_root: Path, *arguments: str) -> str:
         raise ValidationError(
             f"git {' '.join(arguments)} failed with exit {result.returncode}"
         )
-    return result.stdout.strip()
+    return result.stdout.rstrip("\n")
 
 
 def _validate_source_root(

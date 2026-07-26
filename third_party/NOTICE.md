@@ -63,9 +63,13 @@ unmodified author-maintained implementation.
 
 Only the patch, manifest, and validation code are stored here; the upstream
 repository is not vendored. The patch passed non-timing BF16 formula and
-operand-shape checks on CPU and SM120. No KIVI reference environment, official
-extension build, fixture, sanitizer result, trace, byte-layout result, or R2
-fixture bundle has been created.
+operand-shape checks on CPU and SM120. The isolated Phase 7 reference lane then
+built the unchanged official CUDA extension for native SM120 plus PTX, passed
+forced PTX/JIT and minimal Compute Sanitizer controls, generated four
+deterministic fixture configurations, and published the checksum-bound bundle
+to the existing private, locked R2 prefix. No upstream source tree, model
+weights, credentials, source/build caches, or unrelated historical evidence
+are included in the fixture bundle.
 
 ### KIVI direct Git dependency
 

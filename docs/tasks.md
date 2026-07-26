@@ -13,8 +13,8 @@ authoritative local task index until issues are created elsewhere.
 | E04 | Common cache-method and CUDA Graph harness | E02-E03 | stable method protocol; correctness/allocation/path facades; capture/replay correctness; no replay allocation | complete for Phase 4 BF16 at `0cf160caa532c7cac23275c8a14fd8694789a86f`; `docs/evidence/phase4/method-admission.json` validates. TurboQuant reference work is complete, but later Measurement Lane adapters still require their own G2 evidence. |
 | E05 | TurboQuant reference lane | E00-E04 | authoritative pinned source; isolated container; golden fixtures | complete: official vLLM v0.25.1 commit `752a3a504485790a2e8491cacbb35c137339ad34`; isolated SM120 environment; 3 mandatory MSE+NC and 1 held-out deterministic fixture; exact regeneration and validation PASS |
 | E06 | TurboQuant measurement adapter | E05 | numerical, byte, graph, path, sanitizer, smoke evidence; G2-TQ | complete: execution HEAD `0df5bb4d445d48e6cba17e30723733f8de35cb14`; current-HEAD sanitizer 3/3 PASS; frozen bounded grid 9/9 PASS; 167-object root `f003bc3dc5de6b67a6d8f1b8bed7fa49b7f90f9d7edc4d1383e2d97c8aa19d6d` COMPLETE-last and cleanly retrieved; G2-TQ PASS |
-| E07 | KIVI reference lane | G2-TQ | exact patched-source authority; isolated environment; rollover and K/V asymmetry fixtures; native eight-head GQA storage | partial: Decision 0018 checksum-binds one patch on the exact official commit; B-019 CPU/SM120 BF16 formula and native-eight-head operand checks PASS. Environment, official extension, fixture, sanitizer, trace, byte accounting, and R2 publication remain unstarted. |
-| E08 | KIVI measurement adapter | E07 | static buffers; r_alloc(L); GQA indexing; G2-KIVI | blocked by incomplete E07; Phase 8 remains unstarted |
+| E07 | KIVI reference lane | G2-TQ | exact patched-source authority; isolated environment; rollover and K/V asymmetry fixtures; native eight-head GQA storage | complete: exact source plus Decision 0018 patch; locked reference image; SM120/PTX/JIT and zero-error sanitizer; four deterministic fixture configurations; rollover, actual bytes, native eight-head GQA, non-performance trace; COMPLETE-last R2 publication and clean retrieval PASS |
+| E08 | KIVI measurement adapter | E07 | static buffers; r_alloc(L); GQA indexing; G2-KIVI | not started; requires a separate Phase 8 proposal and authorization |
 | E09 | KVQuant calibration | G2-KIVI | frozen dataset/revision/seed/cap/artifacts/checksums | pending |
 | E10 | KVQuant reference lane | E09 | dense/sparse/sink fixtures for 4/3/2-bit and cap cases | pending |
 | E11 | KVQuant measurement adapter | E10 | fixed sparse buffers; byte breakdown; graph/path tests; G2-KVQ | pending |
@@ -56,9 +56,9 @@ task list. E16 remains closed until its evidence is reviewed.
   3/3, the frozen bounded grid passed 9/9, durable publication and clean
   retrieval passed, and G2-TQ is PASS. Decision 0018 authorizes exactly one
   checksum-bound GQA patch on the official KIVI commit after no newer official
-  revision was found. B-019 CPU/SM120 checks pass under that patched-source
-  authority. E07 remains partial before environment, official extension,
-  fixture, sanitizer, trace, byte accounting, and publication work. E08 and
+  revision was found. E07 is complete under that patched-source authority:
+  the locked SM120 reference, four fixtures, rollover/byte/GQA evidence,
+  sanitizer, trace, publication, and clean retrieval pass. E08 and
   later tasks, KIVI adapter work, KVQuant, Pilot, performance profiler, Full
   Scan, and quality execution remain unopened and unauthorized.
 - E12 includes an operator-level MHA control with identical head dimension and

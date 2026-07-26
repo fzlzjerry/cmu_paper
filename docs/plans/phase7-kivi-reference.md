@@ -1,6 +1,6 @@
 # Phase 7 KIVI reference plan
 
-Status: BLOCKED during source audit on 2026-07-26.
+Status: COMPLETE under Decision 0018 patched-source authority on 2026-07-27.
 
 ## Authority and source
 
@@ -44,7 +44,7 @@ padding, workspace, and total allocation directly from source-owned tensors.
 Only a finalized COMPLETE-last fixture bundle would be published through the
 existing R2 tool and cleanly retrieved.
 
-## Hard stop
+## Historical hard stop
 
 The selected source fails the mandatory GQA proof before environment or CUDA
 work. Its advertised Llama GQA decode path calls the exact Transformers
@@ -61,3 +61,30 @@ Minimum remediation is an author-maintained source revision whose official
 Llama GQA path consumes eight-head residual and quantized storage without
 materialization. A new task must restart Phase 7 entry and source audit against
 that exact revision.
+
+## Decision 0018 continuation result
+
+After a fresh entry at clean commit
+`3417ea0e7f322369eed21bb787a9a9a19b0a69bd`, the exact official source plus
+Decision 0018 patch passed the complete source audit and runtime lane.
+
+The isolated container is bound by
+`reference/kivi/environment.json` and `reference/kivi/build_manifest.json`.
+The unchanged official extension builds through `quant/setup.py`, contains
+native `sm_120` plus `compute_120` PTX, executes through a forced PTX-only
+relink in a fresh process, and passes the minimal Compute Sanitizer kernel
+families with zero errors.
+
+Fixtures freeze the four planned configurations, basic L=17-to-18 behavior,
+and rollover states L=31/32/33 plus post-rollover decode at L=34. Actual
+source-owned tensor bytes and a static L=64 source-layout calculation are
+checksum-bound. Runtime operands retain eight-head K/V storage, use explicit
+`query_head // 4` mapping, and contain no K/V expansion materialization.
+
+The reference trace discards duration fields and makes no performance claim.
+The 30-object fixture bundle is COMPLETE-last at R2 root
+`abd164da0adf9e0c1404e8fba1f6a6e42e57944481cdf060b91e8cef175ed302`
+and passes clean retrieval with exact inventory and ledger verification.
+
+Phase 8, the KIVI Measurement Adapter, performance work, and quality work
+remain deferred and were not started.

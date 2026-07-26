@@ -10,7 +10,7 @@ import unittest
 
 from kvbench.adapters.factory import build_method_adapter
 from kvbench.errors import ErrorCode, PhaseNotImplementedError
-from scripts.validate_kivi_b019_patch import validate
+from scripts.validate_kivi_b019_patch import _run_git, validate
 
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
@@ -118,6 +118,18 @@ class Phase7KiviB019RemediationTests(unittest.TestCase):
         self.assertNotIn(".expand(", added_source)
         self.assertEqual(added_source.count("torch.bmm("), 2)
 
+    def test_git_output_preserves_porcelain_status_prefix(self) -> None:
+        status = _run_git(
+            REPOSITORY_ROOT,
+            "status",
+            "--porcelain",
+            "--untracked-files=all",
+        )
+        if status:
+            self.assertIn(
+                status[0], {" ", "M", "A", "D", "R", "C", "U", "?"}
+            )
+
     def test_cpu_semantics_head_mapping_and_native_kv_operands(self) -> None:
         result = validate(device="cpu")
         self.assertEqual(result["status"], "PASS")
@@ -211,10 +223,10 @@ class Phase7KiviB019RemediationTests(unittest.TestCase):
         self.assertFalse(
             (REPOSITORY_ROOT / "src/kvbench/adapters/kivi.py").exists()
         )
-        self.assertFalse(
+        self.assertTrue(
             (REPOSITORY_ROOT / "docker/reference-kivi.Dockerfile").exists()
         )
-        self.assertFalse((REPOSITORY_ROOT / "reference/kivi").exists())
+        self.assertTrue((REPOSITORY_ROOT / "reference/kivi").is_dir())
 
 
 if __name__ == "__main__":

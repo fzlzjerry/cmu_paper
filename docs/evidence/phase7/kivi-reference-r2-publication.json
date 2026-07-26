@@ -1,0 +1,128 @@
+{
+  "schema_version": "kvbench-phase7-kivi-reference-r2-publication-1.1.0",
+  "phase": 7,
+  "method": "kivi",
+  "lane": "reference",
+  "status": "PASS",
+  "local_artifact": {
+    "path": "artifacts/phase7_kivi_reference/phase7-kivi-reference-20260726t183720115881000z-3417ea0-v5",
+    "root_sha256": "abd164da0adf9e0c1404e8fba1f6a6e42e57944481cdf060b91e8cef175ed302",
+    "object_count": 30,
+    "validation_result": "PASS",
+    "immutable": true
+  },
+  "publication": {
+    "provider": "cloudflare_r2",
+    "bucket": "kvbench-artifacts",
+    "prefix": "kvbench/sha256",
+    "uri": "r2://kvbench-artifacts/kvbench/sha256/abd164da0adf9e0c1404e8fba1f6a6e42e57944481cdf060b91e8cef175ed302/",
+    "root_sha256": "abd164da0adf9e0c1404e8fba1f6a6e42e57944481cdf060b91e8cef175ed302",
+    "object_count": 30,
+    "uploaded_count": 30,
+    "verified_existing_count": 0,
+    "complete_last": true,
+    "publication_order_sha256": "dd1c6f43d7b32071df0c6447ab8541e38e047daeea078731316a1969ad222056",
+    "published_at_utc": "2026-07-26T18:38:48.075620Z",
+    "result": "PASS"
+  },
+  "prior_append_only_publication": {
+    "root_sha256": "2bef29dfc8852129c8e24ff0a8cf64563b5ebb72f270d9cffc0522ef2363cb2e",
+    "uri": "r2://kvbench-artifacts/kvbench/sha256/2bef29dfc8852129c8e24ff0a8cf64563b5ebb72f270d9cffc0522ef2363cb2e/",
+    "object_count": 30,
+    "published_at_utc": "2026-07-26T17:33:14.971334Z",
+    "clean_retrieval_result": "PASS",
+    "final_authority": false,
+    "reason": "preserved unchanged; its bundled NOTICE ended with a truncated exclusion sentence"
+  },
+  "earlier_append_only_publication": {
+    "root_sha256": "b309a0a1771e362b89e695b4baab51dc530e1f315cf1df084fa64bccff6413b4",
+    "uri": "r2://kvbench-artifacts/kvbench/sha256/b309a0a1771e362b89e695b4baab51dc530e1f315cf1df084fa64bccff6413b4/",
+    "object_count": 30,
+    "published_at_utc": "2026-07-26T17:26:28.359556Z",
+    "clean_retrieval_result": "PASS",
+    "final_authority": false,
+    "reason": "preserved unchanged; its bundled NOTICE retained the pre-runtime status"
+  },
+  "clean_retrieval": {
+    "fresh_empty_directory": true,
+    "root_sha256": "abd164da0adf9e0c1404e8fba1f6a6e42e57944481cdf060b91e8cef175ed302",
+    "object_count": 30,
+    "inventory_valid": true,
+    "checksum_ledger_valid": true,
+    "complete_marker_valid": true,
+    "unexpected_objects": false,
+    "retrieved_at_utc": "2026-07-26T18:39:17.496716Z",
+    "verification_result": "PASS"
+  },
+  "bucket_lock": {
+    "enabled": true,
+    "lock_rule_id": "kvbench-evidence-indefinite",
+    "lock_scope": "exact",
+    "covered_prefix": "kvbench/sha256/",
+    "retention_type": "Indefinite",
+    "bucket_public": false,
+    "verification_result": "PASS",
+    "verified_at_utc": "2026-07-26T18:39:02.676347Z"
+  },
+  "coverage": {
+    "source_authority": [
+      "third_party/LOCK.json",
+      "third_party/NOTICE.md",
+      "third_party/patches/kivi/manifest.json",
+      "third_party/patches/kivi/0001-preserve-native-gqa-kv-storage.patch",
+      "reference/kivi/source_manifest.json"
+    ],
+    "environment_and_build": [
+      "docker/reference-kivi.Dockerfile",
+      "reference/kivi/environment.json",
+      "reference/kivi/build_manifest.json",
+      "reference/kivi/python-freeze.txt",
+      "reference/kivi/generate_fixtures.py",
+      "reference/kivi/validate_fixtures.py"
+    ],
+    "fixture_controls": [
+      "reference/kivi/fixtures/fixture_set.json",
+      "reference/kivi/fixtures/checksums.sha256"
+    ],
+    "configurations": [
+      "reference/kivi/fixtures/k4v4/fixture.json",
+      "reference/kivi/fixtures/k2v4/fixture.json",
+      "reference/kivi/fixtures/k2v2/fixture.json",
+      "reference/kivi/fixtures/k4v2/fixture.json"
+    ],
+    "reproduction_inputs": [
+      "configs/methods/kivi.yaml",
+      "configs/models/primary_gqa_model.yaml",
+      "scripts/validate_kivi_b019_patch.py",
+      "validation/reference-kivi-validation.json"
+    ]
+  },
+  "receipt_inside_published_bundle": false,
+  "credential_status": {
+    "R2_ACCOUNT_ID": "PRESENT",
+    "R2_BUCKET": "PRESENT",
+    "R2_ENDPOINT": "PRESENT",
+    "AWS_ACCESS_KEY_ID": "PRESENT",
+    "AWS_SECRET_ACCESS_KEY": "PRESENT",
+    "CLOUDFLARE_API_TOKEN": "PRESENT",
+    "KVBENCH_R2_PREFIX": "PRESENT"
+  },
+  "credential_values_recorded": false,
+  "env_file_read": false,
+  "model_weights_uploaded": false,
+  "source_cache_uploaded": false,
+  "build_cache_uploaded": false,
+  "historical_artifacts_uploaded": false,
+  "failed_local_finalizations": [
+    {
+      "published": false,
+      "preserved_path": "artifacts/phase7_kivi_reference/.failed-phase7-kivi-reference-20260726t172420293896332z-3417ea0-ledger-scope",
+      "reason": "root checksum-ledger construction excluded a nested fixture ledger by basename; local validation rejected it before publication"
+    },
+    {
+      "published": false,
+      "preserved_path": "artifacts/phase7_kivi_reference/.phase7-kivi-reference-20260726t183639004450000z-3417ea0-v4.stage",
+      "reason": "directory fsync wrapper raised after COMPLETE creation but before validation and no-replace promotion; no R2 operation occurred"
+    }
+  ]
+}

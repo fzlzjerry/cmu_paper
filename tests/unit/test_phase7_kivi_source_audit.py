@@ -64,6 +64,7 @@ class Phase7KiviSourceAuditTests(unittest.TestCase):
         expected = frozenset(
             {
                 "Makefile",
+                "docker/reference-kivi.Dockerfile",
                 "docs/blockers.md",
                 (
                     "docs/decisions/"
@@ -71,19 +72,40 @@ class Phase7KiviSourceAuditTests(unittest.TestCase):
                 ),
                 "docs/decisions/0018-kivi-b019-native-gqa-patch-authority.md",
                 "docs/evidence/phase7/kivi-b019-remediation.json",
+                "docs/evidence/phase7/kivi-reference-r2-publication.json",
                 "docs/evidence/phase7/kivi-source-audit.json",
                 "docs/method_notes/kivi.md",
                 "docs/phase_reports/phase7-kivi-b019-remediation.md",
+                "docs/phase_reports/phase7-kivi-reference.md",
                 "docs/phase_reports/phase7-kivi-reference-blocked.md",
                 "docs/plans/phase7-kivi-b019-remediation.md",
                 "docs/plans/phase7-kivi-reference.md",
                 "docs/risk_register.md",
                 "docs/status.md",
                 "docs/tasks.md",
+                "reference/kivi/README.md",
+                "reference/kivi/build_manifest.json",
+                "reference/kivi/environment.json",
+                "reference/kivi/fixtures/checksums.sha256",
+                "reference/kivi/fixtures/fixture_set.json",
+                "reference/kivi/fixtures/k2v2/fixture.json",
+                "reference/kivi/fixtures/k2v2/manifest.json",
+                "reference/kivi/fixtures/k2v4/fixture.json",
+                "reference/kivi/fixtures/k2v4/manifest.json",
+                "reference/kivi/fixtures/k4v2/fixture.json",
+                "reference/kivi/fixtures/k4v2/manifest.json",
+                "reference/kivi/fixtures/k4v4/fixture.json",
+                "reference/kivi/fixtures/k4v4/manifest.json",
+                "reference/kivi/generate_fixtures.py",
+                "reference/kivi/python-freeze.txt",
+                "reference/kivi/source_manifest.json",
+                "reference/kivi/validate_fixtures.py",
                 "scripts/validate_kivi_b019_patch.py",
                 "scripts/validate_phase2.py",
                 "tests/unit/test_phase7_kivi_b019_remediation.py",
+                "tests/unit/test_phase7_kivi_reference.py",
                 "tests/unit/test_phase7_kivi_source_audit.py",
+                "tests/unit/test_measurement_container.py",
                 "third_party/LOCK.json",
                 "third_party/NOTICE.md",
                 "third_party/patches/kivi/0001-preserve-native-gqa-kv-storage.patch",
@@ -92,8 +114,6 @@ class Phase7KiviSourceAuditTests(unittest.TestCase):
         )
         self.assertEqual(PHASE7_ALLOWED_PATHS, expected)
         for rejected in (
-            "docker/reference-kivi.Dockerfile",
-            "reference/kivi/generate_fixtures.py",
             "reference/registry.py",
             "src/kvbench/adapters/kivi.py",
             "src/kvbench/runtime/kivi_cache.py",
@@ -158,7 +178,9 @@ class Phase7KiviSourceAuditTests(unittest.TestCase):
             record = source[record_name]
             self.assertEqual(
                 record["sha256"],
-                _sha256(REPOSITORY_ROOT / record["path"]),
+                _sha256_at_commit(
+                    B019_ENTRY_COMMIT, record["path"]
+                ),
             )
 
     def test_algorithm_and_rollover_source_findings_are_frozen(self) -> None:
@@ -223,8 +245,8 @@ class Phase7KiviSourceAuditTests(unittest.TestCase):
             with self.subTest(key=key):
                 self.assertFalse(preservation[key])
         self.assertEqual(preservation["factory_status"], "phase_not_implemented")
-        self.assertFalse((REPOSITORY_ROOT / "reference/kivi").exists())
-        self.assertFalse(
+        self.assertTrue((REPOSITORY_ROOT / "reference/kivi").is_dir())
+        self.assertTrue(
             (REPOSITORY_ROOT / "docker/reference-kivi.Dockerfile").exists()
         )
         self.assertFalse(
@@ -294,7 +316,7 @@ class Phase7KiviSourceAuditTests(unittest.TestCase):
         )
         self.assertIn("Quality execution: LOCKED", status)
         self.assertIn("Full-scan admission: CLOSED", status)
-        self.assertIn("Phase 7 status: PARTIAL", status)
+        self.assertIn("Phase 7 status: PASS", status)
         self.assertIn("B-019 is RESOLVED under patched-source authority", status)
         self.assertIn("Phase 8, Pilot", status)
         self.assertIn("KIVI Measurement Adapter remains fail-closed", status)
@@ -317,7 +339,7 @@ class Phase7KiviSourceAuditTests(unittest.TestCase):
         self.assertIn("Do not begin Phase 8", report)
         self.assertIn("Do not substitute `develop`, `lmeval`", decision)
         self.assertIn("Do not patch the official algorithm", decision)
-        self.assertIn("Status: BLOCKED", plan)
+        self.assertIn("Status: COMPLETE", plan)
 
 
 if __name__ == "__main__":

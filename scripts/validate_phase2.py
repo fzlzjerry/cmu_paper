@@ -432,22 +432,44 @@ PHASE6_ALLOWED_PATHS = frozenset(
 PHASE7_ALLOWED_PATHS = frozenset(
     {
         "Makefile",
+        "docker/reference-kivi.Dockerfile",
         "docs/blockers.md",
         "docs/decisions/0017-kivi-source-authority-and-gqa-materialization.md",
         "docs/decisions/0018-kivi-b019-native-gqa-patch-authority.md",
         "docs/evidence/phase7/kivi-b019-remediation.json",
+        "docs/evidence/phase7/kivi-reference-r2-publication.json",
         "docs/evidence/phase7/kivi-source-audit.json",
         "docs/method_notes/kivi.md",
         "docs/phase_reports/phase7-kivi-b019-remediation.md",
+        "docs/phase_reports/phase7-kivi-reference.md",
         "docs/phase_reports/phase7-kivi-reference-blocked.md",
         "docs/plans/phase7-kivi-b019-remediation.md",
         "docs/plans/phase7-kivi-reference.md",
         "docs/risk_register.md",
         "docs/status.md",
         "docs/tasks.md",
+        "reference/kivi/README.md",
+        "reference/kivi/build_manifest.json",
+        "reference/kivi/environment.json",
+        "reference/kivi/fixtures/checksums.sha256",
+        "reference/kivi/fixtures/fixture_set.json",
+        "reference/kivi/fixtures/k2v2/fixture.json",
+        "reference/kivi/fixtures/k2v2/manifest.json",
+        "reference/kivi/fixtures/k2v4/fixture.json",
+        "reference/kivi/fixtures/k2v4/manifest.json",
+        "reference/kivi/fixtures/k4v2/fixture.json",
+        "reference/kivi/fixtures/k4v2/manifest.json",
+        "reference/kivi/fixtures/k4v4/fixture.json",
+        "reference/kivi/fixtures/k4v4/manifest.json",
+        "reference/kivi/generate_fixtures.py",
+        "reference/kivi/python-freeze.txt",
+        "reference/kivi/source_manifest.json",
+        "reference/kivi/validate_fixtures.py",
         "scripts/validate_kivi_b019_patch.py",
         "scripts/validate_phase2.py",
+        "tests/unit/test_measurement_container.py",
         "tests/unit/test_phase7_kivi_b019_remediation.py",
+        "tests/unit/test_phase7_kivi_reference.py",
         "tests/unit/test_phase7_kivi_source_audit.py",
         "third_party/LOCK.json",
         "third_party/NOTICE.md",
@@ -1668,6 +1690,10 @@ APPROVED_ARTIFACT_ROOT_NAMES = frozenset(
     }
 )
 
+PHASE7_APPROVED_ARTIFACT_ROOT_NAMES = frozenset(
+    {"phase7_kivi_reference"}
+)
+
 
 def validate_phase3_artifact_root() -> list[str]:
     errors: list[str] = []
@@ -1693,7 +1719,10 @@ def validate_phase3_artifact_root() -> list[str]:
         unexpected = sorted(
             path.name
             for path in artifacts.iterdir()
-            if path.name not in APPROVED_ARTIFACT_ROOT_NAMES
+            if path.name not in (
+                APPROVED_ARTIFACT_ROOT_NAMES
+                | PHASE7_APPROVED_ARTIFACT_ROOT_NAMES
+            )
         )
         if unexpected:
             errors.append(

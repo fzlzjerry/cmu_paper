@@ -1,7 +1,7 @@
 # KIVI source note
 
-Status: B-019 RESOLVED under checksum-bound patched-source authority; Phase 7
-reference execution remains NOT STARTED.
+Status: Phase 7 reference lane PASS under checksum-bound Decision 0018
+patched-source authority; Phase 8 remains NOT STARTED.
 
 ## Paper and source
 
@@ -110,12 +110,58 @@ storage remain H_KV=8. CPU and SM120 BF16 checks at contexts 17 and 33 are
 exactly equal to the original repeat formula and observe no H_Q-sized K/V
 operand.
 
-This resolves B-019 under the explicit patched-source authority. It does not
-make the code an unmodified official implementation and does not complete
-Phase 7. Reference environment, official extension build, fixtures, sanitizer,
-trace, byte accounting, graph information, and durable publication remain
-unstarted.
+This resolves B-019 under the explicit patched-source authority. The code is
+not an unmodified official implementation and must not be described that way.
+The separately authorized continuation completed the remaining Phase 7
+reference work without changing the quantization, packing, cache layout,
+rollover, or CUDA extension source.
 
+## Phase 7 reference runtime result
+
+The isolated reference definition is
+`docker/reference-kivi.Dockerfile`, SHA-256
+`b319d0c15d43d70ce364123d447b820ad1e312d6c60aa737c9707c701da17912`,
+with image manifest `sha256:f27e4cdef6bd15f18ab76b1fe0e4413ede004b42538c74e3dd90d04172406f75`
+and OCI config `sha256:0915dc8488fd6c9a150a3b4f56bb4b97b5dbdb7c51d96cda2d431df20e856ce3`.
+Python, PyTorch, CUDA, compiler, package, and extension identities are frozen in
+`environment.json`, `python-freeze.txt`, and `build_manifest.json`.
+
+The unchanged official extension builds through `quant/setup.py` with
+`TORCH_CUDA_ARCH_LIST=12.0+PTX`, produces native `sm_120` plus
+`compute_120` PTX, and imports with SHA-256
+`45d29ec1a3cecc4b253d1d1dd6139ef4f91cff88993db61a9d73685314851aa9`.
+A fresh PTX-only relink executes the same probes, and Compute Sanitizer reports
+zero errors for the distinct two-bit and four-bit key/value kernel families.
+
+The upstream CUDA ABI is half-only. Direct BF16 reaches the official binding
+but is rejected with `expected scalar type Half but found BFloat16`. The
+fixtures therefore start from the required BF16 inputs, require an exact
+BF16-to-FP16-to-BF16 round trip on a fixed integer/64 grid, and execute the
+unchanged official FP16 ABI without an algorithmic CUDA patch.
+
+Four deterministic fixtures cover K4/V4, K2/V4, K2/V2, and held-out K4/V2 at
+batch 1, H_Q=32, H_KV=8, head dimension 128, group size 32, residual length 32,
+and seed 20260726. They bind store L=17, append/decode L=18, rollover
+L=31/32/33, and post-rollover decode L=34. Quantized payloads, scale/minimum
+metadata, residual tensors, outputs, manifests, and checksums are stored.
+
+Rollover moves key tokens 0-31 at L=32 and the oldest value token at L=33;
+one additional value token moves at L=34. There are no missing or duplicated
+tokens. Actual source-owned tensor storage agrees exactly with the byte
+categories at L=31/32/33, with a source-layout calculation at L=64; `r_hbm` is
+never populated.
+
+The non-performance trace records quantize/pack, append, BMM, and official
+two-bit/four-bit GEMV operators while discarding all durations. Every observed
+K/V operand and persistent cache remains at H_KV=8, with explicit
+`query_head // 4` mapping and no repeat/expand materialization or backend
+fallback. Packed history is consumed directly; no full-prefix temporary is
+observed. Dynamic Graph behavior remains deferred to Phase 8.
+
+The durable 30-object bundle is published COMPLETE-last at root
+`abd164da0adf9e0c1404e8fba1f6a6e42e57944481cdf060b91e8cef175ed302`.
+Clean retrieval validates every object, inventory, checksum ledger, and root.
+The publication receipt is outside its own bundle to avoid self-reference.
 ## Dependency and porting risks
 
 1. The reference model path dynamically grows caches with torch.cat. It cannot
@@ -131,13 +177,13 @@ unstarted.
    2.4.1 and transformers 4.43.1. This unresolved legacy environment is
    isolated to the Reference Lane; the Git dependency is recorded separately
    in third_party/LOCK.json.
-4. The CUDA setup does not explicitly name Blackwell architecture flags and
-   enables use_fast_math. A future restarted Phase 7 must rebuild for the
-   detected capability and validate native plus PTX/JIT execution.
+4. The upstream CUDA setup enables use_fast_math and has no Blackwell default.
+   Phase 7 therefore fixes explicit SM120 plus PTX flags and validates both;
+   any source/toolchain change requires the same proof again.
 5. The CUDA source contains group-size-specialized paths and comments centered
-   on 64/128 even though the project requires group size 32. Actual support
-   must be demonstrated from the pinned code, not assumed from the paper.
+   on 64/128. Phase 7 directly demonstrates group size 32 for all four frozen
+   bit combinations rather than inferring support from comments or the paper.
 6. No CUDA Graph guarantee is documented for the dynamic reference path.
-7. Rollover, metadata byte accounting, allocation freedom, full-prefix
-   dequantization behavior, SM120 compatibility, and sanitizer status remain
-   NOT EXECUTED because the earlier GQA source gate failed.
+7. The reference uses dynamic `torch.cat` and allocations, so Graph support and
+   allocation freedom are not claimed. Phase 8 must provide a separate static,
+   graph-safe Measurement Adapter if later authorized.

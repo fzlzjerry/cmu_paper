@@ -33,6 +33,12 @@ PHASE6_R2_OUTER_ARTIFACT ?=
 R2_ARTIFACT := /usr/bin/env PYTHONDONTWRITEBYTECODE=1 PYTHONNOUSERSITE=1 PYTHONPATH=$(CURDIR):$(CURDIR)/src $(PHASE2_PYTHON) scripts/r2_artifact.py
 KIVI_B019_DEVICE ?= cpu
 KIVI_B019_SOURCE_ROOT ?=
+KIVI_REFERENCE_IMAGE := kvbench-reference-kivi:phase7
+KIVI_REFERENCE_PARENT_CONFIG := sha256:059bc9be89387369d7de9e3e9b26d85b6e9902c41e7dbf002ebc45edd188fb7e
+KIVI_REFERENCE_IMAGE_MANIFEST := sha256:f27e4cdef6bd15f18ab76b1fe0e4413ede004b42538c74e3dd90d04172406f75
+KIVI_REFERENCE_IMAGE_CONFIG := sha256:0915dc8488fd6c9a150a3b4f56bb4b97b5dbdb7c51d96cda2d431df20e856ce3
+KIVI_REFERENCE_EXTENSION_SHA256 := 45d29ec1a3cecc4b253d1d1dd6139ef4f91cff88993db61a9d73685314851aa9
+KIVI_REFERENCE_BUILD_REVISION := 3417ea0e7f322369eed21bb787a9a9a19b0a69bd
 
 .PHONY: bootstrap bootstrap-phase3 test checks format-check lint hot-path-check typecheck config-check
 .PHONY: provenance-check scope-check immutable-check package-lock-check
@@ -48,6 +54,7 @@ KIVI_B019_SOURCE_ROOT ?=
 .PHONY: remediate-b018-turboquant
 .PHONY: phase6-r2-outer-bundle validate-phase6-r2-outer-bundle
 .PHONY: validate-kivi-b019-patch
+.PHONY: reference-kivi validate-reference-kivi
 
 preflight:
 	@/usr/bin/env -i PATH=/usr/bin:/bin LC_ALL=C LANG=C TZ=UTC \
@@ -108,6 +115,7 @@ test: checks
 	@$(PHASE3_ENV) $(PHASE3_PYTHON) -m unittest tests.unit.test_phase6_r2_outer_bundle -v
 	@$(PHASE3_ENV) $(PHASE3_PYTHON) -m unittest tests.unit.test_phase7_kivi_source_audit -v
 	@$(PHASE3_ENV) $(PHASE3_PYTHON) -m unittest tests.unit.test_phase7_kivi_b019_remediation -v
+	@$(PHASE3_ENV) $(PHASE3_PYTHON) -m unittest tests.unit.test_phase7_kivi_reference -v
 	@$(PHASE3_ENV) $(PHASE3_PYTHON) -m unittest tests.unit.test_measurement_container tests.unit.test_phase6a_bf16_parity tests.unit.test_phase6a_governance tests.unit.test_preflight_unit tests.unit.test_r2_artifact -v
 	@$(PHASE2_VALIDATE) immutable
 
@@ -129,6 +137,42 @@ validate-reference-turboquant:
 
 validate-kivi-b019-patch:
 	@$(PHASE3_ENV) $(PHASE3_PYTHON) scripts/validate_kivi_b019_patch.py --device "$(KIVI_B019_DEVICE)" $(if $(strip $(KIVI_B019_SOURCE_ROOT)),--source-root "$(KIVI_B019_SOURCE_ROOT)")
+
+reference-kivi: validate-kivi-b019-patch
+	@command -v docker >/dev/null
+	@test "$$(docker image inspect kvbench-measurement:phase6a --format '{{.Id}}')" = "$(KIVI_REFERENCE_PARENT_CONFIG)"
+	@task_root="$$(mktemp -d /tmp/kvbench-kivi-reference.XXXXXX)"; \
+		trap 'rm -rf -- "$$task_root"' EXIT; \
+		context="$$task_root/context"; \
+		mkdir -p "$$context"; \
+		cp --parents \
+			docker/reference-kivi.Dockerfile \
+			third_party/LOCK.json \
+			third_party/patches/kivi/manifest.json \
+			third_party/patches/kivi/0001-preserve-native-gqa-kv-storage.patch \
+			scripts/validate_kivi_b019_patch.py \
+			reference/kivi/source_manifest.json \
+			reference/kivi/generate_fixtures.py \
+			reference/kivi/python-freeze.txt \
+			"$$context"; \
+		test "$$(find "$$context" -type f | wc -l)" = 8; \
+		test ! -e "$$context/.env"; \
+		DOCKER_BUILDKIT=1 docker build --pull=false --provenance=false --platform linux/amd64 \
+			--build-arg KIVI_BUILD_REVISION="$(KIVI_REFERENCE_BUILD_REVISION)" \
+			--iidfile "$$task_root/image.id" --metadata-file "$$task_root/metadata.json" \
+			--tag "$(KIVI_REFERENCE_IMAGE)" --file "$$context/docker/reference-kivi.Dockerfile" "$$context"; \
+		test "$$(tr -d '\r\n' < "$$task_root/image.id")" = "$(KIVI_REFERENCE_IMAGE_CONFIG)"; \
+		test "$$($(PHASE2_PYTHON) -c 'import json,sys; print(json.load(open(sys.argv[1], encoding="utf-8"))["containerimage.digest"])' "$$task_root/metadata.json")" = "$(KIVI_REFERENCE_IMAGE_MANIFEST)"; \
+		docker run --rm --gpus all "$(KIVI_REFERENCE_IMAGE)" kernel-probe >/dev/null; \
+		docker run --rm --gpus all --entrypoint /usr/local/cuda-13.0/bin/compute-sanitizer "$(KIVI_REFERENCE_IMAGE)" --tool memcheck --error-exitcode=86 --target-processes all /opt/kvbench/.venv/bin/python /opt/kvbench-reference/reference/kivi/generate_fixtures.py sanitizer-probe; \
+		dockerfile_sha="$$(sha256sum docker/reference-kivi.Dockerfile | cut -d ' ' -f 1)"; \
+		source_sha="$$(sha256sum reference/kivi/source_manifest.json | cut -d ' ' -f 1)"; \
+		build_sha="$$(sha256sum reference/kivi/build_manifest.json | cut -d ' ' -f 1)"; \
+		docker run --rm --gpus all --user "$$(id -u):$$(id -g)" --tmpfs /tmp:rw,exec,nosuid,size=1g --mount type=bind,src="$(CURDIR)/reference/kivi",dst=/output "$(KIVI_REFERENCE_IMAGE)" fixtures --output /output/fixtures --image-config-digest "$(KIVI_REFERENCE_IMAGE_CONFIG)" --dockerfile-sha256 "$$dockerfile_sha" --source-manifest-sha256 "$$source_sha" --build-manifest-sha256 "$$build_sha" --extension-sha256 "$(KIVI_REFERENCE_EXTENSION_SHA256)"
+	@$(PHASE3_ENV) $(PHASE3_PYTHON) reference/kivi/validate_fixtures.py --image "$(KIVI_REFERENCE_IMAGE)"
+
+validate-reference-kivi: validate-kivi-b019-patch
+	@$(PHASE3_ENV) $(PHASE3_PYTHON) reference/kivi/validate_fixtures.py --image "$(KIVI_REFERENCE_IMAGE)"
 
 phase6a-source-safety:
 	@test -z "$$(git status --porcelain=v1 --untracked-files=all)" || { echo '{"status":"BLOCKED","reason":"source_tree_not_clean"}' >&2; exit 2; }
