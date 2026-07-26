@@ -371,6 +371,7 @@ PHASE6_ALLOWED_PATHS = frozenset(
         "Makefile",
         "configs/methods/turboquant.yaml",
         "docs/blockers.md",
+        "docs/evidence/phase6/r2-admission-outer-publication.json",
         "docs/evidence/phase6/r2-admission-publication.json",
         "docs/evidence/phase6/r2-publication.json",
         "docs/evidence/phase6/turboquant-method-admission.json",
@@ -380,6 +381,7 @@ PHASE6_ALLOWED_PATHS = frozenset(
         "docs/risk_register.md",
         "docs/status.md",
         "docs/tasks.md",
+        "scripts/phase6_r2_outer_bundle.py",
         "scripts/phase6_turboquant_admission.py",
         "scripts/validate_phase2.py",
         "src/kvbench/adapters/__init__.py",
@@ -420,6 +422,7 @@ PHASE6_ALLOWED_PATHS = frozenset(
         "tests/unit/test_process_supervision.py",
         "tests/unit/test_phase6_artifacts.py",
         "tests/unit/test_phase6_governance.py",
+        "tests/unit/test_phase6_r2_outer_bundle.py",
         "tests/unit/test_phase6_turboquant_adapter.py",
         "tests/unit/test_phase6_turboquant_fixture.py",
         "tests/unit/test_phase6_turboquant_session.py",
@@ -1612,6 +1615,7 @@ APPROVED_ARTIFACT_ROOT_NAMES = frozenset(
         "phase3_reports",
         "phase4_smoke",
         "phase6",
+        "phase6_r2_outer",
         "phase6a",
     }
 )

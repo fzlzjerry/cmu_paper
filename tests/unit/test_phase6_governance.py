@@ -43,6 +43,7 @@ class Phase6GovernanceTests(unittest.TestCase):
             "e06f638f4b913f9bd1be2975a478657f5bf2338e",
         )
         required = {
+            "docs/evidence/phase6/r2-admission-outer-publication.json",
             "docs/evidence/phase6/r2-admission-publication.json",
             "docs/evidence/phase6/r2-publication.json",
             "docs/phase_reports/phase6-turboquant-measurement-adapter.md",
@@ -52,9 +53,11 @@ class Phase6GovernanceTests(unittest.TestCase):
             "src/kvbench/runtime/phase3_coordinator.py",
             "src/kvbench/runtime/turboquant_cache.py",
             "src/kvbench/runtime/turboquant_session.py",
+            "scripts/phase6_r2_outer_bundle.py",
             "tests/unit/test_process_supervision.py",
             "tests/unit/test_phase6a_governance.py",
             "tests/unit/test_phase6_governance.py",
+            "tests/unit/test_phase6_r2_outer_bundle.py",
         }
         self.assertLessEqual(required, PHASE6_ALLOWED_PATHS)
         for rejected in (
@@ -82,6 +85,7 @@ class Phase6GovernanceTests(unittest.TestCase):
                     "phase3_reports",
                     "phase4_smoke",
                     "phase6",
+                    "phase6_r2_outer",
                     "phase6a",
                 }
             ),

@@ -28,6 +28,8 @@ MEASUREMENT_IMAGE_CONFIG_DIGEST ?=
 MEASUREMENT_BASE_IMAGE_DIGEST := sha256:0eee3094c71518ad31d011a594ae6ed6de72959ee07e318cb31cffe71690e90c
 MEASUREMENT_GPU_UUID := GPU-75bd273e-6b20-0d22-1b0b-5fbb6fb0025b
 PHASE6_AUTHORIZED_IMAGE_CONFIG_DIGEST := sha256:059bc9be89387369d7de9e3e9b26d85b6e9902c41e7dbf002ebc45edd188fb7e
+PHASE6_R2_OUTER_RUN_ID ?=
+PHASE6_R2_OUTER_ARTIFACT ?=
 R2_ARTIFACT := /usr/bin/env PYTHONDONTWRITEBYTECODE=1 PYTHONNOUSERSITE=1 PYTHONPATH=$(CURDIR):$(CURDIR)/src $(PHASE2_PYTHON) scripts/r2_artifact.py
 
 .PHONY: bootstrap bootstrap-phase3 test checks format-check lint hot-path-check typecheck config-check
@@ -42,6 +44,7 @@ R2_ARTIFACT := /usr/bin/env PYTHONDONTWRITEBYTECODE=1 PYTHONNOUSERSITE=1 PYTHONP
 .PHONY: publish-artifact-r2 verify-artifact-r2
 .PHONY: phase6a-source-safety admit-turboquant validate-admission-turboquant
 .PHONY: remediate-b018-turboquant
+.PHONY: phase6-r2-outer-bundle validate-phase6-r2-outer-bundle
 
 preflight:
 	@/usr/bin/env -i PATH=/usr/bin:/bin LC_ALL=C LANG=C TZ=UTC \
@@ -99,6 +102,7 @@ test: checks
 	@$(PHASE3_ENV) $(PHASE3_PYTHON) -m unittest $(PHASE3_REMEDIATION_UNIT_TESTS) -v
 	@$(PHASE3_ENV) $(PHASE3_PYTHON) -m unittest discover -s tests/unit -p 'test_phase4_*.py' -v
 	@$(PHASE3_ENV) $(PHASE3_PYTHON) -m unittest discover -s tests/unit -p 'test_phase5_*.py' -v
+	@$(PHASE3_ENV) $(PHASE3_PYTHON) -m unittest tests.unit.test_phase6_r2_outer_bundle -v
 	@$(PHASE3_ENV) $(PHASE3_PYTHON) -m unittest tests.unit.test_measurement_container tests.unit.test_phase6a_bf16_parity tests.unit.test_phase6a_governance tests.unit.test_preflight_unit tests.unit.test_r2_artifact -v
 	@$(PHASE2_VALIDATE) immutable
 
@@ -424,6 +428,14 @@ admit-turboquant: verify-measurement-container
 
 validate-admission-turboquant:
 	@$(PHASE3_ENV) $(PHASE3_PYTHON) -m scripts.phase6_turboquant_admission --validate-only
+
+phase6-r2-outer-bundle:
+	@test -n "$(PHASE6_R2_OUTER_RUN_ID)" || { echo '{"status":"FAIL","reason":"PHASE6_R2_OUTER_RUN_ID_required"}' >&2; exit 2; }
+	@$(PHASE3_ENV) $(PHASE3_PYTHON) -m scripts.phase6_r2_outer_bundle build --run-id "$(PHASE6_R2_OUTER_RUN_ID)"
+
+validate-phase6-r2-outer-bundle:
+	@test -n "$(PHASE6_R2_OUTER_ARTIFACT)" || { echo '{"status":"FAIL","reason":"PHASE6_R2_OUTER_ARTIFACT_required"}' >&2; exit 2; }
+	@$(PHASE3_ENV) $(PHASE3_PYTHON) -m scripts.phase6_r2_outer_bundle validate "$(PHASE6_R2_OUTER_ARTIFACT)"
 
 publish-artifact-r2:
 	@test -n "$(ARTIFACT)" || { echo '{"status":"FAIL","reason":"ARTIFACT_required"}' >&2; exit 2; }
