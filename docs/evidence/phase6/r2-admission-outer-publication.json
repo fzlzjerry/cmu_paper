@@ -1,0 +1,77 @@
+{
+  "admission_status": "PASS",
+  "artifact_status": "completed",
+  "bucket_lock": {
+    "bucket_public": false,
+    "enabled": true,
+    "lock_prefix": "kvbench/sha256/",
+    "lock_rule_id": "kvbench-evidence-indefinite",
+    "lock_scope": "exact",
+    "public_custom_domain": false,
+    "public_r2_dev": false,
+    "retention_type": "Indefinite",
+    "verification_result": "PASS",
+    "verified_at_utc": "2026-07-26T08:42:24.506356Z"
+  },
+  "clean_retrieval": {
+    "bucket_lock_verification_result": "PASS",
+    "checksum_ledger_valid": true,
+    "complete_marker_valid": true,
+    "inventory_valid": true,
+    "object_count": 176,
+    "result": "PASS",
+    "retrieved_at_utc": "2026-07-26T08:44:07.567156Z",
+    "root_sha256": "8c4cf76f76bb17e648dfd911f11e268235ed827a9983814b774b9e95405496b0",
+    "unexpected_objects": false
+  },
+  "credential_values_recorded": false,
+  "local_validation": {
+    "admission_run_count": 9,
+    "object_count": 176,
+    "original_object_count": 167,
+    "original_root_sha256": "f003bc3dc5de6b67a6d8f1b8bed7fa49b7f90f9d7edc4d1383e2d97c8aa19d6d",
+    "original_root_unchanged": true,
+    "receipt_in_bundle": false,
+    "root_sha256": "8c4cf76f76bb17e648dfd911f11e268235ed827a9983814b774b9e95405496b0",
+    "status": "PASS"
+  },
+  "performance_claim_eligible": false,
+  "phase7_started": false,
+  "phase8_started": false,
+  "publication": {
+    "bucket": "kvbench-artifacts",
+    "complete_last": true,
+    "object_count": 176,
+    "prefix": "kvbench/sha256/",
+    "publication_order_sha256": "6e6cb3d04c30710f09e814e5cb6abd664beaa9c929f09e9b89c517ccfbba2dc2",
+    "published_at_utc": "2026-07-26T08:41:37.703922Z",
+    "result": "PASS",
+    "root_sha256": "8c4cf76f76bb17e648dfd911f11e268235ed827a9983814b774b9e95405496b0",
+    "uploaded_count": 176,
+    "uri": "r2://kvbench-artifacts/kvbench/sha256/8c4cf76f76bb17e648dfd911f11e268235ed827a9983814b774b9e95405496b0/",
+    "verified_existing_count": 0
+  },
+  "recorded_at_utc": "2026-07-26T08:44:26Z",
+  "quality_benchmark_executed": false,
+  "required_file_coverage": {
+    "admission_run_references": "references/phase6-admission-runs.json",
+    "checksum_ledger": "checksums.sha256",
+    "complete_marker": "COMPLETE",
+    "final_phase6_pass_report": "docs/phase_reports/phase6-turboquant-measurement-adapter-pass.md",
+    "full_original_bundle_prefix": "original/sha256/f003bc3dc5de6b67a6d8f1b8bed7fa49b7f90f9d7edc4d1383e2d97c8aa19d6d/",
+    "inventory": "artifact_inventory.json",
+    "method_admission_report": "docs/evidence/phase6/turboquant-method-admission.json",
+    "nine_admission_runs": true,
+    "original_publication_record": "docs/evidence/phase6/r2-admission-publication.json",
+    "original_root_reference": "references/original-phase6-root.json",
+    "result": "PASS"
+  },
+  "schema_version": "kvbench-phase6-admission-r2-outer-publication-1.0.0",
+  "scope": "Durable COMPLETE-last publication and clean retrieval of the append-only outer bundle covering the complete successful Phase 6 admission bundle.",
+  "self_reference_control": {
+    "included_in_bundle": false,
+    "receipt_path": "docs/evidence/phase6/r2-admission-outer-publication.json"
+  },
+  "source_git_sha": "498dd833119fc648cd113310aaae37d0c839b357",
+  "source_run_id": "phase6-r2-outer-20260726t083456863336315z-498dd83"
+}

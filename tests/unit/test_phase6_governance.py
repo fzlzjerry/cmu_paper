@@ -620,6 +620,76 @@ class Phase6GovernanceTests(unittest.TestCase):
         )
         self.assertFalse(publication["credential_values_recorded"])
 
+    def test_outer_publication_receipt_is_external_and_exact(self) -> None:
+        receipt_path = (
+            REPOSITORY_ROOT
+            / "docs"
+            / "evidence"
+            / "phase6"
+            / "r2-admission-outer-publication.json"
+        )
+        receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+        root_sha256 = (
+            "8c4cf76f76bb17e648dfd911f11e268235ed827a9983814b774b9e95405496b0"
+        )
+        original_root_sha256 = (
+            "f003bc3dc5de6b67a6d8f1b8bed7fa49b7f90f9d7edc4d1383e2d97c8aa19d6d"
+        )
+        self.assertEqual(
+            receipt["schema_version"],
+            "kvbench-phase6-admission-r2-outer-publication-1.0.0",
+        )
+        local = receipt["local_validation"]
+        self.assertEqual(local["root_sha256"], root_sha256)
+        self.assertEqual(local["original_root_sha256"], original_root_sha256)
+        self.assertEqual(local["object_count"], 176)
+        self.assertEqual(local["original_object_count"], 167)
+        self.assertEqual(local["admission_run_count"], 9)
+        self.assertTrue(local["original_root_unchanged"])
+        self.assertFalse(local["receipt_in_bundle"])
+        publication = receipt["publication"]
+        self.assertEqual(publication["result"], "PASS")
+        self.assertEqual(publication["root_sha256"], root_sha256)
+        self.assertEqual(publication["object_count"], 176)
+        self.assertEqual(publication["uploaded_count"], 176)
+        self.assertEqual(publication["verified_existing_count"], 0)
+        self.assertTrue(publication["complete_last"])
+        self.assertEqual(
+            publication["uri"],
+            f"r2://kvbench-artifacts/kvbench/sha256/{root_sha256}/",
+        )
+        retrieval = receipt["clean_retrieval"]
+        self.assertEqual(retrieval["result"], "PASS")
+        self.assertEqual(retrieval["root_sha256"], root_sha256)
+        self.assertEqual(retrieval["object_count"], 176)
+        self.assertTrue(retrieval["inventory_valid"])
+        self.assertTrue(retrieval["checksum_ledger_valid"])
+        self.assertTrue(retrieval["complete_marker_valid"])
+        self.assertFalse(retrieval["unexpected_objects"])
+        coverage = receipt["required_file_coverage"]
+        self.assertEqual(coverage["result"], "PASS")
+        self.assertTrue(coverage["nine_admission_runs"])
+        self.assertEqual(
+            coverage["method_admission_report"],
+            "docs/evidence/phase6/turboquant-method-admission.json",
+        )
+        self.assertEqual(
+            coverage["original_publication_record"],
+            "docs/evidence/phase6/r2-admission-publication.json",
+        )
+        self.assertEqual(
+            coverage["final_phase6_pass_report"],
+            "docs/phase_reports/phase6-turboquant-measurement-adapter-pass.md",
+        )
+        self.assertFalse(
+            receipt["self_reference_control"]["included_in_bundle"]
+        )
+        self.assertFalse(receipt["credential_values_recorded"])
+        self.assertFalse(receipt["performance_claim_eligible"])
+        self.assertFalse(receipt["quality_benchmark_executed"])
+        self.assertFalse(receipt["phase7_started"])
+        self.assertFalse(receipt["phase8_started"])
+
     def test_blocked_publication_and_report_remain_byte_identical(
         self,
     ) -> None:
