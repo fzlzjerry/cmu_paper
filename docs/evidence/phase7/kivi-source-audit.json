@@ -1,0 +1,206 @@
+{
+  "schema_version": "kvbench-phase7-kivi-source-audit-1.0.0",
+  "status": "BLOCKED",
+  "recorded_at_utc": "2026-07-26T11:50:33Z",
+  "run_kind": "source_audit",
+  "entry": {
+    "starting_head": "0974bbc98f8f941b09800786591108292dc4e0dd",
+    "working_tree": "clean",
+    "phase6": "PASS",
+    "g0": "PASS",
+    "g1": "PASS",
+    "g2_tq": "PASS",
+    "global_g2_g5": "NOT_EVALUATED",
+    "full_scan": "CLOSED",
+    "quality_execution": "LOCKED",
+    "performance_data_frozen": "absent",
+    "phase6_outer_root_sha256": "8c4cf76f76bb17e648dfd911f11e268235ed827a9983814b774b9e95405496b0",
+    "phase6_outer_object_count": 176,
+    "phase6_outer_clean_retrieval": "PASS",
+    "original_phase6_root_sha256": "f003bc3dc5de6b67a6d8f1b8bed7fa49b7f90f9d7edc4d1383e2d97c8aa19d6d",
+    "original_phase6_object_count": 167,
+    "original_phase6_clean_retrieval": "PASS",
+    "r2_required_variables": {
+      "AWS_ACCESS_KEY_ID": "PRESENT",
+      "AWS_SECRET_ACCESS_KEY": "PRESENT",
+      "CLOUDFLARE_API_TOKEN": "PRESENT",
+      "KVBENCH_R2_PREFIX": "PRESENT",
+      "R2_ACCOUNT_ID": "PRESENT",
+      "R2_BUCKET": "PRESENT",
+      "R2_ENDPOINT": "PRESENT"
+    }
+  },
+  "source": {
+    "repository": "https://github.com/jy-yuan/KIVI.git",
+    "revision": "876b4d2d08e3b1d5f70d0969c299d8c7c42ddfb6",
+    "tree": "c94c31b2cfd44eeb9a18cff9dcdf03adff4ac49b",
+    "observed_branch": "main",
+    "commit_authored_at": "2025-11-20T12:34:32-08:00",
+    "commit_committed_at": "2025-11-20T12:34:32-08:00",
+    "declared_license": "MIT",
+    "floating_branch_used": false,
+    "unofficial_fork_used": false,
+    "source_lock_path": "third_party/LOCK.json",
+    "source_lock_sha256": "3ba75f303a1e0320ec3adabc00469d650ee5077a3d41065b90498322e6b174a4",
+    "relevant_source_file_count": 15,
+    "relevant_source_files_git_blob_and_sha256_bound": true,
+    "official_branch_heads": {
+      "main": {
+        "revision": "876b4d2d08e3b1d5f70d0969c299d8c7c42ddfb6",
+        "tree": "c94c31b2cfd44eeb9a18cff9dcdf03adff4ac49b"
+      },
+      "develop": {
+        "revision": "8c3bdf1f83d5b548d1a6ad4fbef8f1bbc5686804",
+        "tree": "695f0e36a4add849eb78e689d73fcaa362aafeb2"
+      },
+      "lmeval": {
+        "revision": "1d4274d94df708d10d0546c2529c5a62bc2ebc6e",
+        "tree": "f508210ee06c866c2fc8e61d6a01cf2d107c383b"
+      }
+    },
+    "authority_decision": {
+      "path": "docs/decisions/0017-kivi-source-authority-and-gqa-materialization.md",
+      "sha256": "c3a03814259abac1ff95f84bc2d20792752ff32008980b917f7c4d2e2d9002aa"
+    },
+    "plan": {
+      "path": "docs/plans/phase7-kivi-reference.md",
+      "sha256": "57a4fbc32e209c98b3cb18c784faa019ecc89916912d104c3bd77ff917f167c0"
+    }
+  },
+  "dependency_audit": {
+    "pyproject_transformers": "4.43.1",
+    "requirements_transformers": "4.36.2",
+    "dependency_definitions_conflict": true,
+    "selected_gqa_source_dependency": {
+      "repository": "https://github.com/huggingface/transformers.git",
+      "tag": "v4.43.1",
+      "path": "src/transformers/models/llama/modeling_llama.py",
+      "git_blob": "aca7040d1b8660be5511332fc862058f1c4bd05e",
+      "sha256": "c9b560d1a968b6504d241492b75de7c5eb9f76779b4e832343c8361d9d6d14d0",
+      "repeat_kv_line_start": 258,
+      "repeat_kv_semantics": "expand repetition dimension then reshape from num_key_value_heads to num_attention_heads"
+    }
+  },
+  "algorithm_source_audit": {
+    "key_quantization_direction": "per_channel_grouped_along_token_dimension",
+    "value_quantization_direction": "per_token_grouped_along_head_dimension",
+    "packing_container": "int32",
+    "supported_cuda_bits": [
+      2,
+      4
+    ],
+    "frozen_group_size": 32,
+    "frozen_residual_length": 32,
+    "key_rollover": "quantize the complete key residual block when active length reaches 32",
+    "value_rollover": "quantize the oldest value token when active length becomes 33 and retain the newest 32",
+    "dynamic_cache_growth_uses_torch_cat": true,
+    "full_prefix_dequantization": "NOT_EXECUTED_SOURCE_PATH_USES_FUSED_QUANTIZED_GEMV_FOR_HISTORY",
+    "runtime_layout_verification": "NOT_EXECUTED"
+  },
+  "gqa_audit": {
+    "advertised_by_upstream": true,
+    "h_q": 32,
+    "h_kv": 8,
+    "n_rep": 4,
+    "llama_source_path": "models/llama_kivi.py",
+    "llama_source_git_blob": "427fd2b650457f75392e04658fdcebbdc026583a",
+    "llama_repeat_kv_call_lines": [
+      337,
+      384
+    ],
+    "repeat_kv": true,
+    "repeat_interleave_equivalent": true,
+    "expand_reshape": true,
+    "quantized_history_cuda_accepts_native_h_kv": true,
+    "residual_kv_expanded_to_h_q": true,
+    "storage_semantic_audit": {
+      "device": "cpu",
+      "performance_measurement": false,
+      "dtype": "bfloat16",
+      "input_shape": [
+        1,
+        8,
+        32,
+        128
+      ],
+      "input_stride": [
+        32768,
+        4096,
+        128,
+        1
+      ],
+      "expanded_shape": [
+        1,
+        8,
+        4,
+        32,
+        128
+      ],
+      "expanded_stride": [
+        32768,
+        4096,
+        0,
+        128,
+        1
+      ],
+      "output_shape": [
+        1,
+        32,
+        32,
+        128
+      ],
+      "output_stride": [
+        131072,
+        4096,
+        128,
+        1
+      ],
+      "input_storage_bytes": 65536,
+      "output_storage_bytes": 262144,
+      "same_storage": false,
+      "output_contiguous": true
+    },
+    "acceptance_requirement": "no repeat_kv, repeat_interleave, expanded H_Q cache, or equivalent materialized temporary",
+    "final_verdict": "BLOCKED_GQA_MATERIALIZATION"
+  },
+  "execution": {
+    "reference_environment_created": false,
+    "reference_container_built": false,
+    "cuda_extension_built": false,
+    "native_sm120_executed": false,
+    "forced_ptx_jit_executed": false,
+    "compute_sanitizer_executed": false,
+    "fixture_generator_created": false,
+    "fixture_validator_created": false,
+    "fixtures_created": false,
+    "reference_trace_created": false,
+    "graph_smoke_executed": false,
+    "r2_fixture_publication_created": false,
+    "comparative_timing_collected": false,
+    "profiler_timing_collected": false,
+    "quality_data_created": false,
+    "r_hbm_populated": false
+  },
+  "preservation": {
+    "kivi_measurement_adapter_created": false,
+    "factory_status": "phase_not_implemented",
+    "measurement_container_modified": false,
+    "turboquant_adapter_modified": false,
+    "turboquant_fixtures_modified": false,
+    "common_runners_modified": false,
+    "historical_evidence_modified": false,
+    "phase8_started": false
+  },
+  "claims": {
+    "performance": false,
+    "speedup": false,
+    "hbm_traffic": false,
+    "capacity": false,
+    "quality": false
+  },
+  "blocker": {
+    "id": "B-019",
+    "condition": "The selected official KIVI Llama GQA path physically materializes recent 8-head K/V tensors as 32-head temporaries.",
+    "minimum_remediation": "Pin a new author-maintained revision whose official primary-model path preserves native 8-head K/V storage without H_Q-sized K/V temporaries, then restart Phase 7 from entry."
+  }
+}

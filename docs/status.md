@@ -30,6 +30,14 @@ requirements; and AGENTS.md. Decision 0005 records precedence.
   verified already-present identical objects, created only missing objects,
   and completed without replacement. B-018 remains RESOLVED and all earlier
   failed evidence remains immutable.
+  The append-only Phase 6 outer bundle preserves that root unchanged and adds
+  all nine run references, the MethodAdmissionReport, original R2 publication
+  record, final PASS report, inventory, ledger, and COMPLETE. Its 176-object
+  root `8c4cf76f76bb17e648dfd911f11e268235ed827a9983814b774b9e95405496b0`
+  is published at
+  `r2://kvbench-artifacts/kvbench/sha256/8c4cf76f76bb17e648dfd911f11e268235ed827a9983814b774b9e95405496b0/`
+  and passed independent clean retrieval; the original 167-object root remains
+  unchanged.
 - Phase 6A prerequisite status: PASS. B-010 is RESOLVED for the exact Decision
   0016 image after full image identity/layer verification, container G0, and
   separate BF16 eager and CUDA Graph parity runs.
@@ -43,9 +51,10 @@ requirements; and AGENTS.md. Decision 0005 records precedence.
   was published COMPLETE-last and cleanly retrieved. B-009 is RESOLVED.
 - Phase 0 status: PASS
 - Phase 1 remediation status: PASS
-- Next authorized task: a separately scoped Phase 7 KIVI Reference Lane may be
-  proposed. Phase 7/E07 has not started. Pilot, Full Scan, profiling, fitting,
-  figures, and quality remain unauthorized
+- Phase 7 status: BLOCKED at the official-source GQA audit by B-019. No KIVI
+  environment, CUDA build, fixture, trace, R2 publication, or Measurement
+  Adapter was started. Phase 8, Pilot, Full Scan, profiling, fitting, figures,
+  and quality remain unauthorized.
 - Active admission gate: native-host G0 PASS; authorized-container G0 PASS;
   native-host BF16 G1 PASS; G2-TQ PASS
 - Benchmark implementation changes: exact BF16 static cache, fixed-L and
@@ -86,6 +95,25 @@ requirements; and AGENTS.md. Decision 0005 records precedence.
 - Full-scan admission: CLOSED
 - Gate state: native-host and authorized-container G0 PASS; native-host BF16 G1
   PASS; method-specific G2-TQ PASS; global G2-G5 NOT EVALUATED
+
+## Phase 7 KIVI reference lane
+
+Phase 7 passed its repository and R2 entry checks at clean HEAD
+`0974bbc98f8f941b09800786591108292dc4e0dd`. The official author repository
+`https://github.com/jy-yuan/KIVI.git` is source-audit pinned at commit
+`876b4d2d08e3b1d5f70d0969c299d8c7c42ddfb6`, tree
+`c94c31b2cfd44eeb9a18cff9dcdf03adff4ac49b`, under MIT. Exact relevant Git
+blob and SHA-256 identities are recorded in `third_party/LOCK.json`.
+
+Decision 0017 records that the official repository exposes incompatible
+`main`, `develop`, and `lmeval` heads and selects `main` because it is the only
+audited official head advertising the required Llama 3/GQA scope. That path
+calls Transformers 4.43.1 `repeat_kv` for recent K/V. The dependency's
+`expand(...).reshape(...)` produces a distinct contiguous H_Q=32 tensor from
+H_KV=8 storage; the exact BF16 audit observed four times the eight-head storage.
+This violates the mandatory native eight-head GQA acceptance criterion. B-019
+therefore blocks Phase 7 before environment, CUDA, fixture, trace, byte-layout,
+sanitizer, Graph, or R2 work. Phase 8 remains unstarted.
 
 ## Phase 5 TurboQuant reference lane
 
@@ -489,7 +517,7 @@ recorded in B-008/R-014.
 | Source | Exact revision | Phase 0 role |
 |---|---|---|
 | vLLM v0.25.1 | 752a3a504485790a2e8491cacbb35c137339ad34 | TurboQuant source/reference candidate |
-| KIVI | 876b4d2d08e3b1d5f70d0969c299d8c7c42ddfb6 | post-paper official-repository candidate; equivalence unresolved |
+| KIVI | 876b4d2d08e3b1d5f70d0969c299d8c7c42ddfb6 | official-main source-audit authority; Phase 7 blocked by GQA materialization; no paper-era equivalence claim |
 | KVQuant | 57a238357f0ffe50084670fcd5781c9848f80ea2 | official-paper calibration/reference candidate |
 | lm-evaluation-harness | c9bbec6e7de418b9082379da82797522eb173054 | direct KIVI Reference Lane dependency |
 
@@ -515,7 +543,8 @@ reference execution is recorded separately above.
 | Phase 6 TurboQuant measurement adapter | PASS | Execution HEAD `0df5bb4d445d48e6cba17e30723733f8de35cb14`; current-HEAD sanitizer 3/3 PASS; frozen bounded grid 9/9 PASS; 167-object admission root published COMPLETE-last and cleanly retrieved. |
 | Phase 6A Measurement Container and R2 prerequisites | PASS | Exact image built and scanned; container G0 and both BF16 parity smokes PASS; private R2 state and indefinite lock verified; synthetic and 222-object G0 roots cleanly retrieved; Decision 0016 accepted. B-009/B-010 RESOLVED. |
 | G2-TQ | PASS | All three mandatory configurations pass the frozen admission criteria; final root `f003bc3dc5de6b67a6d8f1b8bed7fa49b7f90f9d7edc4d1383e2d97c8aa19d6d` is durably published and cleanly retrieved. Global G2 remains NOT EVALUATED. |
-| G2-KIVI | NOT EVALUATED | requires E07-E08 |
+| Phase 7 KIVI reference lane | BLOCKED | Entry passed; exact official-main source audit found `repeat_kv` physically materializes H_Q=32 recent K/V from H_KV=8 storage. B-019; no runtime or fixture work began. |
+| G2-KIVI | BLOCKED / NOT EVALUATED | E07 cannot pass under the selected authority; E08 remains unstarted |
 | G2-KVQ | NOT EVALUATED | requires E09-E11 |
 | G1-G5 unified admission | NOT EVALUATED | requires E12 |
 | Pilot/full-scan gates | CLOSED / NOT EVALUATED | Phase 6 method admission does not authorize Pilot or Full Scan |
@@ -552,7 +581,9 @@ is COMPLETE-last and passes clean R2 retrieval after an initial preserved
 `TransportError` and an explicit conditional continuation. Native-host and
 authorized-container G0 plus native-host BF16 G1 remain PASS; G2-TQ is PASS;
 global G2-G5 remain NOT EVALUATED; Full Scan remains CLOSED; quality execution
-remains LOCKED; and `PERFORMANCE_DATA_FROZEN` remains absent. A separately
-scoped Phase 7 KIVI Reference Lane may be proposed, but Phase 7/E07 has not
-started. Pilot, profiling, fitting, figures, and quality execution remain
-unauthorized.
+remains LOCKED; and `PERFORMANCE_DATA_FROZEN` remains absent. Phase 7/E07 is
+BLOCKED by B-019 before runtime execution. The minimum remediation is a new
+author-maintained KIVI revision whose official Llama 3/GQA path consumes
+eight-head K/V storage without `repeat_kv` or equivalent H_Q materialization,
+followed by a fresh exact source audit. Phase 8, Pilot, profiling, fitting,
+figures, and quality execution remain unauthorized.

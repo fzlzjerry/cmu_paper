@@ -41,14 +41,22 @@ copy, benchmark timing, or quality result is vendored here.
 
 - Repository: https://github.com/jy-yuan/KIVI
 - Commit: 876b4d2d08e3b1d5f70d0969c299d8c7c42ddfb6
+- Tree: c94c31b2cfd44eeb9a18cff9dcdf03adff4ac49b
 - Declared license: MIT
-- Intended use: isolated Reference Lane only until a separate static adapter
-  passes Measurement Lane admission.
+- Intended use: exact Phase 7 source audit only in the current blocked attempt.
 
 The selected commit was authored on 2025-11-20, after arXiv v2 dated 2024-07-25.
-It was selected as an exact official-repository candidate visible during the
-audit and includes GQA-aware paths; it is not presumed equivalent to the
-paper-era implementation.
+Decision 0017 selects the default `main` implementation because it is the
+official branch that advertises Llama 3/GQA support; the older official
+`develop` and `lmeval` heads are not substituted. The selected source is not
+presumed equivalent to the paper-era implementation. Exact relevant-file Git
+blobs and SHA-256 values are recorded in `third_party/LOCK.json`.
+
+The advertised Llama GQA path materializes recent eight-head K/V storage as a
+32-head temporary through Transformers `repeat_kv`. Phase 7 is therefore
+BLOCKED before reference-environment construction. No KIVI source is vendored,
+no KIVI CUDA or model code was executed, and no fixture or R2 fixture bundle
+was created.
 
 ### KIVI direct Git dependency
 

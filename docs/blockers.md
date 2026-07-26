@@ -32,6 +32,12 @@ was published COMPLETE-last and passed clean R2 retrieval. The first
 publication invocation recorded `TransportError`; an explicit rerun used the
 existing conditional-write path to verify identical existing objects and
 create only missing objects. G2-TQ is PASS; global G2-G5 remain NOT EVALUATED.
+Phase 7 then selected the official KIVI default-branch commit under Decision
+0017. Its advertised Llama GQA decode path physically expands recent K/V from
+8 to 32 heads through `repeat_kv`. B-019 is OPEN and Phase 7 is BLOCKED before
+environment construction, CUDA execution, fixtures, or R2 publication. Phase
+8 remains unstarted; Full Scan remains CLOSED and quality execution remains
+LOCKED.
 
 | ID | Blocking condition | Blocks | Evidence / next action | Status |
 |---|---|---|---|---|
@@ -54,6 +60,7 @@ create only missing objects. G2-TQ is PASS; global G2-G5 remain NOT EVALUATED.
 | B-017 | Immutable report `phase3-g1-20260723t123322160580z-9def265a-08dc69` remains valid FAIL evidence for the former legacy-summary/raw-bundle disconnect. | BF16 G1, B-011/B-012 closure, Phase 4, every later method baseline comparison. | Commit `7f72c95f9932c608f9bd68f1971d6e86378596a2` binds report behavior to its recorded generator SHA, reuses coordinator raw replay, rejects missing/tampered/mismatched evidence, ignores serialized worker `passed` booleans, and derives the five criteria from raw bytes. `make checks`, `make test`, `make test-cuda` (14/14), and `make test-graph` (3/3) pass. New no-replace report `phase3-g1-20260723t132609515797z-7f72c95f-f31ccb` independently validates PASS with no errors; the two campaigns and 20 source runs were not rerun or modified. | resolved 2026-07-23 |
 
 | B-018 | The exact pinned TurboQuant store-append-decode probe completed functionally, but Compute Sanitizer memcheck reported 2,093,260 leaked bytes in 28 allocations and exited 99 in final run `phase6-20260725t065153714z-ace9261a-083f14-4bit_nc-fixed-l128-eager`. | G2-TQ and the bounded admission grid | Resolved without changing the algorithm, fixtures, container, runner, timing, or sanitizer criteria. Commit `aac794c21b01b3e43ff93e317286285d21dbcd47` explicitly releases sanitizer-only CUDA storages and library resources. New runs `phase6-b018-20260725t141636785z-aac794c2-6444b4-4bit_nc-sanitizer`, `phase6-b018-20260725t141640440z-aac794c2-eb5675-k3v4_nc-sanitizer`, and `phase6-b018-20260725t141643545z-aac794c2-4d7433-3bit_nc-sanitizer` each pass the probe, exit 0, and record zero errors and zero leaked bytes with valid COMPLETE/inventory/checksum ledgers. Current-HEAD admission at `0df5bb4d445d48e6cba17e30723733f8de35cb14` independently reran all three probes successfully before the frozen grid passed 9/9. | resolved 2026-07-25; current-HEAD confirmation 2026-07-26 |
+| B-019 | The selected official KIVI `main` implementation advertises Llama 3/GQA support but calls Transformers `repeat_kv` for recent key/value regions. At H_Q=32/H_KV=8 the exact expand/reshape helper creates a distinct contiguous 32-head tensor with four times the eight-head storage. | Phase 7 KIVI Reference Lane, E07, E08, and G2-KIVI | Decision 0017 forbids substituting an older official branch, unofficial fork, or local algorithmic patch. Obtain an exact author-maintained revision whose official primary-model path preserves native eight-head K/V storage without H_Q-sized K/V temporaries, then restart Phase 7 from entry. | open 2026-07-26 |
 
 ## Phase 4 disposition
 
@@ -121,3 +128,17 @@ reran all three sanitizers, passed the frozen grid 9/9, and durably published
 and cleanly retrieved the 167-object admission bundle. G2-TQ is PASS; global
 G2-G5 remain NOT EVALUATED, Full Scan remains CLOSED, quality execution remains
 LOCKED, and all original failures remain immutable.
+
+## Phase 7 KIVI source-audit disposition
+
+The full entry suite passed at clean HEAD
+`0974bbc98f8f941b09800786591108292dc4e0dd`, including independent clean
+retrieval of both the 176-object outer Phase 6 root and unchanged 167-object
+original root. Exact source audit then selected official KIVI `main` commit
+`876b4d2d08e3b1d5f70d0969c299d8c7c42ddfb6` under Decision 0017.
+
+The source and an exact non-timing BF16 storage-semantics audit prove that the
+advertised primary-model GQA path materializes recent K/V at H_Q=32. B-019 is
+therefore OPEN. The hard stop occurred before any reference container, CUDA
+build, fixture, sanitizer, trace, graph smoke, byte accounting, or Phase 7 R2
+publication. Phase 8 remains unstarted and the factory remains fail-closed.
