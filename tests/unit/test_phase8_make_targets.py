@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 import re
 import unittest
@@ -23,6 +24,12 @@ KIVI_EXTENSION_SHA256 = (
 )
 KIVI_NEW_PACK_SHA256 = (
     "3678af0e34a0ba18e5d80a4128acf11d4070667c800a15540a16d07253a4f75e"
+)
+KIVI_ADMISSION_RUN_ID = (
+    "phase8-20260727t113020276z-462325e9-0edc5a-k4v4-fixed-l128-eager"
+)
+KIVI_ADMISSION_ARTIFACT = (
+    f"$(CURDIR)/artifacts/phase8/{KIVI_ADMISSION_RUN_ID}"
 )
 
 
@@ -317,6 +324,46 @@ class Phase8MakeTargetTests(unittest.TestCase):
         )
         self.assertNotIn("docker", publication_validation)
         self.assertNotIn("r2_artifact.py", publication_validation)
+
+    def test_bare_validation_is_bound_to_published_admission(self) -> None:
+        evidence_root = REPOSITORY_ROOT / "docs" / "evidence" / "phase8"
+        method_report = json.loads(
+            (evidence_root / "kivi-method-admission.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        publication = json.loads(
+            (evidence_root / "r2-admission-publication.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        referenced_run_ids = {
+            reference["path"].split("/")[2]
+            for reference in method_report["evidence_references"]
+            if reference["path"].startswith("artifacts/phase8/")
+        }
+
+        self.assertEqual(
+            publication["source_run_id"],
+            KIVI_ADMISSION_RUN_ID,
+        )
+        self.assertEqual(referenced_run_ids, {KIVI_ADMISSION_RUN_ID})
+        self.assertEqual(
+            publication["local_validation"]["root_sha256"],
+            method_report["local_root_digest"],
+        )
+        self.assertEqual(
+            _assignment("PHASE8_KIVI_ADMISSION_ARTIFACT"),
+            KIVI_ADMISSION_ARTIFACT,
+        )
+        self.assertIsNotNone(
+            re.search(
+                r"^PHASE8_KIVI_ADMISSION_ARTIFACT := "
+                rf"{re.escape(KIVI_ADMISSION_ARTIFACT)}$",
+                MAKEFILE,
+                flags=re.MULTILINE,
+            )
+        )
 
 
 if __name__ == "__main__":
