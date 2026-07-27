@@ -36,6 +36,7 @@ PHASE5_ENTRY_COMMIT = "9eeabe787060e84c20cd7f88da8f7bca68eae1d4"
 PHASE6A_ENTRY_COMMIT = "a25a76a052a918428e8eb56cdfde63470cf6a152"
 PHASE6_ENTRY_COMMIT = "e06f638f4b913f9bd1be2975a478657f5bf2338e"
 PHASE7_ENTRY_COMMIT = "0974bbc98f8f941b09800786591108292dc4e0dd"
+PHASE8_ENTRY_COMMIT = "8d6d766a34a15bd40bd42cc47c5482b0dd052cc0"
 QUALITY_COMMIT = "a7b8285dd8ed2fb598efbb3312e9f55064a0ee64"
 ENVIRONMENT_COMMIT = "ea176994921c793789ebbd9d42515ce20ae4baee"
 EVIDENCE_COMMIT = "fb164b5ea96031ca40b21f4b8436a49a3bb5b8d2"
@@ -478,6 +479,61 @@ PHASE7_ALLOWED_PATHS = frozenset(
     }
 )
 
+PHASE8_ALLOWED_PATHS = frozenset(
+    {
+        "Makefile",
+        "docs/blockers.md",
+        "docs/decisions/0019-phase7-allocation-ratio-terminology-erratum.md",
+        "docs/evidence/phase8/kivi-method-admission.json",
+        "docs/evidence/phase8/kivi-method-admission.sha256",
+        "docs/evidence/phase8/r2-admission-outer-publication.json",
+        "docs/evidence/phase8/r2-admission-publication.json",
+        "docs/method_notes/kivi.md",
+        "docs/phase_reports/phase8-kivi-measurement-adapter.md",
+        "docs/plans/phase8-kivi-measurement-adapter.md",
+        "docs/risk_register.md",
+        "docs/status.md",
+        "docs/tasks.md",
+        "scripts/phase8_kivi_admission.py",
+        "scripts/phase8_r2_outer_bundle.py",
+        "scripts/validate_phase2.py",
+        "src/kvbench/adapters/__init__.py",
+        "src/kvbench/adapters/factory.py",
+        "src/kvbench/adapters/kivi.py",
+        "src/kvbench/runtime/allocation.py",
+        "src/kvbench/runtime/allocation_attribution.py",
+        "src/kvbench/runtime/kivi_admission.py",
+        "src/kvbench/runtime/kivi_allocation.py",
+        "src/kvbench/runtime/artifacts.py",
+        "src/kvbench/runtime/kivi_cache.py",
+        "src/kvbench/runtime/kivi_fixture.py",
+        "src/kvbench/runtime/numerical.py",
+        "src/kvbench/runtime/kivi_session.py",
+        "src/kvbench/runtime/process_supervision.py",
+        "src/kvbench/schema/phase8.py",
+        "tests/cuda/phase8_kivi_sanitizer_probe.py",
+        "tests/cuda/test_phase8_kivi_cuda.py",
+        "tests/graph/test_phase8_kivi_graph.py",
+        "tests/unit/test_phase7_kivi_b019_remediation.py",
+        "tests/unit/test_phase7_kivi_reference.py",
+        "tests/unit/test_phase7_kivi_source_audit.py",
+        "tests/unit/test_phase8_governance.py",
+        "tests/unit/test_phase8_artifacts.py",
+        "tests/unit/test_phase8_kivi_adapter.py",
+        "tests/unit/test_phase8_kivi_admission.py",
+        "tests/unit/test_phase8_kivi_admission_driver.py",
+        "tests/unit/test_phase8_kivi_allocation.py",
+        "tests/unit/test_phase8_kivi_cache.py",
+        "tests/unit/test_phase8_kivi_fixture.py",
+        "tests/unit/test_phase8_kivi_schema.py",
+        "tests/unit/test_phase8_kivi_session.py",
+        "tests/unit/test_phase8_make_targets.py",
+        "tests/unit/test_phase8_process_supervision.py",
+        "tests/unit/test_phase8_r2_outer_bundle.py",
+        "tests/unit/test_phase8_ratio_terminology.py",
+    }
+)
+
 
 RAW_RESULT_SUFFIXES = {
     ".bin",
@@ -531,6 +587,11 @@ PHASE3_EXTERNAL_IMPORTS = {
     "src/kvbench/runtime/static_cache.py": {"torch"},
     "src/kvbench/runtime/turboquant_admission.py": {"torch", "triton"},
     "src/kvbench/runtime/timing.py": {"torch"},
+    "src/kvbench/runtime/kivi_admission.py": {"torch"},
+    "src/kvbench/runtime/kivi_cache.py": {"torch"},
+    "src/kvbench/runtime/kivi_fixture.py": {"torch"},
+    "src/kvbench/runtime/kivi_session.py": {"torch"},
+    "src/kvbench/adapters/kivi.py": {"torch"},
     "src/kvbench/third_party/vllm_turboquant/centroids.py": {"torch"},
     "src/kvbench/third_party/vllm_turboquant/compat.py": {"torch"},
     "src/kvbench/third_party/vllm_turboquant/config.py": {"vllm"},
@@ -559,10 +620,23 @@ HOT_PATH_FUNCTIONS = {
         "_decode_compressed",
         "decode_attention",
     },
+    "src/kvbench/adapters/kivi.py": {
+        "_commit_token",
+        "_layer_context",
+        "_quantize_into",
+        "_store_historical_k",
+        "_store_historical_v",
+        "store_prefill",
+        "append_decode",
+        "_decode_compressed",
+        "decode_attention",
+        "launch_into",
+    },
     "src/kvbench/runtime/backend.py": {
         "flash_attention_forward",
     },
     "src/kvbench/runtime/static_cache.py": {"update"},
+    "src/kvbench/runtime/kivi_cache.py": {"update"},
     "src/kvbench/runtime/bf16_endpoint.py": {
         "rotate_half_in_place",
         "_attention",
@@ -578,6 +652,12 @@ HOT_PATH_FUNCTIONS = {
         "measured_step",
     },
 }
+PHASE8_HOT_PATH_SOURCES = frozenset(
+    {
+        "src/kvbench/adapters/kivi.py",
+        "src/kvbench/runtime/kivi_cache.py",
+    }
+)
 HOT_PATH_BANNED_CALLS = {
     "cat",
     "cpu",
@@ -765,9 +845,22 @@ def historical_phase6_paths() -> set[str]:
     )
 
 
-def current_phase7_paths() -> set[str]:
+def historical_phase7_paths() -> set[str]:
+    return git_paths(
+        (
+            "diff",
+            "--name-only",
+            "-z",
+            PHASE7_ENTRY_COMMIT,
+            PHASE8_ENTRY_COMMIT,
+            "--",
+        )
+    )
+
+
+def current_phase8_paths() -> set[str]:
     changed = git_paths(
-        ("diff", "--name-only", "-z", PHASE7_ENTRY_COMMIT, "--")
+        ("diff", "--name-only", "-z", PHASE8_ENTRY_COMMIT, "--")
     )
     untracked = git_paths(
         ("ls-files", "--others", "--exclude-standard", "-z", "--")
@@ -775,10 +868,16 @@ def current_phase7_paths() -> set[str]:
     return changed | untracked
 
 
-def current_phase6_paths() -> set[str]:
-    """Compatibility view spanning completed Phase 6 and current Phase 7."""
+def current_phase7_paths() -> set[str]:
+    """Compatibility view of the completed, frozen Phase 7 segment."""
 
-    return historical_phase6_paths() | current_phase7_paths()
+    return historical_phase7_paths()
+
+
+def current_phase6_paths() -> set[str]:
+    """Compatibility view spanning completed Phase 6 and Phase 7."""
+
+    return historical_phase6_paths() | historical_phase7_paths()
 
 
 def current_phase6a_paths() -> set[str]:
@@ -798,7 +897,7 @@ def current_phase5_paths() -> set[str]:
 
 
 def changed_paths() -> set[str]:
-    return current_phase7_paths()
+    return current_phase8_paths()
 
 
 def repository_python_paths() -> list[Path]:
@@ -809,6 +908,8 @@ def repository_python_paths() -> list[Path]:
     paths.add(ROOT / "scripts" / "r2_artifact.py")
     paths.add(ROOT / "scripts" / "phase6_turboquant_admission.py")
     paths.add(ROOT / "scripts" / "phase6a_bf16_parity.py")
+    paths.add(ROOT / "scripts" / "phase8_kivi_admission.py")
+    paths.add(ROOT / "scripts" / "phase8_r2_outer_bundle.py")
     schema_tests = ROOT / "tests" / "schema"
     if schema_tests.is_dir():
         paths.update(schema_tests.rglob("*.py"))
@@ -821,6 +922,7 @@ def repository_python_paths() -> list[Path]:
         paths.update(unit_tests.glob("test_phase6a_*.py"))
         paths.update(unit_tests.glob("test_phase6_*.py"))
         paths.update(unit_tests.glob("test_phase7_*.py"))
+        paths.update(unit_tests.glob("test_phase8_*.py"))
         paths.update(
             unit_tests / name
             for name in (
@@ -837,13 +939,18 @@ def repository_python_paths() -> list[Path]:
     if cuda_tests.is_dir():
         paths.update(cuda_tests.glob("test_phase3_*.py"))
         paths.update(cuda_tests.glob("test_phase6_*.py"))
+        paths.update(cuda_tests.glob("test_phase8_*.py"))
         sanitizer_probe = cuda_tests / "phase6_turboquant_sanitizer_probe.py"
         if sanitizer_probe.is_file():
             paths.add(sanitizer_probe)
+        phase8_sanitizer_probe = cuda_tests / "phase8_kivi_sanitizer_probe.py"
+        if phase8_sanitizer_probe.is_file():
+            paths.add(phase8_sanitizer_probe)
     graph_tests = ROOT / "tests" / "graph"
     if graph_tests.is_dir():
         paths.update(graph_tests.glob("test_phase3_*.py"))
         paths.update(graph_tests.glob("test_phase6_*.py"))
+        paths.update(graph_tests.glob("test_phase8_*.py"))
     return sorted(path for path in paths if path.is_file())
 
 
@@ -1051,6 +1158,8 @@ def check_hot_path() -> int:
     for relative, expected_names in HOT_PATH_FUNCTIONS.items():
         path = ROOT / relative
         if not path.is_file():
+            if relative in PHASE8_HOT_PATH_SOURCES:
+                continue
             errors.append(f"missing Phase 3 SUT source: {relative}")
             continue
         try:
@@ -1694,6 +1803,10 @@ PHASE7_APPROVED_ARTIFACT_ROOT_NAMES = frozenset(
     {"phase7_kivi_reference"}
 )
 
+PHASE8_APPROVED_ARTIFACT_ROOT_NAMES = frozenset(
+    {"phase8", "phase8_r2_outer"}
+)
+
 
 def validate_phase3_artifact_root() -> list[str]:
     errors: list[str] = []
@@ -1722,6 +1835,7 @@ def validate_phase3_artifact_root() -> list[str]:
             if path.name not in (
                 APPROVED_ARTIFACT_ROOT_NAMES
                 | PHASE7_APPROVED_ARTIFACT_ROOT_NAMES
+                | PHASE8_APPROVED_ARTIFACT_ROOT_NAMES
             )
         )
         if unexpected:
@@ -1886,6 +2000,10 @@ def check_scope() -> int:
         errors.append(
             "the accepted Phase 7 entry commit is not an ancestor of HEAD"
         )
+    if not commit_is_ancestor(PHASE8_ENTRY_COMMIT):
+        errors.append(
+            "the accepted Phase 8 entry commit is not an ancestor of HEAD"
+        )
     phase5 = historical_phase5_paths()
     phase5_unexpected = sorted(phase5 - PHASE5_ALLOWED_PATHS)
     if phase5_unexpected:
@@ -1907,23 +2025,30 @@ def check_scope() -> int:
             f"historical files outside the approved Phase 6 plan: "
             f"{phase6_unexpected!r}"
         )
-    changed = current_phase7_paths()
-    phase7_unexpected = sorted(changed - PHASE7_ALLOWED_PATHS)
+    phase7 = historical_phase7_paths()
+    phase7_unexpected = sorted(phase7 - PHASE7_ALLOWED_PATHS)
     if phase7_unexpected:
         errors.append(
-            f"files outside the approved Phase 7 plan: {phase7_unexpected!r}"
+            f"historical files outside the approved Phase 7 plan: "
+            f"{phase7_unexpected!r}"
+        )
+    changed = current_phase8_paths()
+    phase8_unexpected = sorted(changed - PHASE8_ALLOWED_PATHS)
+    if phase8_unexpected:
+        errors.append(
+            f"files outside the approved Phase 8 plan: {phase8_unexpected!r}"
         )
     for relative in sorted(changed):
         if relative.startswith("docs/evidence/e00/"):
             errors.append(f"immutable E00 evidence changed: {relative}")
         if relative in QUALITY_PROTOCOL_HASHES:
             errors.append(
-                f"quality protocol changed during Phase 7: {relative}"
+                f"quality protocol changed during Phase 8: {relative}"
             )
         if Path(relative).suffix in RAW_RESULT_SUFFIXES:
             errors.append(
                 f"forbidden binary, kernel, model, or profiler artifact "
-                f"in Phase 7 scope: {relative}"
+                f"in Phase 8 scope: {relative}"
             )
         if relative.startswith(
             (
@@ -1935,7 +2060,7 @@ def check_scope() -> int:
             )
         ):
             errors.append(
-                f"forbidden result tree in Phase 7 scope: {relative}"
+                f"forbidden result tree in Phase 8 scope: {relative}"
             )
     e00_changes = git_paths(
         (
@@ -1972,14 +2097,14 @@ def check_scope() -> int:
     errors.extend(validate_phase6a_artifact_root())
     errors.extend(validate_phase6_artifact_root())
     forbidden_modules = (
-        "src/kvbench/methods/turboquant",
-        "src/kvbench/methods/kivi",
         "src/kvbench/methods/kvquant",
+        "src/kvbench/adapters/kvquant.py",
+        "src/kvbench/runtime/kvquant.py",
     )
     for relative in forbidden_modules:
         if (ROOT / relative).exists():
             errors.append(
-                f"Phase 5 method implementation exists in Phase 4: {relative}"
+                f"KVQuant implementation exists during Phase 8: {relative}"
             )
     return report("scope", errors)
 

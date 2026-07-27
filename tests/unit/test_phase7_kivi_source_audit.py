@@ -9,13 +9,12 @@ import re
 import subprocess
 import unittest
 
-from kvbench.adapters.factory import build_method_adapter
-from kvbench.errors import ErrorCode, PhaseNotImplementedError
 from scripts.validate_phase2 import (
     PHASE6_ALLOWED_PATHS,
     PHASE7_ALLOWED_PATHS,
     PHASE7_ENTRY_COMMIT,
-    current_phase7_paths,
+    PHASE8_ENTRY_COMMIT,
+    historical_phase7_paths,
     historical_phase6_paths,
 )
 
@@ -44,10 +43,23 @@ def _sha256_at_commit(commit: str, path: str) -> str:
         cwd=REPOSITORY_ROOT,
         check=False,
         stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
     )
     if result.returncode != 0:
         raise RuntimeError(f"cannot read {path} at {commit}")
     return hashlib.sha256(result.stdout).hexdigest()
+
+
+def _file_at_commit(commit: str, path: str) -> bytes | None:
+    result = subprocess.run(
+        ("git", "show", f"{commit}:{path}"),
+        cwd=REPOSITORY_ROOT,
+        check=False,
+        stdout=subprocess.PIPE,
+    )
+    if result.returncode != 0:
+        return None
+    return result.stdout
 
 
 class Phase7KiviSourceAuditTests(unittest.TestCase):
@@ -124,9 +136,9 @@ class Phase7KiviSourceAuditTests(unittest.TestCase):
             with self.subTest(rejected=rejected):
                 self.assertNotIn(rejected, PHASE7_ALLOWED_PATHS)
 
-    def test_historical_and_current_scope_are_separate(self) -> None:
+    def test_completed_phase6_and_phase7_scopes_are_separate(self) -> None:
         self.assertLessEqual(historical_phase6_paths(), PHASE6_ALLOWED_PATHS)
-        self.assertLessEqual(current_phase7_paths(), PHASE7_ALLOWED_PATHS)
+        self.assertLessEqual(historical_phase7_paths(), PHASE7_ALLOWED_PATHS)
 
     def test_source_authority_and_hash_bindings(self) -> None:
         audit = self.audit
@@ -249,21 +261,23 @@ class Phase7KiviSourceAuditTests(unittest.TestCase):
         self.assertTrue(
             (REPOSITORY_ROOT / "docker/reference-kivi.Dockerfile").exists()
         )
-        self.assertFalse(
-            (REPOSITORY_ROOT / "src/kvbench/adapters/kivi.py").exists()
+        self.assertIsNone(
+            _file_at_commit(
+                PHASE8_ENTRY_COMMIT,
+                "src/kvbench/adapters/kivi.py",
+            )
         )
         self.assertFalse((REPOSITORY_ROOT / "artifacts/phase7").exists())
 
-    def test_kivi_adapter_remains_fail_closed(self) -> None:
-        with self.assertRaises(PhaseNotImplementedError) as raised:
-            build_method_adapter("kivi", None)  # type: ignore[arg-type]
-        self.assertEqual(raised.exception.code, ErrorCode.PHASE_NOT_IMPLEMENTED)
-        self.assertEqual(
-            str(raised.exception),
-            (
-                "phase_not_implemented: "
-                "kivi method adapter is deferred beyond Phase 6"
-            ),
+    def test_phase8_entry_factory_was_fail_closed_for_kivi(self) -> None:
+        factory = _file_at_commit(
+            PHASE8_ENTRY_COMMIT,
+            "src/kvbench/adapters/factory.py",
+        )
+        self.assertIsNotNone(factory)
+        self.assertIn(
+            b'_DEFERRED_METHODS = frozenset({"kivi", "kvquant"})',
+            factory,
         )
 
     def test_protected_phase6_and_measurement_paths_are_unchanged(self) -> None:

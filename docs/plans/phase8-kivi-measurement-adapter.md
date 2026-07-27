@@ -56,6 +56,9 @@ Preallocate quantized K/V history, K/V scales and additive minima, K residual,
 a KIVI-specific indexed V residual, an ordered V residual staging view, FP16
 query/K/V/metadata/output staging, canonical logits/softmax/merge/output
 workspace, and all fixed index tensors for the declared maximum context.
+Softmax always uses that declared maximum-context workspace; inactive
+positions are filled with negative infinity so growing steps keep one static
+kernel shape without changing the active-prefix normalization.
 K residual tokens are quantized as one 32-token group after the L=32 decode.
 V uses a 32-slot KIVI-only circular index; after the L=33 decode the oldest
 token is quantized and the logical residual becomes tokens 1..32. Precomputed

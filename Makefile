@@ -30,6 +30,16 @@ MEASUREMENT_GPU_UUID := GPU-75bd273e-6b20-0d22-1b0b-5fbb6fb0025b
 PHASE6_AUTHORIZED_IMAGE_CONFIG_DIGEST := sha256:059bc9be89387369d7de9e3e9b26d85b6e9902c41e7dbf002ebc45edd188fb7e
 PHASE6_R2_OUTER_RUN_ID ?=
 PHASE6_R2_OUTER_ARTIFACT ?=
+override PHASE8_AUTHORIZED_IMAGE_CONFIG_DIGEST := sha256:059bc9be89387369d7de9e3e9b26d85b6e9902c41e7dbf002ebc45edd188fb7e
+override PHASE8_KIVI_REFERENCE_MANIFEST_DIGEST := sha256:f27e4cdef6bd15f18ab76b1fe0e4413ede004b42538c74e3dd90d04172406f75
+override PHASE8_KIVI_REFERENCE_CONFIG_DIGEST := sha256:0915dc8488fd6c9a150a3b4f56bb4b97b5dbdb7c51d96cda2d431df20e856ce3
+override PHASE8_KIVI_EXTENSION_SHA256 := 45d29ec1a3cecc4b253d1d1dd6139ef4f91cff88993db61a9d73685314851aa9
+override PHASE8_KIVI_NEW_PACK_SHA256 := 3678af0e34a0ba18e5d80a4128acf11d4070667c800a15540a16d07253a4f75e
+PHASE8_R2_INNER_ARTIFACT ?=
+PHASE8_KIVI_ADMISSION_ARTIFACT ?=
+PHASE8_R2_OUTER_RUN_ID ?=
+PHASE8_R2_OUTER_ARTIFACT ?=
+PHASE8_R2_OUTER_RECEIPT := docs/evidence/phase8/r2-admission-outer-publication.json
 R2_ARTIFACT := /usr/bin/env PYTHONDONTWRITEBYTECODE=1 PYTHONNOUSERSITE=1 PYTHONPATH=$(CURDIR):$(CURDIR)/src $(PHASE2_PYTHON) scripts/r2_artifact.py
 KIVI_B019_DEVICE ?= cpu
 KIVI_B019_SOURCE_ROOT ?=
@@ -53,6 +63,9 @@ KIVI_REFERENCE_BUILD_REVISION := 3417ea0e7f322369eed21bb787a9a9a19b0a69bd
 .PHONY: phase6a-source-safety admit-turboquant validate-admission-turboquant
 .PHONY: remediate-b018-turboquant
 .PHONY: phase6-r2-outer-bundle validate-phase6-r2-outer-bundle
+.PHONY: admit-kivi validate-admission-kivi
+.PHONY: phase8-r2-outer-bundle validate-phase8-r2-outer-bundle
+.PHONY: validate-phase8-r2-outer-publication
 .PHONY: validate-kivi-b019-patch
 .PHONY: reference-kivi validate-reference-kivi
 
@@ -116,6 +129,7 @@ test: checks
 	@$(PHASE3_ENV) $(PHASE3_PYTHON) -m unittest tests.unit.test_phase7_kivi_source_audit -v
 	@$(PHASE3_ENV) $(PHASE3_PYTHON) -m unittest tests.unit.test_phase7_kivi_b019_remediation -v
 	@$(PHASE3_ENV) $(PHASE3_PYTHON) -m unittest tests.unit.test_phase7_kivi_reference -v
+	@$(PHASE3_ENV) $(PHASE3_PYTHON) -m unittest discover -s tests/unit -p 'test_phase8_*.py' -v
 	@$(PHASE3_ENV) $(PHASE3_PYTHON) -m unittest tests.unit.test_measurement_container tests.unit.test_phase6a_bf16_parity tests.unit.test_phase6a_governance tests.unit.test_preflight_unit tests.unit.test_r2_artifact -v
 	@$(PHASE2_VALIDATE) immutable
 
@@ -488,6 +502,113 @@ phase6-r2-outer-bundle:
 validate-phase6-r2-outer-bundle:
 	@test -n "$(PHASE6_R2_OUTER_ARTIFACT)" || { echo '{"status":"FAIL","reason":"PHASE6_R2_OUTER_ARTIFACT_required"}' >&2; exit 2; }
 	@$(PHASE3_ENV) $(PHASE3_PYTHON) -m scripts.phase6_r2_outer_bundle validate "$(PHASE6_R2_OUTER_ARTIFACT)"
+
+admit-kivi: override MEASUREMENT_IMAGE_CONFIG_DIGEST := $(PHASE8_AUTHORIZED_IMAGE_CONFIG_DIGEST)
+admit-kivi: verify-measurement-container
+	@test "$(MEASUREMENT_IMAGE_CONFIG_DIGEST)" = "$(PHASE8_AUTHORIZED_IMAGE_CONFIG_DIGEST)" || { echo '{"status":"BLOCKED","reason":"authorized_phase8_image_digest_required"}' >&2; exit 2; }
+	@test -z "$$(git status --porcelain=v1 --untracked-files=all)" || { echo '{"status":"BLOCKED","reason":"source_tree_not_clean"}' >&2; exit 2; }
+	@task_root="$$(mktemp -d /tmp/kvbench-phase8-kivi-admission.XXXXXX)"; \
+		cid=""; reference_cid=""; preserve=1; \
+		cleanup() { \
+			if [[ -n "$$cid" ]]; then docker rm -f "$$cid" >/dev/null 2>&1 || true; fi; \
+			if [[ -n "$$reference_cid" ]]; then docker rm -f "$$reference_cid" >/dev/null 2>&1 || true; fi; \
+			if (( preserve == 0 )); then \
+				chmod -R u+w "$$task_root" 2>/dev/null || true; \
+				rm -rf -- "$$task_root"; \
+			else \
+				printf '{"status":"FAILED_PHASE8_LAUNCH_EVIDENCE_PRESERVED","path":"%s"}\n' "$$task_root" >&2; \
+			fi; \
+		}; \
+		trap cleanup EXIT; \
+		head="$$(git rev-parse HEAD)"; \
+		image_id="$(PHASE8_AUTHORIZED_IMAGE_CONFIG_DIGEST)"; \
+		reference_image="$(KIVI_REFERENCE_IMAGE)@$(PHASE8_KIVI_REFERENCE_MANIFEST_DIGEST)"; \
+		test "$$(docker image inspect "$$image_id" --format '{{.Id}}')" = "$$image_id"; \
+		test "$$(docker image inspect "$$reference_image" --format '{{.Id}}')" = "$(PHASE8_KIVI_REFERENCE_MANIFEST_DIGEST)"; \
+		test "$$(docker image inspect "$$reference_image" --format '{{index .Config.Labels "org.kvbench.reference.parent.config_digest"}}')" = "$$image_id"; \
+		test "$$($(PHASE2_PYTHON) -c 'import json; print(json.load(open("reference/kivi/build_manifest.json", encoding="utf-8"))["image"]["config_digest"])')" = "$(PHASE8_KIVI_REFERENCE_CONFIG_DIGEST)"; \
+		git clone --quiet --no-local --no-checkout "$(CURDIR)" "$$task_root/source"; \
+		git -C "$$task_root/source" checkout --quiet --detach "$$head"; \
+		git -C "$$task_root/source" remote remove origin; \
+		test "$$(git -C "$$task_root/source" rev-parse HEAD)" = "$$head"; \
+		test -z "$$(git -C "$$task_root/source" status --porcelain=v1 --untracked-files=all)"; \
+		test ! -e "$$task_root/source/.env"; \
+		chmod -R a-w "$$task_root/source/docs/evidence/e00"; \
+		mkdir "$$task_root/source/.venv"; \
+		ln -s /opt/kvbench/.venv/bin "$$task_root/source/.venv/bin"; \
+		ln -s /opt/kvbench/.venv/lib "$$task_root/source/.venv/lib"; \
+		ln -s /opt/kvbench/.venv/pyvenv.cfg "$$task_root/source/.venv/pyvenv.cfg"; \
+		mkdir "$$task_root/source/.phase3"; \
+		ln -s /opt/kvbench/.phase3/site-packages "$$task_root/source/.phase3/site-packages"; \
+		mkdir -p "$$task_root/source/artifacts/phase8" "$(CURDIR)/artifacts/phase8"; \
+		mkdir "$$task_root/kivi-source" "$$task_root/kivi-extension"; \
+		reference_cid="$$(docker create --network=none "$$reference_image")"; \
+		[[ "$$reference_cid" =~ ^[0-9a-f]{64}$$ ]]; \
+		docker cp "$$reference_cid:/opt/kivi-source/." "$$task_root/kivi-source"; \
+		docker cp "$$reference_cid:/opt/kivi-source/quant/kivi_gemv.cpython-312-x86_64-linux-gnu.so" "$$task_root/kivi-extension/kivi_gemv.cpython-312-x86_64-linux-gnu.so"; \
+		docker rm -f "$$reference_cid" >/dev/null; reference_cid=""; \
+		test -f "$$task_root/kivi-source/models/kivi_gqa.py" && test ! -L "$$task_root/kivi-source/models/kivi_gqa.py"; \
+		cp --preserve=mode,timestamps "$$task_root/kivi-source/models/kivi_gqa.py" "$$task_root/kivi-gqa.authority.py"; \
+		git -C "$$task_root/kivi-source" clean -fdx; \
+		cp --preserve=mode,timestamps "$$task_root/kivi-gqa.authority.py" "$$task_root/kivi-source/models/kivi_gqa.py"; \
+		test "$$(sha256sum "$$task_root/kivi-source/quant/new_pack.py" | cut -d ' ' -f 1)" = "$(PHASE8_KIVI_NEW_PACK_SHA256)"; \
+		test "$$(sha256sum "$$task_root/kivi-extension/kivi_gemv.cpython-312-x86_64-linux-gnu.so" | cut -d ' ' -f 1)" = "$(PHASE8_KIVI_EXTENSION_SHA256)"; \
+		$(PHASE3_ENV) $(PHASE3_PYTHON) scripts/validate_kivi_b019_patch.py \
+			--device cpu --source-root "$$task_root/kivi-source" \
+			> "$$task_root/kivi-source-validation.json"; \
+		model_root="$$(realpath /root/.cache/huggingface/hub/models--meta-llama--Llama-3.1-8B-Instruct)"; \
+		model_snapshot="$$model_root/snapshots/0e9e39f249a16976918f6564b8830bc894c89659"; \
+		test -d "$$model_root" && test -d "$$model_snapshot"; \
+		artifact_root="$$(realpath "$(CURDIR)/artifacts/phase8")"; \
+		cid="$$(docker create --read-only --network=none --pid=host \
+			--gpus "device=$(MEASUREMENT_GPU_UUID)" \
+			--tmpfs /tmp:rw,exec,nosuid,nodev,size=8g \
+			--tmpfs /root:rw,exec,nosuid,nodev,size=8g \
+			--mount "type=bind,src=$$task_root/source,dst=/home/rockrock/cmu_paper,readonly" \
+			--mount "type=bind,src=$$artifact_root,dst=/home/rockrock/cmu_paper/artifacts/phase8" \
+			--mount "type=bind,src=$$task_root/kivi-source,dst=/opt/kivi-source,readonly" \
+			--mount "type=bind,src=$$task_root/kivi-extension/kivi_gemv.cpython-312-x86_64-linux-gnu.so,dst=/opt/kvbench/.phase3/site-packages/kivi_gemv.cpython-312-x86_64-linux-gnu.so,readonly" \
+			--mount "type=bind,src=$$model_root,dst=/root/.cache/huggingface/hub/models--meta-llama--Llama-3.1-8B-Instruct,readonly" \
+			--env PYTHONDONTWRITEBYTECODE=1 \
+			--env PYTHONNOUSERSITE=1 \
+			--env PYTHONPATH=/opt/kvbench/.phase3/site-packages:/home/rockrock/cmu_paper/src:/home/rockrock/cmu_paper \
+			--env HF_HUB_OFFLINE=1 \
+			--env TRANSFORMERS_OFFLINE=1 \
+			--env HF_HUB_DISABLE_TELEMETRY=1 \
+			--env TOKENIZERS_PARALLELISM=false \
+			--env CUBLAS_WORKSPACE_CONFIG=:4096:8 \
+			--env TRITON_CACHE_DIR=/root/.triton \
+			--env KVBENCH_KIVI_SOURCE_ROOT=/opt/kivi-source \
+			--env KVBENCH_AUTHORIZED_IMAGE_DIGEST="$$image_id" \
+			--env KVBENCH_EXECUTION_ENVIRONMENT=measurement_container \
+			--workdir /home/rockrock/cmu_paper \
+			--entrypoint /usr/bin/bash "$$image_id" \
+			--noprofile --norc -eu -o pipefail -c \
+			'/usr/bin/mkdir -p /tmp/kivi-b019-objects && GIT_OBJECT_DIRECTORY=/tmp/kivi-b019-objects GIT_ALTERNATE_OBJECT_DIRECTORIES=/opt/kivi-source/.git/objects /opt/kvbench/.venv/bin/python scripts/validate_kivi_b019_patch.py --device cpu --source-root /opt/kivi-source && make PHASE2_PYTHON=/opt/kvbench/.venv/bin/python PHASE3_PYTHON=/opt/kvbench/.venv/bin/python test-cuda && make PHASE2_PYTHON=/opt/kvbench/.venv/bin/python PHASE3_PYTHON=/opt/kvbench/.venv/bin/python test-graph && /opt/kvbench/.venv/bin/python scripts/phase8_kivi_admission.py')"; \
+		[[ "$$cid" =~ ^[0-9a-f]{64}$$ ]]; \
+		docker start --attach "$$cid"; \
+		docker rm -f "$$cid" >/dev/null; cid=""; \
+		preserve=0
+
+validate-admission-kivi:
+	@test -n "$(PHASE8_KIVI_ADMISSION_ARTIFACT)" || { echo '{"status":"FAIL","reason":"PHASE8_KIVI_ADMISSION_ARTIFACT_required"}' >&2; exit 2; }
+	@$(PHASE3_ENV) $(PHASE3_PYTHON) -m scripts.phase8_kivi_admission --validate-only --artifact "$(PHASE8_KIVI_ADMISSION_ARTIFACT)"
+
+phase8-r2-outer-bundle:
+	@test -n "$(PHASE8_R2_INNER_ARTIFACT)" || { echo '{"status":"FAIL","reason":"PHASE8_R2_INNER_ARTIFACT_required"}' >&2; exit 2; }
+	@test -n "$(PHASE8_R2_OUTER_RUN_ID)" || { echo '{"status":"FAIL","reason":"PHASE8_R2_OUTER_RUN_ID_required"}' >&2; exit 2; }
+	@$(PHASE3_ENV) $(PHASE3_PYTHON) -m scripts.phase8_r2_outer_bundle build --source-bundle "$(PHASE8_R2_INNER_ARTIFACT)" --run-id "$(PHASE8_R2_OUTER_RUN_ID)"
+
+validate-phase8-r2-outer-bundle:
+	@test -n "$(PHASE8_R2_INNER_ARTIFACT)" || { echo '{"status":"FAIL","reason":"PHASE8_R2_INNER_ARTIFACT_required"}' >&2; exit 2; }
+	@test -n "$(PHASE8_R2_OUTER_ARTIFACT)" || { echo '{"status":"FAIL","reason":"PHASE8_R2_OUTER_ARTIFACT_required"}' >&2; exit 2; }
+	@$(PHASE3_ENV) $(PHASE3_PYTHON) -m scripts.phase8_r2_outer_bundle validate "$(PHASE8_R2_OUTER_ARTIFACT)" --source-bundle "$(PHASE8_R2_INNER_ARTIFACT)"
+
+validate-phase8-r2-outer-publication:
+	@test -n "$(PHASE8_R2_INNER_ARTIFACT)" || { echo '{"status":"FAIL","reason":"PHASE8_R2_INNER_ARTIFACT_required"}' >&2; exit 2; }
+	@test -n "$(PHASE8_R2_OUTER_ARTIFACT)" || { echo '{"status":"FAIL","reason":"PHASE8_R2_OUTER_ARTIFACT_required"}' >&2; exit 2; }
+	@test -f "$(PHASE8_R2_OUTER_RECEIPT)" || { echo '{"status":"FAIL","reason":"PHASE8_R2_OUTER_RECEIPT_absent"}' >&2; exit 2; }
+	@$(PHASE3_ENV) $(PHASE3_PYTHON) -m scripts.phase8_r2_outer_bundle validate-publication "$(PHASE8_R2_OUTER_ARTIFACT)" --source-bundle "$(PHASE8_R2_INNER_ARTIFACT)" --receipt "$(PHASE8_R2_OUTER_RECEIPT)"
 
 publish-artifact-r2:
 	@test -n "$(ARTIFACT)" || { echo '{"status":"FAIL","reason":"ARTIFACT_required"}' >&2; exit 2; }

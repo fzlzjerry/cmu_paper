@@ -748,11 +748,17 @@ class KIVIMethodAdapter:
         # The frozen reference applies the scale while scores are still FP16,
         # then requests an FP32 softmax accumulator.
         logits.mul_(float(scaling))
+        # Keep the CUDA softmax geometry fixed at the declared capacity.
+        # PyTorch's variable-width out= path selects context-dependent kernels
+        # which may allocate an internal contiguous input and workspace for
+        # some widths.  An inactive -inf tail is mathematically neutral and
+        # lets every growing step reuse the same preallocated workspace.
+        cache.decode_softmax.fill_(float("-inf"))
         cache.decode_softmax[:, :, :total].copy_(logits)
         _torch().softmax(
-            cache.decode_softmax[:, :, :total],
+            cache.decode_softmax,
             dim=-1,
-            out=cache.decode_softmax[:, :, :total],
+            out=cache.decode_softmax,
         )
         logits.copy_(cache.decode_softmax[:, :, :total])
 

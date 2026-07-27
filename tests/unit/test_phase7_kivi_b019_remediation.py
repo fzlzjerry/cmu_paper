@@ -8,8 +8,7 @@ from pathlib import Path
 import subprocess
 import unittest
 
-from kvbench.adapters.factory import build_method_adapter
-from kvbench.errors import ErrorCode, PhaseNotImplementedError
+from scripts.validate_phase2 import PHASE8_ENTRY_COMMIT
 from scripts.validate_kivi_b019_patch import _run_git, validate
 
 
@@ -38,6 +37,15 @@ def _load_json(path: Path) -> dict[str, object]:
 
 def _sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _file_at_commit(commit: str, path: str) -> bytes:
+    return subprocess.run(
+        ("git", "show", f"{commit}:{path}"),
+        cwd=REPOSITORY_ROOT,
+        check=True,
+        stdout=subprocess.PIPE,
+    ).stdout
 
 
 class Phase7KiviB019RemediationTests(unittest.TestCase):
@@ -213,16 +221,33 @@ class Phase7KiviB019RemediationTests(unittest.TestCase):
             ),
             cwd=REPOSITORY_ROOT,
             check=False,
+            stderr=subprocess.DEVNULL,
         )
         self.assertEqual(result.returncode, 0)
 
-    def test_kivi_measurement_adapter_remains_fail_closed(self) -> None:
-        with self.assertRaises(PhaseNotImplementedError) as raised:
-            build_method_adapter("kivi", None)  # type: ignore[arg-type]
-        self.assertEqual(raised.exception.code, ErrorCode.PHASE_NOT_IMPLEMENTED)
-        self.assertFalse(
-            (REPOSITORY_ROOT / "src/kvbench/adapters/kivi.py").exists()
+    def test_phase8_entry_kivi_measurement_adapter_was_fail_closed(
+        self,
+    ) -> None:
+        factory = _file_at_commit(
+            PHASE8_ENTRY_COMMIT,
+            "src/kvbench/adapters/factory.py",
         )
+        self.assertIn(
+            b'_DEFERRED_METHODS = frozenset({"kivi", "kvquant"})',
+            factory,
+        )
+        adapter = subprocess.run(
+            (
+                "git",
+                "cat-file",
+                "-e",
+                f"{PHASE8_ENTRY_COMMIT}:src/kvbench/adapters/kivi.py",
+            ),
+            cwd=REPOSITORY_ROOT,
+            check=False,
+            stderr=subprocess.DEVNULL,
+        )
+        self.assertNotEqual(adapter.returncode, 0)
         self.assertTrue(
             (REPOSITORY_ROOT / "docker/reference-kivi.Dockerfile").exists()
         )
