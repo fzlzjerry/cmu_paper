@@ -1,7 +1,8 @@
 # KIVI source note
 
-Status: Phase 7 reference lane PASS under checksum-bound Decision 0018
-patched-source authority; Phase 8 remains NOT STARTED.
+Status: Phase 7 reference lane PASS and Phase 8 static Measurement Adapter
+PASS at method-specific G2-KIVI under checksum-bound Decision 0018
+patched-source authority.
 
 ## Paper and source
 
@@ -37,12 +38,12 @@ and residual length 128; its appendix reports residual-length-32 results. The
 project setting is therefore an explicit contract choice, not an inferred
 upstream default.
 
-Planned variants are K4/V4, K2/V4, and K2/V2, with K4/V2 and K2/V4 retained as
-the K/V-asymmetry falsification pair.
+The Phase 8 mandatory variants are K4/V4, K2/V4, and K2/V2, with K4/V2
+retained as the held-out K/V-asymmetry control.
 
 ## Storage and metadata
 
-Source-owned components identified for later runtime verification:
+Phase 7 identified, and Phase 8 accounts for, these source-owned components:
 
 - packed historical key data;
 - packed historical value data;
@@ -54,6 +55,13 @@ KIVI has no sparse outlier indices and no attention-sink region in the
 canonical method. Its effective allocation ratio is context dependent because
 the FP16 residual fraction is large at short context and shrinks as context
 grows.
+
+Decision 0019 records a terminology-only correction: immutable Phase 7 fields
+named `r_alloc` contain `C_method / C_BF16` and are interpreted only as
+`rho_alloc_legacy`. Their bytes, values, and checksums remain correct. Phase 8
+emits canonical `rho_alloc=C_method_allocated/C_BF16_allocated` and reciprocal
+`r_alloc=C_BF16_allocated/C_method_allocated`, with product error bounded by
+`1e-9`; `r_hbm` remains null.
 
 ## Reference implementation
 
@@ -156,12 +164,72 @@ two-bit/four-bit GEMV operators while discarding all durations. Every observed
 K/V operand and persistent cache remains at H_KV=8, with explicit
 `query_head // 4` mapping and no repeat/expand materialization or backend
 fallback. Packed history is consumed directly; no full-prefix temporary is
-observed. Dynamic Graph behavior remains deferred to Phase 8.
+observed. At Phase 7 completion, dynamic Graph behavior remained deferred to
+the separately authorized Phase 8 adapter.
 
 The durable 30-object bundle is published COMPLETE-last at root
 `abd164da0adf9e0c1404e8fba1f6a6e42e57944481cdf060b91e8cef175ed302`.
 Clean retrieval validates every object, inventory, checksum ledger, and root.
 The publication receipt is outside its own bundle to avoid self-reference.
+
+## Phase 8 measurement adapter result
+
+Phase 8 entered from clean commit
+`8d6d766a34a15bd40bd42cc47c5482b0dd052cc0` and executed at clean SHA
+`462325e9df809d3bcf24a06361bf004bc7383d73` only inside the unchanged
+Decision 0016 Measurement Container. It adds one static KIVI cache state and
+one adapter, reusing the existing fixed-L and growing-context runners, Graph
+harness, audits, artifact lifecycle, process supervision, and R2 publisher.
+There is no new algorithmic or CUDA source change.
+
+The adapter preallocates packed K/V history, K/V scales and minimum offsets,
+fixed token-index metadata, 32-token K and V residual regions, FP16
+quantization and BF16-to-FP16 ABI staging, logits/softmax/merge/output
+workspace, and all mapping/index tensors for declared capacity. K quantizes
+tokens 0-31 at L=32; V moves token 0 at L=33 and token 1 at L=34 while a
+KIVI-specific circular residual preserves order. No cache growth,
+measured-region `torch.cat`, complete-prefix temporary, H_Q-sized K/V
+temporary, host synchronization, or backend fallback is observed.
+
+The exact half-only boundary is:
+
+    BF16 common-runner input
+      -> in-place copy/cast into preallocated FP16 staging
+      -> exact official KIVI CUDA operations
+      -> in-place copy/cast into the BF16 common output
+
+The direct compressed path verifies
+`bgemv2_kernel_outer_dim` and `bgemv4_kernel_outer_dim`, with persistent and
+operand K/V at H_KV=8 and `kv_head=query_head//4`. All four Phase 7 fixture
+configurations conform, L31/L32/L33/L34 rollover has no missing or duplicate
+token, predicted and actual allocated bytes agree exactly, eager allocation is
+fully attributed with zero unknown or persistent delta, and fixed-L Graph
+replay has zero allocation.
+
+The minimal sanitizer covers the distinct two-bit and four-bit families plus a
+real rollover and reports zero errors and zero leaked bytes. The frozen
+ten-point admission grid passes 10/10 without calculating speedup. Strict
+MethodAdmissionReport
+`docs/evidence/phase8/kivi-method-admission.json`, SHA-256
+`3a4b63b9da0eab12db9a916ebdc1cffd788ea6f93678d87964a8332ae7cec83a`,
+derives 17/17 PASS checks.
+
+The 331-object inner root
+`f0c72b5330d2f1f0ab4c6a1594d223fdf068a32cf58cdec63f4e254ef8aed515`
+and 341-object report-bearing outer root
+`de7d41f151af9fe1e716f27ae0f1fc24d2ef0a4b16e8e5c3ecf45d5f9983e132`
+are content-addressed, COMPLETE-last, and cleanly retrieved under exact
+indefinite Bucket Lock rule `kvbench-evidence-indefinite`. The external outer
+receipt has SHA-256
+`9e9d8a650c0c1ed35eb4ecad32a34ede75cf45d4953e0baa32d2c0d561476db4`
+and is excluded from its own bundle.
+
+G2-KIVI is PASS for mandatory K4/V4, K2/V4, and K2/V2; held-out K4/V2
+conforms but is validation-only. Global G2-G5 remain NOT EVALUATED, Full Scan
+remains CLOSED, quality execution remains LOCKED,
+`PERFORMANCE_DATA_FROZEN` remains absent, and Phase 9 has not started. No
+speedup, physical-HBM, knee, capacity, performance, or quality claim is made.
+
 ## Dependency and porting risks
 
 1. The reference model path dynamically grows caches with torch.cat. It cannot
@@ -183,7 +251,9 @@ The publication receipt is outside its own bundle to avoid self-reference.
 5. The CUDA source contains group-size-specialized paths and comments centered
    on 64/128. Phase 7 directly demonstrates group size 32 for all four frozen
    bit combinations rather than inferring support from comments or the paper.
-6. No CUDA Graph guarantee is documented for the dynamic reference path.
-7. The reference uses dynamic `torch.cat` and allocations, so Graph support and
-   allocation freedom are not claimed. Phase 8 must provide a separate static,
-   graph-safe Measurement Adapter if later authorized.
+6. No CUDA Graph guarantee is documented for the dynamic reference path. The
+   separate static Phase 8 adapter passes only its frozen fixed-L Graph
+   admission shapes.
+7. The reference still uses dynamic `torch.cat` and allocations, so no
+   Measurement claim may use that path. Only the exact fingerprinted Phase 8
+   static adapter has method-specific allocation and Graph admission.

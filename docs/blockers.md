@@ -1,6 +1,6 @@
 # Blockers
 
-Last updated: 2026-07-26.
+Last updated: 2026-07-27.
 
 ## Current disposition
 
@@ -37,10 +37,19 @@ Phase 7 then selected the official KIVI default-branch commit under Decision
 8 to 32 heads through `repeat_kv`. Decision 0018 now binds one project patch
 that replaces only those residual contractions with native-eight-head grouped
 BMM operations. Exact CPU and SM120 BF16 equivalence and operand-shape checks
-pass, so B-019 is RESOLVED under patched-source authority. Phase 7 remains
-incomplete before environment construction, official extension build,
-fixtures, sanitizer, trace, byte accounting, and R2 publication. Phase 8 is
-unstarted; Full Scan is CLOSED and quality execution is LOCKED.
+pass, so B-019 is RESOLVED under patched-source authority. Phase 7 subsequently
+completed its locked environment, official extension, fixtures, sanitizer,
+trace, byte accounting, and R2 publication.
+
+Phase 8 then completed at execution SHA
+`462325e9df809d3bcf24a06361bf004bc7383d73`. Its ten-point grid and all 17
+strict admission checks pass. Inner root
+`f0c72b5330d2f1f0ab4c6a1594d223fdf068a32cf58cdec63f4e254ef8aed515`
+and report-bearing outer root
+`de7d41f151af9fe1e716f27ae0f1fc24d2ef0a4b16e8e5c3ecf45d5f9983e132`
+are COMPLETE-last and cleanly retrieved. G2-KIVI is PASS; no Phase 8 blocker
+remains. Global G2-G5 remain NOT EVALUATED, Full Scan is CLOSED, quality
+execution is LOCKED, and Phase 9 has not started.
 
 | ID | Blocking condition | Blocks | Evidence / next action | Status |
 |---|---|---|---|---|
@@ -63,7 +72,7 @@ unstarted; Full Scan is CLOSED and quality execution is LOCKED.
 | B-017 | Immutable report `phase3-g1-20260723t123322160580z-9def265a-08dc69` remains valid FAIL evidence for the former legacy-summary/raw-bundle disconnect. | BF16 G1, B-011/B-012 closure, Phase 4, every later method baseline comparison. | Commit `7f72c95f9932c608f9bd68f1971d6e86378596a2` binds report behavior to its recorded generator SHA, reuses coordinator raw replay, rejects missing/tampered/mismatched evidence, ignores serialized worker `passed` booleans, and derives the five criteria from raw bytes. `make checks`, `make test`, `make test-cuda` (14/14), and `make test-graph` (3/3) pass. New no-replace report `phase3-g1-20260723t132609515797z-7f72c95f-f31ccb` independently validates PASS with no errors; the two campaigns and 20 source runs were not rerun or modified. | resolved 2026-07-23 |
 
 | B-018 | The exact pinned TurboQuant store-append-decode probe completed functionally, but Compute Sanitizer memcheck reported 2,093,260 leaked bytes in 28 allocations and exited 99 in final run `phase6-20260725t065153714z-ace9261a-083f14-4bit_nc-fixed-l128-eager`. | G2-TQ and the bounded admission grid | Resolved without changing the algorithm, fixtures, container, runner, timing, or sanitizer criteria. Commit `aac794c21b01b3e43ff93e317286285d21dbcd47` explicitly releases sanitizer-only CUDA storages and library resources. New runs `phase6-b018-20260725t141636785z-aac794c2-6444b4-4bit_nc-sanitizer`, `phase6-b018-20260725t141640440z-aac794c2-eb5675-k3v4_nc-sanitizer`, and `phase6-b018-20260725t141643545z-aac794c2-4d7433-3bit_nc-sanitizer` each pass the probe, exit 0, and record zero errors and zero leaked bytes with valid COMPLETE/inventory/checksum ledgers. Current-HEAD admission at `0df5bb4d445d48e6cba17e30723733f8de35cb14` independently reran all three probes successfully before the frozen grid passed 9/9. | resolved 2026-07-25; current-HEAD confirmation 2026-07-26 |
-| B-019 | The selected official KIVI `main` implementation advertises Llama 3/GQA support but calls Transformers `repeat_kv` for recent key/value regions. At H_Q=32/H_KV=8 the exact expand/reshape helper creates a distinct contiguous 32-head tensor with four times the eight-head storage. | Phase 7 KIVI Reference Lane, E07, E08, and G2-KIVI | Decision 0018 authorizes one exact project patch on the Decision 0017 commit. The patched tree passes exact BF16 formula, native-eight-head operand, forbidden-operation, head-mapping, and unsupported-geometry checks on CPU and SM120. Continue the remaining Phase 7 work from a clean entry while identifying the source as patched and not upstream-merged. | resolved under patched-source authority 2026-07-26 |
+| B-019 | The selected official KIVI `main` implementation advertises Llama 3/GQA support but calls Transformers `repeat_kv` for recent key/value regions. At H_Q=32/H_KV=8 the exact expand/reshape helper creates a distinct contiguous 32-head tensor with four times the eight-head storage. | Phase 7 KIVI Reference Lane, E07, E08, and G2-KIVI | Decision 0018 authorizes one exact project patch on the Decision 0017 commit. The patched tree passes exact BF16 formula, native-eight-head operand, forbidden-operation, head-mapping, and unsupported-geometry checks on CPU and SM120. Phase 7 reference evidence and Phase 8 static-adapter admission both preserve that exact patched authority. | resolved under patched-source authority 2026-07-26; confirmed by G2-KIVI 2026-07-27 |
 
 ## Phase 4 disposition
 
@@ -144,7 +153,8 @@ The source and an exact non-timing BF16 storage-semantics audit prove that the
 advertised primary-model GQA path materializes recent K/V at H_Q=32. B-019 is
 therefore OPEN. The hard stop occurred before any reference container, CUDA
 build, fixture, sanitizer, trace, graph smoke, byte accounting, or Phase 7 R2
-publication. Phase 8 remains unstarted and the factory remains fail-closed.
+publication. At that stopped source-audit attempt, Phase 8 remained unstarted
+and the factory remained fail-closed.
 
 ### B-019 remediation
 
@@ -175,5 +185,26 @@ and non-performance trace controls all pass.
 B-019 remains RESOLVED under the same Decision 0018 authority. The final
 reference bundle is COMPLETE-last and cleanly retrieved from content root
 `abd164da0adf9e0c1404e8fba1f6a6e42e57944481cdf060b91e8cef175ed302`.
-No Phase 7 blocker remains. This does not admit G2-KIVI or authorize Phase 8;
-the KIVI Measurement Adapter remains absent and fail-closed.
+No Phase 7 blocker remained. At that historical phase boundary, this did not
+admit G2-KIVI or authorize Phase 8; the KIVI Measurement Adapter was still
+absent and fail-closed.
+
+## Phase 8 KIVI measurement-adapter disposition
+
+Phase 8 reused the existing runners, graph harness, allocation/path audits,
+artifact lifecycle, process supervision, and R2 publisher. The exact
+Decision 0018 source and extension, all four frozen fixtures, static rollover,
+canonical byte ratios, native eight-head GQA, eager attribution, zero-allocation
+Graph replay, minimal sanitizer matrix, and bounded grid pass.
+
+The first append-only `96cd5248` attempt stopped at `bounded_grid_8` with
+`EndpointSessionError: session audits did not pass`. Its artifacts remain
+immutable and were neither overwritten nor promoted. The successful clean-HEAD
+execution at `462325e9df809d3bcf24a06361bf004bc7383d73` used new run IDs and
+passed 10/10 points. The 331-object inner and 341-object report-bearing outer
+bundles are COMPLETE-last and cleanly retrieved.
+
+G2-KIVI is PASS and no Phase 8 blocker remains. B-005 and B-006 remain open
+for separately authorized Phase 9 KVQuant work; Phase 8 does not narrow or
+resolve them. Global G2-G5 remain NOT EVALUATED, Full Scan remains CLOSED,
+quality execution remains LOCKED, and Phase 9 has not started.

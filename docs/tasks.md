@@ -14,11 +14,11 @@ authoritative local task index until issues are created elsewhere.
 | E05 | TurboQuant reference lane | E00-E04 | authoritative pinned source; isolated container; golden fixtures | complete: official vLLM v0.25.1 commit `752a3a504485790a2e8491cacbb35c137339ad34`; isolated SM120 environment; 3 mandatory MSE+NC and 1 held-out deterministic fixture; exact regeneration and validation PASS |
 | E06 | TurboQuant measurement adapter | E05 | numerical, byte, graph, path, sanitizer, smoke evidence; G2-TQ | complete: execution HEAD `0df5bb4d445d48e6cba17e30723733f8de35cb14`; current-HEAD sanitizer 3/3 PASS; frozen bounded grid 9/9 PASS; 167-object root `f003bc3dc5de6b67a6d8f1b8bed7fa49b7f90f9d7edc4d1383e2d97c8aa19d6d` COMPLETE-last and cleanly retrieved; G2-TQ PASS |
 | E07 | KIVI reference lane | G2-TQ | exact patched-source authority; isolated environment; rollover and K/V asymmetry fixtures; native eight-head GQA storage | complete: exact source plus Decision 0018 patch; locked reference image; SM120/PTX/JIT and zero-error sanitizer; four deterministic fixture configurations; rollover, actual bytes, native eight-head GQA, non-performance trace; COMPLETE-last R2 publication and clean retrieval PASS |
-| E08 | KIVI measurement adapter | E07 | static buffers; r_alloc(L); GQA indexing; G2-KIVI | not started; requires a separate Phase 8 proposal and authorization |
+| E08 | KIVI measurement adapter | E07 | static buffers; canonical rho_alloc/r_alloc; GQA indexing; G2-KIVI | complete: execution SHA `462325e9df809d3bcf24a06361bf004bc7383d73`; four configurations conform; sanitizer, path/allocation, rollover, Graph, and frozen grid 10/10 PASS; 331-object inner root `f0c72b5330d2f1f0ab4c6a1594d223fdf068a32cf58cdec63f4e254ef8aed515` and 341-object report-bearing outer root `de7d41f151af9fe1e716f27ae0f1fc24d2ef0a4b16e8e5c3ecf45d5f9983e132` are COMPLETE-last and cleanly retrieved; G2-KIVI PASS |
 | E09 | KVQuant calibration | G2-KIVI | frozen dataset/revision/seed/cap/artifacts/checksums | pending |
 | E10 | KVQuant reference lane | E09 | dense/sparse/sink fixtures for 4/3/2-bit and cap cases | pending |
 | E11 | KVQuant measurement adapter | E10 | fixed sparse buffers; byte breakdown; graph/path tests; G2-KVQ | pending |
-| E12 | Admission gates | E02-E11 | machine-readable G1-G5 report for every main configuration | BF16 native-host G1 PASS in new no-replace report `phase3-g1-20260723t132609515797z-7f72c95f-f31ccb`, SHA-256 `c29aef1d9f22b328201599b3e6cdf9efe7c069e78abaf6b37bc3cb12931414c9`. Method-specific G2-TQ PASS; global G2-G5 remain NOT EVALUATED; E12 is not complete for later methods or formal/unified admission. |
+| E12 | Admission gates | E02-E11 | machine-readable G1-G5 report for every main configuration | BF16 native-host G1 PASS in no-replace report `phase3-g1-20260723t132609515797z-7f72c95f-f31ccb`, SHA-256 `c29aef1d9f22b328201599b3e6cdf9efe7c069e78abaf6b37bc3cb12931414c9`. Method-specific G2-TQ and G2-KIVI PASS; global G2-G5 remain NOT EVALUATED; E12 is not complete for KVQuant or formal/unified admission. |
 | E13 | Pilot scan | E12 PASS | immutable randomized samples; QC; provisional knees; pilot gate | pending |
 | E14 | Nsight Systems integration | E13 | nsys-only runs around knees; launch/sync/kernel evidence | pending |
 | E15 | Nsight Compute integration | E13 | current-SM metric discovery; measured traffic; ncu-only runs | pending |
@@ -58,9 +58,11 @@ task list. E16 remains closed until its evidence is reviewed.
   checksum-bound GQA patch on the official KIVI commit after no newer official
   revision was found. E07 is complete under that patched-source authority:
   the locked SM120 reference, four fixtures, rollover/byte/GQA evidence,
-  sanitizer, trace, publication, and clean retrieval pass. E08 and
-  later tasks, KIVI adapter work, KVQuant, Pilot, performance profiler, Full
-  Scan, and quality execution remain unopened and unauthorized.
+  sanitizer, trace, publication, and clean retrieval pass. E08 is now complete:
+  one static KIVI adapter passes all 17 strict checks, the ten-point grid, and
+  inner plus report-bearing outer durable publication. G2-KIVI is PASS.
+  E09 and later KVQuant tasks, Pilot, performance profiler, Full Scan, and
+  quality execution remain unopened and require separate authorization.
 - E12 includes an operator-level MHA control with identical head dimension and
   no GQA repetition.
 - B-011 through B-017 are resolved for native-host BF16 G1. The reporting-only
