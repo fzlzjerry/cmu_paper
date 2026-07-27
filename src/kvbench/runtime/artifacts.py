@@ -272,7 +272,10 @@ def _payload_files(stage: Path, exclusions: set[str]) -> list[Path]:
 def _validate_manifest(payload: Mapping[str, Any]) -> object:
     try:
         from kvbench.schema import Phase6RunManifest, parse_run_manifest
+        from kvbench.schema.phase8 import Phase8RunManifest
 
+        if payload.get("schema_version") == Phase8RunManifest.SCHEMA_VERSION:
+            return Phase8RunManifest.from_dict(dict(payload))
         if payload.get("schema_version") == Phase6RunManifest.SCHEMA_VERSION:
             return Phase6RunManifest.from_dict(dict(payload))
         return parse_run_manifest(dict(payload))
@@ -480,6 +483,7 @@ class ArtifactRun:
             )
 
         from kvbench.schema import Phase3RunManifest, Phase6RunManifest
+        from kvbench.schema.phase8 import Phase8RunManifest
 
         if isinstance(parsed, Phase3RunManifest):
             required = {
@@ -535,6 +539,23 @@ class ArtifactRun:
             if missing:
                 raise ArtifactStateError(
                     "Phase 6 finalization lacks required evidence payloads"
+                )
+
+        if isinstance(parsed, Phase8RunManifest):
+            required = {
+                "config/method.json",
+                "environment/container_identity.json",
+                "raw/runner.json",
+                "validation/point.json",
+            }
+            missing = sorted(
+                relative
+                for relative in required
+                if not (self.stage / relative).is_file()
+            )
+            if missing:
+                raise ArtifactStateError(
+                    "Phase 8 finalization lacks required evidence payloads"
                 )
 
         self._write_lifecycle(3, "finalizing")
@@ -999,6 +1020,29 @@ def phase6_artifact_store(
     )
     return AppendOnlyArtifactStore(
         root / "artifacts" / "phase6",
+        formal_evidence_roots=(
+            root / "docs" / "evidence",
+            root / "artifacts" / "quality",
+            root / "artifacts" / "profiler",
+            root / "paper-results",
+            root / "paper_results",
+            root / "results",
+        ),
+    )
+
+
+def phase8_artifact_store(
+    repository_root: str | Path | None = None,
+) -> AppendOnlyArtifactStore:
+    """Return the exact local Phase 8 container-admission store."""
+
+    root = (
+        Path(repository_root).resolve(strict=True)
+        if repository_root is not None
+        else Path(__file__).resolve().parents[3]
+    )
+    return AppendOnlyArtifactStore(
+        root / "artifacts" / "phase8",
         formal_evidence_roots=(
             root / "docs" / "evidence",
             root / "artifacts" / "quality",

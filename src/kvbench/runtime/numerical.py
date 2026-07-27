@@ -183,8 +183,16 @@ def tensor_sha256_untimed(tensor: Any) -> str:
     """Hash canonical raw tensor bytes after leaving measured execution."""
 
     torch = _torch()
-    contiguous = tensor.detach().contiguous().view(torch.uint8).cpu()
-    raw = contiguous.numpy().tobytes(order="C")
+    contiguous = (
+        tensor.detach()
+        .contiguous()
+        .view(torch.uint8)
+        .to(device="cpu", copy=True)
+    )
+    byte_count = int(contiguous.numel())
+    raw = bytes(contiguous.untyped_storage())[:byte_count]
+    if len(raw) != byte_count:
+        raise RuntimeError("untimed tensor checksum storage is incomplete")
     header = json.dumps(
         {
             "shape": list(tensor.shape),

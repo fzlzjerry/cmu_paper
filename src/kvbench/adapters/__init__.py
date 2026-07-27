@@ -8,6 +8,10 @@ from kvbench.adapters.bf16 import (
     declared_bf16_runtime_context,
 )
 from kvbench.adapters.factory import build_method_adapter
+from kvbench.adapters.kivi import (
+    KIVI_ADAPTER_VERSION,
+    KIVIMethodAdapter,
+)
 from kvbench.adapters.turboquant import (
     TURBOQUANT_ADAPTER_VERSION,
     TurboQuantMethodAdapter,
@@ -18,6 +22,8 @@ __all__ = [
     "BF16_ADAPTER_VERSION",
     "BF16MethodAdapter",
     "KVCacheMethod",
+    "KIVI_ADAPTER_VERSION",
+    "KIVIMethodAdapter",
     "MethodRuntimeContext",
     "TURBOQUANT_ADAPTER_VERSION",
     "TurboQuantMethodAdapter",

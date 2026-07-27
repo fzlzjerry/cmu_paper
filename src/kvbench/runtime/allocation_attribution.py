@@ -2470,9 +2470,13 @@ class AttributionRules:
         if self.policy_authority not in {
             "structural_test_only",
             "decision_0009_production",
+            "decision_0013_phase8_kivi_composition",
         }:
             raise AllocationAttributionError("unknown policy authority")
-        if self.policy_authority == "decision_0009_production":
+        if self.policy_authority in {
+            "decision_0009_production",
+            "decision_0013_phase8_kivi_composition",
+        }:
             if (
                 self.policy_catalog_id != DECISION_0009_POLICY_CATALOG_ID
                 or self.policy_catalog_sha256
@@ -2627,6 +2631,106 @@ def instantiate_decision_0009_production_rules(
         policy_catalog_id=DECISION_0009_POLICY_CATALOG_ID,
         policy_catalog_sha256=DECISION_0009_POLICY_CATALOG_SHA256,
         production_binding_sha256=binding.identity_sha256,
+    )
+
+
+def instantiate_decision_0013_phase8_kivi_rules(
+    *,
+    geometry: AllocationGeometry,
+    backend_identity: str,
+    composition_binding_sha256: str,
+) -> AttributionRules:
+    """Bind KIVI to the ordinary Decision 0013 endpoint allocations.
+
+    KIVI replaces every Flash-attention call in the 32-layer endpoint with
+    its allocation-free direct compressed-cache path.  The retained model
+    operations therefore use the exact ordinary Decision 0013 policies, while
+    the four Flash-specific policies and split-K workspaces are forbidden.
+    """
+
+    if type(geometry) is not AllocationGeometry:
+        raise AllocationAttributionError(
+            "Phase 8 KIVI rules require AllocationGeometry"
+        )
+    if not isinstance(backend_identity, str) or not backend_identity:
+        raise AllocationAttributionError(
+            "Phase 8 KIVI backend identity must be nonempty"
+        )
+    if not _valid_sha256(composition_binding_sha256):
+        raise AllocationAttributionError(
+            "Phase 8 KIVI composition binding must be a SHA-256"
+        )
+    if not _decision_0009_catalog_is_intact():
+        raise AllocationAttributionError(
+            "Decision 0013 allocation catalog identity differs"
+        )
+
+    policies: list[AllocationClassPolicy] = []
+    for template in _decision_0009_catalog_payload()[
+        "production_templates"
+    ]:
+        if (
+            template.get("event_class")
+            == AllocationClass.CONTEXT_SCALED_WORKSPACE.value
+        ):
+            continue
+        python_frame = template["required_python_frame"]
+        if (
+            python_frame.get("source_suffix")
+            == "src/kvbench/runtime/backend.py"
+        ):
+            continue
+        formula_id = template["formula_id"]
+        event_class = AllocationClass(template["event_class"])
+        contract = _POLICY_FORMULA_CONTRACTS[formula_id]
+        if contract[0] is not event_class:
+            raise AllocationAttributionError(
+                "catalog formula and event class differ"
+            )
+        exact_bytes = template["exact_requested_bytes"]
+        if exact_bytes is None:
+            exact_bytes = _policy_geometry_bytes(formula_id, geometry)
+        if type(exact_bytes) is not int or exact_bytes <= 0:
+            raise AllocationAttributionError(
+                "catalog formula did not resolve to positive bytes"
+            )
+        count = template["exact_count"]
+        if type(count) is not int or count <= 0:
+            raise AllocationAttributionError(
+                "catalog multiplicity is invalid"
+            )
+        cpp_frame = template["required_cpp_frame"]
+        policies.append(
+            AllocationClassPolicy(
+                policy_id=template["policy_id"],
+                event_class=event_class,
+                formula_id=formula_id,
+                allowed_requested_bytes=frozenset({exact_bytes}),
+                required_python_frames=(
+                    CanonicalFrameSelector(
+                        python_frame["function_name"],
+                        python_frame["source_suffix"],
+                    ),
+                ),
+                required_cpp_frames=(
+                    CanonicalFrameSelector(
+                        cpp_frame["function_name"],
+                        cpp_frame["source_suffix"],
+                    ),
+                ),
+                dependencies=contract[1],
+                exact_count=count,
+                exact_total_requested_bytes=exact_bytes * count,
+            )
+        )
+    return AttributionRules(
+        frozen_backend_identity=backend_identity,
+        permitted_allocation_policies=tuple(policies),
+        split_k_expected_pair_count=None,
+        policy_authority="decision_0013_phase8_kivi_composition",
+        policy_catalog_id=DECISION_0009_POLICY_CATALOG_ID,
+        policy_catalog_sha256=DECISION_0009_POLICY_CATALOG_SHA256,
+        production_binding_sha256=composition_binding_sha256,
     )
 
 
@@ -4743,6 +4847,15 @@ def verify_preserved_allocator_evidence(
     return True
 
 
+def read_verified_allocator_evidence(
+    staging_directory: Path,
+    files: RawAllocatorEvidenceFiles,
+) -> dict[str, bytes]:
+    """Return the exact no-follow, checksum-verified raw evidence bytes."""
+
+    return _read_verified_allocator_evidence(staging_directory, files)
+
+
 @dataclass(frozen=True, slots=True)
 class SemanticAllocatorEvidenceValidation:
     passed: bool
@@ -4824,6 +4937,14 @@ def _raw_memory_sample_from_mapping(
             "serialized device-used bytes do not match free/total samples"
         )
     return sample
+
+
+def raw_memory_accounting_sample_from_mapping(
+    value: Mapping[str, Any],
+) -> RawMemoryAccountingSample:
+    """Parse one canonical raw memory sample for an external semantic replay."""
+
+    return _raw_memory_sample_from_mapping(value)
 
 
 def validate_preserved_allocator_evidence_semantically(

@@ -1,9 +1,10 @@
-"""Run-owned process identity and handshake supervision for Phase 3.
+"""Run-owned process identity and supervision primitives.
 
-This module deliberately contains no polling loop and never calls
-``subprocess.Popen.poll`` or ``wait``.  A coordinator supplies observations
-from pidfd readiness or ``waitid(..., WNOWAIT)`` and records the final reap
-only after ownership and evidence state have been retained here.
+The Phase 3 registry deliberately contains no polling loop and never calls
+``subprocess.Popen.poll`` or ``wait``.  Its coordinator supplies observations
+from pidfd readiness or ``waitid(..., WNOWAIT)``.  The small generic command
+runner is separate: it supervises one direct child through bounded
+``communicate`` calls and makes no handshake or device-exclusivity claim.
 """
 
 from __future__ import annotations
@@ -12,10 +13,13 @@ from dataclasses import dataclass
 from enum import Enum
 import hashlib
 import json
+import math
 import os
 from pathlib import Path
 import re
+import signal
 import stat
+import subprocess
 from typing import ClassVar, Mapping, Sequence
 
 
@@ -139,6 +143,39 @@ def command_fingerprint(
     return hashlib.sha256(encoded).hexdigest()
 
 
+def environment_fingerprint(environment: Mapping[str, str]) -> str:
+    """Bind an explicit child environment without returning any of its values."""
+
+    if not isinstance(environment, Mapping):
+        raise ProcessSupervisionError("supervised environment must be a mapping")
+    normalized: dict[str, str] = {}
+    for key, value in environment.items():
+        if (
+            not isinstance(key, str)
+            or not key
+            or "\x00" in key
+            or "=" in key
+            or not isinstance(value, str)
+            or "\x00" in value
+        ):
+            raise ProcessSupervisionError(
+                "supervised environment contains an invalid entry"
+            )
+        if key in normalized:
+            raise ProcessSupervisionError(
+                "supervised environment contains a duplicate key"
+            )
+        normalized[key] = value
+    encoded = json.dumps(
+        normalized,
+        allow_nan=False,
+        ensure_ascii=False,
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
 @dataclass(frozen=True)
 class ProcessIdentity:
     """One PID protected against reuse by its procfs start time."""
@@ -157,6 +194,177 @@ class ProcessIdentity:
             "pid": self.pid,
             "start_time_ticks": self.start_time_ticks,
             "parent_pid": self.parent_pid,
+        }
+
+
+@dataclass(frozen=True)
+class SupervisedCommandResult:
+    """Immutable result for a direct child that has no worker handshake."""
+
+    SCHEMA_VERSION: ClassVar[str] = (
+        "kvbench-generic-supervised-command-result-1.0.0"
+    )
+
+    argv: tuple[str, ...]
+    working_directory: str
+    environment_sha256: str
+    command_sha256: str
+    process_identity: ProcessIdentity
+    supervisor_pid: int
+    timeout_seconds: float
+    timed_out: bool
+    terminate_requested: bool
+    kill_requested: bool
+    returncode: int
+    stdout: bytes
+    stderr: bytes
+    pidfd_supported: bool
+    pidfd_opened: bool
+    pidfd: int | None
+    pidfd_closed: bool
+    direct_child_verified: bool
+    process_handle_retained: bool
+    final_reap_completed: bool
+    final_reap_count: int
+
+    def __post_init__(self) -> None:
+        if (
+            not self.argv
+            or any(not isinstance(item, str) or not item for item in self.argv)
+        ):
+            raise ProcessSupervisionError(
+                "supervised result argv must be a nonempty string tuple"
+            )
+        if (
+            not isinstance(self.working_directory, str)
+            or not Path(self.working_directory).is_absolute()
+        ):
+            raise ProcessSupervisionError(
+                "supervised result working directory must be absolute"
+            )
+        _require_sha256(
+            self.environment_sha256,
+            "supervised environment fingerprint",
+        )
+        _require_sha256(self.command_sha256, "supervised command fingerprint")
+        _require_positive_integer(self.supervisor_pid, "supervisor PID")
+        if self.process_identity.parent_pid != self.supervisor_pid:
+            raise ProcessSupervisionError(
+                "supervised result parent PID differs from supervisor"
+            )
+        if (
+            not isinstance(self.timeout_seconds, (int, float))
+            or isinstance(self.timeout_seconds, bool)
+            or not math.isfinite(float(self.timeout_seconds))
+            or self.timeout_seconds <= 0
+        ):
+            raise ProcessSupervisionError(
+                "supervised result timeout must be finite and positive"
+            )
+        for value, label in (
+            (self.timed_out, "timeout"),
+            (self.terminate_requested, "terminate request"),
+            (self.kill_requested, "kill request"),
+            (self.pidfd_supported, "pidfd support"),
+            (self.pidfd_opened, "pidfd opened"),
+            (self.pidfd_closed, "pidfd closed"),
+            (self.direct_child_verified, "direct-child verification"),
+            (self.process_handle_retained, "process-handle retention"),
+            (self.final_reap_completed, "final reap"),
+        ):
+            if not isinstance(value, bool):
+                raise ProcessSupervisionError(
+                    f"supervised result {label} flag is invalid"
+                )
+        if not isinstance(self.returncode, int) or isinstance(
+            self.returncode, bool
+        ):
+            raise ProcessSupervisionError(
+                "supervised result return code must be an integer"
+            )
+        if type(self.stdout) is not bytes or type(self.stderr) is not bytes:
+            raise ProcessSupervisionError(
+                "supervised command output must be bytes"
+            )
+        if self.pidfd_opened != (self.pidfd is not None):
+            raise ProcessSupervisionError(
+                "supervised result pidfd metadata is inconsistent"
+            )
+        if self.pidfd_opened and not self.pidfd_supported:
+            raise ProcessSupervisionError(
+                "supervised result opened an unsupported pidfd"
+            )
+        if self.pidfd is not None:
+            _require_nonnegative_integer(self.pidfd, "pidfd")
+        if self.pidfd_opened != self.pidfd_closed:
+            raise ProcessSupervisionError(
+                "supervised result must close every opened pidfd"
+            )
+        if (
+            not self.direct_child_verified
+            or not self.process_handle_retained
+            or not self.final_reap_completed
+            or self.final_reap_count != 1
+        ):
+            raise ProcessSupervisionError(
+                "supervised result lacks direct-child final-reap proof"
+            )
+        if not self.timed_out and (
+            self.terminate_requested or self.kill_requested
+        ):
+            raise ProcessSupervisionError(
+                "supervised result signals require a timeout"
+            )
+        if self.kill_requested and not self.terminate_requested:
+            raise ProcessSupervisionError(
+                "supervised result kill requires an earlier terminate request"
+            )
+
+    def to_dict(self) -> dict[str, object]:
+        """Serialize evidence without exposing environment or output contents."""
+
+        return {
+            "schema_version": self.SCHEMA_VERSION,
+            "identity": self.process_identity.to_dict(),
+            "command": {
+                "argv": list(self.argv),
+                "working_directory": self.working_directory,
+                "environment_sha256": self.environment_sha256,
+                "command_fingerprint": self.command_sha256,
+                "shell": False,
+            },
+            "timeout": {
+                "timeout_seconds": float(self.timeout_seconds),
+                "timed_out": self.timed_out,
+                "terminate_requested": self.terminate_requested,
+                "kill_requested": self.kill_requested,
+            },
+            "returncode": self.returncode,
+            "pidfd": {
+                "supported": self.pidfd_supported,
+                "opened": self.pidfd_opened,
+                "descriptor": self.pidfd,
+                "closed": self.pidfd_closed,
+            },
+            "direct_child": {
+                "verified": self.direct_child_verified,
+                "expected_parent_pid": self.supervisor_pid,
+                "parent_pid_verified": True,
+                "start_time_ticks_verified": True,
+                "process_handle_retained": self.process_handle_retained,
+            },
+            "final_reap": {
+                "completed": self.final_reap_completed,
+                "count": self.final_reap_count,
+            },
+            "stdout": {
+                "bytes": len(self.stdout),
+                "sha256": hashlib.sha256(self.stdout).hexdigest(),
+            },
+            "stderr": {
+                "bytes": len(self.stderr),
+                "sha256": hashlib.sha256(self.stderr).hexdigest(),
+            },
         }
 
 
@@ -196,6 +404,216 @@ def read_process_identity(
         return ProcessIdentity(pid, start_time_ticks, parent_pid)
     except ProcessSupervisionError as error:
         raise ProcessIdentityUnavailable("process stat identity is invalid") from error
+
+
+def _open_supervised_pidfd(pid: int) -> tuple[bool, int | None]:
+    opener = getattr(os, "pidfd_open", None)
+    if opener is None:
+        return False, None
+    try:
+        return True, opener(pid, 0)
+    except OSError:
+        return True, None
+
+
+def _signal_supervised_child(
+    process: subprocess.Popen[bytes],
+    *,
+    expected_identity: ProcessIdentity,
+    pidfd: int | None,
+    requested_signal: int,
+) -> bool:
+    """Signal only the retained direct child, protected against PID reuse."""
+
+    pidfd_sender = getattr(signal, "pidfd_send_signal", None)
+    if pidfd is not None and callable(pidfd_sender):
+        try:
+            pidfd_sender(pidfd, requested_signal)
+        except ProcessLookupError:
+            return False
+        except OSError as error:
+            raise ProcessSupervisionError(
+                "cannot signal supervised child through pidfd"
+            ) from error
+        return True
+    if process.pid != expected_identity.pid:
+        raise ProcessSupervisionError(
+            "supervised process handle PID changed before signal"
+        )
+    try:
+        current_identity = read_process_identity(process.pid)
+    except ProcessIdentityUnavailable:
+        return False
+    if current_identity != expected_identity:
+        raise ProcessSupervisionError(
+            "supervised child identity changed before signal"
+        )
+    try:
+        process.send_signal(requested_signal)
+    except ProcessLookupError:
+        return False
+    except OSError as error:
+        raise ProcessSupervisionError(
+            "cannot signal verified supervised child"
+        ) from error
+    return True
+
+
+def run_supervised_command(
+    argv: Sequence[str],
+    *,
+    working_directory: str,
+    environment: Mapping[str, str],
+    timeout_seconds: float,
+    termination_grace_seconds: float = 5.0,
+) -> SupervisedCommandResult:
+    """Run and reap one explicit direct child without handshake assertions."""
+
+    if (
+        isinstance(argv, (str, bytes))
+        or not argv
+        or any(not isinstance(item, str) or not item for item in argv)
+    ):
+        raise ProcessSupervisionError(
+            "supervised argv must be a nonempty string list"
+        )
+    if (
+        not isinstance(working_directory, str)
+        or not Path(working_directory).is_absolute()
+        or not Path(working_directory).is_dir()
+    ):
+        raise ProcessSupervisionError(
+            "supervised working directory must be an existing absolute directory"
+        )
+    for value, label in (
+        (timeout_seconds, "execution timeout"),
+        (termination_grace_seconds, "termination grace"),
+    ):
+        if (
+            not isinstance(value, (int, float))
+            or isinstance(value, bool)
+            or not math.isfinite(float(value))
+            or value <= 0
+        ):
+            raise ProcessSupervisionError(
+                f"supervised {label} must be finite and positive"
+            )
+    environment_sha256 = environment_fingerprint(environment)
+    argv_tuple = tuple(argv)
+    command_sha256 = command_fingerprint(
+        argv_tuple,
+        working_directory=working_directory,
+        environment_sha256=environment_sha256,
+    )
+    supervisor_pid = os.getpid()
+    process = subprocess.Popen(
+        argv_tuple,
+        cwd=working_directory,
+        env=dict(environment),
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        shell=False,
+    )
+    pidfd_supported, pidfd = _open_supervised_pidfd(process.pid)
+    pidfd_closed = False
+    identity: ProcessIdentity | None = None
+    final_reap_count = 0
+    timed_out = False
+    terminate_requested = False
+    kill_requested = False
+    try:
+        try:
+            identity = read_process_identity(process.pid)
+            if (
+                identity.pid != process.pid
+                or identity.parent_pid != supervisor_pid
+            ):
+                raise ProcessSupervisionError(
+                    "spawned command is not the supervisor's direct child"
+                )
+        except ProcessSupervisionError:
+            process.kill()
+            process.communicate()
+            final_reap_count = 1
+            raise
+
+        try:
+            stdout, stderr = process.communicate(
+                timeout=float(timeout_seconds)
+            )
+        except subprocess.TimeoutExpired:
+            timed_out = True
+            terminate_requested = True
+            _signal_supervised_child(
+                process,
+                expected_identity=identity,
+                pidfd=pidfd,
+                requested_signal=signal.SIGTERM,
+            )
+            try:
+                stdout, stderr = process.communicate(
+                    timeout=float(termination_grace_seconds)
+                )
+            except subprocess.TimeoutExpired:
+                kill_requested = True
+                _signal_supervised_child(
+                    process,
+                    expected_identity=identity,
+                    pidfd=pidfd,
+                    requested_signal=signal.SIGKILL,
+                )
+                try:
+                    stdout, stderr = process.communicate(
+                        timeout=float(termination_grace_seconds)
+                    )
+                except subprocess.TimeoutExpired as error:
+                    raise ProcessSupervisionError(
+                        "supervised child did not exit after verified SIGKILL"
+                    ) from error
+        final_reap_count = 1
+        if not isinstance(process.returncode, int) or isinstance(
+            process.returncode, bool
+        ):
+            raise ProcessSupervisionError(
+                "supervised child lacks a final return code"
+            )
+        if type(stdout) is not bytes or type(stderr) is not bytes:
+            raise ProcessSupervisionError(
+                "supervised child output was not captured as bytes"
+            )
+    finally:
+        if pidfd is not None:
+            os.close(pidfd)
+            pidfd_closed = True
+
+    if identity is None:
+        raise ProcessSupervisionError(
+            "supervised child identity was not retained"
+        )
+    return SupervisedCommandResult(
+        argv=argv_tuple,
+        working_directory=working_directory,
+        environment_sha256=environment_sha256,
+        command_sha256=command_sha256,
+        process_identity=identity,
+        supervisor_pid=supervisor_pid,
+        timeout_seconds=float(timeout_seconds),
+        timed_out=timed_out,
+        terminate_requested=terminate_requested,
+        kill_requested=kill_requested,
+        returncode=process.returncode,
+        stdout=stdout,
+        stderr=stderr,
+        pidfd_supported=pidfd_supported,
+        pidfd_opened=pidfd is not None,
+        pidfd=pidfd,
+        pidfd_closed=pidfd_closed,
+        direct_child_verified=True,
+        process_handle_retained=True,
+        final_reap_completed=final_reap_count == 1,
+        final_reap_count=final_reap_count,
+    )
 
 
 @dataclass(frozen=True)

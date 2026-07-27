@@ -114,6 +114,28 @@ class NormalTimingMemoryEvidence:
         }
 
 
+@dataclass(frozen=True, slots=True)
+class RawCudaAllocatorCapture:
+    """Complete raw allocator inputs for independent semantic attribution.
+
+    This collector deliberately does not classify events or derive a verdict.
+    Consumers must replay ``snapshot``/``trace`` through the existing
+    allocation-attribution parser and policy evaluator.
+    """
+
+    snapshot: Mapping[str, Any]
+    trace: tuple[Mapping[str, Any], ...]
+    memory_stats_before: Mapping[str, Any]
+    memory_stats_after: Mapping[str, Any]
+    memory_accounting_before: Mapping[str, Any]
+    memory_accounting_after: Mapping[str, Any]
+    state_before: Mapping[str, Any] | None
+    state_after: Mapping[str, Any] | None
+    output_witness: Mapping[str, Any] | None
+    max_entries: int
+    stack_mode: str
+
+
 def _torch() -> Any:
     global _TORCH
     if _TORCH is None:
@@ -158,6 +180,204 @@ def capture_cuda_memory_snapshot(
             torch.cuda.max_memory_allocated(device=selected)
         ),
         peak_reserved_bytes=int(torch.cuda.max_memory_reserved(device=selected)),
+    )
+
+
+def _raw_memory_accounting(
+    torch: Any,
+    selected: Any,
+    *,
+    operation_fingerprint_sha256: str,
+    sample_role: str,
+) -> dict[str, Any]:
+    """Capture the raw fields consumed by the common semantic replayer."""
+
+    device_index = int(
+        torch.cuda.current_device()
+        if selected.index is None
+        else selected.index
+    )
+    properties = torch.cuda.get_device_properties(device_index)
+    gpu_uuid = str(getattr(properties, "uuid", ""))
+    if not gpu_uuid:
+        raise AllocationAuditError(
+            "raw allocator evidence requires a GPU UUID"
+        )
+    free_bytes, total_bytes = torch.cuda.mem_get_info(device=selected)
+    return {
+        "schema_version": "kvbench-phase3-memory-accounting-2.0.0",
+        "operation_fingerprint_sha256": operation_fingerprint_sha256,
+        "sample_role": sample_role,
+        "timestamp_ns": time.time_ns(),
+        "device": str(selected),
+        "device_index": device_index,
+        "gpu_uuid": gpu_uuid,
+        "allocated_bytes": int(
+            torch.cuda.memory_allocated(device=selected)
+        ),
+        "reserved_bytes": int(
+            torch.cuda.memory_reserved(device=selected)
+        ),
+        "device_free_bytes": int(free_bytes),
+        "device_total_bytes": int(total_bytes),
+        "device_used_bytes": int(total_bytes - free_bytes),
+    }
+
+
+def collect_cuda_allocator_raw(
+    operation: Callable[[], Any],
+    *,
+    operation_fingerprint_sha256: str,
+    prepare_operation: Callable[[], Any],
+    capture_output: Callable[[Any], Mapping[str, Any]] | None = None,
+    capture_state: Callable[[], Mapping[str, Any]] | None = None,
+    device: Any | None = None,
+    max_entries: int = 100_000,
+) -> RawCudaAllocatorCapture:
+    """Collect one warmed operation with full Python/C++ allocator stacks.
+
+    The operation is diagnostic-only and never contributes benchmark timing.
+    No policy verdict is accepted here: the returned raw snapshot, trace,
+    counters, accounting samples, and optional output witness are inputs to an
+    independent semantic replay.
+    """
+
+    if not callable(operation) or not callable(prepare_operation):
+        raise TypeError("raw allocator operation and prepare callback are required")
+    if capture_output is not None and not callable(capture_output):
+        raise TypeError("capture_output must be callable when supplied")
+    if capture_state is not None and not callable(capture_state):
+        raise TypeError("capture_state must be callable when supplied")
+    if (
+        type(operation_fingerprint_sha256) is not str
+        or len(operation_fingerprint_sha256) != 64
+        or any(
+            character not in "0123456789abcdef"
+            for character in operation_fingerprint_sha256
+        )
+    ):
+        raise ValueError("operation fingerprint must be a lowercase SHA-256")
+    if isinstance(max_entries, bool) or not isinstance(max_entries, int):
+        raise ValueError("max_entries must be an integer")
+    if max_entries <= 0:
+        raise ValueError("max_entries must be positive")
+
+    torch = _torch()
+    selected = torch.device(
+        f"cuda:{torch.cuda.current_device()}" if device is None else device
+    )
+    if selected.type != "cuda":
+        raise AllocationAuditError(
+            "raw allocator collection requires a CUDA device"
+        )
+    recorder = getattr(torch.cuda.memory, "_record_memory_history", None)
+    snapshot_function = getattr(torch.cuda.memory, "_snapshot", None)
+    if not callable(recorder) or not callable(snapshot_function):
+        raise AllocationAuditError("allocator history APIs are unavailable")
+
+    prepare_result = prepare_operation()
+    del prepare_result
+    torch.cuda.synchronize(device=selected)
+    state_before: Mapping[str, Any] | None = None
+    if capture_state is not None:
+        observed_state = capture_state()
+        if not isinstance(observed_state, Mapping):
+            raise AllocationAuditError(
+                "raw allocator pre-operation state witness is malformed"
+            )
+        state_before = dict(observed_state)
+    stats_before = torch.cuda.memory_stats(device=selected)
+    if not isinstance(stats_before, Mapping):
+        raise AllocationAuditError(
+            "pre-operation allocator counters are malformed"
+        )
+    accounting_before = _raw_memory_accounting(
+        torch,
+        selected,
+        operation_fingerprint_sha256=operation_fingerprint_sha256,
+        sample_role="before",
+    )
+
+    snapshot: Mapping[str, Any] | None = None
+    output_witness: Mapping[str, Any] | None = None
+    recorder_enabled = False
+    try:
+        recorder(
+            enabled="all",
+            context="all",
+            stacks="all",
+            max_entries=max_entries,
+            device=selected,
+            clear_history=True,
+        )
+        recorder_enabled = True
+        result = operation()
+        torch.cuda.synchronize(device=selected)
+        if capture_output is not None:
+            observed = capture_output(result)
+            if not isinstance(observed, Mapping):
+                raise AllocationAuditError(
+                    "raw allocator output witness is malformed"
+                )
+            output_witness = dict(observed)
+        del result
+        torch.cuda.synchronize(device=selected)
+        state_after: Mapping[str, Any] | None = None
+        if capture_state is not None:
+            observed_state = capture_state()
+            if not isinstance(observed_state, Mapping):
+                raise AllocationAuditError(
+                    "raw allocator post-operation state witness is malformed"
+                )
+            state_after = dict(observed_state)
+        stats_after = torch.cuda.memory_stats(device=selected)
+        if not isinstance(stats_after, Mapping):
+            raise AllocationAuditError(
+                "post-operation allocator counters are malformed"
+            )
+        accounting_after = _raw_memory_accounting(
+            torch,
+            selected,
+            operation_fingerprint_sha256=operation_fingerprint_sha256,
+            sample_role="after",
+        )
+        observed_snapshot = snapshot_function(device=selected)
+        if not isinstance(observed_snapshot, Mapping):
+            raise AllocationAuditError("allocator snapshot is malformed")
+        snapshot = observed_snapshot
+    except BaseException as error:
+        if isinstance(error, (AllocationAuditError, TypeError, ValueError)):
+            raise
+        raise AllocationAuditError(
+            "raw allocator operation failed"
+        ) from error
+    finally:
+        if recorder_enabled:
+            recorder(enabled=None, device=selected)
+
+    assert snapshot is not None
+    device_index = int(
+        torch.cuda.current_device()
+        if selected.index is None
+        else selected.index
+    )
+    raw_trace = _trace_for_device(snapshot, device_index)
+    if not all(isinstance(item, Mapping) for item in raw_trace):
+        raise AllocationAuditError(
+            "allocator trace contains a malformed event"
+        )
+    return RawCudaAllocatorCapture(
+        snapshot=snapshot,
+        trace=tuple(raw_trace),
+        memory_stats_before=dict(stats_before),
+        memory_stats_after=dict(stats_after),
+        memory_accounting_before=accounting_before,
+        memory_accounting_after=accounting_after,
+        state_before=state_before,
+        state_after=state_after,
+        output_witness=output_witness,
+        max_entries=max_entries,
+        stack_mode="all",
     )
 
 

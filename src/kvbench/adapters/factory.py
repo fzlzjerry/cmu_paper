@@ -7,13 +7,14 @@ from types import MappingProxyType
 
 from kvbench.adapters.base import KVCacheMethod, MethodRuntimeContext
 from kvbench.adapters.bf16 import BF16MethodAdapter
+from kvbench.adapters.kivi import KIVI_OFFICIAL_COMMIT, KIVIMethodAdapter
 from kvbench.adapters.turboquant import (
     TURBOQUANT_SOURCE_COMMIT,
     TurboQuantMethodAdapter,
 )
 from kvbench.errors import ConfigLoadError, PhaseNotImplementedError
 from kvbench.schema import MethodConfig, MethodName
-from kvbench.schema.config import TurboQuantParameters, VariantRole
+from kvbench.schema.config import KiviParameters, TurboQuantParameters, VariantRole
 
 
 AdapterBuilder = Callable[[MethodRuntimeContext], KVCacheMethod]
@@ -26,7 +27,14 @@ def _build_bf16(runtime_context: MethodRuntimeContext) -> KVCacheMethod:
 _BUILDERS: Mapping[str, AdapterBuilder] = MappingProxyType(
     {"bf16": _build_bf16}
 )
-_DEFERRED_METHODS = frozenset({"kivi", "kvquant"})
+_DEFERRED_METHODS = frozenset({"kvquant"})
+_KIVI_CONFIGS = frozenset({"k4v4", "k2v4", "k2v2", "k4v2"})
+_KIVI_RUNTIME_PARAMETERS = {
+    "k4v4": (4, 4, 32, 32, VariantRole.MAIN),
+    "k2v4": (2, 4, 32, 32, VariantRole.MAIN),
+    "k2v2": (2, 2, 32, 32, VariantRole.MAIN),
+    "k4v2": (4, 2, 32, 32, VariantRole.HELD_OUT),
+}
 _TURBOQUANT_CONFIGS = frozenset(
     {
         "turboquant_4bit_nc",
@@ -47,6 +55,8 @@ def _method_name(method_config: MethodConfig | MethodName | str) -> str:
     if isinstance(method_config, MethodName):
         return method_config.value
     if type(method_config) is str:
+        if method_config in _KIVI_CONFIGS:
+            return MethodName.KIVI.value
         if method_config in _TURBOQUANT_CONFIGS:
             return MethodName.TURBOQUANT.value
         return method_config
@@ -119,6 +129,52 @@ def _turboquant_config_name(
     return selected
 
 
+def _kivi_config_name(
+    method_config: MethodConfig | MethodName | str,
+    variant_id: str | None,
+) -> str:
+    inferred = (
+        method_config
+        if type(method_config) is str and method_config in _KIVI_CONFIGS
+        else None
+    )
+    if inferred is not None and variant_id not in {None, inferred}:
+        raise ConfigLoadError("KIVI preset selection is ambiguous")
+    selected = inferred if inferred is not None else variant_id
+    if selected not in _KIVI_CONFIGS:
+        raise ConfigLoadError("KIVI requires one explicit frozen configuration")
+    if isinstance(method_config, MethodConfig):
+        if (
+            method_config.method is not MethodName.KIVI
+            or method_config.method_config_id != "kivi"
+            or method_config.source_revision != KIVI_OFFICIAL_COMMIT
+        ):
+            raise ConfigLoadError("KIVI adapter requires the pinned method config")
+        variant = next(
+            (
+                item
+                for item in method_config.variants
+                if item.variant_id == selected
+            ),
+            None,
+        )
+        if variant is None:
+            raise ConfigLoadError("KIVI configuration is absent from the method config")
+        parameters = variant.parameters
+        if not isinstance(parameters, KiviParameters):
+            raise ConfigLoadError("KIVI parameters have the wrong type")
+        observed = (
+            parameters.k_bits,
+            parameters.v_bits,
+            parameters.group_size,
+            parameters.residual_length,
+            variant.role,
+        )
+        if observed != _KIVI_RUNTIME_PARAMETERS[selected]:
+            raise ConfigLoadError("KIVI parameters differ from the frozen preset")
+    return selected
+
+
 def build_method_adapter(
     method_config: MethodConfig | MethodName | str,
     runtime_context: MethodRuntimeContext,
@@ -132,12 +188,26 @@ def build_method_adapter(
         raise PhaseNotImplementedError(
             f"{name} method adapter is deferred beyond Phase 6"
         )
+    if (
+        name == MethodName.KIVI.value
+        and variant_id is None
+        and (
+            not isinstance(method_config, str)
+            or method_config == MethodName.KIVI.value
+        )
+    ):
+        raise PhaseNotImplementedError(
+            "kivi requires one explicit Phase 8 configuration"
+        )
+    if name == MethodName.KIVI.value:
+        selected = _kivi_config_name(method_config, variant_id)
+        return KIVIMethodAdapter(runtime_context, selected)
     if name == MethodName.TURBOQUANT.value:
         selected = _turboquant_config_name(method_config, variant_id)
         return TurboQuantMethodAdapter(runtime_context, selected)
     if variant_id is not None:
         raise ConfigLoadError(
-            "variant_id is accepted only for the TurboQuant adapter"
+            "variant_id is accepted only for TurboQuant or KIVI adapters"
         )
     try:
         builder = _BUILDERS[name]
