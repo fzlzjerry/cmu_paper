@@ -12,6 +12,7 @@ from unittest.mock import patch
 
 import numpy as np
 from safetensors import safe_open
+from safetensors.torch import save_file
 import torch
 
 from kvbench.errors import ArtifactConflictError, ArtifactStateError
@@ -202,6 +203,48 @@ class Phase9WorkerTests(unittest.TestCase):
                     "kvbench-kvquant-safe-v1",
                 )
 
+    def test_safe_quantizer_comparison_uses_frozen_numerical_fallback(
+        self,
+    ) -> None:
+        metadata = {
+            "format": "kvbench-kvquant-safe-v1",
+            "bit_width": "4",
+        }
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            original = root / "original.safetensors"
+            exact = root / "exact.safetensors"
+            near = root / "near.safetensors"
+            far = root / "far.safetensors"
+            values = torch.tensor([1.0, -2.0], dtype=torch.float32)
+            save_file({"values": values}, original, metadata=metadata)
+            save_file({"values": values.clone()}, exact, metadata=metadata)
+            save_file(
+                {"values": values + torch.tensor([1e-6, 0.0])},
+                near,
+                metadata=metadata,
+            )
+            save_file(
+                {"values": values + torch.tensor([1e-2, 0.0])},
+                far,
+                metadata=metadata,
+            )
+
+            exact_result = worker._compare_safe_quantizers(original, exact)
+            near_result = worker._compare_safe_quantizers(original, near)
+            far_result = worker._compare_safe_quantizers(original, far)
+
+        self.assertEqual(exact_result["status"], "PASS")
+        self.assertTrue(exact_result["all_tensors_exact"])
+        self.assertTrue(exact_result["all_tensors_numerically_equivalent"])
+        self.assertEqual(near_result["status"], "PASS")
+        self.assertFalse(near_result["all_tensors_exact"])
+        self.assertTrue(near_result["all_tensors_numerically_equivalent"])
+        self.assertEqual(near_result["rtol"], worker.REPLAY_RTOL)
+        self.assertEqual(near_result["atol"], worker.REPLAY_ATOL)
+        self.assertEqual(far_result["status"], "FAIL")
+        self.assertFalse(far_result["all_tensors_numerically_equivalent"])
+
     def test_contract_and_docker_invocation_are_single_lane_and_secret_free(self) -> None:
         first = host.calibration_identity()
         second = host.calibration_identity()
@@ -327,6 +370,7 @@ class Phase9WorkerTests(unittest.TestCase):
                 "run-fisher",
                 "fisher-manifest",
                 "run-quantizer",
+                "compare-quantizers",
                 "layer-stats",
                 "reconstruct-tokens",
                 "replay-fisher",

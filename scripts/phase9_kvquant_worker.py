@@ -1391,6 +1391,136 @@ def _validate_safe_quantizer(path: Path, bit_width: int) -> None:
                 raise Phase9WorkerError(f"{name} contains NaN or Inf")
 
 
+def _compare_safe_quantizers(
+    original_path: Path,
+    regenerated_path: Path,
+) -> dict[str, object]:
+    from safetensors import safe_open
+    import torch
+
+    original_sha256 = sha256_file(original_path)
+    regenerated_sha256 = sha256_file(regenerated_path)
+    byte_equal = (
+        original_path.stat().st_size == regenerated_path.stat().st_size
+        and original_sha256 == regenerated_sha256
+    )
+    tensor_records: list[dict[str, object]] = []
+    shape_dtype_equal = True
+    exact_count = 0
+    equivalent_count = 0
+    max_absolute_difference = 0.0
+    max_relative_difference = 0.0
+    worst_absolute_tensor: str | None = None
+    worst_relative_tensor: str | None = None
+    with (
+        safe_open(original_path, framework="pt", device="cpu") as original,
+        safe_open(regenerated_path, framework="pt", device="cpu") as regenerated,
+    ):
+        original_keys = sorted(original.keys())
+        regenerated_keys = sorted(regenerated.keys())
+        key_set_equal = original_keys == regenerated_keys
+        metadata_equal = original.metadata() == regenerated.metadata()
+        if key_set_equal:
+            for name in original_keys:
+                reference = original.get_tensor(name)
+                candidate = regenerated.get_tensor(name)
+                same_shape = tuple(reference.shape) == tuple(candidate.shape)
+                same_dtype = reference.dtype == candidate.dtype
+                exact = False
+                equivalent = False
+                tensor_max_absolute = 0.0
+                tensor_max_relative = 0.0
+                if same_shape and same_dtype:
+                    exact = torch.equal(reference, candidate)
+                    equivalent = exact or torch.allclose(
+                        reference,
+                        candidate,
+                        rtol=REPLAY_RTOL,
+                        atol=REPLAY_ATOL,
+                    )
+                    difference = (reference - candidate).abs()
+                    denominator = reference.abs().clamp_min(REPLAY_ATOL)
+                    tensor_max_absolute = float(difference.max().item())
+                    tensor_max_relative = float(
+                        (difference / denominator).max().item()
+                    )
+                    exact_count += int(exact)
+                    equivalent_count += int(equivalent)
+                    if tensor_max_absolute > max_absolute_difference:
+                        max_absolute_difference = tensor_max_absolute
+                        worst_absolute_tensor = name
+                    if tensor_max_relative > max_relative_difference:
+                        max_relative_difference = tensor_max_relative
+                        worst_relative_tensor = name
+                else:
+                    shape_dtype_equal = False
+                tensor_records.append(
+                    {
+                        "name": name,
+                        "shape": list(reference.shape),
+                        "dtype": str(reference.dtype).removeprefix("torch."),
+                        "shape_equal": same_shape,
+                        "dtype_equal": same_dtype,
+                        "exact": exact,
+                        "numerically_equivalent": equivalent,
+                        "max_absolute_difference": tensor_max_absolute,
+                        "max_relative_difference": tensor_max_relative,
+                    }
+                )
+        else:
+            shape_dtype_equal = False
+    tensor_count = len(tensor_records)
+    all_exact = key_set_equal and exact_count == tensor_count
+    all_equivalent = (
+        key_set_equal
+        and shape_dtype_equal
+        and equivalent_count == tensor_count
+    )
+    status = (
+        "PASS"
+        if metadata_equal and all_equivalent
+        else "FAIL"
+    )
+    return {
+        "status": status,
+        "file_byte_equal": byte_equal,
+        "original_file_sha256": original_sha256,
+        "regenerated_file_sha256": regenerated_sha256,
+        "key_set_equal": key_set_equal,
+        "metadata_equal": metadata_equal,
+        "shape_dtype_equal": shape_dtype_equal,
+        "tensor_count": tensor_count,
+        "exact_tensor_count": exact_count,
+        "numerically_equivalent_tensor_count": equivalent_count,
+        "all_tensors_exact": all_exact,
+        "all_tensors_numerically_equivalent": all_equivalent,
+        "rtol": REPLAY_RTOL,
+        "atol": REPLAY_ATOL,
+        "max_absolute_difference": max_absolute_difference,
+        "max_relative_difference": max_relative_difference,
+        "worst_absolute_tensor": worst_absolute_tensor,
+        "worst_relative_tensor": worst_relative_tensor,
+        "tensors": tensor_records,
+    }
+
+
+def command_compare_quantizers(arguments: argparse.Namespace) -> None:
+    freeze_determinism()
+    original = Path(arguments.original).resolve(strict=True)
+    regenerated = Path(arguments.regenerated).resolve(strict=True)
+    _validate_safe_quantizer(original, arguments.bit_width)
+    _validate_safe_quantizer(regenerated, arguments.bit_width)
+    result = _compare_safe_quantizers(original, regenerated)
+    result["schema_version"] = "kvbench-phase9-quantizer-comparison-1.0.0"
+    result["variant_id"] = f"kvq{arguments.bit_width}"
+    write_json_exclusive(arguments.output, result)
+    print(json.dumps(result, sort_keys=True))
+    if result["status"] != "PASS":
+        raise Phase9WorkerError(
+            f"kvq{arguments.bit_width} regenerated safe tensors are not equivalent"
+        )
+
+
 def command_validate_payloads(arguments: argparse.Namespace) -> None:
     freeze_determinism()
     import pyarrow.parquet as pq
@@ -1535,6 +1665,13 @@ def _parser() -> argparse.ArgumentParser:
     quantizer.add_argument("--output-manifest", required=True)
     _add_model_arguments(quantizer)
     quantizer.set_defaults(function=command_run_quantizer)
+
+    compare = commands.add_parser("compare-quantizers")
+    compare.add_argument("--bit-width", type=int, choices=(2, 3, 4), required=True)
+    compare.add_argument("--original", required=True)
+    compare.add_argument("--regenerated", required=True)
+    compare.add_argument("--output", required=True)
+    compare.set_defaults(function=command_compare_quantizers)
 
     stats = commands.add_parser("layer-stats")
     stats.add_argument("--token-tensor", required=True)

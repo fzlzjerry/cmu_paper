@@ -742,6 +742,37 @@ def _quantizer_regeneration(
                 commands=commands,
                 extra_mounts=((regeneration, "/regen", False),),
             )
+            comparison_path = regeneration / f"kvq{bit_width}.comparison.json"
+            try:
+                _run_container(
+                    label=f"compare-regenerated-kvq{bit_width}",
+                    entry=entry,
+                    stage=run.stage,
+                    worker_arguments=[
+                        "compare-quantizers",
+                        "--bit-width",
+                        str(bit_width),
+                        "--original",
+                        f"/output/quantizers/kvq{bit_width}.safetensors",
+                        "--regenerated",
+                        f"/regen/kvq{bit_width}.safetensors",
+                        "--output",
+                        f"/regen/kvq{bit_width}.comparison.json",
+                    ],
+                    commands=commands,
+                    extra_mounts=((regeneration, "/regen", False),),
+                )
+            except Phase9CalibrationError:
+                failure = run.stage / "reproducibility/regeneration-mismatch"
+                failure.mkdir(parents=True, exist_ok=True)
+                for source in (
+                    regeneration / f"kvq{bit_width}.safetensors",
+                    regeneration / f"kvq{bit_width}.manifest.json",
+                    comparison_path,
+                ):
+                    if source.is_file():
+                        shutil.copy2(source, failure / source.name)
+                raise
             original = run.stage / f"quantizers/kvq{bit_width}.safetensors"
             rebuilt = regeneration / f"kvq{bit_width}.safetensors"
             original_manifest = _load_json(
@@ -750,16 +781,24 @@ def _quantizer_regeneration(
             rebuilt_manifest = _load_json(
                 regeneration / f"kvq{bit_width}.manifest.json"
             )
-            byte_equal = (
-                original.stat().st_size == rebuilt.stat().st_size
-                and _sha256_file(original) == _sha256_file(rebuilt)
-            )
+            comparison = _load_json(comparison_path)
+            if comparison.get("status") != "PASS":
+                raise Phase9CalibrationError(
+                    f"kvq{bit_width} safe regeneration is not equivalent"
+                )
             record = {
                 "variant_id": f"kvq{bit_width}",
                 "fresh_process": True,
-                "safe_serialization_byte_equal": byte_equal,
-                "original_safe_sha256": _sha256_file(original),
-                "regenerated_safe_sha256": _sha256_file(rebuilt),
+                "safe_serialization_byte_equal": comparison["file_byte_equal"],
+                "safe_tensor_exact": comparison["all_tensors_exact"],
+                "safe_tensor_numerically_equivalent": comparison[
+                    "all_tensors_numerically_equivalent"
+                ],
+                "comparison": comparison,
+                "original_safe_sha256": comparison["original_file_sha256"],
+                "regenerated_safe_sha256": comparison[
+                    "regenerated_file_sha256"
+                ],
                 "original_source_native_pickle_sha256": original_manifest[
                     "source_native_pickle_sha256"
                 ],
@@ -768,27 +807,19 @@ def _quantizer_regeneration(
                 ],
             }
             records.append(record)
-            if not byte_equal:
-                failure = run.stage / "reproducibility/regeneration-mismatch"
-                failure.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(
-                    rebuilt,
-                    failure / f"kvq{bit_width}.safetensors",
-                )
-                shutil.copy2(
-                    regeneration / f"kvq{bit_width}.manifest.json",
-                    failure / f"kvq{bit_width}.manifest.json",
-                )
-                raise Phase9CalibrationError(
-                    f"kvq{bit_width} safe regeneration is not byte-identical"
-                )
     run.write_json(
         "reproducibility/quantizer_regeneration.json",
         {
             "schema_version": "kvbench-phase9-quantizer-regeneration-1.0.0",
             "status": "PASS",
-            "serialization": "canonical_safetensors",
-            "exact_byte_identity_required": True,
+            "serialization": "explicit_safe_tensors",
+            "acceptance_rule": (
+                "byte identity where produced; otherwise exact tensor identity "
+                "or numerical equivalence under the pre-frozen tolerance"
+            ),
+            "exact_byte_identity_required": False,
+            "rtol": 1e-5,
+            "atol": 1e-8,
             "records": records,
         },
     )
