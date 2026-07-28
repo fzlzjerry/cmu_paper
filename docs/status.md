@@ -1,6 +1,6 @@
 # Project status
 
-Last updated: 2026-07-27
+Last updated: 2026-07-28
 Authoritative contracts: CODEX_WORKFLOW.md for active performance engineering;
 CODEX_POST_PERFORMANCE_QUALITY_VALIDATION.md for post-performance quality
 scheduling; CODEX_QUALITY_EVALUATION_ADDENDUM.md for non-conflicting quality
@@ -8,12 +8,15 @@ requirements; and AGENTS.md. Decision 0005 records precedence.
 
 ## Current state
 
-- Latest completed prerequisite phase: Phase 6A PASS. The exact authorized
-  Measurement Container Docker image ID / OCI image-index digest is
+- Latest completed scoped phase: Phase 9 KVQuant calibration PASS. Its
+  calibration-only container is separate from the authorized Measurement
+  Container. The unchanged Measurement Container Docker image ID / OCI
+  image-index digest remains
   `sha256:059bc9be89387369d7de9e3e9b26d85b6e9902c41e7dbf002ebc45edd188fb7e`;
   container G0 and both BF16 parity smokes pass, and Decision 0016 binds
   Measurement Lane CUDA execution to that digest only. Phase 8 is the latest
-  completed method measurement-adapter lane. Official vLLM
+  completed method measurement-adapter lane. Phase 9 does not change that
+  lane. Official vLLM
   `v0.25.1` commit `752a3a504485790a2e8491cacbb35c137339ad34` is pinned.
 - Phase 6 status: PASS for method-specific G2-TQ at execution commit
   `0df5bb4d445d48e6cba17e30723733f8de35cb14`. The approved admission driver
@@ -72,8 +75,17 @@ requirements; and AGENTS.md. Decision 0005 records precedence.
   `de7d41f151af9fe1e716f27ae0f1fc24d2ef0a4b16e8e5c3ecf45d5f9983e132`
   was conditionally published COMPLETE-last and passed independent clean
   retrieval. G2-KIVI is method-specific only.
+- Phase 9 status: PASS for offline KVQuant calibration under Decision 0021's
+  exact patched-upstream authority. Final calibration
+  `kvqcal-cdb724c806d64d095c040d2673a987a3` contains the frozen WikiText-2
+  train tokens, all-layer K/V Fisher artifacts, `kvq4`/`kvq3`/`kvq2`, shared
+  sink/cap policies, 192-row layer statistics, and reproducibility evidence.
+  Its 68-object root
+  `8148306d08205af376994b022f189a0d6837915cd279ca8af6b104e1f4b46ccf`
+  was published COMPLETE-last to the existing content-addressed R2 namespace
+  and passed clean retrieval. G2-KVQ remains NOT EVALUATED.
 - Active admission gate: native-host G0 PASS; authorized-container G0 PASS;
-  native-host BF16 G1 PASS; G2-TQ PASS; G2-KIVI PASS
+  native-host BF16 G1 PASS; G2-TQ PASS; G2-KIVI PASS; G2-KVQ NOT EVALUATED
 - Benchmark implementation changes: exact BF16 static cache, fixed-L and
   growing-context runners, eager and CUDA Graph lanes, timing, allocation,
   telemetry, campaign lifecycle, and source-backed G1 reporting are
@@ -83,7 +95,10 @@ requirements; and AGENTS.md. Decision 0005 records precedence.
   fixtures. Phase 6 adds one TurboQuant adapter and static cache through the
   same runners; it is admitted only at method-specific G2-TQ. Phase 8 adds one
   static KIVI adapter and one KIVI-specific cache state through those same
-  runners; it is admitted only at method-specific G2-KIVI
+  runners; it is admitted only at method-specific G2-KIVI. Phase 9 adds only
+  one isolated offline calibration container and narrow KVQuant calibration
+  scripts; it does not add a reference runner, Measurement Adapter, or
+  benchmark invocation
 - CUDA builds or executions: the new formal E00 run passed extension build,
   native execution, forced PTX/JIT, numerical golden, CUDA Graph, allocation,
   SASS/PTX inspection, and all required Compute Sanitizer lanes
@@ -107,7 +122,11 @@ requirements; and AGENTS.md. Decision 0005 records precedence.
   frozen grid completed 9/9 without opening Pilot or Full Scan. Phase 8 added
   only correctness, fixture, rollover, allocation, execution-path, sanitizer,
   Graph, and bounded-admission evidence; its grid completed 10/10. No formal
-  performance sample, Nsight result, or quality result was created.
+  performance sample, Nsight result, or quality result was created. Phase 9
+  added only offline calibration inputs, Fisher tensors, quantizers, policy
+  evidence, and publication receipts. It did not run or record benchmark
+  timing, HBM traffic, capacity, Nsight, PPL, LongBench, or other quality
+  results.
 - Scientific performance claims: none
 - Quality protocol: preregistered by Decision 0005 before any performance or
   quality result
@@ -186,9 +205,53 @@ Both roots are COMPLETE-last and pass clean retrieval under exact indefinite
 Bucket Lock rule `kvbench-evidence-indefinite`.
 
 G2-KIVI is PASS. Global G2-G5 remain NOT EVALUATED, Full Scan remains CLOSED,
-quality execution remains LOCKED, `PERFORMANCE_DATA_FROZEN` remains absent,
-and Phase 9 has not started. This admission makes no speedup, physical-HBM,
-knee, capacity, performance, or quality claim.
+quality execution remains LOCKED, and `PERFORMANCE_DATA_FROZEN` remains
+absent. At that Phase 8 boundary, Phase 9 had not started; the later Phase 9
+result is recorded below. This admission makes no speedup, physical-HBM, knee,
+capacity, performance, or quality claim.
+
+## Phase 9 KVQuant calibration
+
+Phase 9 entered at clean synchronized commit
+`b4d253724717076188a38032d6d6204fdf15e191`. Decision 0021 binds method
+identifier `kvquant_gqa_upstream_patch_v1` to pinned upstream commit
+`57a238357f0ffe50084670fcd5781c9848f80ea2`, project patch SHA-256
+`db3b6fb7ec0a72e25001e1c83a5158d86512248db5c3a06c61895598d1d482d6`,
+and patched tree `c4f1490c9c0c4ec46099f1e95c092516df2adb4e`. Reconstruction and all
+recorded before/after file hashes pass. This is project-patched upstream
+authority, not a claim that the upstream authors released native Llama-3.1
+GQA support.
+
+The separate digest-pinned calibration image loaded the exact
+`meta-llama/Llama-3.1-8B-Instruct` model and tokenizer revision
+`0e9e39f249a16976918f6564b8830bc894c89659` in native 32Q/8KV geometry.
+WikiText-2 train data was frozen into exactly 16 ordered sequences of 2,048
+tokens at seed `20260721`; the test split was not loaded. One full Fisher run
+produced 32 pre-RoPE K and 32 V FP32 finite tensors. The same Fisher artifact
+generated exactly the three safe-format quantizer families `kvq4`, `kvq3`,
+and `kvq2` with five sink tokens and shared Key/Value cap 12.
+
+Final calibration `kvqcal-cdb724c806d64d095c040d2673a987a3`, executed from
+source HEAD `37ffdac439ff29df8606c2f61f57157278f321ad`, has 68-object root
+`8148306d08205af376994b022f189a0d6837915cd279ca8af6b104e1f4b46ccf`.
+Token reconstruction, representative K/V Fisher replay, all-family
+fresh-process quantizer regeneration, deterministic equal-value ties, fixed
+capacity, dtypes, and zero fill pass. Tensor values regenerate exactly; safe
+serialization is accepted by the pre-frozen numerical rule because JSON
+header ordering is not canonical.
+
+The first R2 publication attempt stopped before `COMPLETE` on a transport
+error and left six identical content-addressed objects. The retry verified
+those objects, uploaded the remaining 62, wrote `COMPLETE` last, and a clean
+retrieval verified all 68 objects and the root under indefinite Bucket Lock
+rule `kvbench-evidence-indefinite`. Two earlier failed local calibration IDs
+remain immutable, finalized, and terminally failed.
+
+Phase 9 changes no adapter or Measurement Container and creates no KVQuant
+reference fixture. G2-KVQ and global G2-G5 remain NOT EVALUATED, Full Scan
+remains CLOSED, quality remains LOCKED, and `PERFORMANCE_DATA_FROZEN` remains
+absent. No performance, HBM, capacity, knee, speedup, or quality claim follows
+from calibration.
 
 ## Phase 5 TurboQuant reference lane
 
@@ -621,7 +684,8 @@ reference execution is recorded separately above.
 | Phase 7 KIVI reference lane | PASS | Exact patched source, locked image, official extension, SM120/PTX/JIT, sanitizer, four fixtures, rollover/bytes/GQA/trace, and 30-object R2 publication plus clean retrieval pass. |
 | Phase 8 KIVI measurement adapter | PASS | Execution SHA `462325e9df809d3bcf24a06361bf004bc7383d73`; exact fixtures, rollover, byte accounting, path/allocation audits, Graph, sanitizer, and bounded grid 10/10 PASS; 331-object inner and 341-object report-bearing outer roots are COMPLETE-last and cleanly retrieved. |
 | G2-KIVI | PASS | All three mandatory configurations are admitted and held-out k4v2 conforms; MethodAdmissionReport derives 17/17 PASS checks. Global G2 remains NOT EVALUATED. |
-| G2-KVQ | NOT EVALUATED | requires E09-E11 |
+| Phase 9 KVQuant calibration | PASS | Exact Decision 0021 patched source; isolated image; frozen 16 x 2048 train tokens; 32 K plus 32 V Fisher artifacts; three complete quantizer families; reproducibility; 68-object COMPLETE-last R2 root and clean retrieval. |
+| G2-KVQ | NOT EVALUATED | Phase 9/E09 is complete; requires E10-E11 and resolution of B-006 before applicable execution |
 | G1-G5 unified admission | NOT EVALUATED | requires E12 |
 | Pilot/full-scan gates | CLOSED / NOT EVALUATED | Method-specific G2-TQ and G2-KIVI admission do not authorize Pilot or Full Scan |
 | Post-performance quality validation | LOCKED | Decision 0005; `PERFORMANCE_DATA_FROZEN` absent |
@@ -653,6 +717,10 @@ are COMPLETE-last and cleanly retrieved. G0, G1, G2-TQ, and G2-KIVI remain
 PASS; global G2-G5 remain NOT EVALUATED; Full Scan remains CLOSED; quality
 execution remains LOCKED; and `PERFORMANCE_DATA_FROZEN` remains absent.
 
-Phase 9 KVQuant Calibration may be proposed only as a separate new task.
-Phase 9, Pilot, profiling, fitting, figures, Full Scan, performance execution,
-and quality execution have not started.
+Phase 9 KVQuant calibration is complete. Final calibration root
+`8148306d08205af376994b022f189a0d6837915cd279ca8af6b104e1f4b46ccf`
+is COMPLETE-last and cleanly retrieved from its content-addressed R2 URI.
+Phase 10 KVQuant Reference Lane may be proposed only in a separate new task;
+it has not started. G2-KVQ remains NOT EVALUATED. Pilot, profiling, fitting,
+figures, Full Scan, performance execution, and quality execution have not
+started.

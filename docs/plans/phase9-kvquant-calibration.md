@@ -1,6 +1,7 @@
 # Phase 9 — KVQuant Calibration Plan
 
-Status: entry checks passed; calibration not yet executed.
+Status: completed under this frozen contract; final calibration
+`kvqcal-cdb724c806d64d095c040d2673a987a3` is immutable and durably verified.
 
 ## Frozen authority
 

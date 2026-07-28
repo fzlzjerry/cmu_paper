@@ -1,0 +1,264 @@
+{
+  "schema_version": "kvbench-phase9-calibration-evidence-1.0.0",
+  "phase": 9,
+  "status": "PASS",
+  "calibration_id": "kvqcal-cdb724c806d64d095c040d2673a987a3",
+  "calibration_contract_sha256": "cdb724c806d64d095c040d2673a987a36a220ce594c630c87f57088908547109",
+  "execution_git_sha": "37ffdac439ff29df8606c2f61f57157278f321ad",
+  "local_bundle": {
+    "path": "calibration/kvquant/kvqcal-cdb724c806d64d095c040d2673a987a3",
+    "root_sha256": "8148306d08205af376994b022f189a0d6837915cd279ca8af6b104e1f4b46ccf",
+    "object_count": 68,
+    "immutable": true,
+    "complete_written_last": true,
+    "manifest_sha256": "155c513427aa4e1fa3d70fb11905241c15e38a52b39035df2d02111db5fb98b6",
+    "artifact_inventory_sha256": "0f45b8a7ff8cf90770d2ad6218c1b0b0a5cd75422fde13b26658f1377b0eaec8",
+    "checksum_ledger_sha256": "e24f908558e7b5c2f524aea0fd48162219deeb3041b827b56f9375f8f76a5fb1"
+  },
+  "authority": {
+    "authority_wording": "KVQuant-GQA patched upstream",
+    "method_identifier": "kvquant_gqa_upstream_patch_v1",
+    "upstream_repository": "https://github.com/SqueezeAILab/KVQuant.git",
+    "upstream_base_commit": "57a238357f0ffe50084670fcd5781c9848f80ea2",
+    "upstream_base_tree": "094e0f736f77ee327e5350cbd1eefb1c936aa77b",
+    "patch_sha256": "db3b6fb7ec0a72e25001e1c83a5158d86512248db5c3a06c61895598d1d482d6",
+    "patched_commit": "4ad80bc8c942d0a05516d2be8f8d443a77a05900",
+    "patched_tree": "c4f1490c9c0c4ec46099f1e95c092516df2adb4e",
+    "decision": "0021",
+    "source_reconstruction_command": "make KVQUANT_GQA_SOURCE_ROOT=/home/rockrock/third_party_worktrees/kvquant-gqa validate-kvquant-gqa-patch",
+    "source_reconstruction_result": "PASS",
+    "reconstructed_source_checksum_result": "PASS",
+    "complete_upstream_checkout_committed": false,
+    "complete_upstream_checkout_published": false,
+    "official_author_gqa_support_claimed": false
+  },
+  "calibration_container": {
+    "dockerfile": "docker/calibration-kvquant.Dockerfile",
+    "base_image_digest": "sha256:16ee632c5ac029deca5859f3da4c74f9e5e55f5080c10745a59653e95d8e5b44",
+    "dockerfile_sha256": "e3ac0933c21c986bed2ca169c8983f6d1e6412e02bed42a282f9c604fd9c4de5",
+    "image_id_and_config_digest": "sha256:127759078f2c70c9e795c7a1bb3408df1eaee8fa019319299d283dc8075b216d",
+    "python_freeze_sha256": "950f28e3513f03e693b4dd87018ced302f4c201754e791bcdef65976c737eb7a",
+    "python": "3.12.3",
+    "pytorch": "2.12.1+cu130",
+    "cuda_userspace": "13.0.2",
+    "transformers": "4.57.6",
+    "datasets": "5.0.0",
+    "numpy": "2.5.1",
+    "scikit_learn": "1.7.1",
+    "scipy": "1.16.1",
+    "gcc": "13.3.0",
+    "nvcc": "13.0.88",
+    "model_weights_in_image": false,
+    "credentials_in_image": false,
+    "patched_source_in_image": false,
+    "public_image_publication": false,
+    "smoke_result": "PASS"
+  },
+  "model": {
+    "model_id": "meta-llama/Llama-3.1-8B-Instruct",
+    "revision": "0e9e39f249a16976918f6564b8830bc894c89659",
+    "tokenizer_id": "meta-llama/Llama-3.1-8B-Instruct",
+    "tokenizer_revision": "0e9e39f249a16976918f6564b8830bc894c89659",
+    "config_sha256": "29e4c210b0d6ac178b16b2a255a568bdb23b581e50ca1ef6a6d071dd85704e6e",
+    "snapshot_manifest_sha256": "ab9f6a32a41934c9e49881db68022827b6aca35f4f644627c77e3420978d1336",
+    "tokenizer_artifact_hashes": {
+      "special_tokens_map.json": "6f38c73729248f6c127296386e3cdde96e254636cc58b4169d3fd32328d9a8ec",
+      "tokenizer.json": "79e3e522635f3171300913bb421464a87de6222182a0570b9b2ccba2a964b2b4",
+      "tokenizer_config.json": "177c7b61e616fecb84c17ce0591acb92c6c4d60e9ac5ababfb940ff23bbcd424"
+    },
+    "architecture": "LlamaForCausalLM",
+    "model_dtype": "bfloat16",
+    "layers": 32,
+    "query_heads": 32,
+    "kv_heads": 8,
+    "head_dimension": 128,
+    "gqa_group_size": 4,
+    "native_kv_width": 1024,
+    "rope_type": "llama3",
+    "key_capture": "immediately_after_k_proj_before_rope",
+    "value_capture": "immediately_after_v_proj",
+    "query_head_expansion": false,
+    "offline_local_snapshot": true
+  },
+  "dataset": {
+    "compact_manifest": "docs/evidence/phase9/dataset-selection.json",
+    "repository": "Salesforce/wikitext",
+    "config": "wikitext-2-raw-v1",
+    "revision": "b08601e04326c79dfdd32d625aee71d232d685c3",
+    "conversion_revision": "3f68cd45302c7b4b532d933e71d9e6e54b1c7d5e",
+    "content_sha256": "e83889baabc497075506f91975be5fac0d45c5290b6b20582c8cd1e853d0c9f7",
+    "dataset_root_sha256": "2d3a6c9877af57e6a3943824cef97ca2c036719c9aab98bfd6735d13bb2a0547",
+    "split": "train",
+    "number_of_examples": 16,
+    "sequence_length": 2048,
+    "seed": 20260721,
+    "token_tensor_path": "tokens/input_ids.safetensors",
+    "token_tensor_shape": [
+      16,
+      2048
+    ],
+    "token_tensor_dtype": "int64",
+    "token_tensor_sha256": "bab01ec45c5a199061c91c39e41634c97fad8faa830d57106f942c2e91074e02",
+    "token_tensor_content_root_sha256": "ebb7a50649f69cde64d74876af3f2e4938405e8cee94d5a2d95e51b911777d47",
+    "test_split_loaded": false,
+    "validation_split_loaded": false
+  },
+  "precision_and_determinism": {
+    "model_forward": "bfloat16",
+    "fisher_accumulation": "float32",
+    "quantizer_fitting_activations": "float16",
+    "codebook_and_threshold_computation": "float32",
+    "base_seed": 20260721,
+    "python_seed": 20260721,
+    "numpy_seed": 20260721,
+    "torch_cpu_seed": 20260721,
+    "torch_cuda_seed": 20260721,
+    "clustering_random_state": 20260721,
+    "clustering_init": "k-means++",
+    "clustering_n_init": "auto",
+    "clustering_initialization_count": 1,
+    "clustering_max_iter": 50,
+    "thread_count": 1,
+    "torch_deterministic_algorithms": true,
+    "cudnn_deterministic": true,
+    "cudnn_benchmark": false,
+    "tf32": false,
+    "model_state": "eval",
+    "bitwise_determinism_claimed": false,
+    "replay_atol": 1e-08,
+    "replay_rtol": 1e-05
+  },
+  "fisher": {
+    "path": "fisher/fisher.safetensors",
+    "sha256": "a4cd9ad1e28332cc38c0a8bd19c10af079379655baaa2e5066aac6e23472117b",
+    "tensor_count": 64,
+    "layer_count": 32,
+    "key_coverage": 32,
+    "value_coverage": 32,
+    "tensor_shape": [
+      1,
+      32768,
+      1024
+    ],
+    "dtype": "float32",
+    "key_capture": "pre_rope_key",
+    "native_kv_heads": 8,
+    "query_head_expansion": false,
+    "model_weight_mutation": false,
+    "nan_count": 0,
+    "inf_count": 0
+  },
+  "quantizers": {
+    "kvq4": {
+      "bit_width": 4,
+      "path": "quantizers/kvq4.safetensors",
+      "sha256": "a8c009633ac4cad952deb2a2fa96c44ef928a1510dadcf11dee29a7a3efe1bf6",
+      "tensor_count": 320
+    },
+    "kvq3": {
+      "bit_width": 3,
+      "path": "quantizers/kvq3.safetensors",
+      "sha256": "97518129cc64ffa445722cb0802b3082631841de50835cbdf2c85c36a0c1579f",
+      "tensor_count": 320
+    },
+    "kvq2": {
+      "bit_width": 2,
+      "path": "quantizers/kvq2.safetensors",
+      "sha256": "b9bb3a8699aa38fb2a5707ff036814971552462692a180431f6f68df9624560e",
+      "tensor_count": 320
+    },
+    "format": "safetensors",
+    "safe_non_executable_serialization": true,
+    "layer_coverage_per_family": 32,
+    "role_coverage_per_family": [
+      "K",
+      "V"
+    ],
+    "nuq": true,
+    "fisher_weighted": true,
+    "dense_and_sparse": true,
+    "fisher_sha256": "a4cd9ad1e28332cc38c0a8bd19c10af079379655baaa2e5066aac6e23472117b",
+    "source_native_pickle_published": false,
+    "source_native_pickle_retained": false
+  },
+  "policies": {
+    "sink_tokens": 5,
+    "sink_token_indices": [
+      0,
+      1,
+      2,
+      3,
+      4
+    ],
+    "sink_storage_dtype": "float16",
+    "sink_excluded_from_dense_quantized_history": true,
+    "sink_excluded_from_sparse_selection": true,
+    "key_outlier_cap": 12,
+    "value_outlier_cap": 12,
+    "lower_tail_entries": 6,
+    "upper_tail_entries": 6,
+    "shared_across_bits": true,
+    "tie_breaking": "value_then_ascending_native_index",
+    "outlier_value_dtype": "float32",
+    "outlier_index_dtype": "int32",
+    "metadata_dtype": "float32",
+    "duplicate_or_overlapping_indices": false,
+    "unused_slots": "zero_filled",
+    "quality_or_performance_used_for_selection": false
+  },
+  "layer_statistics": {
+    "path": "layer_stats.parquet",
+    "sha256": "0c7fccc0dfb707b0457b99f2f6724ce855887e05f025c9930840d05ecca3b8de",
+    "compact_summary": "docs/evidence/phase9/layer-stats-summary.json",
+    "rows": 192,
+    "coverage": "32 layers x 2 roles x 3 bit widths",
+    "nan_count": 0,
+    "inf_count": 0
+  },
+  "reproducibility": {
+    "compact_manifest": "docs/evidence/phase9/reproducibility.json",
+    "status": "PASS",
+    "token_reconstruction": "PASS",
+    "representative_key_fisher_replay": "PASS",
+    "representative_value_fisher_replay": "PASS",
+    "outlier_policy_replay": "PASS",
+    "quantizer_regeneration": "PASS"
+  },
+  "durable_publication": {
+    "receipt": "docs/evidence/phase9/r2-publication.json",
+    "uri": "r2://kvbench-artifacts/kvbench/sha256/8148306d08205af376994b022f189a0d6837915cd279ca8af6b104e1f4b46ccf/",
+    "complete_last": true,
+    "clean_retrieval": "PASS"
+  },
+  "preserved_failed_calibration_attempts": [
+    {
+      "calibration_id": "kvqcal-e173e987e8b384fb5a78af196d67a032",
+      "status": "runtime_failed",
+      "reason": "tokenizer default-special-token probe exposed a source-path mismatch before Fisher execution"
+    },
+    {
+      "calibration_id": "kvqcal-62c0797d73a7dbd991bd1b14da39abed",
+      "status": "runtime_failed",
+      "reason": "byte-only safetensors regeneration acceptance rejected different header ordering even though all 320 tensors per family were exact"
+    }
+  ],
+  "governance": {
+    "kvquant_execution": "fail_closed",
+    "g2_kvquant": "NOT EVALUATED",
+    "global_g2_g5": "NOT EVALUATED",
+    "full_scan": "CLOSED",
+    "quality_execution": "LOCKED",
+    "performance_data_frozen_present": false,
+    "phase10_started": false
+  },
+  "non_claims": [
+    "official upstream Llama-3.1 GQA support",
+    "quality",
+    "performance",
+    "speedup",
+    "memory benefit",
+    "physical HBM traffic",
+    "capacity",
+    "knee"
+  ]
+}

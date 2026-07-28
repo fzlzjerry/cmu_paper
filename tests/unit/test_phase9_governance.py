@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 from pathlib import Path
 import subprocess
 import unittest
@@ -123,6 +124,99 @@ class Phase9GovernanceTests(unittest.TestCase):
             ROOT / "results",
         ):
             self.assertFalse(forbidden.exists())
+
+    def test_completed_calibration_is_root_bound_and_unadmitted(self) -> None:
+        expected_root = (
+            "8148306d08205af376994b022f189a0d"
+            "6837915cd279ca8af6b104e1f4b46ccf"
+        )
+        config = json.loads(
+            (ROOT / "configs/methods/kvquant.yaml").read_text(
+                encoding="utf-8"
+            )
+        )
+        evidence = json.loads(
+            (
+                ROOT / "docs/evidence/phase9/calibration-manifest.json"
+            ).read_text(encoding="utf-8")
+        )
+        dataset = json.loads(
+            (
+                ROOT / "docs/evidence/phase9/dataset-selection.json"
+            ).read_text(encoding="utf-8")
+        )
+        statistics = json.loads(
+            (
+                ROOT / "docs/evidence/phase9/layer-stats-summary.json"
+            ).read_text(encoding="utf-8")
+        )
+        reproducibility = json.loads(
+            (
+                ROOT / "docs/evidence/phase9/reproducibility.json"
+            ).read_text(encoding="utf-8")
+        )
+        publication = json.loads(
+            (
+                ROOT / "docs/evidence/phase9/r2-publication.json"
+            ).read_text(encoding="utf-8")
+        )
+
+        calibration = config["calibration"]
+        self.assertEqual(calibration["calibration_root_digest"], expected_root)
+        self.assertEqual(
+            calibration["calibration_root_digest"],
+            evidence["local_bundle"]["root_sha256"],
+        )
+        self.assertEqual(
+            calibration["durable_r2_uri"],
+            publication["publication"]["uri"],
+        )
+        self.assertEqual(config["resolution"]["status"], "unresolved")
+        self.assertEqual(
+            config["resolution"]["blockers"],
+            ["B-006", "E10", "E11"],
+        )
+        expected_quantizers = {
+            "kvq4": calibration["kvq4_sha256"],
+            "kvq3": calibration["kvq3_sha256"],
+            "kvq2": calibration["kvq2_sha256"],
+        }
+        self.assertEqual(
+            {
+                item["variant_id"]: item["parameters"][
+                    "calibration_artifact_sha256"
+                ]
+                for item in config["variants"]
+            },
+            expected_quantizers,
+        )
+        self.assertEqual(dataset["token_tensor"]["shape"], [16, 2048])
+        self.assertFalse(dataset["dataset"]["test_split_loaded"])
+        self.assertEqual(statistics["row_count"], 192)
+        self.assertTrue(statistics["coverage"]["complete"])
+        self.assertEqual(reproducibility["status"], "PASS")
+        self.assertEqual(
+            [
+                item["exact_tensor_count"]
+                for item in reproducibility["quantizer_regeneration"]["records"]
+            ],
+            [320, 320, 320],
+        )
+        self.assertEqual(publication["status"], "PASS")
+        self.assertTrue(publication["publication"]["complete_last"])
+        self.assertEqual(
+            publication["clean_retrieval"]["verification_result"],
+            "PASS",
+        )
+        self.assertEqual(publication["clean_retrieval"]["object_count"], 68)
+        self.assertEqual(
+            evidence["precision_and_determinism"][
+                "clustering_initialization_count"
+            ],
+            1,
+        )
+        self.assertEqual(evidence["governance"]["g2_kvquant"], "NOT EVALUATED")
+        self.assertEqual(evidence["governance"]["quality_execution"], "LOCKED")
 
     def test_calibration_container_is_separate_digest_pinned_and_secret_free(self) -> None:
         dockerfile = (

@@ -1,0 +1,64 @@
+{
+  "schema_version": "kvbench-phase9-layer-stats-summary-1.0.0",
+  "calibration_id": "kvqcal-cdb724c806d64d095c040d2673a987a3",
+  "source": {
+    "path": "layer_stats.parquet",
+    "sha256": "0c7fccc0dfb707b0457b99f2f6724ce855887e05f025c9930840d05ecca3b8de",
+    "format": "parquet"
+  },
+  "row_count": 192,
+  "coverage": {
+    "layer_count": 32,
+    "layer_min": 0,
+    "layer_max": 31,
+    "roles": [
+      "K",
+      "V"
+    ],
+    "bit_widths": [
+      2,
+      3,
+      4
+    ],
+    "rows_per_role_and_bit_width": 32,
+    "complete": true
+  },
+  "dtypes": {
+    "metadata": [
+      "float32"
+    ],
+    "outlier_values": [
+      "float32"
+    ],
+    "outlier_indices": [
+      "int32"
+    ]
+  },
+  "cap": {
+    "key": 12,
+    "value": 12,
+    "shared_across_bits": true
+  },
+  "cap_hit_summary": {
+    "K": {
+      "identical_across_bit_widths": true,
+      "cap_hit_count_per_bit_width": 544,
+      "cap_hit_rate_min": 0.0,
+      "cap_hit_rate_mean": 0.0005200685266764562,
+      "cap_hit_rate_max": 0.008229319627998041
+    },
+    "V": {
+      "identical_across_bit_widths": true,
+      "cap_hit_count_per_bit_width": 907018,
+      "cap_hit_rate_min": 0.8363313754282917,
+      "cap_hit_rate_mean": 0.8671167553842388,
+      "cap_hit_rate_max": 0.9174314733235438
+    }
+  },
+  "clipping_saturation_count": 0,
+  "nan_count": 0,
+  "inf_count": 0,
+  "unusual_layers_dropped": false,
+  "quality_analysis": false,
+  "performance_analysis": false
+}

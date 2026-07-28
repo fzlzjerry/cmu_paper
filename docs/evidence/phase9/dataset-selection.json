@@ -1,0 +1,276 @@
+{
+  "schema_version": "kvbench-phase9-dataset-selection-1.0.0",
+  "calibration_id": "kvqcal-cdb724c806d64d095c040d2673a987a3",
+  "dataset": {
+    "provider": "Hugging Face Hub",
+    "repository": "Salesforce/wikitext",
+    "config": "wikitext-2-raw-v1",
+    "dataset_revision": "b08601e04326c79dfdd32d625aee71d232d685c3",
+    "conversion_revision": "3f68cd45302c7b4b532d933e71d9e6e54b1c7d5e",
+    "split": "train",
+    "input_object_sha256": "e83889baabc497075506f91975be5fac0d45c5290b6b20582c8cd1e853d0c9f7",
+    "input_object_size_bytes": 6357543,
+    "train_row_count": 36718,
+    "dataset_root_sha256": "2d3a6c9877af57e6a3943824cef97ca2c036719c9aab98bfd6735d13bb2a0547",
+    "test_split_loaded": false,
+    "validation_split_loaded": false
+  },
+  "tokenizer": {
+    "id": "meta-llama/Llama-3.1-8B-Instruct",
+    "revision": "0e9e39f249a16976918f6564b8830bc894c89659",
+    "tokenizer_json_sha256": "79e3e522635f3171300913bb421464a87de6222182a0570b9b2ccba2a964b2b4",
+    "tokenizer_config_sha256": "177c7b61e616fecb84c17ce0591acb92c6c4d60e9ac5ababfb940ff23bbcd424",
+    "special_tokens_map_sha256": "6f38c73729248f6c127296386e3cdde96e254636cc58b4169d3fd32328d9a8ec",
+    "bos": "tokenizer_default_single_bos",
+    "eos": "none_appended",
+    "padding": false,
+    "truncation": false
+  },
+  "selection": {
+    "algorithm": "join train rows in source order with \"\\n\\n\"; tokenize once; random.Random(seed).randint(0, token_count - 2048 - 1) for 16 ordered windows",
+    "concatenation": "\\n\\n",
+    "seed": 20260721,
+    "number_of_examples": 16,
+    "sequence_length": 2048,
+    "token_stream_length": 2436214,
+    "samples": [
+      {
+        "sample_id": "sample-00",
+        "selection_order": 0,
+        "global_token_start": 776416,
+        "global_token_stop_exclusive": 778464,
+        "source_train_row_range_inclusive": [
+          11734,
+          11759
+        ],
+        "source_train_row_count": 26,
+        "source_rows_contiguous": true,
+        "token_count": 2048,
+        "token_ids_sha256": "3166b4c6132f7bf30b4f75d4a947daa6eaf855da0f0772c37f930cf1d5a78f42"
+      },
+      {
+        "sample_id": "sample-01",
+        "selection_order": 1,
+        "global_token_start": 1584572,
+        "global_token_stop_exclusive": 1586620,
+        "source_train_row_range_inclusive": [
+          24184,
+          24217
+        ],
+        "source_train_row_count": 34,
+        "source_rows_contiguous": true,
+        "token_count": 2048,
+        "token_ids_sha256": "b1da77873f216941d7b603326de002d68940ab7b87378761b760bcc4f819cb97"
+      },
+      {
+        "sample_id": "sample-02",
+        "selection_order": 2,
+        "global_token_start": 1666780,
+        "global_token_stop_exclusive": 1668828,
+        "source_train_row_range_inclusive": [
+          25584,
+          25605
+        ],
+        "source_train_row_count": 22,
+        "source_rows_contiguous": true,
+        "token_count": 2048,
+        "token_ids_sha256": "2959623434a49dbffa9738c700337bfcb17e23c38378fb165c4190b17ae187b1"
+      },
+      {
+        "sample_id": "sample-03",
+        "selection_order": 3,
+        "global_token_start": 1692696,
+        "global_token_stop_exclusive": 1694744,
+        "source_train_row_range_inclusive": [
+          25938,
+          25976
+        ],
+        "source_train_row_count": 39,
+        "source_rows_contiguous": true,
+        "token_count": 2048,
+        "token_ids_sha256": "b304ebd5f08d6cc1fd85cf1035448bb47715de527d9f807f75f1f5ffdb328079"
+      },
+      {
+        "sample_id": "sample-04",
+        "selection_order": 4,
+        "global_token_start": 1160405,
+        "global_token_stop_exclusive": 1162453,
+        "source_train_row_range_inclusive": [
+          17537,
+          17559
+        ],
+        "source_train_row_count": 23,
+        "source_rows_contiguous": true,
+        "token_count": 2048,
+        "token_ids_sha256": "f7b8978b496df9efb2b1464582bb9ec7a5c6b91b149b2cbde1750f685c953d3a"
+      },
+      {
+        "sample_id": "sample-05",
+        "selection_order": 5,
+        "global_token_start": 1960579,
+        "global_token_stop_exclusive": 1962627,
+        "source_train_row_range_inclusive": [
+          29925,
+          29945
+        ],
+        "source_train_row_count": 21,
+        "source_rows_contiguous": true,
+        "token_count": 2048,
+        "token_ids_sha256": "9b34d4574c4ed4b85889b28fdc154db32cef81c89b1d3df9473f9253c236ae3e"
+      },
+      {
+        "sample_id": "sample-06",
+        "selection_order": 6,
+        "global_token_start": 29559,
+        "global_token_stop_exclusive": 31607,
+        "source_train_row_range_inclusive": [
+          533,
+          575
+        ],
+        "source_train_row_count": 43,
+        "source_rows_contiguous": true,
+        "token_count": 2048,
+        "token_ids_sha256": "b0f08d0eb8b0679370e7a47b3530ab8f9e879d34c576bb97b206770a92526298"
+      },
+      {
+        "sample_id": "sample-07",
+        "selection_order": 7,
+        "global_token_start": 873733,
+        "global_token_stop_exclusive": 875781,
+        "source_train_row_range_inclusive": [
+          13271,
+          13309
+        ],
+        "source_train_row_count": 39,
+        "source_rows_contiguous": true,
+        "token_count": 2048,
+        "token_ids_sha256": "346b644a56549747952fa8fdb82016816a822811b603672ce9ea1b2f5c29132c"
+      },
+      {
+        "sample_id": "sample-08",
+        "selection_order": 8,
+        "global_token_start": 1866657,
+        "global_token_stop_exclusive": 1868705,
+        "source_train_row_range_inclusive": [
+          28464,
+          28547
+        ],
+        "source_train_row_count": 84,
+        "source_rows_contiguous": true,
+        "token_count": 2048,
+        "token_ids_sha256": "e57117c9587c864e5a41e0091005a67366013e95ce71b3083d7d42cf94db93b6"
+      },
+      {
+        "sample_id": "sample-09",
+        "selection_order": 9,
+        "global_token_start": 2426841,
+        "global_token_stop_exclusive": 2428889,
+        "source_train_row_range_inclusive": [
+          36594,
+          36614
+        ],
+        "source_train_row_count": 21,
+        "source_rows_contiguous": true,
+        "token_count": 2048,
+        "token_ids_sha256": "3b94341c52188fa4277aa6d6d6fff0fd3f4f6e8f5f66a3ff203a81c6b882a3d8"
+      },
+      {
+        "sample_id": "sample-10",
+        "selection_order": 10,
+        "global_token_start": 527726,
+        "global_token_stop_exclusive": 529774,
+        "source_train_row_range_inclusive": [
+          8045,
+          8090
+        ],
+        "source_train_row_count": 46,
+        "source_rows_contiguous": true,
+        "token_count": 2048,
+        "token_ids_sha256": "c66f348b5d51f095336bd62eec31813455757beeb2da7eba84043c8e40bcc510"
+      },
+      {
+        "sample_id": "sample-11",
+        "selection_order": 11,
+        "global_token_start": 721843,
+        "global_token_stop_exclusive": 723891,
+        "source_train_row_range_inclusive": [
+          10980,
+          11020
+        ],
+        "source_train_row_count": 41,
+        "source_rows_contiguous": true,
+        "token_count": 2048,
+        "token_ids_sha256": "14ca660342accf40e6283cfb746b1825937519dde0ebe0c2cc6ee4a7b6f092c3"
+      },
+      {
+        "sample_id": "sample-12",
+        "selection_order": 12,
+        "global_token_start": 1000843,
+        "global_token_stop_exclusive": 1002891,
+        "source_train_row_range_inclusive": [
+          15290,
+          15311
+        ],
+        "source_train_row_count": 22,
+        "source_rows_contiguous": true,
+        "token_count": 2048,
+        "token_ids_sha256": "4484d68f08bbebb130693fcd8c6abbb43ddadc7e9b85c7a6e914b06cf5c86526"
+      },
+      {
+        "sample_id": "sample-13",
+        "selection_order": 13,
+        "global_token_start": 1637219,
+        "global_token_stop_exclusive": 1639267,
+        "source_train_row_range_inclusive": [
+          25139,
+          25183
+        ],
+        "source_train_row_count": 45,
+        "source_rows_contiguous": true,
+        "token_count": 2048,
+        "token_ids_sha256": "4700f7cbbae687f6a51c10c074b9f78ba5b9b11ab7fd2a28bd8472f5d9912208"
+      },
+      {
+        "sample_id": "sample-14",
+        "selection_order": 14,
+        "global_token_start": 394364,
+        "global_token_stop_exclusive": 396412,
+        "source_train_row_range_inclusive": [
+          6212,
+          6227
+        ],
+        "source_train_row_count": 16,
+        "source_rows_contiguous": true,
+        "token_count": 2048,
+        "token_ids_sha256": "67f9b94aa43dc3266c16d25d72185eeae81b55e591249459b702b659a614ea28"
+      },
+      {
+        "sample_id": "sample-15",
+        "selection_order": 15,
+        "global_token_start": 2341307,
+        "global_token_stop_exclusive": 2343355,
+        "source_train_row_range_inclusive": [
+          35307,
+          35341
+        ],
+        "source_train_row_count": 35,
+        "source_rows_contiguous": true,
+        "token_count": 2048,
+        "token_ids_sha256": "ce6dd5a2c0c4510f82ab6fa0091ec16c471348c38f165cd8595e9cf396237c07"
+      }
+    ]
+  },
+  "token_tensor": {
+    "path": "tokens/input_ids.safetensors",
+    "format": "safetensors",
+    "tensor_name": "input_ids",
+    "shape": [
+      16,
+      2048
+    ],
+    "dtype": "int64",
+    "file_sha256": "bab01ec45c5a199061c91c39e41634c97fad8faa830d57106f942c2e91074e02",
+    "content_root_sha256": "ebb7a50649f69cde64d74876af3f2e4938405e8cee94d5a2d95e51b911777d47",
+    "reconstruction_result": "PASS"
+  }
+}

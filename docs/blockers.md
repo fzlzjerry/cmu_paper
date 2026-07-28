@@ -1,6 +1,6 @@
 # Blockers
 
-Last updated: 2026-07-27.
+Last updated: 2026-07-28.
 
 ## Current disposition
 
@@ -49,7 +49,15 @@ and report-bearing outer root
 `de7d41f151af9fe1e716f27ae0f1fc24d2ef0a4b16e8e5c3ecf45d5f9983e132`
 are COMPLETE-last and cleanly retrieved. G2-KIVI is PASS; no Phase 8 blocker
 remains. Global G2-G5 remain NOT EVALUATED, Full Scan is CLOSED, quality
-execution is LOCKED, and Phase 9 has not started.
+execution is LOCKED.
+
+Phase 9 completed the narrowly authorized KVQuant calibration and resolves
+B-005. Final calibration `kvqcal-cdb724c806d64d095c040d2673a987a3`,
+root `8148306d08205af376994b022f189a0d6837915cd279ca8af6b104e1f4b46ccf`,
+is COMPLETE-last, checksum-valid, conditionally published, and cleanly
+retrieved. B-006 remains OPEN; Phase 10/E10 and E11 have not started.
+G2-KVQ and global G2-G5 remain NOT EVALUATED, Full Scan remains CLOSED, and
+quality execution remains LOCKED.
 
 | ID | Blocking condition | Blocks | Evidence / next action | Status |
 |---|---|---|---|---|
@@ -57,7 +65,7 @@ execution is LOCKED, and Phase 9 has not started.
 | B-002 | Formal G0 failed because required SASS inspection could not find `nvdisasm`; runtime and sanitizer lanes were not admitted in that run. | E01 and all non-E00 CUDA or timing work | Resolved without changing E00 semantics: the exact `cuda-nvdisasm-13-0=13.0.85-1` package/tool identity is locked at 6442ba1f7554ea0ebf0b3bb1a920c94567cab689, and new immutable run `e00-20260722T050632.375718Z-6442ba1f7554-02d5bd32` passed every G0 lane. The original failed run remains unchanged. | resolved 2026-07-22 |
 | B-003 | TurboQuant paper has no identified author-owned code repository; a bounded implementation authority was required for E05. | E05 golden fixtures | Resolved by selecting official vLLM release v0.25.1 at exact commit `752a3a504485790a2e8491cacbb35c137339ad34` as authority for this lane only. Source inspection found the preregistered names unchanged, so no decision record was needed. Fixtures claim conformance only to this pinned vLLM implementation, not every paper variant. | resolved 2026-07-24 |
 | B-004 | Primary model ID, immutable revision, config hash, geometry, and context limit were unset. | E02 and method fixtures | Resolved by Decision 0007 and `docs/evidence/phase3/model-identity.md`: all 11 exact-revision artifacts match their frozen SHA-256 values and the full checkpoint/tokenizer load offline with the required BF16 GQA geometry. | resolved 2026-07-22 |
-| B-005 | KVQuant calibration dataset/revision, preprocessing, seed, cap, and artifact do not exist. | E09-E11 | Freeze and checksum them in Phase 9; no calibration during scans. | open |
+| B-005 | KVQuant calibration dataset/revision, preprocessing, seed, cap, and artifact did not exist. | E09-E11 | Phase 9 froze the exact WikiText-2 train identity, 16 x 2048 token tensors, seed 20260721, all-layer K/V Fisher artifacts, three quantizer families, sink/cap/dtypes, reproducibility evidence, and final root `8148306d08205af376994b022f189a0d6837915cd279ca8af6b104e1f4b46ccf`; publication and clean retrieval pass. | resolved 2026-07-28 |
 | B-006 | KVQuant root licensing and embedded/adapted-source lineage are incomplete. | E10 reference execution, copying, or redistribution | Map recorded embedded trees and attributed files to exact upstream commits/patch deltas; resolve repository-wide license authority. | open |
 | B-007 | Archive acquisition URL and pre-workspace provenance were not supplied. | Exact external reacquisition of literature bundle | Ask the operator for origin metadata if available; retain the local archive/file hashes meanwhile. | open, non-gating for local audit |
 | B-008 | qpdf is not installed for an additional PDF structural scan. | Optional defense-in-depth literature check | Install only in a reviewed environment or use an equivalent static scanner; current pdfinfo/pdfdetach checks are recorded. | open, non-gating |
@@ -204,7 +212,36 @@ execution at `462325e9df809d3bcf24a06361bf004bc7383d73` used new run IDs and
 passed 10/10 points. The 331-object inner and 341-object report-bearing outer
 bundles are COMPLETE-last and cleanly retrieved.
 
-G2-KIVI is PASS and no Phase 8 blocker remains. B-005 and B-006 remain open
-for separately authorized Phase 9 KVQuant work; Phase 8 does not narrow or
-resolve them. Global G2-G5 remain NOT EVALUATED, Full Scan remains CLOSED,
-quality execution remains LOCKED, and Phase 9 has not started.
+G2-KIVI is PASS and no Phase 8 blocker remains. At that historical Phase 8
+boundary, B-005 and B-006 remained open for separately authorized Phase 9
+KVQuant work; Phase 8 did not narrow or resolve them. Global G2-G5 remained
+NOT EVALUATED, Full Scan remained CLOSED, quality execution remained LOCKED,
+and Phase 9 had not started. The subsequent Phase 9 disposition follows.
+
+## Phase 9 KVQuant calibration disposition
+
+Phase 9 reconstructed the exact Decision 0021 patched source without changing
+the patch. One separate calibration image froze the exact model/tokenizer,
+WikiText-2 train data, 16 x 2048 token tensors, seed and precision contract.
+One full collection produced all 32 pre-RoPE K and all 32 V finite Fisher
+artifacts. Exactly `kvq4`, `kvq3`, and `kvq2` were generated from that shared
+Fisher root with sink tokens 5 and shared K/V cap 12.
+
+The first local token-probe failure and the first complete calibration whose
+safe-format regeneration lacked an explicit tensor-value acceptance rule are
+preserved under their original finalized failed IDs. They were not overwritten.
+The final fresh ID `kvqcal-cdb724c806d64d095c040d2673a987a3` passes token
+reconstruction, representative K/V replay, all-family fresh-process tensor
+regeneration, policy replay, inventory, checksums, and COMPLETE-last
+validation. Its 68-object root is
+`8148306d08205af376994b022f189a0d6837915cd279ca8af6b104e1f4b46ccf`.
+The first R2 transport failure stopped before `COMPLETE`; the same conditional
+publisher then verified the six identical existing objects, uploaded the
+remaining objects, wrote `COMPLETE` last, and passed clean retrieval.
+
+B-005 is RESOLVED for this exact calibration root. B-006 remains OPEN and
+continues to gate Phase 10/E10 reference work and any applicable copying or
+redistribution. No Phase 10 fixture or Measurement Adapter exists, so G2-KVQ
+remains NOT EVALUATED. Global G2-G5 remain NOT EVALUATED, Full Scan remains
+CLOSED, quality execution remains LOCKED, and `PERFORMANCE_DATA_FROZEN`
+remains absent.

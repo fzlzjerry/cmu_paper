@@ -162,6 +162,13 @@ class StrictConfigurationTests(unittest.TestCase):
             with self.subTest(method=method):
                 _, raw = _example(document_type="method", discriminator=("method", method))
                 mutated = copy.deepcopy(raw)
+                missing_parameter = {
+                    "turboquant": "cache_dtype_name",
+                    "kvquant": "calibration_artifact_sha256",
+                }[method]
+                mutated["variants"][0]["parameters"][
+                    missing_parameter
+                ] = None
                 mutated["variants"][0]["resolution"] = {
                     "schema_version": "kvbench.resolution.v1",
                     "status": "resolved",

@@ -1,0 +1,122 @@
+{
+  "schema_version": "kvbench-phase9-reproducibility-summary-1.0.0",
+  "calibration_id": "kvqcal-cdb724c806d64d095c040d2673a987a3",
+  "status": "PASS",
+  "tolerance": {
+    "atol": 1e-08,
+    "rtol": 1e-05,
+    "frozen_before_full_calibration": true,
+    "bitwise_determinism_claimed": false
+  },
+  "token_reconstruction": {
+    "status": "PASS",
+    "expected_token_tensor_sha256": "bab01ec45c5a199061c91c39e41634c97fad8faa830d57106f942c2e91074e02",
+    "reconstructed_content_root_sha256": "ebb7a50649f69cde64d74876af3f2e4938405e8cee94d5a2d95e51b911777d47",
+    "manifest_identity_equal": true,
+    "tensor_bitwise_equal": true,
+    "safe_serialization_byte_equal": true,
+    "test_split_loaded": false
+  },
+  "representative_fisher_replay": {
+    "status": "PASS",
+    "complete_fisher_rerun": false,
+    "model_weight_mutation": false,
+    "K": {
+      "layer_index": 0,
+      "capture": "pre_rope_key",
+      "shape": [
+        1,
+        2048,
+        1024
+      ],
+      "dtype": "float32",
+      "reference_sha256": "671a56d96a6956041a3127bf8abc0145aa1c53e367ef7eab6b40e9f8ccf4d95f",
+      "replay_sha256": "671a56d96a6956041a3127bf8abc0145aa1c53e367ef7eab6b40e9f8ccf4d95f",
+      "exact": true,
+      "max_absolute_difference": 0.0,
+      "max_relative_difference": 0.0,
+      "numerically_equivalent": true
+    },
+    "V": {
+      "layer_index": 0,
+      "capture": "post_v_proj_native_hkv",
+      "shape": [
+        1,
+        2048,
+        1024
+      ],
+      "dtype": "float32",
+      "reference_sha256": "f466573df9516b7ffcdc22575d38cf8036558b4bc2f2737d7152dcc03c08db2a",
+      "replay_sha256": "f466573df9516b7ffcdc22575d38cf8036558b4bc2f2737d7152dcc03c08db2a",
+      "exact": true,
+      "max_absolute_difference": 0.0,
+      "max_relative_difference": 0.0,
+      "numerically_equivalent": true
+    }
+  },
+  "quantizer_regeneration": {
+    "status": "PASS",
+    "fresh_process": true,
+    "serialization": "explicit_safe_tensors",
+    "exact_byte_identity_required": false,
+    "acceptance_rule": "byte identity where produced; otherwise exact tensor identity or numerical equivalence under the pre-frozen tolerance",
+    "records": [
+      {
+        "variant_id": "kvq4",
+        "original_safe_sha256": "a8c009633ac4cad952deb2a2fa96c44ef928a1510dadcf11dee29a7a3efe1bf6",
+        "regenerated_safe_sha256": "1101691e17be0814b58e29c07e1a1ef1d1f6f1bf2b5daa6cf1638a010905f67f",
+        "safe_serialization_byte_equal": false,
+        "tensor_count": 320,
+        "exact_tensor_count": 320,
+        "numerically_equivalent_tensor_count": 320,
+        "max_absolute_difference": 0.0,
+        "max_relative_difference": 0.0
+      },
+      {
+        "variant_id": "kvq3",
+        "original_safe_sha256": "97518129cc64ffa445722cb0802b3082631841de50835cbdf2c85c36a0c1579f",
+        "regenerated_safe_sha256": "bad001a70ad611b70974991a126635104acb384a1c3065b1ce956aa62de769d8",
+        "safe_serialization_byte_equal": false,
+        "tensor_count": 320,
+        "exact_tensor_count": 320,
+        "numerically_equivalent_tensor_count": 320,
+        "max_absolute_difference": 0.0,
+        "max_relative_difference": 0.0
+      },
+      {
+        "variant_id": "kvq2",
+        "original_safe_sha256": "b9bb3a8699aa38fb2a5707ff036814971552462692a180431f6f68df9624560e",
+        "regenerated_safe_sha256": "e0806f291180f42f5f8a72c758f1f07f693c42b29d70ee37f16cc283fc23010b",
+        "safe_serialization_byte_equal": false,
+        "tensor_count": 320,
+        "exact_tensor_count": 320,
+        "numerically_equivalent_tensor_count": 320,
+        "max_absolute_difference": 0.0,
+        "max_relative_difference": 0.0
+      }
+    ],
+    "explanation_for_nonidentical_files": "safetensors JSON header key ordering differs; metadata, key sets, shapes, dtypes, and all tensor values are exact"
+  },
+  "outlier_policy_replay": {
+    "status": "PASS",
+    "capacity_12": true,
+    "six_lower_six_upper": true,
+    "lexicographic_equal_ties": true,
+    "no_duplicate_or_overlap": true,
+    "no_row_exceeds_capacity": true,
+    "repeat_counts_equal": true,
+    "repeat_indices_equal": true,
+    "repeat_values_equal": true,
+    "sink_excluded": true,
+    "value_dtype_float32": true,
+    "index_dtype_int32": true,
+    "unused_values_zero": true,
+    "unused_indices_zero": true
+  },
+  "source_records": {
+    "token_reconstruction_sha256": "b0161c15d8f2a5f38fa8372d34a58be76e9f11752e67472e3430d243953def39",
+    "fisher_replay_sha256": "d1652e5a35b664c53c1eec505070eae965a869bd21bb6b4ca97debdebd753559",
+    "outlier_policy_sha256": "2250d133e6979eb2b2c9f6818ec0d16e8fbd90edbf8deec2646c6e6f571ee29d",
+    "quantizer_regeneration_sha256": "0ce9eccf901152de6ca2cecc520f38aa7ee439adb7f629105f655a1f311760db"
+  }
+}

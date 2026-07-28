@@ -154,6 +154,9 @@ class FakeR2:
     def __init__(self) -> None:
         self.objects: dict[str, bytes] = {}
         self.put_calls: list[tuple[str, str, str | None]] = []
+        self.multipart_put_calls: list[
+            tuple[str, str, str | None]
+        ] = []
 
     def get_object_or_none(self, key: str) -> bytes | None:
         return self.objects.get(key)
@@ -171,6 +174,28 @@ class FakeR2:
         self.objects[key] = data
         # Deliberately not a checksum.  The publisher must ignore this value.
         return '"not-a-scientific-checksum"'
+
+    def put_file_if_absent(
+        self,
+        key: str,
+        path: Path,
+        *,
+        expected_size: int,
+        expected_sha256: str,
+        content_type: str | None,
+    ) -> None:
+        self.multipart_put_calls.append((key, "*", content_type))
+        if key in self.objects:
+            raise RemoteRequestError(status=412, code="PreconditionFailed")
+        data = path.read_bytes()
+        if (
+            len(data) != expected_size
+            or sha256_bytes(data) != expected_sha256
+        ):
+            raise ArtifactValidationError(
+                "fake multipart source identity drifted"
+            )
+        self.objects[key] = data
 
     def list_keys(self, prefix: str) -> list[str]:
         return sorted(key for key in self.objects if key.startswith(prefix))
@@ -228,8 +253,19 @@ class FakeCloudflare:
 
 
 class FakeResponse:
-    def __init__(self, data: bytes = b"") -> None:
+    def __init__(
+        self,
+        data: bytes = b"",
+        *,
+        headers: dict[str, str] | None = None,
+        status: int = 200,
+    ) -> None:
         self.data = data
+        self.headers = {} if headers is None else headers
+        self.status = status
+
+    def getcode(self) -> int:
+        return self.status
 
     def __enter__(self) -> "FakeResponse":
         return self
@@ -425,6 +461,28 @@ class R2ArtifactTests(unittest.TestCase):
         self.assertFalse(second.uploaded)
         self.assertEqual(set(second.verified_existing), set(second.ordered_paths))
         self.assertEqual(len(client.put_calls), len(first.ordered_paths))
+
+    def test_publish_dispatches_large_files_to_existing_multipart_client(
+        self,
+    ) -> None:
+        artifact = validate_local_artifact(
+            self.artifact("multipart-dispatch"),
+            environ=self.environ,
+        )
+        client = FakeR2()
+        with patch("scripts.r2_artifact.SINGLE_PUT_MAX_BYTES", 1):
+            result = publish_artifact(client, self.config, artifact)
+
+        self.assertEqual(set(result.uploaded), set(result.ordered_paths))
+        self.assertFalse(client.put_calls)
+        self.assertTrue(client.multipart_put_calls)
+        self.assertTrue(
+            all(
+                if_none_match == "*"
+                for _, if_none_match, _ in client.multipart_put_calls
+            )
+        )
+        self.assertTrue(client.multipart_put_calls[-1][0].endswith("/COMPLETE"))
 
     def test_local_mutation_after_validation_is_rejected_before_put(self) -> None:
         root = self.artifact("mutation-race")
@@ -711,6 +769,130 @@ class R2ArtifactTests(unittest.TestCase):
         self.assertEqual(
             headers["x-amz-content-sha256"], sha256_bytes(b"payload")
         )
+
+    def test_sigv4_multipart_is_conditional_and_completes_ordered_parts(
+        self,
+    ) -> None:
+        requests: list[object] = []
+        etags = ('"' + "a" * 32 + '"', '"' + "b" * 32 + '"')
+
+        def opener(request: object, *, timeout: int) -> FakeResponse:
+            self.assertEqual(timeout, 120)
+            requests.append(request)
+            if len(requests) == 1:
+                return FakeResponse(
+                    b"<InitiateMultipartUploadResult>"
+                    b"<UploadId>upload-123</UploadId>"
+                    b"</InitiateMultipartUploadResult>"
+                )
+            if len(requests) in (2, 3):
+                return FakeResponse(
+                    headers={"ETag": etags[len(requests) - 2]}
+                )
+            return FakeResponse(
+                b"<CompleteMultipartUploadResult>"
+                b"<ETag>completed</ETag>"
+                b"</CompleteMultipartUploadResult>"
+            )
+
+        payload = b"abcdefg"
+        source = self.base / "multipart-source.bin"
+        source.write_bytes(payload)
+        client = R2S3Client(
+            self.config,
+            opener=opener,
+            clock=lambda: datetime(2026, 7, 24, tzinfo=timezone.utc),
+        )
+        with patch(
+            "scripts.r2_artifact.MULTIPART_PART_SIZE_BYTES",
+            4,
+        ):
+            client.put_file_if_absent(
+                "kvbench/sha256/" + "3" * 64 + "/large.bin",
+                source,
+                expected_size=len(payload),
+                expected_sha256=sha256_bytes(payload),
+                content_type="application/octet-stream",
+            )
+
+        self.assertEqual(
+            [request.get_method() for request in requests],
+            ["POST", "PUT", "PUT", "POST"],
+        )
+        create_headers = {
+            key.lower(): value
+            for key, value in requests[0].header_items()
+        }
+        self.assertEqual(create_headers["if-none-match"], "*")
+        self.assertIn(
+            "if-none-match",
+            create_headers["authorization"].lower(),
+        )
+        self.assertTrue(requests[0].full_url.endswith("?uploads="))
+        self.assertEqual(requests[1].data, b"abcd")
+        self.assertEqual(requests[2].data, b"efg")
+        self.assertIn(
+            b"<PartNumber>1</PartNumber><ETag>"
+            + etags[0].encode()
+            + b"</ETag>",
+            requests[3].data,
+        )
+        self.assertIn(
+            b"<PartNumber>2</PartNumber><ETag>"
+            + etags[1].encode()
+            + b"</ETag>",
+            requests[3].data,
+        )
+
+    def test_multipart_failure_aborts_incomplete_upload(self) -> None:
+        requests: list[object] = []
+
+        def opener(request: object, *, timeout: int) -> FakeResponse:
+            self.assertEqual(timeout, 120)
+            requests.append(request)
+            if len(requests) == 1:
+                return FakeResponse(
+                    b"<InitiateMultipartUploadResult>"
+                    b"<UploadId>upload-abort</UploadId>"
+                    b"</InitiateMultipartUploadResult>"
+                )
+            if 2 <= len(requests) <= 4:
+                raise urllib.error.HTTPError(
+                    request.full_url,
+                    500,
+                    "part failed",
+                    {},
+                    BytesIO(b"<Error><Code>InternalError</Code></Error>"),
+                )
+            return FakeResponse()
+
+        payload = b"multipart-abort"
+        source = self.base / "multipart-abort.bin"
+        source.write_bytes(payload)
+        client = R2S3Client(self.config, opener=opener)
+        with (
+            patch("scripts.r2_artifact.MULTIPART_PART_SIZE_BYTES", 4),
+            self.assertRaises(RemoteRequestError),
+        ):
+            client.put_file_if_absent(
+                "kvbench/sha256/" + "4" * 64 + "/large.bin",
+                source,
+                expected_size=len(payload),
+                expected_sha256=sha256_bytes(payload),
+                content_type=None,
+            )
+        self.assertEqual(
+            [request.get_method() for request in requests],
+            ["POST", "PUT", "PUT", "PUT", "DELETE"],
+        )
+        self.assertEqual(
+            {
+                request.full_url
+                for request in requests[1:4]
+            },
+            {requests[1].full_url},
+        )
+        self.assertIn("uploadId=upload-abort", requests[-1].full_url)
 
     def test_secret_presence_and_redaction_never_return_values(self) -> None:
         statuses = required_variable_status(self.environ)

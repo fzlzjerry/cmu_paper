@@ -32,6 +32,11 @@ REGION = "auto"
 SERVICE = "s3"
 EXPECTED_R2_PREFIX = "kvbench/sha256"
 ENDPOINT_CLASS = "cloudflare_r2_s3"
+SINGLE_PUT_MAX_BYTES = 5 * 1024**3 - 5 * 1024**2
+MULTIPART_PART_SIZE_BYTES = 32 * 1024**2
+MULTIPART_UPLOAD_ATTEMPTS = 3
+MAX_MULTIPART_PARTS = 10_000
+RETRYABLE_MULTIPART_STATUSES = frozenset({429, 500, 502, 503, 504})
 CONTROL_FILES = (
     "manifest.json",
     "artifact_inventory.json",
@@ -837,16 +842,25 @@ def publish_artifact(
     verified_existing: list[str] = []
     ordered = publication_order(artifact)
     for item in ordered:
-        data = item.path.read_bytes()
-        if sha256_bytes(data) != item.sha256:
-            raise ArtifactValidationError(
-                "local artifact changed after final validation"
-            )
+        multipart = item.size_bytes > SINGLE_PUT_MAX_BYTES
+        data: bytes | None = None
+        if multipart:
+            if sha256_file(item.path) != item.sha256:
+                raise ArtifactValidationError(
+                    "local artifact changed after final validation"
+                )
+        else:
+            data = item.path.read_bytes()
+            if sha256_bytes(data) != item.sha256:
+                raise ArtifactValidationError(
+                    "local artifact changed after final validation"
+                )
         key = artifact_object_key(
             config.prefix,
             artifact.root_sha256,
             item.relative_path,
         )
+        content_type = _content_type(item.relative_path)
         existing = client.get_object_or_none(key)
         if existing is not None:
             if sha256_bytes(existing) != item.sha256:
@@ -856,13 +870,29 @@ def publish_artifact(
             verified_existing.append(item.relative_path)
             continue
         try:
-            client.put_object_if_absent(
-                key,
-                data,
-                content_type=_content_type(item.relative_path),
-            )
+            if multipart:
+                client.put_file_if_absent(
+                    key,
+                    item.path,
+                    expected_size=item.size_bytes,
+                    expected_sha256=item.sha256,
+                    content_type=content_type,
+                )
+            else:
+                if data is None:
+                    raise ArtifactValidationError(
+                        "single-part object data is absent"
+                    )
+                client.put_object_if_absent(
+                    key,
+                    data,
+                    content_type=content_type,
+                )
         except RemoteRequestError as error:
-            if error.status != 412 and error.code != "ObjectLockedByBucketPolicy":
+            if (
+                error.status != 412
+                and error.code != "ObjectLockedByBucketPolicy"
+            ):
                 raise
             raced = client.get_object_or_none(key)
             if raced is None or sha256_bytes(raced) != item.sha256:
@@ -873,7 +903,9 @@ def publish_artifact(
             continue
         retrieved = client.get_object_or_none(key)
         if retrieved is None or sha256_bytes(retrieved) != item.sha256:
-            raise R2ArtifactError("uploaded object failed authoritative SHA-256 check")
+            raise R2ArtifactError(
+                "uploaded object failed authoritative SHA-256 check"
+            )
         uploaded.append(item.relative_path)
 
     return PublicationResult(
@@ -1133,7 +1165,7 @@ class R2S3Client:
         output["Authorization"] = authorization
         return output
 
-    def _request(
+    def _request_with_metadata(
         self,
         method: str,
         *,
@@ -1141,7 +1173,7 @@ class R2S3Client:
         query: Sequence[tuple[str, str]] = (),
         body: bytes = b"",
         headers: Mapping[str, str] | None = None,
-    ) -> bytes:
+    ) -> tuple[bytes, dict[str, str], int]:
         canonical_path = self._object_path(key)
         canonical_query = self._canonical_query(query)
         extra = {} if headers is None else dict(headers)
@@ -1157,13 +1189,28 @@ class R2S3Client:
             url += f"?{canonical_query}"
         request = urllib.request.Request(
             url,
-            data=body if method == "PUT" else None,
+            data=body if method in {"POST", "PUT"} else None,
             headers=signed,
             method=method,
         )
         try:
             with self._opener(request, timeout=120) as response:
-                return response.read()
+                response_body = response.read()
+                raw_headers = getattr(response, "headers", {})
+                response_headers = {
+                    str(name).lower(): str(value)
+                    for name, value in raw_headers.items()
+                }
+                raw_status = getattr(response, "status", None)
+                if not isinstance(raw_status, int):
+                    getcode = getattr(response, "getcode", None)
+                    raw_status = getcode() if callable(getcode) else 200
+                if not isinstance(raw_status, int):
+                    raise RemoteRequestError(
+                        status=None,
+                        code="InvalidHTTPStatus",
+                    )
+                return response_body, response_headers, raw_status
         except urllib.error.HTTPError as error:
             try:
                 response_body = error.read(65536)
@@ -1187,6 +1234,24 @@ class R2S3Client:
         except (urllib.error.URLError, TimeoutError, OSError):
             raise RemoteRequestError(status=None, code="TransportError") from None
 
+    def _request(
+        self,
+        method: str,
+        *,
+        key: str | None = None,
+        query: Sequence[tuple[str, str]] = (),
+        body: bytes = b"",
+        headers: Mapping[str, str] | None = None,
+    ) -> bytes:
+        response_body, _, _ = self._request_with_metadata(
+            method,
+            key=key,
+            query=query,
+            body=body,
+            headers=headers,
+        )
+        return response_body
+
     def get_object_or_none(self, key: str) -> bytes | None:
         try:
             return self._request("GET", key=key)
@@ -1206,6 +1271,170 @@ class R2S3Client:
         if content_type is not None:
             headers["Content-Type"] = content_type
         self._request("PUT", key=key, body=data, headers=headers)
+
+    @staticmethod
+    def _multipart_upload_id(data: bytes) -> str:
+        try:
+            root = ET.fromstring(data)
+        except ET.ParseError as error:
+            raise RemoteRequestError(
+                status=200,
+                code="MalformedMultipartResponse",
+            ) from error
+        for element in root.iter():
+            if element.tag.rsplit("}", 1)[-1] == "UploadId" and element.text:
+                upload_id = element.text
+                if (
+                    len(upload_id) <= 2048
+                    and all(ord(character) >= 32 for character in upload_id)
+                ):
+                    return upload_id
+        raise RemoteRequestError(
+            status=200,
+            code="MalformedMultipartResponse",
+        )
+
+    def _abort_multipart_upload(self, key: str, upload_id: str) -> None:
+        self._request(
+            "DELETE",
+            key=key,
+            query=(("uploadId", upload_id),),
+        )
+
+    def _upload_multipart_part(
+        self,
+        *,
+        key: str,
+        upload_id: str,
+        part_number: int,
+        data: bytes,
+    ) -> str:
+        for attempt in range(MULTIPART_UPLOAD_ATTEMPTS):
+            try:
+                _, response_headers, _ = self._request_with_metadata(
+                    "PUT",
+                    key=key,
+                    query=(
+                        ("partNumber", str(part_number)),
+                        ("uploadId", upload_id),
+                    ),
+                    body=data,
+                )
+            except RemoteRequestError as error:
+                retryable = (
+                    error.status is None
+                    or error.status in RETRYABLE_MULTIPART_STATUSES
+                )
+                if (
+                    not retryable
+                    or attempt + 1 >= MULTIPART_UPLOAD_ATTEMPTS
+                ):
+                    raise
+                continue
+            etag = response_headers.get("etag", "")
+            if re.fullmatch(
+                r'(?:[0-9a-fA-F]{32}|"[0-9a-fA-F]{32}")',
+                etag,
+            ) is None:
+                raise RemoteRequestError(
+                    status=200,
+                    code="InvalidMultipartETag",
+                )
+            return etag
+        raise RemoteRequestError(
+            status=None,
+            code="MultipartRetryExhausted",
+        )
+
+    def put_file_if_absent(
+        self,
+        key: str,
+        path: Path,
+        *,
+        expected_size: int,
+        expected_sha256: str,
+        content_type: str | None,
+    ) -> None:
+        headers = {"If-None-Match": "*"}
+        if content_type is not None:
+            headers["Content-Type"] = content_type
+        create_body, _, _ = self._request_with_metadata(
+            "POST",
+            key=key,
+            query=(("uploads", ""),),
+            headers=headers,
+        )
+        upload_id = self._multipart_upload_id(create_body)
+        parts: list[tuple[int, str]] = []
+        digest = hashlib.sha256()
+        total_size = 0
+        try:
+            with path.open("rb") as source:
+                part_number = 1
+                while True:
+                    data = source.read(MULTIPART_PART_SIZE_BYTES)
+                    if not data:
+                        break
+                    if part_number > MAX_MULTIPART_PARTS:
+                        raise ArtifactValidationError(
+                            "multipart object exceeds the part-count limit"
+                        )
+                    digest.update(data)
+                    total_size += len(data)
+                    etag = self._upload_multipart_part(
+                        key=key,
+                        upload_id=upload_id,
+                        part_number=part_number,
+                        data=data,
+                    )
+                    parts.append((part_number, etag))
+                    part_number += 1
+            if (
+                not parts
+                or total_size != expected_size
+                or digest.hexdigest() != expected_sha256
+            ):
+                raise ArtifactValidationError(
+                    "local artifact changed during multipart upload"
+                )
+            completion = ET.Element("CompleteMultipartUpload")
+            for part_number, etag in parts:
+                part = ET.SubElement(completion, "Part")
+                ET.SubElement(part, "PartNumber").text = str(part_number)
+                ET.SubElement(part, "ETag").text = etag
+            complete_body = ET.tostring(
+                completion,
+                encoding="utf-8",
+                xml_declaration=True,
+            )
+            response_body, _, _ = self._request_with_metadata(
+                "POST",
+                key=key,
+                query=(("uploadId", upload_id),),
+                body=complete_body,
+                headers={"Content-Type": "application/xml"},
+            )
+            try:
+                response_root = ET.fromstring(response_body)
+            except ET.ParseError as error:
+                raise RemoteRequestError(
+                    status=200,
+                    code="MalformedMultipartResponse",
+                ) from error
+            if (
+                response_root.tag.rsplit("}", 1)[-1]
+                != "CompleteMultipartUploadResult"
+            ):
+                raise RemoteRequestError(
+                    status=200,
+                    code="MultipartCompletionFailed",
+                )
+        except Exception:
+            try:
+                self._abort_multipart_upload(key, upload_id)
+            except (OSError, R2ArtifactError):
+                pass
+            raise
 
     def list_keys(self, prefix: str) -> list[str]:
         keys: list[str] = []

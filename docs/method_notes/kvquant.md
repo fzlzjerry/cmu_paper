@@ -1,7 +1,7 @@
 # KVQuant source note
 
-Status: Phase 9P patched-upstream compatibility PASS; full Phase 9 calibration,
-Phase 10 reference work, and G2-KVQ remain NOT EVALUATED.
+Status: Phase 9P patched-upstream compatibility PASS and Phase 9 calibration
+PASS; Phase 10 reference work and G2-KVQ remain NOT EVALUATED.
 
 ## Paper and source
 
@@ -41,13 +41,13 @@ KVQuant combines:
 - fused RoPE application for key operations;
 - a full-precision attention-sink prefix.
 
-The planned main bitwidths are 4, 3, and 2. Phase 9P fixes `sink_tokens=5` and
+The frozen main bitwidths are 4, 3, and 2. Phase 9P fixes `sink_tokens=5` and
 a project-defined geometry-aware Key/Value cap of 12 for all three bit widths.
 The cap follows `kv_width=8*128=1024`, `tail_fraction=0.005`, six entries per
 tail, and twelve total entries; it is not an author-provided default. The paper
 discusses retaining the first token, while the repository describes
-configurable initial tokens such as five. Full Phase 9 must use, not retune,
-the five-token and cap-12 compatibility policy.
+configurable initial tokens such as five. Phase 9 used without retuning the
+five-token and cap-12 compatibility policy.
 
 ## Required storage accounting
 
@@ -83,20 +83,26 @@ parallel packing variants, and fused pre-RoPE key operations. The deployment
 environment requests Python 3.9, FlashAttention 2.5.5, and a vendored
 Transformers 4.38.0.dev0 snapshot.
 
-## Calibration state
+## Frozen calibration state
 
-Not frozen in Phase 0:
+Phase 9 freezes:
 
-- calibration dataset and revision;
-- preprocessing and sample selection;
-- random seed;
-- per-layer quantizer artifact;
-- outlier cap;
-- exact sparse value/index dtypes;
-- lookup and scale precision.
+- WikiText-2 train from `Salesforce/wikitext` revision
+  `b08601e04326c79dfdd32d625aee71d232d685c3`, conversion revision
+  `3f68cd45302c7b4b532d933e71d9e6e54b1c7d5e`, and content SHA-256
+  `e83889baabc497075506f91975be5fac0d45c5290b6b20582c8cd1e853d0c9f7`;
+- the exact 16 ordered 2,048-token windows selected with seed `20260721`;
+- BF16 forward, FP32 Fisher, FP16 fitting, and FP32 codebook/threshold
+  computation;
+- all 32 K and 32 V Fisher tensors in native eight-KV-head geometry;
+- safe `kvq4`, `kvq3`, and `kvq2` safetensors;
+- five FP16 sink tokens plus shared Key/Value cap 12, six entries per tail,
+  `float32` values, `int32` indices, lexicographic ties, and zero fill.
 
-Until these are fixed and checksummed, KVQuant cannot enter reference fixture
-generation or the full scan.
+Calibration completion does not admit a reference or Measurement Lane.
+Repository-wide license authority remains unresolved under B-006; Phase 10,
+the KVQuant Measurement Adapter, G2-KVQ, Pilot, Full Scan, and quality
+execution remain closed.
 
 ## Phase 9P patched authority
 
@@ -166,6 +172,43 @@ extension-only forced PTX/JIT, CUDA Graph capture/replay, replay-allocation,
 MHA/GQA numerical controls, and three representative Compute Sanitizer cases
 passed. These are compatibility/correctness results, not timing, HBM,
 capacity, speedup, or quality results.
+
+## Phase 9 calibration
+
+The isolated calibration image is fixed by image/config digest
+`sha256:127759078f2c70c9e795c7a1bb3408df1eaee8fa019319299d283dc8075b216d`.
+It contains no model weights, credentials, source checkout, caches, or
+calibration output. All calibration container executions used no network and
+received no R2 credentials.
+
+Final calibration
+`kvqcal-cdb724c806d64d095c040d2673a987a3` has root SHA-256
+`8148306d08205af376994b022f189a0d6837915cd279ca8af6b104e1f4b46ccf`.
+Its 68-object read-only bundle contains exact token tensors, 64 finite Fisher
+tensors, three complete safe quantizer families, 192-row layer statistics,
+replay evidence, inventory, checksum ledger, and `COMPLETE` written last.
+The full Fisher SHA-256 is
+`a4cd9ad1e28332cc38c0a8bd19c10af079379655baaa2e5066aac6e23472117b`;
+the `kvq4`, `kvq3`, and `kvq2` SHA-256 values are respectively
+`a8c009633ac4cad952deb2a2fa96c44ef928a1510dadcf11dee29a7a3efe1bf6`,
+`97518129cc64ffa445722cb0802b3082631841de50835cbdf2c85c36a0c1579f`,
+and `b9bb3a8699aa38fb2a5707ff036814971552462692a180431f6f68df9624560e`.
+
+Token reconstruction is byte exact. Representative layer-0 K/V Fisher replay
+is exact. Fresh-process regeneration produced exact values for all 320 tensors
+in each quantizer family; safetensors file bytes differ only because JSON
+header key order is not canonical, so acceptance uses the tolerance frozen
+before the run and records zero absolute and relative tensor differences.
+Equal-value outlier ties, no-overlap, cap 12, six-per-tail, fixed dtypes, and
+zero-filled unused slots replay exactly.
+
+The first R2 attempt stopped on a transport error before `COMPLETE`; its six
+identical small objects were retained. The same conditional publisher then
+verified those objects, uploaded the remaining 62, wrote `COMPLETE` last, and
+published
+`r2://kvbench-artifacts/kvbench/sha256/8148306d08205af376994b022f189a0d6837915cd279ca8af6b104e1f4b46ccf/`.
+Independent retrieval into a new empty directory verifies all 68 objects and
+the root under indefinite Bucket Lock rule `kvbench-evidence-indefinite`.
 
 ## Porting and admission risks
 
