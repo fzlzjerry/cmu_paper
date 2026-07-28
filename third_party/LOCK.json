@@ -1,7 +1,7 @@
 {
   "schema_version": 2,
   "generated_at_utc": "2026-07-21T17:13:29Z",
-  "last_updated_at_utc": "2026-07-26T14:57:59Z",
+  "last_updated_at_utc": "2026-07-28T05:08:20Z",
   "policy": {
     "checkout_by_commit_only": true,
     "floating_default_branches_forbidden": true,
@@ -271,9 +271,10 @@
       "declared_license": "Apache Software License",
       "license_evidence": "deployment/pyproject.toml classifier only",
       "license_verification_status": "unresolved_no_root_license",
-      "acquisition_status": "local_private_phase9p_patched",
+      "acquisition_status": "main_repository_patch_publication_authorized_pending_push",
       "phase9p_patch": {
         "decision": "docs/decisions/0020-kvquant-upstream-gqa-patch.md",
+        "custody_decision": "docs/decisions/0021-kvquant-patch-main-repository-custody.md",
         "method_identifier": "kvquant_gqa_upstream_patch_v1",
         "human_name": "KVQuant-GQA patched upstream",
         "branch": "kvbench/llama31-gqa",
@@ -282,18 +283,24 @@
         "aggregate_patch_sha256": "db3b6fb7ec0a72e25001e1c83a5158d86512248db5c3a06c61895598d1d482d6",
         "patch_manifest": "docs/evidence/phase9p/patch-manifest.json",
         "patch_manifest_sha256": "c2390f52af2f4f6d4ef5731f64ed05b9f307e009391f7af7c79baee0209b5e5e",
-        "durable_local_checkout": "/home/rockrock/third_party_worktrees/kvquant-gqa",
-        "scope": "local_private_research_only",
+        "in_repository_patch": "third_party/patches/kvquant/0001-llama31-native-gqa.patch",
+        "in_repository_patch_sha256": "db3b6fb7ec0a72e25001e1c83a5158d86512248db5c3a06c61895598d1d482d6",
+        "in_repository_manifest": "third_party/patches/kvquant/manifest.json",
+        "in_repository_manifest_sha256": "85e76396f058844190620e1cc7d2eef6afba37e83aca87d44f7c5e99c79b7539",
+        "historical_validation_checkout": "/home/rockrock/third_party_worktrees/kvquant-gqa",
+        "scope": "operator_authorized_public_patch_custody_pending_push",
         "official_gqa_support_claimed": false,
-        "source_or_patch_published": false
+        "source_tree_published": false,
+        "patch_published": false
       },
       "notes": [
         "Repository URL is stated in arXiv:2401.18079v6.",
         "Checkout commands must use the revision, never the observed branch.",
         "The pinned tree contains three Transformers-derived source snapshots; their parent-tree hashes and nested license paths are recorded below, but their upstream commit identities are unresolved.",
         "The README attributes reused components to GPTQ, GPTQ-for-LLaMA, and SqueezeLLM; exact file-to-upstream commit lineage remains unresolved.",
-        "Decision 0020 authorizes only one checksum-bound, local/private Llama-3.1 GQA compatibility patch for Phase 9P validation; it does not establish official GQA support or redistribution authority.",
-        "The patched source, patch materialization, source archive, Docker source layer, and extension were not published or uploaded to R2."
+        "Decision 0020 defines the checksum-bound Phase 9P implementation and does not establish official GQA support or repository-wide license authority.",
+        "Decision 0021 records the operator's explicit authorization to publish the exact validated patch in the public main repository because the validation server is ephemeral; publication remains pending until remote verification.",
+        "Only the exact patch and compact manifest are authorized for publication; after verified publication, the full upstream source, Git checkout, source archive, Docker source layer, compiled extension, model files, and caches remain excluded from Git and R2."
       ]
     },
     {
@@ -330,7 +337,7 @@
       "declared_license": "Apache-2.0",
       "license_evidence": "deployment/transformers/LICENSE",
       "provenance_status": "bytes_fixed_by_parent_commit_upstream_revision_unresolved",
-      "required_action": "Decision 0020 permits the checksum-bound local/private Phase 9P compatibility validation only. Before Phase 10 reference execution or any redistribution, map the embedded tree to an exact upstream commit and retain the recorded KVQuant patch delta."
+      "required_action": "Decision 0021's exact checksum-bound patch-custody publication is the sole redistribution exception. Before Phase 10 reference execution, full-source copying, or any further redistribution, map the embedded tree to an exact upstream commit and retain the recorded KVQuant patch delta."
     },
     {
       "id": "kvquant_transformers_gradients",
@@ -344,7 +351,7 @@
       "declared_license": "Apache-2.0",
       "license_evidence": "gradients/LICENSE",
       "provenance_status": "bytes_fixed_by_parent_commit_upstream_revision_unresolved",
-      "required_action": "Decision 0020 permits checksum-bound local/private research use of the patched Fisher path. Any separately authorized full Phase 9 task must retain the private-source restriction and exact patch authority. Before Phase 10 reference execution or any redistribution, map the embedded tree to an exact upstream commit and retain the recorded KVQuant patch delta."
+      "required_action": "Decision 0020 permits checksum-bound local/private research use of the patched Fisher path. Decision 0021's exact checksum-bound patch-custody publication is the sole redistribution exception. Any separately authorized full Phase 9 task must retain the private-source restriction and exact patch authority. Before Phase 10 reference execution, full-source copying, or any further redistribution, map the embedded tree to an exact upstream commit and retain the recorded KVQuant patch delta."
     },
     {
       "id": "kvquant_transformers_dbrx",
@@ -358,7 +365,7 @@
       "declared_license": "Apache-2.0",
       "license_evidence": "quant/dbrx/LICENSE",
       "provenance_status": "bytes_fixed_by_parent_commit_upstream_revision_unresolved",
-      "required_action": "Before reference execution, copying, or redistribution, map the embedded tree to an exact upstream commit and record any KVQuant patch delta."
+      "required_action": "Decision 0021's exact patch-custody publication does not vendor this embedded tree. Before reference execution, full-source copying, or further redistribution, map the embedded tree to an exact upstream commit and record any KVQuant patch delta."
     }
   ],
   "attributed_repository_commit_plans": [
@@ -368,7 +375,7 @@
       "revision": null,
       "evidence": "KVQuant README acknowledgement",
       "status": "exact_lineage_unresolved",
-      "required_action": "Map reused files to an exact upstream commit or document why no exact match exists before copying or redistribution."
+      "required_action": "Decision 0021's exact patch-custody publication is excluded. Map reused files to an exact upstream commit or document why no exact match exists before full-source copying or further redistribution."
     },
     {
       "id": "kvquant_gptq_for_llama_lineage",
@@ -376,7 +383,7 @@
       "revision": null,
       "evidence": "KVQuant README acknowledgement",
       "status": "exact_lineage_unresolved",
-      "required_action": "Map reused files to an exact upstream commit or document why no exact match exists before copying or redistribution."
+      "required_action": "Decision 0021's exact patch-custody publication is excluded. Map reused files to an exact upstream commit or document why no exact match exists before full-source copying or further redistribution."
     },
     {
       "id": "kvquant_squeezellm_lineage",
@@ -384,7 +391,7 @@
       "revision": null,
       "evidence": "KVQuant README acknowledgement",
       "status": "exact_lineage_unresolved",
-      "required_action": "Map reused files to an exact upstream commit or document why no exact match exists before copying or redistribution."
+      "required_action": "Decision 0021's exact patch-custody publication is excluded. Map reused files to an exact upstream commit or document why no exact match exists before full-source copying or further redistribution."
     }
   ],
   "unresolved_inputs": [
@@ -402,7 +409,7 @@
     },
     {
       "id": "kvquant_embedded_source_lineage",
-      "required_action": "Decision 0020 permits only checksum-bound local/private research use of the patched authority. A separately authorized full Phase 9 task must retain that restriction. Resolve upstream commits and lineage for all embedded or attributed KVQuant source before Phase 10 reference execution, copying outside the authorized private checkout, or redistribution; the pinned outer and patched commits fix current bytes but do not establish upstream lineage or redistribution rights."
+      "required_action": "Decision 0021 supersedes Decision 0020 only for exact checksum-bound patch custody and publication in the main repository. Full Phase 9 private-source restrictions remain in force. Resolve upstream commits and lineage for all embedded or attributed KVQuant source before Phase 10 reference execution, full-source copying, or further redistribution; the pinned outer and patched commits fix current bytes but do not establish upstream lineage or general redistribution rights."
     }
   ]
 }

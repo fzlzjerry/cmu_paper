@@ -43,6 +43,7 @@ PHASE8_R2_OUTER_RECEIPT := docs/evidence/phase8/r2-admission-outer-publication.j
 R2_ARTIFACT := /usr/bin/env PYTHONDONTWRITEBYTECODE=1 PYTHONNOUSERSITE=1 PYTHONPATH=$(CURDIR):$(CURDIR)/src $(PHASE2_PYTHON) scripts/r2_artifact.py
 KIVI_B019_DEVICE ?= cpu
 KIVI_B019_SOURCE_ROOT ?=
+KVQUANT_GQA_SOURCE_ROOT ?=
 KIVI_REFERENCE_IMAGE := kvbench-reference-kivi:phase7
 KIVI_REFERENCE_PARENT_CONFIG := sha256:059bc9be89387369d7de9e3e9b26d85b6e9902c41e7dbf002ebc45edd188fb7e
 KIVI_REFERENCE_IMAGE_MANIFEST := sha256:f27e4cdef6bd15f18ab76b1fe0e4413ede004b42538c74e3dd90d04172406f75
@@ -67,6 +68,7 @@ KIVI_REFERENCE_BUILD_REVISION := 3417ea0e7f322369eed21bb787a9a9a19b0a69bd
 .PHONY: phase8-r2-outer-bundle validate-phase8-r2-outer-bundle
 .PHONY: validate-phase8-r2-outer-publication
 .PHONY: validate-kivi-b019-patch
+.PHONY: validate-kvquant-gqa-patch
 .PHONY: reference-kivi validate-reference-kivi
 
 preflight:
@@ -152,6 +154,9 @@ validate-reference-turboquant:
 
 validate-kivi-b019-patch:
 	@$(PHASE3_ENV) $(PHASE3_PYTHON) scripts/validate_kivi_b019_patch.py --device "$(KIVI_B019_DEVICE)" $(if $(strip $(KIVI_B019_SOURCE_ROOT)),--source-root "$(KIVI_B019_SOURCE_ROOT)")
+
+validate-kvquant-gqa-patch:
+	@$(PHASE2_ENV) $(PHASE2_PYTHON) scripts/validate_kvquant_gqa_patch.py $(if $(strip $(KVQUANT_GQA_SOURCE_ROOT)),--source-root "$(KVQUANT_GQA_SOURCE_ROOT)")
 
 reference-kivi: validate-kivi-b019-patch
 	@command -v docker >/dev/null

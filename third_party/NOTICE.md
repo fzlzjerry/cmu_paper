@@ -94,16 +94,21 @@ are included in the fixture bundle.
   `db3b6fb7ec0a72e25001e1c83a5158d86512248db5c3a06c61895598d1d482d6`.
 - Method label: `kvquant_gqa_upstream_patch_v1` (**KVQuant-GQA patched
   upstream**). This is not an official author-released GQA implementation.
-- Intended use: checksum-bound local/private research only. Full Phase 9
-  calibration, Phase 10 reference work, and the Measurement Adapter remain
-  separate and have not started.
+- Custody: Decision 0021 records the operator's instruction to store and publish
+  the exact validated patch in this public main repository because the
+  validation server is ephemeral. Full Phase 9 calibration, Phase 10 reference
+  work, and the Measurement Adapter remain separate and have not started.
 
-The modified checkout is retained privately at
-`/home/rockrock/third_party_worktrees/kvquant-gqa`. The modified source, Git
-patch, source archive, Docker source layer, and CUDA extension were not
-committed to this project or published to R2. Root-license and adapted-source
-lineage questions remain unresolved; Decision 0020 does not grant
-redistribution authority.
+The durable patch is
+`third_party/patches/kvquant/0001-llama31-native-gqa.patch`; its manifest is
+`third_party/patches/kvquant/manifest.json`. Reapplying it to the pinned base
+derives the exact patched tree above. The full upstream checkout, Git metadata,
+source archive, Docker source layer, CUDA extension, model files, and caches are
+not vendored or uploaded to R2.
+
+Root-license and adapted-source lineage questions remain unresolved. The
+operator-authorized public custody of the exact patch does not establish
+repository-wide license authority or official upstream GQA support.
 
 The pinned outer commit fixes the current bytes of three Transformers-derived
 trees, but their exact upstream revisions and local patch deltas are unresolved.
@@ -115,8 +120,9 @@ Their nested Apache-2.0 license files are:
 
 The README separately attributes reused components to Transformers, GPTQ,
 GPTQ-for-LLaMA, and SqueezeLLM. LOCK.json records explicit commit-resolution
-plans. No unresolved lineage is accepted for reference execution, copying, or
-redistribution.
+plans. No unresolved lineage is accepted as authority for the full upstream
+source or future reference execution; Decision 0021's narrow operator risk
+acceptance covers only public custody of the exact checksum-bound patch.
 
 ## Rules for later acquisition
 

@@ -21,10 +21,12 @@ Phase 10 reference work, and G2-KVQ remain NOT EVALUATED.
 - Verification status: unresolved; the pinned repository has no root license
   file, so the package classifier is not treated as repository-wide license
   authority.
-- Publication status: neither modified source, patch contents, source archive,
-  Docker source layer, nor extension was committed to this project or uploaded
-  to R2. The patch is not claimed to be an official author-released GQA
-  implementation.
+- Phase 9P-close publication status: neither modified source, patch contents,
+  source archive, Docker source layer, nor extension had been committed to this
+  project or uploaded to R2. Decision 0021 later authorizes exact-patch custody
+  in the main repository; the current structured publication state is recorded
+  in `third_party/LOCK.json`. The patch is not claimed to be an official
+  author-released GQA implementation.
 - Paper-reported hardware: A6000 for kernel latency, A100 80GB for
   single-GPU capacity, and eight A100 GPUs for the largest capacity examples.
 
@@ -104,7 +106,27 @@ aggregate SHA-256
 The compact file inventory and tests are in
 `docs/evidence/phase9p/patch-manifest.json` and
 `docs/evidence/phase9p/test-report.json`; neither record contains source or
-patch contents.
+patch contents. Those completed Phase 9P records remain unchanged.
+
+### Main-repository patch custody
+
+Decision 0021 records the operator's later instruction to preserve the exact
+validated diff in the main repository because the validation server is
+ephemeral. The durable files are:
+
+- `third_party/patches/kvquant/0001-llama31-native-gqa.patch`;
+- `third_party/patches/kvquant/manifest.json`; and
+- `scripts/validate_kvquant_gqa_patch.py`.
+
+The 289,239-byte patch has the same aggregate SHA-256 recorded by Phase 9P.
+Static validation requires no separate patched repository. With any local
+checkout containing the pinned base commit, optional reconstruction applies
+the patch in an ephemeral clone and requires tree
+`c4f1490c9c0c4ec46099f1e95c092516df2adb4e`.
+
+The project does not vendor the full upstream source, compiled extension,
+model files, or caches. The operator-authorized public patch custody does not
+resolve or claim a root KVQuant license or embedded/adapted-source lineage.
 
 The patched path supports exactly the frozen
 `meta-llama/Llama-3.1-8B-Instruct` revision

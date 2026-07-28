@@ -38,6 +38,7 @@ PHASE6_ENTRY_COMMIT = "e06f638f4b913f9bd1be2975a478657f5bf2338e"
 PHASE7_ENTRY_COMMIT = "0974bbc98f8f941b09800786591108292dc4e0dd"
 PHASE8_ENTRY_COMMIT = "8d6d766a34a15bd40bd42cc47c5482b0dd052cc0"
 PHASE9P_ENTRY_COMMIT = "f2c6475f09cdf6e9660552eb23c91b03e386aa59"
+PHASE9P_FINAL_COMMIT = "1b3a98160ba4760007ca861c1a280def698b2027"
 QUALITY_COMMIT = "a7b8285dd8ed2fb598efbb3312e9f55064a0ee64"
 ENVIRONMENT_COMMIT = "ea176994921c793789ebbd9d42515ce20ae4baee"
 EVIDENCE_COMMIT = "fb164b5ea96031ca40b21f4b8436a49a3bb5b8d2"
@@ -551,6 +552,21 @@ PHASE9P_ALLOWED_PATHS = frozenset(
     }
 )
 
+KVQUANT_PATCH_CUSTODY_ALLOWED_PATHS = frozenset(
+    {
+        "Makefile",
+        "docs/decisions/0021-kvquant-patch-main-repository-custody.md",
+        "docs/method_notes/kvquant.md",
+        "scripts/validate_kvquant_gqa_patch.py",
+        "scripts/validate_phase2.py",
+        "tests/unit/test_phase9p_patch_custody.py",
+        "third_party/LOCK.json",
+        "third_party/NOTICE.md",
+        "third_party/patches/kvquant/0001-llama31-native-gqa.patch",
+        "third_party/patches/kvquant/manifest.json",
+    }
+)
+
 
 RAW_RESULT_SUFFIXES = {
     ".bin",
@@ -888,14 +904,33 @@ def historical_phase8_paths() -> set[str]:
     )
 
 
-def current_phase9p_paths() -> set[str]:
+def historical_phase9p_paths() -> set[str]:
+    return git_paths(
+        (
+            "diff",
+            "--name-only",
+            "-z",
+            PHASE9P_ENTRY_COMMIT,
+            PHASE9P_FINAL_COMMIT,
+            "--",
+        )
+    )
+
+
+def current_kvquant_patch_custody_paths() -> set[str]:
     changed = git_paths(
-        ("diff", "--name-only", "-z", PHASE9P_ENTRY_COMMIT, "--")
+        ("diff", "--name-only", "-z", PHASE9P_FINAL_COMMIT, "--")
     )
     untracked = git_paths(
         ("ls-files", "--others", "--exclude-standard", "-z", "--")
     )
     return changed | untracked
+
+
+def current_phase9p_paths() -> set[str]:
+    """Compatibility view of the completed, frozen Phase 9P segment."""
+
+    return historical_phase9p_paths()
 
 
 def current_phase8_paths() -> set[str]:
@@ -933,7 +968,7 @@ def current_phase5_paths() -> set[str]:
 
 
 def changed_paths() -> set[str]:
-    return current_phase9p_paths()
+    return current_kvquant_patch_custody_paths()
 
 
 def repository_python_paths() -> list[Path]:
@@ -946,6 +981,7 @@ def repository_python_paths() -> list[Path]:
     paths.add(ROOT / "scripts" / "phase6a_bf16_parity.py")
     paths.add(ROOT / "scripts" / "phase8_kivi_admission.py")
     paths.add(ROOT / "scripts" / "phase8_r2_outer_bundle.py")
+    paths.add(ROOT / "scripts" / "validate_kvquant_gqa_patch.py")
     schema_tests = ROOT / "tests" / "schema"
     if schema_tests.is_dir():
         paths.update(schema_tests.rglob("*.py"))
@@ -2045,6 +2081,10 @@ def check_scope() -> int:
         errors.append(
             "the accepted Phase 9P entry commit is not an ancestor of HEAD"
         )
+    if not commit_is_ancestor(PHASE9P_FINAL_COMMIT):
+        errors.append(
+            "the accepted Phase 9P final commit is not an ancestor of HEAD"
+        )
     phase5 = historical_phase5_paths()
     phase5_unexpected = sorted(phase5 - PHASE5_ALLOWED_PATHS)
     if phase5_unexpected:
@@ -2080,23 +2120,33 @@ def check_scope() -> int:
             f"historical files outside the approved Phase 8 plan: "
             f"{phase8_unexpected!r}"
         )
-    changed = current_phase9p_paths()
-    phase9p_unexpected = sorted(changed - PHASE9P_ALLOWED_PATHS)
+    phase9p = historical_phase9p_paths()
+    phase9p_unexpected = sorted(phase9p - PHASE9P_ALLOWED_PATHS)
     if phase9p_unexpected:
         errors.append(
-            f"files outside the approved Phase 9P plan: {phase9p_unexpected!r}"
+            f"historical files outside the approved Phase 9P plan: "
+            f"{phase9p_unexpected!r}"
+        )
+    changed = current_kvquant_patch_custody_paths()
+    custody_unexpected = sorted(
+        changed - KVQUANT_PATCH_CUSTODY_ALLOWED_PATHS
+    )
+    if custody_unexpected:
+        errors.append(
+            "files outside the approved KVQuant patch-custody plan: "
+            f"{custody_unexpected!r}"
         )
     for relative in sorted(changed):
         if relative.startswith("docs/evidence/e00/"):
             errors.append(f"immutable E00 evidence changed: {relative}")
         if relative in QUALITY_PROTOCOL_HASHES:
             errors.append(
-                f"quality protocol changed during Phase 9P: {relative}"
+                f"quality protocol changed during patch custody: {relative}"
             )
         if Path(relative).suffix in RAW_RESULT_SUFFIXES:
             errors.append(
                 f"forbidden binary, kernel, model, or profiler artifact "
-                f"in Phase 9P scope: {relative}"
+                f"in KVQuant patch-custody scope: {relative}"
             )
         if relative.startswith(
             (
@@ -2108,7 +2158,7 @@ def check_scope() -> int:
             )
         ):
             errors.append(
-                f"forbidden result tree in Phase 9P scope: {relative}"
+                f"forbidden result tree in patch-custody scope: {relative}"
             )
     e00_changes = git_paths(
         (
