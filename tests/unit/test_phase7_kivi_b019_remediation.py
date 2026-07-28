@@ -94,7 +94,10 @@ class Phase7KiviB019RemediationTests(unittest.TestCase):
         self.assertEqual(authority["manifest"]["sha256"], _sha256(MANIFEST_PATH))
         self.assertEqual(authority["patch"]["sha256"], _sha256(PATCH_PATH))
         self.assertEqual(
-            authority["source_lock"]["sha256"], _sha256(LOCK_PATH)
+            authority["source_lock"]["sha256"],
+            hashlib.sha256(
+                _file_at_commit(PHASE8_ENTRY_COMMIT, "third_party/LOCK.json")
+            ).hexdigest(),
         )
 
     def test_patch_is_parseable_narrow_and_forbidden_operation_free(self) -> None:

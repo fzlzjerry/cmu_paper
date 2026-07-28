@@ -1,6 +1,7 @@
 # KVQuant source note
 
-Status: Phase 0 source audit; calibration and Reference Lane candidate only.
+Status: Phase 9P patched-upstream compatibility PASS; full Phase 9 calibration,
+Phase 10 reference work, and G2-KVQ remain NOT EVALUATED.
 
 ## Paper and source
 
@@ -9,11 +10,21 @@ Status: Phase 0 source audit; calibration and Reference Lane candidate only.
 - Version: arXiv:2401.18079v6, 2025-05-28
 - Paper SHA-256: 7ca1001fee6be5013d40ebf00e81df3bb677c90f1feb5c78b413cba64589ecfc
 - Paper-provided repository: https://github.com/SqueezeAILab/KVQuant
-- Pinned commit: 57a238357f0ffe50084670fcd5781c9848f80ea2
+- Pinned base commit: 57a238357f0ffe50084670fcd5781c9848f80ea2
+- Pinned base tree: 094e0f736f77ee327e5350cbd1eefb1c936aa77b
+- Phase 9P decision: docs/decisions/0020-kvquant-upstream-gqa-patch.md
+- Patched method identifier: `kvquant_gqa_upstream_patch_v1`
+- Patched human name: **KVQuant-GQA patched upstream**
+- Local/private patched commit: 4ad80bc8c942d0a05516d2be8f8d443a77a05900
+- Local/private patched tree: c4f1490c9c0c4ec46099f1e95c092516df2adb4e
 - License evidence: deployment metadata declares Apache Software License.
 - Verification status: unresolved; the pinned repository has no root license
   file, so the package classifier is not treated as repository-wide license
   authority.
+- Publication status: neither modified source, patch contents, source archive,
+  Docker source layer, nor extension was committed to this project or uploaded
+  to R2. The patch is not claimed to be an official author-released GQA
+  implementation.
 - Paper-reported hardware: A6000 for kernel latency, A100 80GB for
   single-GPU capacity, and eight A100 GPUs for the largest capacity examples.
 
@@ -28,11 +39,13 @@ KVQuant combines:
 - fused RoPE application for key operations;
 - a full-precision attention-sink prefix.
 
-The planned main bitwidths are 4, 3, and 2. The workflow fixes sink_tokens=5
-and requires a calibration-derived fixed outlier cap. The paper discusses
-retaining the first token, while the repository describes configurable initial
-tokens such as five. The exact five-token policy must be reproduced by the
-pinned calibration/reference path before admission.
+The planned main bitwidths are 4, 3, and 2. Phase 9P fixes `sink_tokens=5` and
+a project-defined geometry-aware Key/Value cap of 12 for all three bit widths.
+The cap follows `kv_width=8*128=1024`, `tail_fraction=0.005`, six entries per
+tail, and twelve total entries; it is not an author-provided default. The paper
+discusses retaining the first token, while the repository describes
+configurable initial tokens such as five. Full Phase 9 must use, not retune,
+the five-token and cap-12 compatibility policy.
 
 ## Required storage accounting
 
@@ -83,10 +96,61 @@ Not frozen in Phase 0:
 Until these are fixed and checksummed, KVQuant cannot enter reference fixture
 generation or the full scan.
 
+## Phase 9P patched authority
+
+Decision 0020 binds the exact upstream base to one local/private patch with
+aggregate SHA-256
+`db3b6fb7ec0a72e25001e1c83a5158d86512248db5c3a06c61895598d1d482d6`.
+The compact file inventory and tests are in
+`docs/evidence/phase9p/patch-manifest.json` and
+`docs/evidence/phase9p/test-report.json`; neither record contains source or
+patch contents.
+
+The patched path supports exactly the frozen
+`meta-llama/Llama-3.1-8B-Instruct` revision
+`0e9e39f249a16976918f6564b8830bc894c89659` and the tokenizer at that same
+revision. It retains native Llama-3.1 `llama3` RoPE, BF16 model forward, FP32
+Fisher accumulation, FP16 fitting activations, 32 layers, 32 query heads, 8 KV
+heads, four query groups per KV head, head dimension 128, and native KV width
+1024. Legacy linear-RoPE substitution and non-divisible geometry fail closed.
+
+Calibration hooks capture pre-RoPE Keys and Values at native eight-KV-head
+geometry. The full Fisher and quantizer CLIs require the same checksum-bound
+offline model snapshot and reject changes to the frozen 16-example,
+2048-token policy. Focused one-layer smoke evidence covers finite Fisher
+collection and a finite 4-bit NUQ dense-and-sparse quantizer; no full Fisher or
+4/3/2-bit calibration artifacts were generated in Phase 9P.
+
+The patched deployment stores persistent K/V and sparse metadata by KV head.
+For query head `h`, CUDA uses `kv_head = h / 4`; MHA remains the groups=1
+special case. Exact eager execution rejects other attention implementations,
+does not use `repeat_kv`, physical K/V expansion, a query-head-sized K/V
+temporary, or full-prefix dequantization. The first five K/V positions remain
+FP16 in native eight-head sink storage and are excluded from dense and sparse
+history.
+
+The deterministic sparse policy orders the lower tail by value ascending then
+flat index ascending and the upper tail by value descending then flat index
+ascending. It emits lower then upper, no duplicates or overlap, `float32`
+values, `int32` indices, and zero-filled unused slots. The numeric cap is an
+integer policy rather than an enable flag.
+
+The isolated validation image is
+`kvbench-phase9p-validation@sha256:16ee632c5ac029deca5859f3da4c74f9e5e55f5080c10745a59653e95d8e5b44`.
+The checksum-bound extension is
+`280496acd435361245d349b7af92210ea1d9eca7488873523116f7a84b087a71`
+and contains native `sm_120` plus `compute_120` PTX. Native execution,
+extension-only forced PTX/JIT, CUDA Graph capture/replay, replay-allocation,
+MHA/GQA numerical controls, and three representative Compute Sanitizer cases
+passed. These are compatibility/correctness results, not timing, HBM,
+capacity, speedup, or quality results.
+
 ## Porting and admission risks
 
-1. The inspected Python path performs torch.topk and torch.cat while forming
-   capped outliers. These operations are forbidden in measured decode.
+1. The base Python path performs torch.topk and torch.cat while forming capped
+   outliers. The patched calibration path replaces unstable top-k tie behavior
+   with deterministic lexicographic selection; calibration operations remain
+   forbidden in measured decode.
 2. Calibration uses NumPy/CPU conversions and data-dependent selection. All of
    it must occur before measurement and produce immutable artifacts.
 3. The reference harness contains explicit CUDA synchronization for its own
@@ -96,12 +160,14 @@ generation or the full scan.
    trees and licenses are enumerated in third_party/LOCK.json: deployment/
    transformers and gradients at 4.38.0.dev0, and quant/dbrx at 4.41.0.dev0.
    Their exact upstream revisions and patch deltas remain unresolved.
-5. The CUDA setup has no explicit Blackwell architecture selection. Native,
-   PTX/JIT, and Compute Sanitizer evidence are absent.
-6. GQA support is not established by the inspected reference interface; kernel
-   names emphasize MHA. Unsupported geometry must be reported rather than
-   expanded or silently routed elsewhere.
+5. The base CUDA setup has no explicit Blackwell architecture selection.
+   Phase 9P adds checksum-bound `sm_120` and `compute_120` validation only for
+   the patched private authority.
+6. The base reference interface does not establish GQA support. Phase 9P adds
+   native patched-upstream 32Q/8KV correctness; unsupported geometry is
+   rejected rather than expanded or silently routed elsewhere.
 7. Sparse buffers in the reference path are data dependent. The Measurement
    Lane requires fixed-cap preallocation and graph-stable pointers.
-8. CUDA Graph support, allocation freedom, cap-reached correctness, and
-   component-level byte accounting are all unproven.
+8. Phase 9P establishes focused CUDA Graph, replay-allocation, and cap-reached
+   correctness for the patched extension. Component-level Measurement Adapter
+   byte accounting and G2-KVQ remain unimplemented and NOT EVALUATED.

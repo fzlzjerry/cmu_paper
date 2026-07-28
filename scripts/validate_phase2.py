@@ -37,6 +37,7 @@ PHASE6A_ENTRY_COMMIT = "a25a76a052a918428e8eb56cdfde63470cf6a152"
 PHASE6_ENTRY_COMMIT = "e06f638f4b913f9bd1be2975a478657f5bf2338e"
 PHASE7_ENTRY_COMMIT = "0974bbc98f8f941b09800786591108292dc4e0dd"
 PHASE8_ENTRY_COMMIT = "8d6d766a34a15bd40bd42cc47c5482b0dd052cc0"
+PHASE9P_ENTRY_COMMIT = "f2c6475f09cdf6e9660552eb23c91b03e386aa59"
 QUALITY_COMMIT = "a7b8285dd8ed2fb598efbb3312e9f55064a0ee64"
 ENVIRONMENT_COMMIT = "ea176994921c793789ebbd9d42515ce20ae4baee"
 EVIDENCE_COMMIT = "fb164b5ea96031ca40b21f4b8436a49a3bb5b8d2"
@@ -534,6 +535,22 @@ PHASE8_ALLOWED_PATHS = frozenset(
     }
 )
 
+PHASE9P_ALLOWED_PATHS = frozenset(
+    {
+        "Makefile",
+        "docs/decisions/0020-kvquant-upstream-gqa-patch.md",
+        "docs/evidence/phase9p/patch-manifest.json",
+        "docs/evidence/phase9p/test-report.json",
+        "docs/method_notes/kvquant.md",
+        "docs/phase_reports/phase9p-kvquant-upstream-gqa-patch.md",
+        "scripts/validate_phase2.py",
+        "tests/unit/test_phase7_kivi_b019_remediation.py",
+        "tests/unit/test_phase9p_governance.py",
+        "third_party/LOCK.json",
+        "third_party/NOTICE.md",
+    }
+)
+
 
 RAW_RESULT_SUFFIXES = {
     ".bin",
@@ -858,14 +875,33 @@ def historical_phase7_paths() -> set[str]:
     )
 
 
-def current_phase8_paths() -> set[str]:
+def historical_phase8_paths() -> set[str]:
+    return git_paths(
+        (
+            "diff",
+            "--name-only",
+            "-z",
+            PHASE8_ENTRY_COMMIT,
+            PHASE9P_ENTRY_COMMIT,
+            "--",
+        )
+    )
+
+
+def current_phase9p_paths() -> set[str]:
     changed = git_paths(
-        ("diff", "--name-only", "-z", PHASE8_ENTRY_COMMIT, "--")
+        ("diff", "--name-only", "-z", PHASE9P_ENTRY_COMMIT, "--")
     )
     untracked = git_paths(
         ("ls-files", "--others", "--exclude-standard", "-z", "--")
     )
     return changed | untracked
+
+
+def current_phase8_paths() -> set[str]:
+    """Compatibility view of the completed, frozen Phase 8 segment."""
+
+    return historical_phase8_paths()
 
 
 def current_phase7_paths() -> set[str]:
@@ -897,7 +933,7 @@ def current_phase5_paths() -> set[str]:
 
 
 def changed_paths() -> set[str]:
-    return current_phase8_paths()
+    return current_phase9p_paths()
 
 
 def repository_python_paths() -> list[Path]:
@@ -923,6 +959,7 @@ def repository_python_paths() -> list[Path]:
         paths.update(unit_tests.glob("test_phase6_*.py"))
         paths.update(unit_tests.glob("test_phase7_*.py"))
         paths.update(unit_tests.glob("test_phase8_*.py"))
+        paths.update(unit_tests.glob("test_phase9p_*.py"))
         paths.update(
             unit_tests / name
             for name in (
@@ -2004,6 +2041,10 @@ def check_scope() -> int:
         errors.append(
             "the accepted Phase 8 entry commit is not an ancestor of HEAD"
         )
+    if not commit_is_ancestor(PHASE9P_ENTRY_COMMIT):
+        errors.append(
+            "the accepted Phase 9P entry commit is not an ancestor of HEAD"
+        )
     phase5 = historical_phase5_paths()
     phase5_unexpected = sorted(phase5 - PHASE5_ALLOWED_PATHS)
     if phase5_unexpected:
@@ -2032,23 +2073,30 @@ def check_scope() -> int:
             f"historical files outside the approved Phase 7 plan: "
             f"{phase7_unexpected!r}"
         )
-    changed = current_phase8_paths()
-    phase8_unexpected = sorted(changed - PHASE8_ALLOWED_PATHS)
+    phase8 = historical_phase8_paths()
+    phase8_unexpected = sorted(phase8 - PHASE8_ALLOWED_PATHS)
     if phase8_unexpected:
         errors.append(
-            f"files outside the approved Phase 8 plan: {phase8_unexpected!r}"
+            f"historical files outside the approved Phase 8 plan: "
+            f"{phase8_unexpected!r}"
+        )
+    changed = current_phase9p_paths()
+    phase9p_unexpected = sorted(changed - PHASE9P_ALLOWED_PATHS)
+    if phase9p_unexpected:
+        errors.append(
+            f"files outside the approved Phase 9P plan: {phase9p_unexpected!r}"
         )
     for relative in sorted(changed):
         if relative.startswith("docs/evidence/e00/"):
             errors.append(f"immutable E00 evidence changed: {relative}")
         if relative in QUALITY_PROTOCOL_HASHES:
             errors.append(
-                f"quality protocol changed during Phase 8: {relative}"
+                f"quality protocol changed during Phase 9P: {relative}"
             )
         if Path(relative).suffix in RAW_RESULT_SUFFIXES:
             errors.append(
                 f"forbidden binary, kernel, model, or profiler artifact "
-                f"in Phase 8 scope: {relative}"
+                f"in Phase 9P scope: {relative}"
             )
         if relative.startswith(
             (
@@ -2060,7 +2108,7 @@ def check_scope() -> int:
             )
         ):
             errors.append(
-                f"forbidden result tree in Phase 8 scope: {relative}"
+                f"forbidden result tree in Phase 9P scope: {relative}"
             )
     e00_changes = git_paths(
         (

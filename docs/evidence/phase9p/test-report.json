@@ -1,0 +1,198 @@
+{
+  "schema": "kvbench.phase9p.test_report.v1",
+  "phase": "9P",
+  "status": "PASS",
+  "verified_at": "2026-07-28T11:42:12+08:00",
+  "run_kind": {
+    "compatibility_validation": true,
+    "performance_measurement": false,
+    "profiler_execution": false,
+    "quality_evaluation": false,
+    "full_phase9_calibration": false,
+    "phase10_reference": false,
+    "measurement_adapter": false
+  },
+  "authority": {
+    "main_entry_commit": "f2c6475f09cdf6e9660552eb23c91b03e386aa59",
+    "upstream_base_commit": "57a238357f0ffe50084670fcd5781c9848f80ea2",
+    "upstream_base_tree": "094e0f736f77ee327e5350cbd1eefb1c936aa77b",
+    "patched_commit": "4ad80bc8c942d0a05516d2be8f8d443a77a05900",
+    "patched_tree": "c4f1490c9c0c4ec46099f1e95c092516df2adb4e",
+    "environment_image": "kvbench-phase9p-validation@sha256:16ee632c5ac029deca5859f3da4c74f9e5e55f5080c10745a59653e95d8e5b44",
+    "extension_sha256": "280496acd435361245d349b7af92210ea1d9eca7488873523116f7a84b087a71",
+    "model_snapshot_manifest_sha256": "ab9f6a32a41934c9e49881db68022827b6aca35f4f644627c77e3420978d1336"
+  },
+  "environment": {
+    "validation_dockerfile_sha256": "737ab517761a8160395f6c3416a39747a3c186bd74ca6f95da85753cbb65c640",
+    "base_image": "kvbench-measurement@sha256:059bc9be89387369d7de9e3e9b26d85b6e9902c41e7dbf002ebc45edd188fb7e",
+    "image": "kvbench-phase9p-validation@sha256:16ee632c5ac029deca5859f3da4c74f9e5e55f5080c10745a59653e95d8e5b44",
+    "python": "3.12.3",
+    "pytorch": "2.12.1+cu130",
+    "cuda_userspace": "13.0.2",
+    "nvcc": "13.0.88",
+    "compiler": "gcc 13.3.0",
+    "modern_calibration_stack": {
+      "transformers": "4.57.6",
+      "tokenizers": "0.22.2",
+      "accelerate": "1.10.1",
+      "numpy": "2.5.1",
+      "scipy": "1.16.1",
+      "scikit_learn": "1.7.1"
+    },
+    "vendored_deployment_stack": {
+      "transformers": "4.38.0.dev0",
+      "tokenizers": "0.15.2",
+      "selection": "fresh process with /opt/kvbench/.phase9p-deployment/site-packages before the modern site-packages"
+    },
+    "hardware": {
+      "gpu": "NVIDIA RTX PRO 6000 Blackwell Workstation Edition",
+      "gpu_uuid": "GPU-75bd273e-6b20-0d22-1b0b-5fbb6fb0025b",
+      "compute_capability": "12.0",
+      "driver": "595.71.05",
+      "memory_mib": 97887
+    },
+    "network_during_final_validation": "disabled",
+    "authorized_measurement_container_modified": false
+  },
+  "build": {
+    "command": "docker run --rm --network none -v /tmp/third_party_worktrees/kvquant-gqa:/workspace:ro -v /tmp/phase9p-kvquant-final-build.Gldrkd:/build -w /workspace/deployment/kvquant kvbench-phase9p-validation@sha256:16ee632c5ac029deca5859f3da4c74f9e5e55f5080c10745a59653e95d8e5b44 python3 setup_cuda.py build_ext --build-lib /build/lib --build-temp /build/temp",
+    "source_mount": "read_only",
+    "flags": [
+      "-O3",
+      "-gencode=arch=compute_120,code=sm_120",
+      "-gencode=arch=compute_120,code=compute_120",
+      "-ccbin /usr/bin/gcc",
+      "-std=c++20"
+    ],
+    "extension_local_path": "/tmp/phase9p-kvquant-final-build.Gldrkd/lib/quant_cuda.cpython-312-x86_64-linux-gnu.so",
+    "extension_sha256": "280496acd435361245d349b7af92210ea1d9eca7488873523116f7a84b087a71",
+    "cubin": "sm_120",
+    "ptx": "target sm_120; PTX ISA 9.0",
+    "source_or_extension_published": false
+  },
+  "process_isolation": {
+    "modern_pythonpath": "/workspace:/opt/kvbench/.phase3/site-packages",
+    "deployment_pythonpath": "/opt/kvbench/.phase9p-deployment/site-packages:/opt/kvbench/.phase3/site-packages:/extension",
+    "mixed_transformers_process_used": false
+  },
+  "tests": {
+    "loader": {
+      "status": "PASS",
+      "evidence": "Network-disabled, checksum-bound modern config/tokenizer/full BF16 eager model load and vendored full 32-layer loader smoke passed with the exact frozen revision."
+    },
+    "rope": {
+      "status": "PASS",
+      "evidence": "llama3 fields were retained; linear substitution was rejected; modern and vendored inv_freq/cos/sin matched the frozen hashes with max_abs=0.0."
+    },
+    "geometry": {
+      "status": "PASS",
+      "evidence": "Q32/KV8/groups4/head_dim128/kv_width1024 passed and non-divisible geometry was rejected."
+    },
+    "hooks": {
+      "status": "PASS",
+      "evidence": "All 32 layer hooks captured pre-RoPE K and V as native eight-KV-head tensors without query-head expansion."
+    },
+    "outlier": {
+      "status": "PASS",
+      "evidence": "Cap 12, six lower plus six upper entries, deterministic lexicographic ties, no duplicates/overlap, float32 values, int32 indices, and zero padding passed."
+    },
+    "gqa_numerical": {
+      "status": "PASS",
+      "evidence": "Native-GQA 4/3/2-bit dense K/V output matched an independent test-only explicit-repeat reference at rtol=1e-5, atol=2e-4."
+    },
+    "mha_regression": {
+      "status": "PASS",
+      "evidence": "groups=1 dense and sparse 4/3/2-bit outputs matched direct unpacked controls."
+    },
+    "cache": {
+      "status": "PASS",
+      "evidence": "All 32 eager layers asserted native eight-head persistent dense and sparse cache geometry; no query-head-sized K/V temporary was introduced."
+    },
+    "sink": {
+      "status": "PASS",
+      "evidence": "sink_tokens=5, native eight-head FP16 sink K/V storage, and exclusion from dense/sparse history passed."
+    },
+    "fisher_smoke": {
+      "status": "PASS",
+      "evidence": "One exact-config Llama decoder layer collected finite FP32 pre-RoPE K and V Fisher data from a small token sequence; the full CLI rejects every override of the frozen 16x2048 policy."
+    },
+    "quantizer_smoke": {
+      "status": "PASS",
+      "evidence": "The same one-layer smoke generated a finite 4-bit NUQ Fisher-weighted dense-and-sparse quantizer with BF16 forward, FP16 fitting activations, and FP32 codebook data."
+    },
+    "sm120_native": {
+      "status": "PASS",
+      "evidence": "The final extension passed all five native CUDA test methods covering 4/3/2-bit dense/sparse GQA, MHA, cap-reached, eager control, CUDA Graph, and allocation cases."
+    },
+    "forced_ptx_jit": {
+      "status": "PASS",
+      "evidence": "CUDA_FORCE_PTX_JIT=1 and CUDA_CACHE_DISABLE=1 executed extension-only 4/3/2-bit dense/sparse GQA and dense MHA cases from embedded compute_120 PTX."
+    },
+    "sanitizer_mha": {
+      "status": "PASS",
+      "evidence": "Compute Sanitizer memcheck: ERROR SUMMARY: 0 errors for the 4/3/2-bit MHA control."
+    },
+    "sanitizer_gqa": {
+      "status": "PASS",
+      "evidence": "Compute Sanitizer memcheck: ERROR SUMMARY: 0 errors for native 32Q/8KV 4/3/2-bit GQA."
+    },
+    "sanitizer_cap_reached": {
+      "status": "PASS",
+      "evidence": "Compute Sanitizer memcheck: ERROR SUMMARY: 0 errors for cap-reached sparse 4/3/2-bit GQA."
+    },
+    "cuda_graph": {
+      "status": "PASS",
+      "evidence": "Every changed 4/3/2-bit dense/sparse K/V kernel captured and replayed with stable output."
+    },
+    "allocation": {
+      "status": "PASS",
+      "evidence": "CUDA Graph replay allocation delta was zero for every changed kernel path."
+    },
+    "historical_regression": {
+      "status": "PASS",
+      "evidence": "Phase 9P entry package, unit/checks, TurboQuant admission, KIVI reference, and KIVI admission commands passed; historical hashes and trees are enforced by the focused main-repository test."
+    }
+  },
+  "test_counts": {
+    "modern_calibration_process": "29 passed, 0 skipped",
+    "vendored_deployment_source_process": "8 passed, 0 skipped",
+    "native_cuda_process": "5 methods passed; all 4/3/2-bit subcases passed",
+    "forced_ptx_process": "1 matrix method passed",
+    "compute_sanitizer_processes": "3 passed; 0 errors each"
+  },
+  "implementation_scan": {
+    "repeat_kv_in_exact_eager_path": false,
+    "repeat_interleave_in_exact_eager_path": false,
+    "physical_kv_expand_in_exact_eager_path": false,
+    "full_prefix_dequantization_added": false,
+    "legacy_sdpa_path_reachable": false,
+    "unsupported_geometry_fails_closed": true,
+    "unsupported_architecture_fallback_observed": false
+  },
+  "prior_phase9_report": {
+    "storage": "conversation_handoff",
+    "repository_path": null,
+    "status": "BLOCKED",
+    "preserved": true
+  },
+  "preservation": {
+    "kvquant_factory_fail_closed": true,
+    "authorized_measurement_container_changed": false,
+    "existing_adapters_changed": false,
+    "historical_evidence_changed": false,
+    "performance_data_created": false,
+    "profiler_data_created": false,
+    "quality_data_created": false,
+    "performance_data_frozen_present": false
+  },
+  "gates": {
+    "g0": "PASS",
+    "g1": "PASS",
+    "g2_tq": "PASS",
+    "g2_kivi": "PASS",
+    "g2_kvq": "NOT_EVALUATED",
+    "global_g2_g5": "NOT_EVALUATED",
+    "full_scan": "CLOSED",
+    "quality_execution": "LOCKED"
+  }
+}

@@ -83,12 +83,27 @@ are included in the fixture bundle.
 
 - Repository: https://github.com/SqueezeAILab/KVQuant
 - Commit: 57a238357f0ffe50084670fcd5781c9848f80ea2
+- Tree: 094e0f736f77ee327e5350cbd1eefb1c936aa77b
 - License evidence: deployment/pyproject.toml declares an Apache Software License
   classifier.
 - License verification: unresolved because the pinned tree has no root license
   file; the classifier alone is not treated as repository-wide authority.
-- Intended use: isolated calibration and Reference Lane only until a separate
-  static adapter passes Measurement Lane admission.
+- Phase 9P authority: Decision 0020 binds the upstream commit above plus the
+  local/private commit `4ad80bc8c942d0a05516d2be8f8d443a77a05900`, tree
+  `c4f1490c9c0c4ec46099f1e95c092516df2adb4e`, and aggregate patch SHA-256
+  `db3b6fb7ec0a72e25001e1c83a5158d86512248db5c3a06c61895598d1d482d6`.
+- Method label: `kvquant_gqa_upstream_patch_v1` (**KVQuant-GQA patched
+  upstream**). This is not an official author-released GQA implementation.
+- Intended use: checksum-bound local/private research only. Full Phase 9
+  calibration, Phase 10 reference work, and the Measurement Adapter remain
+  separate and have not started.
+
+The modified checkout is retained privately at
+`/home/rockrock/third_party_worktrees/kvquant-gqa`. The modified source, Git
+patch, source archive, Docker source layer, and CUDA extension were not
+committed to this project or published to R2. Root-license and adapted-source
+lineage questions remain unresolved; Decision 0020 does not grant
+redistribution authority.
 
 The pinned outer commit fixes the current bytes of three Transformers-derived
 trees, but their exact upstream revisions and local patch deltas are unresolved.
