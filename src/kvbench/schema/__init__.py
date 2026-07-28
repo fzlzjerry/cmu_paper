@@ -48,6 +48,9 @@ from kvbench.schema.config import (
     TurboQuantParameters,
     VariantRole,
 )
+from kvbench.schema.phase9_config import (
+    KVQuantCalibrationReference,
+)
 from kvbench.schema.method_admission import (
     MethodAdmissionBackendIdentity,
     MethodAdmissionCheckResult,
@@ -73,6 +76,10 @@ from kvbench.schema.phase6 import (
     Phase6BackendIdentity,
     Phase6RunManifest,
     parse_phase6_run_manifest,
+)
+from kvbench.schema.phase9 import (
+    Phase9CalibrationManifest,
+    parse_phase9_calibration_manifest,
 )
 
 from kvbench.schema.result import (
@@ -151,6 +158,7 @@ __all__ = [
     "HardwareManifest",
     "HbmEvidence",
     "KiviParameters",
+    "KVQuantCalibrationReference",
     "KVQuantParameters",
     "MeasurementConfig",
     "MeasurementCountUnit",
@@ -218,6 +226,7 @@ __all__ = [
     "Phase3WorkerResult",
     "Phase6BackendIdentity",
     "Phase6RunManifest",
+    "Phase9CalibrationManifest",
     "AUTHORIZED_CONTAINER_DIGEST",
     "BF16_LAYERS",
     "COMPRESSED_LAYERS",
@@ -235,5 +244,6 @@ __all__ = [
     "g1_expected_point_ids",
     "parse_run_manifest",
     "parse_phase6_run_manifest",
+    "parse_phase9_calibration_manifest",
     "sha256_hex",
 ]

@@ -27,6 +27,7 @@ from kvbench.schema.base import (
     require_sha256,
     sha256_hex,
 )
+from kvbench.schema.phase9_config import KVQuantCalibrationReference
 
 
 class DocumentType(StrEnum):
@@ -395,6 +396,7 @@ class MethodConfig(StrictModel):
     authority_status: str
     implementation: MethodImplementation
     variants: tuple[MethodVariant, ...]
+    calibration: KVQuantCalibrationReference | None = None
 
     SCHEMA_VERSION: ClassVar[str] = "kvbench.method.v1"
 
@@ -436,6 +438,46 @@ class MethodConfig(StrictModel):
             require_identifier(self.source_lock_id, field_name="source_lock_id")
             require_git_sha(self.source_revision)
         self._validate_registered_variants()
+        self._validate_kvquant_calibration()
+
+    def _validate_kvquant_calibration(self) -> None:
+        if self.method is not MethodName.KVQUANT:
+            if self.calibration is not None:
+                raise ValueError(
+                    "only KVQuant may carry a calibration reference"
+                )
+            return
+        if self.calibration is None:
+            if any(
+                variant.resolution.status is ResolutionState.RESOLVED
+                for variant in self.variants
+            ):
+                raise ValueError(
+                    "resolved KVQuant calibration parameters require a reference"
+                )
+            return
+        if self.source_revision != self.calibration.source_base_commit:
+            raise ValueError("KVQuant source and calibration authority differ")
+        checksums = {
+            "kvq4": self.calibration.kvq4_sha256,
+            "kvq3": self.calibration.kvq3_sha256,
+            "kvq2": self.calibration.kvq2_sha256,
+        }
+        for variant in self.variants:
+            parameters = variant.parameters
+            if not isinstance(parameters, KVQuantParameters):
+                raise ValueError("KVQuant variant parameters are invalid")
+            if (
+                parameters.sink_tokens != self.calibration.sink_tokens
+                or parameters.outlier_cap != self.calibration.key_outlier_cap
+                or parameters.calibration_artifact_sha256
+                != checksums[variant.variant_id]
+                or parameters.sparse_index_dtype
+                != self.calibration.outlier_index_dtype
+                or parameters.lut_scale_dtype
+                != self.calibration.metadata_dtype
+            ):
+                raise ValueError("KVQuant variant calibration linkage drifted")
 
     def _validate_registered_variants(self) -> None:
         expected: dict[MethodName, dict[str, tuple[Any, ...]]] = {
@@ -482,6 +524,12 @@ class MethodConfig(StrictModel):
             if observed != wanted:
                 raise ValueError("variant semantics do not match preregistration")
 
+    def to_dict(self) -> dict[str, Any]:
+        payload = StrictModel.to_dict(self)
+        if self.calibration is None:
+            payload.pop("calibration")
+        return payload
+
 
 @dataclasses.dataclass(frozen=True, slots=True)
 class MethodConfigFingerprint(StrictModel):
@@ -518,6 +566,8 @@ class MethodConfigFingerprint(StrictModel):
             "implementation": config.implementation,
             "source_revision": config.source_revision,
         }
+        if config.calibration is not None:
+            payload["calibration"] = config.calibration
         ready = all(
             resolution.status is ResolutionState.RESOLVED
             for resolution in (

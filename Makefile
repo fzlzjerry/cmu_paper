@@ -44,6 +44,11 @@ R2_ARTIFACT := /usr/bin/env PYTHONDONTWRITEBYTECODE=1 PYTHONNOUSERSITE=1 PYTHONP
 KIVI_B019_DEVICE ?= cpu
 KIVI_B019_SOURCE_ROOT ?=
 KVQUANT_GQA_SOURCE_ROOT ?=
+KVQUANT_CALIBRATION_SOURCE_ROOT ?= /home/rockrock/third_party_worktrees/kvquant-gqa
+KVQUANT_CALIBRATION_DATASET_PARQUET ?= /tmp/kvbench-phase9-inputs/wikitext-2-raw-v1-train-0000.parquet
+KVQUANT_CALIBRATION_MODEL_CACHE ?= /root/.cache/huggingface/hub
+KVQUANT_CALIBRATION_ARTIFACT ?=
+PHASE9_CALIBRATION := /usr/bin/env PYTHONDONTWRITEBYTECODE=1 PYTHONNOUSERSITE=1 PYTHONPATH=$(CURDIR):$(CURDIR)/src $(PHASE2_PYTHON) scripts/phase9_kvquant_calibration.py
 KIVI_REFERENCE_IMAGE := kvbench-reference-kivi:phase7
 KIVI_REFERENCE_PARENT_CONFIG := sha256:059bc9be89387369d7de9e3e9b26d85b6e9902c41e7dbf002ebc45edd188fb7e
 KIVI_REFERENCE_IMAGE_MANIFEST := sha256:f27e4cdef6bd15f18ab76b1fe0e4413ede004b42538c74e3dd90d04172406f75
@@ -69,7 +74,7 @@ KIVI_REFERENCE_BUILD_REVISION := 3417ea0e7f322369eed21bb787a9a9a19b0a69bd
 .PHONY: validate-phase8-r2-outer-publication
 .PHONY: validate-kivi-b019-patch
 .PHONY: validate-kvquant-gqa-patch
-.PHONY: reference-kivi validate-reference-kivi
+.PHONY: calibrate-kvquant validate-calibration-kvquant reference-kivi validate-reference-kivi
 
 preflight:
 	@/usr/bin/env -i PATH=/usr/bin:/bin LC_ALL=C LANG=C TZ=UTC \
@@ -133,6 +138,7 @@ test: checks
 	@$(PHASE3_ENV) $(PHASE3_PYTHON) -m unittest tests.unit.test_phase7_kivi_reference -v
 	@$(PHASE3_ENV) $(PHASE3_PYTHON) -m unittest discover -s tests/unit -p 'test_phase8_*.py' -v
 	@$(PHASE3_ENV) $(PHASE3_PYTHON) -m unittest discover -s tests/unit -p 'test_phase9p_*.py' -v
+	@$(PHASE3_ENV) $(PHASE3_PYTHON) -m unittest discover -s tests/unit -p 'test_phase9_*.py' -v
 	@$(PHASE3_ENV) $(PHASE3_PYTHON) -m unittest tests.unit.test_measurement_container tests.unit.test_phase6a_bf16_parity tests.unit.test_phase6a_governance tests.unit.test_preflight_unit tests.unit.test_r2_artifact -v
 	@$(PHASE2_VALIDATE) immutable
 
@@ -157,6 +163,13 @@ validate-kivi-b019-patch:
 
 validate-kvquant-gqa-patch:
 	@$(PHASE2_ENV) $(PHASE2_PYTHON) scripts/validate_kvquant_gqa_patch.py $(if $(strip $(KVQUANT_GQA_SOURCE_ROOT)),--source-root "$(KVQUANT_GQA_SOURCE_ROOT)")
+
+calibrate-kvquant: package-lock-check
+	@$(MAKE) KVQUANT_GQA_SOURCE_ROOT="$(KVQUANT_CALIBRATION_SOURCE_ROOT)" validate-kvquant-gqa-patch
+	@$(PHASE9_CALIBRATION) run --source-root "$(KVQUANT_CALIBRATION_SOURCE_ROOT)" --dataset-parquet "$(KVQUANT_CALIBRATION_DATASET_PARQUET)" --model-cache "$(KVQUANT_CALIBRATION_MODEL_CACHE)"
+
+validate-calibration-kvquant:
+	@$(PHASE9_CALIBRATION) validate $(if $(strip $(KVQUANT_CALIBRATION_ARTIFACT)),--artifact "$(KVQUANT_CALIBRATION_ARTIFACT)")
 
 reference-kivi: validate-kivi-b019-patch
 	@command -v docker >/dev/null

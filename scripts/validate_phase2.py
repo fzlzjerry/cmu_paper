@@ -39,6 +39,7 @@ PHASE7_ENTRY_COMMIT = "0974bbc98f8f941b09800786591108292dc4e0dd"
 PHASE8_ENTRY_COMMIT = "8d6d766a34a15bd40bd42cc47c5482b0dd052cc0"
 PHASE9P_ENTRY_COMMIT = "f2c6475f09cdf6e9660552eb23c91b03e386aa59"
 PHASE9P_FINAL_COMMIT = "1b3a98160ba4760007ca861c1a280def698b2027"
+PHASE9_ENTRY_COMMIT = "b4d253724717076188a38032d6d6204fdf15e191"
 QUALITY_COMMIT = "a7b8285dd8ed2fb598efbb3312e9f55064a0ee64"
 ENVIRONMENT_COMMIT = "ea176994921c793789ebbd9d42515ce20ae4baee"
 EVIDENCE_COMMIT = "fb164b5ea96031ca40b21f4b8436a49a3bb5b8d2"
@@ -570,6 +571,47 @@ KVQUANT_PATCH_CUSTODY_ALLOWED_PATHS = frozenset(
     }
 )
 
+PHASE9_ALLOWED_PATHS = frozenset(
+    {
+        ".gitignore",
+        "Makefile",
+        "configs/methods/kvquant.yaml",
+        "docker/calibration-kvquant.Dockerfile",
+        "docker/calibration-kvquant.Dockerfile.dockerignore",
+        "docker/calibration-kvquant.image.json",
+        "docker/calibration-kvquant.python-freeze.txt",
+        "docker/calibration-kvquant.requirements.txt",
+        "docs/blockers.md",
+        "docs/evidence/phase9/calibration-checksums.sha256",
+        "docs/evidence/phase9/calibration-manifest.json",
+        "docs/evidence/phase9/dataset-selection.json",
+        "docs/evidence/phase9/layer-stats-summary.json",
+        "docs/evidence/phase9/model-snapshot-manifest.json",
+        "docs/evidence/phase9/r2-publication.json",
+        "docs/evidence/phase9/reproducibility.json",
+        "docs/method_notes/kvquant.md",
+        "docs/phase_reports/phase9-kvquant-calibration.md",
+        "docs/plans/phase9-kvquant-calibration.md",
+        "docs/risk_register.md",
+        "docs/status.md",
+        "docs/tasks.md",
+        "scripts/phase9_kvquant_calibration.py",
+        "scripts/phase9_kvquant_worker.py",
+        "scripts/validate_phase2.py",
+        "src/kvbench/runtime/__init__.py",
+        "src/kvbench/runtime/artifacts.py",
+        "src/kvbench/schema/__init__.py",
+        "src/kvbench/schema/config.py",
+        "src/kvbench/schema/phase9.py",
+        "src/kvbench/schema/phase9_config.py",
+        "tests/schema/test_phase9_schema.py",
+        "tests/unit/test_phase9_calibration.py",
+        "tests/unit/test_phase9_governance.py",
+        "tests/unit/test_phase9_scope.py",
+        "tests/unit/test_phase9p_governance.py",
+    }
+)
+
 
 RAW_RESULT_SUFFIXES = {
     ".bin",
@@ -921,8 +963,21 @@ def historical_phase9p_paths() -> set[str]:
 
 
 def current_kvquant_patch_custody_paths() -> set[str]:
+    return git_paths(
+        (
+            "diff",
+            "--name-only",
+            "-z",
+            PHASE9P_FINAL_COMMIT,
+            PHASE9_ENTRY_COMMIT,
+            "--",
+        )
+    )
+
+
+def current_phase9_paths() -> set[str]:
     changed = git_paths(
-        ("diff", "--name-only", "-z", PHASE9P_FINAL_COMMIT, "--")
+        ("diff", "--name-only", "-z", PHASE9_ENTRY_COMMIT, "--")
     )
     untracked = git_paths(
         ("ls-files", "--others", "--exclude-standard", "-z", "--")
@@ -971,7 +1026,7 @@ def current_phase5_paths() -> set[str]:
 
 
 def changed_paths() -> set[str]:
-    return current_kvquant_patch_custody_paths()
+    return current_phase9_paths()
 
 
 def repository_python_paths() -> list[Path]:
@@ -985,6 +1040,8 @@ def repository_python_paths() -> list[Path]:
     paths.add(ROOT / "scripts" / "phase8_kivi_admission.py")
     paths.add(ROOT / "scripts" / "phase8_r2_outer_bundle.py")
     paths.add(ROOT / "scripts" / "validate_kvquant_gqa_patch.py")
+    paths.add(ROOT / "scripts" / "phase9_kvquant_calibration.py")
+    paths.add(ROOT / "scripts" / "phase9_kvquant_worker.py")
     schema_tests = ROOT / "tests" / "schema"
     if schema_tests.is_dir():
         paths.update(schema_tests.rglob("*.py"))
@@ -999,6 +1056,7 @@ def repository_python_paths() -> list[Path]:
         paths.update(unit_tests.glob("test_phase7_*.py"))
         paths.update(unit_tests.glob("test_phase8_*.py"))
         paths.update(unit_tests.glob("test_phase9p_*.py"))
+        paths.update(unit_tests.glob("test_phase9_*.py"))
         paths.update(
             unit_tests / name
             for name in (
@@ -1758,7 +1816,7 @@ def make_target_block(text: str, target: str) -> str | None:
         r"^[A-Za-z0-9_.-]+(?:\s+[A-Za-z0-9_.-]+)*\s*:"
     )
     for index, line in enumerate(lines):
-        if line == f"{target}:":
+        if line == f"{target}:" or line.startswith(f"{target}: "):
             start = index
             break
     if start is None:
@@ -2029,6 +2087,60 @@ def validate_phase6_artifact_root() -> list[str]:
     return errors
 
 
+def validate_phase9_calibration_root() -> list[str]:
+    """Structurally constrain the ignored append-only Phase 9 bundle root."""
+
+    root = ROOT / "calibration" / "kvquant"
+    if not root.exists() and not root.is_symlink():
+        return []
+    if root.is_symlink() or not root.is_dir():
+        return ["Phase 9 calibration root is unsafe"]
+    errors: list[str] = []
+    controls = {".kvbench-staging", ".kvbench-reservations"}
+    for control_name in sorted(controls):
+        control = root / control_name
+        if control.is_symlink() or (
+            control.exists() and not control.is_dir()
+        ):
+            errors.append(
+                f"Phase 9 calibration control path is unsafe: {control_name}"
+            )
+    staging = root / ".kvbench-staging"
+    if staging.is_dir() and any(staging.iterdir()):
+        errors.append("Phase 9 contains incomplete calibration staging")
+    for child in sorted(root.iterdir()):
+        if child.name in controls:
+            continue
+        if (
+            re.fullmatch(r"kvqcal-[0-9a-f]{32}", child.name) is None
+            or child.is_symlink()
+            or not child.is_dir()
+        ):
+            errors.append(
+                f"unsafe Phase 9 calibration child: {child.name}"
+            )
+            continue
+        for required in (
+            "manifest.json",
+            "artifact_inventory.json",
+            "checksums.sha256",
+            "COMPLETE",
+        ):
+            path = child / required
+            if path.is_symlink() or not path.is_file():
+                errors.append(
+                    f"incomplete Phase 9 calibration control: "
+                    f"{child.name}/{required}"
+                )
+        if child.stat().st_mode & (
+            stat.S_IWUSR | stat.S_IWGRP | stat.S_IWOTH
+        ):
+            errors.append(
+                f"completed Phase 9 calibration remains writable: {child.name}"
+            )
+    return errors
+
+
 def check_scope() -> int:
     errors: list[str] = []
     if not commit_is_ancestor(PHASE2_FINAL_COMMIT):
@@ -2088,6 +2200,10 @@ def check_scope() -> int:
         errors.append(
             "the accepted Phase 9P final commit is not an ancestor of HEAD"
         )
+    if not commit_is_ancestor(PHASE9_ENTRY_COMMIT):
+        errors.append(
+            "the accepted Phase 9 entry commit is not an ancestor of HEAD"
+        )
     phase5 = historical_phase5_paths()
     phase5_unexpected = sorted(phase5 - PHASE5_ALLOWED_PATHS)
     if phase5_unexpected:
@@ -2130,26 +2246,33 @@ def check_scope() -> int:
             f"historical files outside the approved Phase 9P plan: "
             f"{phase9p_unexpected!r}"
         )
-    changed = current_kvquant_patch_custody_paths()
+    custody = current_kvquant_patch_custody_paths()
     custody_unexpected = sorted(
-        changed - KVQUANT_PATCH_CUSTODY_ALLOWED_PATHS
+        custody - KVQUANT_PATCH_CUSTODY_ALLOWED_PATHS
     )
     if custody_unexpected:
         errors.append(
             "files outside the approved KVQuant patch-custody plan: "
             f"{custody_unexpected!r}"
         )
+    changed = current_phase9_paths()
+    phase9_unexpected = sorted(changed - PHASE9_ALLOWED_PATHS)
+    if phase9_unexpected:
+        errors.append(
+            "files outside the approved Phase 9 calibration plan: "
+            f"{phase9_unexpected!r}"
+        )
     for relative in sorted(changed):
         if relative.startswith("docs/evidence/e00/"):
             errors.append(f"immutable E00 evidence changed: {relative}")
         if relative in QUALITY_PROTOCOL_HASHES:
             errors.append(
-                f"quality protocol changed during patch custody: {relative}"
+                f"quality protocol changed during Phase 9: {relative}"
             )
         if Path(relative).suffix in RAW_RESULT_SUFFIXES:
             errors.append(
                 f"forbidden binary, kernel, model, or profiler artifact "
-                f"in KVQuant patch-custody scope: {relative}"
+                f"in Phase 9 Git scope: {relative}"
             )
         if relative.startswith(
             (
@@ -2161,7 +2284,7 @@ def check_scope() -> int:
             )
         ):
             errors.append(
-                f"forbidden result tree in patch-custody scope: {relative}"
+                f"forbidden result tree in Phase 9 scope: {relative}"
             )
     e00_changes = git_paths(
         (
@@ -2197,6 +2320,7 @@ def check_scope() -> int:
     errors.extend(validate_phase3_artifact_root())
     errors.extend(validate_phase6a_artifact_root())
     errors.extend(validate_phase6_artifact_root())
+    errors.extend(validate_phase9_calibration_root())
     forbidden_modules = (
         "src/kvbench/methods/kvquant",
         "src/kvbench/adapters/kvquant.py",
@@ -2205,7 +2329,7 @@ def check_scope() -> int:
     for relative in forbidden_modules:
         if (ROOT / relative).exists():
             errors.append(
-                f"KVQuant implementation exists during Phase 8: {relative}"
+                f"deferred KVQuant execution implementation exists: {relative}"
             )
     return report("scope", errors)
 

@@ -106,6 +106,15 @@ class Phase9PGovernanceTests(unittest.TestCase):
 
     def test_historical_authorities_remain_byte_and_tree_identical(self) -> None:
         expected_hashes = {
+            "configs/methods/bf16.yaml": (
+                "fdffda79ca294ca7592f6ffc6033698b5875f3af9824970ccf08cf61af841fd8"
+            ),
+            "configs/methods/turboquant.yaml": (
+                "a7e69050097820a455bb5086adf22d2adeb44068bec408504d8525f709260ec2"
+            ),
+            "configs/methods/kivi.yaml": (
+                "5c48e8f0380f2c17750b25f91c721bbdbbb68385fa3d958b2b28cdd922716c81"
+            ),
             "src/kvbench/adapters/factory.py": (
                 "31e482c39f54319f2dbef814fdfa212283a8a3004dabda2248e14ea75cdf7672"
             ),
@@ -114,9 +123,6 @@ class Phase9PGovernanceTests(unittest.TestCase):
             ),
             "docs/phase_reports/phase8-kivi-measurement-adapter.md": (
                 "63043780d7618ad684e1f64f28e785a941b578cd8b5fda59dd6e1b182b3a1dd2"
-            ),
-            "configs/methods/kvquant.yaml": (
-                "41a5b51a062d61a56088f9b95b198edeca8f7dde28fefc48aa7a492c823cb109"
             ),
         }
         for relative, expected in expected_hashes.items():
@@ -160,10 +166,8 @@ class Phase9PGovernanceTests(unittest.TestCase):
         self.assertIn('_DEFERRED_METHODS = frozenset({"kvquant"})', factory)
         self.assertFalse((ROOT / "PERFORMANCE_DATA_FROZEN").exists())
         self.assertFalse((ROOT / "reference/kvquant").exists())
-        self.assertFalse((ROOT / "calibration/kvquant").exists())
-        self.assertFalse(
-            (ROOT / "docs/phase_reports/phase9-kvquant-calibration.md").exists()
-        )
+        self.assertFalse((ROOT / "src/kvbench/adapters/kvquant.py").exists())
+        self.assertFalse((ROOT / "src/kvbench/runtime/kvquant.py").exists())
 
     def test_phase9p_evidence_is_compact_checksum_bound_and_non_claiming(self) -> None:
         manifest = _load_json(PATCH_MANIFEST_PATH)

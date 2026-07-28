@@ -273,7 +273,10 @@ def _validate_manifest(payload: Mapping[str, Any]) -> object:
     try:
         from kvbench.schema import Phase6RunManifest, parse_run_manifest
         from kvbench.schema.phase8 import Phase8RunManifest
+        from kvbench.schema.phase9 import Phase9CalibrationManifest
 
+        if payload.get("schema_version") == Phase9CalibrationManifest.SCHEMA_VERSION:
+            return Phase9CalibrationManifest.from_dict(dict(payload))
         if payload.get("schema_version") == Phase8RunManifest.SCHEMA_VERSION:
             return Phase8RunManifest.from_dict(dict(payload))
         if payload.get("schema_version") == Phase6RunManifest.SCHEMA_VERSION:
@@ -484,6 +487,7 @@ class ArtifactRun:
 
         from kvbench.schema import Phase3RunManifest, Phase6RunManifest
         from kvbench.schema.phase8 import Phase8RunManifest
+        from kvbench.schema.phase9 import Phase9CalibrationManifest
 
         if isinstance(parsed, Phase3RunManifest):
             required = {
@@ -556,6 +560,38 @@ class ArtifactRun:
             if missing:
                 raise ArtifactStateError(
                     "Phase 8 finalization lacks required evidence payloads"
+                )
+
+        if (
+            isinstance(parsed, Phase9CalibrationManifest)
+            and parsed.status is RunStatus.COMPLETED
+        ):
+            required = {
+                "authority_manifest.json",
+                "calibration_config.json",
+                "dataset_manifest.json",
+                "environment.json",
+                "fisher/fisher.safetensors",
+                "fisher_manifest.json",
+                "inventory.json",
+                "layer_stats.parquet",
+                "model_manifest.json",
+                "outlier_policy.json",
+                "quantizers/kvq2.safetensors",
+                "quantizers/kvq3.safetensors",
+                "quantizers/kvq4.safetensors",
+                "tokenizer_manifest.json",
+                "tokens/input_ids.safetensors",
+            }
+            missing = sorted(
+                relative
+                for relative in required
+                if not (self.stage / relative).is_file()
+            )
+            if missing:
+                raise ArtifactStateError(
+                    "Phase 9 finalization lacks required calibration payloads: "
+                    f"{missing!r}"
                 )
 
         self._write_lifecycle(3, "finalizing")
@@ -1043,6 +1079,29 @@ def phase8_artifact_store(
     )
     return AppendOnlyArtifactStore(
         root / "artifacts" / "phase8",
+        formal_evidence_roots=(
+            root / "docs" / "evidence",
+            root / "artifacts" / "quality",
+            root / "artifacts" / "profiler",
+            root / "paper-results",
+            root / "paper_results",
+            root / "results",
+        ),
+    )
+
+
+def phase9_calibration_artifact_store(
+    repository_root: str | Path | None = None,
+) -> AppendOnlyArtifactStore:
+    """Return the exact local Phase 9 KVQuant calibration store."""
+
+    root = (
+        Path(repository_root).resolve(strict=True)
+        if repository_root is not None
+        else Path(__file__).resolve().parents[3]
+    )
+    return AppendOnlyArtifactStore(
+        root / "calibration" / "kvquant",
         formal_evidence_roots=(
             root / "docs" / "evidence",
             root / "artifacts" / "quality",
