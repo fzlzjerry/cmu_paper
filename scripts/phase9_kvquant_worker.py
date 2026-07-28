@@ -180,6 +180,21 @@ def _model_authority(arguments: argparse.Namespace) -> dict[str, object]:
     }
 
 
+def _default_special_token_ids(tokenizer: Any) -> list[int]:
+    encoded = tokenizer(
+        "",
+        add_special_tokens=True,
+        truncation=False,
+        padding=False,
+        return_attention_mask=False,
+    )
+    token_ids = encoded.get("input_ids")
+    expected = [tokenizer.bos_token_id]
+    if token_ids != expected:
+        raise Phase9WorkerError("tokenizer special-token behavior drifted")
+    return token_ids
+
+
 def _snapshot_and_tokenizer_manifests(
     arguments: argparse.Namespace,
 ) -> tuple[dict[str, object], dict[str, object], Any, Path]:
@@ -242,9 +257,7 @@ def _snapshot_and_tokenizer_manifests(
             "special_tokens_map.json",
         }
     }
-    empty_special = tokenizer.build_inputs_with_special_tokens([])
-    if empty_special != [tokenizer.bos_token_id]:
-        raise Phase9WorkerError("tokenizer special-token behavior drifted")
+    empty_special = _default_special_token_ids(tokenizer)
     tokenizer_manifest = {
         "schema_version": "kvbench-phase9-tokenizer-manifest-1.0.0",
         "tokenizer_id": MODEL_ID,
@@ -259,6 +272,7 @@ def _snapshot_and_tokenizer_manifests(
             "add_special_tokens": True,
             "prepended_bos": True,
             "appended_eos": False,
+            "empty_input_ids": empty_special,
         },
         "padding": False,
         "truncation": False,

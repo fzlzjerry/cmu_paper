@@ -280,6 +280,39 @@ class Phase9WorkerTests(unittest.TestCase):
         unexpected["extra"] = "not-accepted"
         self.assertFalse(host._source_validation_is_exact(unexpected))
 
+    def test_tokenizer_default_behavior_uses_actual_encode_path(
+        self,
+    ) -> None:
+        class ExactTokenizer:
+            bos_token_id = 128000
+
+            def build_inputs_with_special_tokens(
+                self,
+                _token_ids: list[int],
+            ) -> list[int]:
+                return []
+
+            def __call__(self, text: str, **kwargs: object) -> dict[str, object]:
+                self.assert_call(text, kwargs)
+                return {"input_ids": [self.bos_token_id]}
+
+            @staticmethod
+            def assert_call(text: str, kwargs: dict[str, object]) -> None:
+                if text != "" or kwargs != {
+                    "add_special_tokens": True,
+                    "truncation": False,
+                    "padding": False,
+                    "return_attention_mask": False,
+                }:
+                    raise AssertionError("unexpected tokenizer call")
+
+        exact = ExactTokenizer()
+        self.assertEqual(exact.build_inputs_with_special_tokens([]), [])
+        self.assertEqual(
+            worker._default_special_token_ids(exact),
+            [exact.bos_token_id],
+        )
+
     def test_worker_exposes_no_general_campaign_or_quality_command(self) -> None:
         parser = worker._parser()
         subparsers = next(
