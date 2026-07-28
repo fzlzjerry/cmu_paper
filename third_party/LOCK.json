@@ -1,7 +1,7 @@
 {
   "schema_version": 2,
   "generated_at_utc": "2026-07-21T17:13:29Z",
-  "last_updated_at_utc": "2026-07-28T05:08:20Z",
+  "last_updated_at_utc": "2026-07-28T05:34:20Z",
   "policy": {
     "checkout_by_commit_only": true,
     "floating_default_branches_forbidden": true,
@@ -271,7 +271,7 @@
       "declared_license": "Apache Software License",
       "license_evidence": "deployment/pyproject.toml classifier only",
       "license_verification_status": "unresolved_no_root_license",
-      "acquisition_status": "main_repository_patch_publication_authorized_pending_push",
+      "acquisition_status": "main_repository_patch_published",
       "phase9p_patch": {
         "decision": "docs/decisions/0020-kvquant-upstream-gqa-patch.md",
         "custody_decision": "docs/decisions/0021-kvquant-patch-main-repository-custody.md",
@@ -288,10 +288,10 @@
         "in_repository_manifest": "third_party/patches/kvquant/manifest.json",
         "in_repository_manifest_sha256": "85e76396f058844190620e1cc7d2eef6afba37e83aca87d44f7c5e99c79b7539",
         "historical_validation_checkout": "/home/rockrock/third_party_worktrees/kvquant-gqa",
-        "scope": "operator_authorized_public_patch_custody_pending_push",
+        "scope": "operator_authorized_public_patch_custody_published",
         "official_gqa_support_claimed": false,
         "source_tree_published": false,
-        "patch_published": false
+        "patch_published": true
       },
       "notes": [
         "Repository URL is stated in arXiv:2401.18079v6.",
@@ -299,8 +299,8 @@
         "The pinned tree contains three Transformers-derived source snapshots; their parent-tree hashes and nested license paths are recorded below, but their upstream commit identities are unresolved.",
         "The README attributes reused components to GPTQ, GPTQ-for-LLaMA, and SqueezeLLM; exact file-to-upstream commit lineage remains unresolved.",
         "Decision 0020 defines the checksum-bound Phase 9P implementation and does not establish official GQA support or repository-wide license authority.",
-        "Decision 0021 records the operator's explicit authorization to publish the exact validated patch in the public main repository because the validation server is ephemeral; publication remains pending until remote verification.",
-        "Only the exact patch and compact manifest are authorized for publication; after verified publication, the full upstream source, Git checkout, source archive, Docker source layer, compiled extension, model files, and caches remain excluded from Git and R2."
+        "Decision 0021 records the operator's explicit authorization to publish the exact validated patch in the public main repository because the validation server is ephemeral; public origin/main was independently verified at commit 0e46d9b3235781ca4a092f3c59de4e0c4fdc489b on 2026-07-28T05:34:20Z.",
+        "Only the exact patch and compact manifest were published; the full upstream source, Git checkout, source archive, Docker source layer, compiled extension, model files, and caches remain excluded from Git and R2."
       ]
     },
     {
