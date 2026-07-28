@@ -36,6 +36,12 @@ MANIFEST_PATH = PATCH_DIR / "manifest.json"
 FROZEN_PHASE9P_MANIFEST = (
     ROOT / "docs/evidence/phase9p/patch-manifest.json"
 )
+PHASE9_BLOCKED_REPORT = (
+    ROOT / "docs/phase_reports/phase9-kvquant-calibration-blocked.md"
+)
+PHASE9_BLOCKED_CUSTODY = (
+    ROOT / "docs/evidence/phase9/blocked-report-custody.json"
+)
 
 
 def _load_json(path: Path) -> dict:
@@ -228,6 +234,47 @@ class Phase9PPatchCustodyTests(unittest.TestCase):
                 ):
                     with self.assertRaises(ValidationError):
                         _validate_frozen_authority(manifest, patch_bytes)
+
+    def test_phase9_blocked_report_is_exactly_custodied(self) -> None:
+        report = PHASE9_BLOCKED_REPORT.read_bytes()
+        custody = _load_json(PHASE9_BLOCKED_CUSTODY)
+        self.assertEqual(
+            hashlib.sha256(report).hexdigest(),
+            "05bbc9d21fe4bff900bd141ddc7f6daec226848178f8c0b78b7ecdaba2c180b7",
+        )
+        self.assertEqual(len(report), 8608)
+        self.assertTrue(report.endswith(b"\n"))
+        text = report.decode("utf-8")
+        self.assertTrue(
+            text.startswith("PHASE 9 REPORT\n\nStatus: BLOCKED\n")
+        )
+        self.assertIn(
+            "Starting HEAD: f2c6475f09cdf6e9660552eb23c91b03e386aa59",
+            text,
+        )
+        self.assertIn("no repository-root license exists", text)
+        self.assertIn("rejects Llama-3.1 `rope_type: llama3`", text)
+        self.assertIn("quantizer generation forces FP16", text)
+        self.assertIn("official deployment explicitly rejects GQA", text)
+        self.assertIn("fixed 42-slot K/V sparse rows", text)
+        self.assertIn("Tie-breaking: Not source-defined deterministically", text)
+        self.assertEqual(custody["status"], "BLOCKED")
+        self.assertTrue(custody["immutable"])
+        self.assertEqual(
+            custody["source"]["sha256"],
+            "1d3d0b9d921aa49eeb4c81cb94099f0fe1386e806732d5238baacf9e6e74d4cd",
+        )
+        self.assertEqual(
+            custody["repository_storage"]["sha256"],
+            hashlib.sha256(report).hexdigest(),
+        )
+        self.assertEqual(
+            custody["repository_storage"]["normalization"],
+            "append_one_posix_terminal_newline_only",
+        )
+        self.assertFalse(
+            custody["historical_relationship"]["phase9p_records_modified"]
+        )
 
     def test_only_patch_and_manifest_are_vendored(self) -> None:
         self.assertEqual(

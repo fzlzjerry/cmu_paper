@@ -556,7 +556,10 @@ KVQUANT_PATCH_CUSTODY_ALLOWED_PATHS = frozenset(
     {
         "Makefile",
         "docs/decisions/0021-kvquant-patch-main-repository-custody.md",
+        "docs/decisions/0022-phase9-blocked-report-custody.md",
+        "docs/evidence/phase9/blocked-report-custody.json",
         "docs/method_notes/kvquant.md",
+        "docs/phase_reports/phase9-kvquant-calibration-blocked.md",
         "scripts/validate_kvquant_gqa_patch.py",
         "scripts/validate_phase2.py",
         "tests/unit/test_phase9p_patch_custody.py",

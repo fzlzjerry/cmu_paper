@@ -1,0 +1,36 @@
+{
+  "claims": {
+    "calibration_artifact_produced": false,
+    "performance_claim": false,
+    "phase10_started": false,
+    "quality_claim": false
+  },
+  "historical_relationship": {
+    "materialized_after_phase9p": true,
+    "phase9p_evidence": "docs/evidence/phase9p/test-report.json",
+    "phase9p_records_modified": false,
+    "phase9p_report": "docs/phase_reports/phase9p-kvquant-upstream-gqa-patch.md"
+  },
+  "immutable": true,
+  "report_path": "docs/phase_reports/phase9-kvquant-calibration-blocked.md",
+  "repository_storage": {
+    "byte_count": 8608,
+    "content_body_changed": false,
+    "normalization": "append_one_posix_terminal_newline_only",
+    "sha256": "05bbc9d21fe4bff900bd141ddc7f6daec226848178f8c0b78b7ecdaba2c180b7",
+    "transport_metadata_retained": true
+  },
+  "schema": "kvbench.phase9.blocked_report_custody.v1",
+  "source": {
+    "byte_count": 8607,
+    "character_count": 8605,
+    "event_line": 1146,
+    "event_timestamp_utc": "2026-07-27T17:07:24.195Z",
+    "kind": "codex_conversation_assistant_final",
+    "session_id": "019fa43b-56d6-7e33-a0a3-f027c13b1ab4",
+    "sha256": "1d3d0b9d921aa49eeb4c81cb94099f0fe1386e806732d5238baacf9e6e74d4cd",
+    "starting_head": "f2c6475f09cdf6e9660552eb23c91b03e386aa59",
+    "terminal_newline_present": false
+  },
+  "status": "BLOCKED"
+}
