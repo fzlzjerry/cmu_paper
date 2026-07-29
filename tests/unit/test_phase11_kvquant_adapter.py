@@ -14,11 +14,25 @@ from kvbench.adapters import (
     KVCacheMethod,
     TurboQuantMethodAdapter,
 )
-from kvbench.adapters.base import method_requires_pre_rope_key
+from kvbench.adapters.base import MethodRuntimeContext, method_requires_pre_rope_key
+from kvbench.adapters.kvquant import (
+    KVQUANT_AGGREGATE_PATCH_SHA256,
+    KVQUANT_AUTHORIZED_CONTAINER_DIGEST,
+    KVQUANT_CORRECTED_COMMIT,
+    KVQUANT_CORRECTED_TREE,
+    KVQUANT_EXTENSION_SHA256,
+    KVQUANT_QUANTIZER_SHA256,
+    KVQuantMethodAdapter,
+    _required_extension_symbols,
+)
 from kvbench.runtime.bf16_endpoint import (
     BF16DecodeEndpoint,
     EndpointGeometryError,
     preserve_pre_rope_key_in_query_scratch,
+)
+from kvbench.runtime.kvquant_fixture import (
+    load_fixture_tensor_file_untimed,
+    load_kvquant_fixture,
 )
 
 
@@ -229,6 +243,140 @@ class Phase11KVQuantBoundaryTests(unittest.TestCase):
         ):
             with self.subTest(forbidden=forbidden):
                 self.assertNotIn(forbidden, source)
+
+
+def _runtime_context() -> MethodRuntimeContext:
+    return MethodRuntimeContext(
+        model_id="meta-llama/Llama-3.1-8B-Instruct",
+        model_revision="0e9e39f249a16976918f6564b8830bc894c89659",
+        backend_id="kvquant_corrected_direct_compressed",
+        backend_fingerprint="0" * 64,
+        num_layers=32,
+        num_query_heads=32,
+        num_kv_heads=8,
+        head_dim=128,
+    )
+
+
+class Phase11KVQuantMethodTests(unittest.TestCase):
+    def test_exact_authority_and_required_cuda_surface(self) -> None:
+        self.assertEqual(
+            KVQUANT_AGGREGATE_PATCH_SHA256,
+            "23a15db86790299392412c3ce2da7d971f4f073cfaf6839d82d3746c8b56b551",
+        )
+        self.assertEqual(
+            KVQUANT_CORRECTED_COMMIT,
+            "0d9df350bd1788284e1ce76a8bf6e886beca5efa",
+        )
+        self.assertEqual(
+            KVQUANT_CORRECTED_TREE,
+            "a85cf7bf093982a4bf89c33d4e6794d9a85f846d",
+        )
+        self.assertEqual(
+            KVQUANT_EXTENSION_SHA256,
+            "46c41aad8f56d58608d4c1273bd3a72fd36c8f69f9ca2c5a046f0c811631bf51",
+        )
+        self.assertEqual(
+            KVQUANT_AUTHORIZED_CONTAINER_DIGEST,
+            (
+                "sha256:"
+                "059bc9be89387369d7de9e3e9b26d85b6e9902c41e7dbf002ebc45edd188fb7e"
+            ),
+        )
+        symbols = set(_required_extension_symbols())
+        self.assertEqual(len(symbols), 12)
+        for bits in (4, 3, 2):
+            self.assertIn(f"vecquant{bits}appendvecKsparse", symbols)
+
+    def test_all_three_static_configurations_and_fail_closed_geometry(
+        self,
+    ) -> None:
+        context = _runtime_context()
+        for configuration, bits in (("kvq4", 4), ("kvq3", 3), ("kvq2", 2)):
+            with self.subTest(configuration=configuration):
+                method = KVQuantMethodAdapter(context, configuration)
+                cache = method.allocate(
+                    batch_size=1,
+                    capacity=18,
+                    device="cpu",
+                )
+                self.assertEqual(method.bits, bits)
+                self.assertEqual(
+                    method.quantizer_sha256,
+                    KVQUANT_QUANTIZER_SHA256[configuration],
+                )
+                self.assertTrue(method.requires_pre_rope_key)
+                self.assertEqual(
+                    tuple(cache.packed_key_cache.shape),
+                    (32, 8, bits * 4, 18),
+                )
+        with self.assertRaisesRegex(ValueError, "unsupported"):
+            KVQuantMethodAdapter(context, "kvq5")
+
+    def test_frozen_layer_zero_metadata_matches_corrected_oracle(self) -> None:
+        context = _runtime_context()
+        for configuration in ("kvq4", "kvq3", "kvq2"):
+            with self.subTest(configuration=configuration):
+                method = KVQuantMethodAdapter(context, configuration)
+                cache = method.allocate(
+                    batch_size=1,
+                    capacity=18,
+                    device="cpu",
+                )
+                method.initialize_cache_untimed(cache)
+                fixture = load_kvquant_fixture(
+                    configuration,
+                    "key_few_value_fixed12",
+                )
+                metadata = load_fixture_tensor_file_untimed(
+                    fixture,
+                    "metadata.safetensors",
+                )
+                comparisons = (
+                    (
+                        cache.key_lookup_table[0],
+                        metadata["key_lookup_table"],
+                    ),
+                    (
+                        cache.key_lower_threshold[0].reshape(-1),
+                        metadata["key_runtime_lower_threshold"],
+                    ),
+                    (
+                        cache.key_upper_threshold[0].reshape(-1),
+                        metadata["key_runtime_upper_threshold"],
+                    ),
+                    (cache.key_codebook[0], metadata["key_codebook"]),
+                    (cache.value_codebook[0], metadata["value_codebook"]),
+                    (cache.rope_inv_freq, metadata["rope_inv_freq"]),
+                )
+                for actual, expected in comparisons:
+                    self.assertTrue(torch.equal(actual, expected))
+
+    def test_measured_adapter_source_has_no_forbidden_host_or_growth_path(
+        self,
+    ) -> None:
+        sources = "\n".join(
+            inspect.getsource(operation)
+            for operation in (
+                KVQuantMethodAdapter._pack_nonsink_token,
+                KVQuantMethodAdapter.append_decode,
+                KVQuantMethodAdapter._decode_compressed,
+            )
+        )
+        for forbidden in (
+            "torch.cat",
+            "torch.nonzero",
+            "torch.argsort",
+            "repeat_kv",
+            "repeat_interleave",
+            ".item(",
+            ".tolist(",
+            ".cpu(",
+            ".numpy(",
+            "synchronize(",
+        ):
+            with self.subTest(forbidden=forbidden):
+                self.assertNotIn(forbidden, sources)
 
 
 if __name__ == "__main__":
