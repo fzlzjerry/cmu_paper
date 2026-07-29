@@ -42,6 +42,7 @@ PHASE9P_FINAL_COMMIT = "1b3a98160ba4760007ca861c1a280def698b2027"
 PHASE9_ENTRY_COMMIT = "b4d253724717076188a38032d6d6204fdf15e191"
 PHASE10_ENTRY_COMMIT = "a873fc93754fa86bfb757fce476388897bee8dca"
 PHASE11PR_ENTRY_COMMIT = "1cb2c95be61a328f88a031ae4ce91784dddec736"
+PHASE11_ENTRY_COMMIT = "72f1897af78b738cc8c74fd335a8957a8e8f5d6c"
 QUALITY_COMMIT = "a7b8285dd8ed2fb598efbb3312e9f55064a0ee64"
 ENVIRONMENT_COMMIT = "ea176994921c793789ebbd9d42515ce20ae4baee"
 EVIDENCE_COMMIT = "fb164b5ea96031ca40b21f4b8436a49a3bb5b8d2"
@@ -751,6 +752,53 @@ PHASE11PR_ALLOWED_PATHS = frozenset(
     | PHASE11PR_FIXTURE_PATHS
     | PHASE11PR_FIXTURE_ROOT_PATHS
 )
+PHASE11_ALLOWED_PATHS = frozenset(
+    {
+        "Makefile",
+        "configs/methods/kvquant.yaml",
+        "docs/blockers.md",
+        "docs/decisions/0026-kvquant-pre-rope-adapter-boundary.md",
+        "docs/evidence/phase11/kvquant-method-admission.json",
+        "docs/evidence/phase11/kvquant-method-admission.sha256",
+        "docs/evidence/phase11/r2-admission-outer-publication.json",
+        "docs/evidence/phase11/r2-admission-publication.json",
+        "docs/method_notes/kvquant.md",
+        "docs/phase_reports/phase11-kvquant-measurement-adapter.md",
+        "docs/plans/phase11-kvquant-measurement-adapter.md",
+        "docs/risk_register.md",
+        "docs/status.md",
+        "docs/tasks.md",
+        "scripts/phase11_kvquant_admission.py",
+        "scripts/phase11_r2_outer_bundle.py",
+        "scripts/validate_phase2.py",
+        "src/kvbench/adapters/__init__.py",
+        "src/kvbench/adapters/base.py",
+        "src/kvbench/adapters/factory.py",
+        "src/kvbench/adapters/kvquant.py",
+        "src/kvbench/runtime/artifacts.py",
+        "src/kvbench/runtime/bf16_endpoint.py",
+        "src/kvbench/runtime/kvquant_admission.py",
+        "src/kvbench/runtime/kvquant_allocation.py",
+        "src/kvbench/runtime/kvquant_cache.py",
+        "src/kvbench/runtime/kvquant_fixture.py",
+        "src/kvbench/runtime/kvquant_session.py",
+        "src/kvbench/schema/__init__.py",
+        "src/kvbench/schema/phase11.py",
+        "tests/cuda/phase11_kvquant_sanitizer_probe.py",
+        "tests/cuda/test_phase11_kvquant_cuda.py",
+        "tests/graph/test_phase11_kvquant_graph.py",
+        "tests/unit/test_phase11_artifacts.py",
+        "tests/unit/test_phase11_governance.py",
+        "tests/unit/test_phase11_kvquant_adapter.py",
+        "tests/unit/test_phase11_kvquant_admission.py",
+        "tests/unit/test_phase11_kvquant_admission_driver.py",
+        "tests/unit/test_phase11_kvquant_cache.py",
+        "tests/unit/test_phase11_kvquant_fixture.py",
+        "tests/unit/test_phase11_make_targets.py",
+        "tests/unit/test_phase11_r2_outer_bundle.py",
+        "tests/unit/test_phase11_scope.py",
+    }
+)
 
 
 RAW_RESULT_SUFFIXES = {
@@ -1143,9 +1191,28 @@ def current_phase10_paths() -> set[str]:
     )
 
 
+def historical_phase11pr_paths() -> set[str]:
+    return git_paths(
+        (
+            "diff",
+            "--name-only",
+            "-z",
+            PHASE11PR_ENTRY_COMMIT,
+            PHASE11_ENTRY_COMMIT,
+            "--",
+        )
+    )
+
+
 def current_phase11pr_paths() -> set[str]:
+    """Compatibility view of the completed, frozen Phase 11P-R segment."""
+
+    return historical_phase11pr_paths()
+
+
+def current_phase11_paths() -> set[str]:
     changed = git_paths(
-        ("diff", "--name-only", "-z", PHASE11PR_ENTRY_COMMIT, "--")
+        ("diff", "--name-only", "-z", PHASE11_ENTRY_COMMIT, "--")
     )
     untracked = git_paths(
         ("ls-files", "--others", "--exclude-standard", "-z", "--")
@@ -1200,7 +1267,7 @@ def current_phase5_paths() -> set[str]:
 
 
 def changed_paths() -> set[str]:
-    return current_phase11pr_paths()
+    return current_phase11_paths()
 
 
 def repository_python_paths() -> list[Path]:
@@ -1240,6 +1307,7 @@ def repository_python_paths() -> list[Path]:
         paths.update(unit_tests.glob("test_phase9_*.py"))
         paths.update(unit_tests.glob("test_phase10_*.py"))
         paths.update(unit_tests.glob("test_phase11pr_*.py"))
+        paths.update(unit_tests.glob("test_phase11_*.py"))
         paths.update(
             unit_tests / name
             for name in (
@@ -1257,6 +1325,7 @@ def repository_python_paths() -> list[Path]:
         paths.update(cuda_tests.glob("test_phase3_*.py"))
         paths.update(cuda_tests.glob("test_phase6_*.py"))
         paths.update(cuda_tests.glob("test_phase8_*.py"))
+        paths.update(cuda_tests.glob("test_phase11_*.py"))
         sanitizer_probe = cuda_tests / "phase6_turboquant_sanitizer_probe.py"
         if sanitizer_probe.is_file():
             paths.add(sanitizer_probe)
@@ -1273,11 +1342,17 @@ def repository_python_paths() -> list[Path]:
         )
         if phase11pr_validation.is_file():
             paths.add(phase11pr_validation)
+        phase11_sanitizer_probe = (
+            cuda_tests / "phase11_kvquant_sanitizer_probe.py"
+        )
+        if phase11_sanitizer_probe.is_file():
+            paths.add(phase11_sanitizer_probe)
     graph_tests = ROOT / "tests" / "graph"
     if graph_tests.is_dir():
         paths.update(graph_tests.glob("test_phase3_*.py"))
         paths.update(graph_tests.glob("test_phase6_*.py"))
         paths.update(graph_tests.glob("test_phase8_*.py"))
+        paths.update(graph_tests.glob("test_phase11_*.py"))
     return sorted(path for path in paths if path.is_file())
 
 
@@ -2405,6 +2480,10 @@ def check_scope() -> int:
         errors.append(
             "the accepted Phase 11P-R entry commit is not an ancestor of HEAD"
         )
+    if not commit_is_ancestor(PHASE11_ENTRY_COMMIT):
+        errors.append(
+            "the accepted Phase 11 entry commit is not an ancestor of HEAD"
+        )
     phase5 = historical_phase5_paths()
     phase5_unexpected = sorted(phase5 - PHASE5_ALLOWED_PATHS)
     if phase5_unexpected:
@@ -2472,27 +2551,33 @@ def check_scope() -> int:
             "files outside the frozen Phase 10 and Phase 11P plan: "
             f"{phase10_unexpected!r}"
         )
-    changed = current_phase11pr_paths()
-    phase11pr_unexpected = sorted(changed - PHASE11PR_ALLOWED_PATHS)
+    phase11pr = historical_phase11pr_paths()
+    phase11pr_unexpected = sorted(phase11pr - PHASE11PR_ALLOWED_PATHS)
     if phase11pr_unexpected:
         errors.append(
             "files outside the approved Phase 11P-R correction plan: "
             f"{phase11pr_unexpected!r}"
+        )
+    changed = current_phase11_paths()
+    phase11_unexpected = sorted(changed - PHASE11_ALLOWED_PATHS)
+    if phase11_unexpected:
+        errors.append(
+            "files outside the approved Phase 11 adapter plan: "
+            f"{phase11_unexpected!r}"
         )
     for relative in sorted(changed):
         if relative.startswith("docs/evidence/e00/"):
             errors.append(f"immutable E00 evidence changed: {relative}")
         if relative in QUALITY_PROTOCOL_HASHES:
             errors.append(
-                f"quality protocol changed during Phase 11P-R: {relative}"
+                f"quality protocol changed during Phase 11: {relative}"
             )
         if (
             Path(relative).suffix in RAW_RESULT_SUFFIXES
-            and relative not in PHASE11PR_SAFE_TENSOR_PATHS
         ):
             errors.append(
                 f"forbidden binary, kernel, model, or profiler artifact "
-                f"in Phase 11P-R Git scope: {relative}"
+                f"in Phase 11 Git scope: {relative}"
             )
         if relative.startswith(
             (
@@ -2504,7 +2589,7 @@ def check_scope() -> int:
             )
         ):
             errors.append(
-                f"forbidden result tree in Phase 11P-R scope: {relative}"
+                f"forbidden result tree in Phase 11 scope: {relative}"
             )
     e00_changes = git_paths(
         (
@@ -2543,7 +2628,6 @@ def check_scope() -> int:
     errors.extend(validate_phase9_calibration_root())
     forbidden_modules = (
         "src/kvbench/methods/kvquant",
-        "src/kvbench/adapters/kvquant.py",
         "src/kvbench/runtime/kvquant.py",
     )
     for relative in forbidden_modules:
