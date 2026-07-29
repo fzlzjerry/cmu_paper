@@ -1,6 +1,6 @@
 # Decision 0025: Deterministic KVQuant kvq3 Value parallel pack
 
-- Status: Proposed
+- Status: Accepted
 - Date: 2026-07-29
 - Parent source proposal: Decision 0024 commit
   `7fa389ecf5a5e198c76096d52fc2949dde844532`, tree
@@ -48,3 +48,26 @@ all-nine bundle validation, non-default-stream execution, CUDA Graph replay
 with zero allocation, memcheck and initcheck, MHA/GQA regression, immutable R2
 publication, and clean retrieval all pass inside the required authority
 boundaries.
+
+## Accepted identities and evidence
+
+- Corrected source commit:
+  `0d9df350bd1788284e1ce76a8bf6e886beca5efa`
+- Corrected source tree:
+  `a85cf7bf093982a4bf89c33d4e6794d9a85f846d`
+- Aggregate patch SHA-256:
+  `23a15db86790299392412c3ce2da7d971f4f073cfaf6839d82d3746c8b56b551`
+- Corrected CUDA file SHA-256:
+  `07ea018378e10ee80e0485e42225ab9903adcee0879af27c621289f147fabba1`
+- Extension SHA-256:
+  `46c41aad8f56d58608d4c1273bd3a72fd36c8f69f9ca2c5a046f0c811631bf51`
+- Corrected fixture root:
+  `c28682d58706b58812dc1db69ba5eb4982339ba13f39bf67f751794cdaabfdec`
+- Fixture R2 URI:
+  `r2://kvbench-artifacts/kvbench/sha256/c28682d58706b58812dc1db69ba5eb4982339ba13f39bf67f751794cdaabfdec/`
+
+All nine fixture checks, the independent kvq3 scalar control, non-default
+stream ordering, CUDA Graph capture/replay with zero replay allocation,
+memcheck, initcheck, and existing MHA/GQA numerical tests passed in the
+authorized Measurement Container. The clean R2 retrieval verified all 118
+objects. No execution-history-dependent kvq3 output remained.

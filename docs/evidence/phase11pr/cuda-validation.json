@@ -1,0 +1,86 @@
+{
+  "build": {
+    "architecture_flags": [
+      "-gencode=arch=compute_120,code=sm_120",
+      "-gencode=arch=compute_120,code=compute_120"
+    ],
+    "compute_120_ptx": true,
+    "cuda": "13.0",
+    "cuda_compiler": "Cuda compilation tools, release 13.0, V13.0.88",
+    "extension_sha256": "46c41aad8f56d58608d4c1273bd3a72fd36c8f69f9ca2c5a046f0c811631bf51",
+    "extension_size_bytes": 13662664,
+    "sm_120_cubin": true
+  },
+  "compute_sanitizer": {
+    "initcheck": {
+      "cases": [
+        "kvq3/key_zero_value_fixed12",
+        "cuda_graph_replay"
+      ],
+      "error_count": 0,
+      "status": "PASS"
+    },
+    "memcheck": {
+      "cases": [
+        "kvq3/key_cap_value_fixed12",
+        "cuda_graph_replay"
+      ],
+      "error_count": 0,
+      "leaked_allocations": 0,
+      "leaked_bytes": 0,
+      "status": "PASS"
+    },
+    "version": "2025.3.1.0 (build 36400806)"
+  },
+  "container": {
+    "authorized_measurement_container": "sha256:059bc9be89387369d7de9e3e9b26d85b6e9902c41e7dbf002ebc45edd188fb7e",
+    "image_changed": false,
+    "packages_installed": false
+  },
+  "cuda_graph": {
+    "capture": "PASS",
+    "operations": [
+      "selector",
+      "append",
+      "decode"
+    ],
+    "output_agreement": "PASS",
+    "replay": "PASS",
+    "replay_allocation_events": 0
+  },
+  "fixture_conformance": {
+    "decode_tolerance": "frozen Phase 10 tolerance",
+    "execution_history_dependent_output": false,
+    "kvq2_byte_identical_reuse": true,
+    "kvq3_cases_regenerated": 3,
+    "kvq3_scalar_append": "EXACT",
+    "kvq3_scalar_store": "EXACT",
+    "kvq4_byte_identical_reuse": true,
+    "passed": 9,
+    "total": 9
+  },
+  "memory_and_stream": {
+    "caller_owned_output_pointers_stable": true,
+    "dynamic_output_allocation": 0,
+    "host_synchronization_in_tested_path": 0,
+    "non_default_stream_ordering": "PASS",
+    "persistent_allocation_delta": 0
+  },
+  "numerical_regression": {
+    "gqa_32q_8kv": "PASS",
+    "mha": "PASS",
+    "scalar_control": "PASS"
+  },
+  "recorded_at_utc": "2026-07-29T13:03:51Z",
+  "run_kind": "phase11pr_cuda_validation",
+  "schema_version": "kvbench-phase11pr-cuda-validation-1.0.0",
+  "source": {
+    "aggregate_patch_sha256": "23a15db86790299392412c3ce2da7d971f4f073cfaf6839d82d3746c8b56b551",
+    "corrected_file": "deployment/kvquant/quant_cuda_kernel.cu",
+    "corrected_file_sha256": "07ea018378e10ee80e0485e42225ab9903adcee0879af27c621289f147fabba1",
+    "patched_commit": "0d9df350bd1788284e1ce76a8bf6e886beca5efa",
+    "patched_tree": "a85cf7bf093982a4bf89c33d4e6794d9a85f846d"
+  },
+  "status": "PASS",
+  "timing_fields_present": false
+}
