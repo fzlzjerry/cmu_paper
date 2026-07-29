@@ -16,7 +16,7 @@ authoritative local task index until issues are created elsewhere.
 | E07 | KIVI reference lane | G2-TQ | exact patched-source authority; isolated environment; rollover and K/V asymmetry fixtures; native eight-head GQA storage | complete: exact source plus Decision 0018 patch; locked reference image; SM120/PTX/JIT and zero-error sanitizer; four deterministic fixture configurations; rollover, actual bytes, native eight-head GQA, non-performance trace; COMPLETE-last R2 publication and clean retrieval PASS |
 | E08 | KIVI measurement adapter | E07 | static buffers; canonical rho_alloc/r_alloc; GQA indexing; G2-KIVI | complete: execution SHA `462325e9df809d3bcf24a06361bf004bc7383d73`; four configurations conform; sanitizer, path/allocation, rollover, Graph, and frozen grid 10/10 PASS; 331-object inner root `f0c72b5330d2f1f0ab4c6a1594d223fdf068a32cf58cdec63f4e254ef8aed515` and 341-object report-bearing outer root `de7d41f151af9fe1e716f27ae0f1fc24d2ef0a4b16e8e5c3ecf45d5f9983e132` are COMPLETE-last and cleanly retrieved; G2-KIVI PASS |
 | E09 | KVQuant calibration | G2-KIVI | frozen dataset/revision/seed/cap/artifacts/checksums | complete: Decision 0021 patched source, isolated calibration image, exact model/tokenizer, WikiText-2 train 16 x 2048 tokens, all 32 K plus 32 V Fisher artifacts, `kvq4`/`kvq3`/`kvq2`, sink 5, K/V cap 12, reproducibility, 68-object root `8148306d08205af376994b022f189a0d6837915cd279ca8af6b104e1f4b46ccf` COMPLETE-last and cleanly retrieved; B-005 RESOLVED; G2-KVQ remains NOT EVALUATED |
-| E10 | KVQuant reference lane | E09 | dense/sparse/sink fixtures for 4/3/2-bit and cap cases | pending |
+| E10 | KVQuant reference lane | E09 | dense/sparse/sink fixtures for 4/3/2-bit and source-faithful Key occupancy cases | complete: Decisions 0021/0023; nine deterministic source-authoritative fixtures; Key counts 0/6/12; non-sink Value fixed-extrema count 12 and sink count 0; native SM120/PTX/JIT and sanitizer PASS; fixture ID `kvqref-a50af6511c314b6394e58a7f81ceefb8`, 113-object root `32cdf465a361dd6695b66ccbea0a462bddc075fd9778d0aa8cdaa3f94e6f63ab` COMPLETE-last and cleanly retrieved; G2-KVQ remains NOT EVALUATED |
 | E11 | KVQuant measurement adapter | E10 | fixed sparse buffers; byte breakdown; graph/path tests; G2-KVQ | pending |
 | E12 | Admission gates | E02-E11 | machine-readable G1-G5 report for every main configuration | BF16 native-host G1 PASS in no-replace report `phase3-g1-20260723t132609515797z-7f72c95f-f31ccb`, SHA-256 `c29aef1d9f22b328201599b3e6cdf9efe7c069e78abaf6b37bc3cb12931414c9`. Method-specific G2-TQ and G2-KIVI PASS; global G2-G5 remain NOT EVALUATED; E12 is not complete for KVQuant or formal/unified admission. |
 | E13 | Pilot scan | E12 PASS | immutable randomized samples; QC; provisional knees; pilot gate | pending |
@@ -62,9 +62,11 @@ task list. E16 remains closed until its evidence is reviewed.
   one static KIVI adapter passes all 17 strict checks, the ten-point grid, and
   inner plus report-bearing outer durable publication. G2-KIVI is PASS.
   E09 is complete under Decision 0021 with one immutable, durably retrieved
-  calibration root. E10 and E11 remain unopened; B-006 remains open and
-  G2-KVQ is NOT EVALUATED. Pilot, performance profiler, Full Scan, and quality
-  execution remain unopened and require separate authorization.
+  calibration root. E10 is complete with the immutable Phase 10 numerical
+  fixture root; E11 remains unopened and the common factory remains
+  fail-closed for KVQuant. G2-KVQ is NOT EVALUATED. Pilot, performance
+  profiler, Full Scan, and quality execution remain unopened and require
+  separate authorization.
 - E12 includes an operator-level MHA control with identical head dimension and
   no GQA repetition.
 - B-011 through B-017 are resolved for native-host BF16 G1. The reporting-only

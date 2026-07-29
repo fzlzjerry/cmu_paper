@@ -159,13 +159,18 @@ class Phase9PGovernanceTests(unittest.TestCase):
                     0,
                 )
 
-    def test_kvquant_factory_and_phase_boundaries_remain_fail_closed(self) -> None:
+    def test_kvquant_factory_remains_fail_closed_after_reference_lane(
+        self,
+    ) -> None:
         factory = (ROOT / "src/kvbench/adapters/factory.py").read_text(
             encoding="utf-8"
         )
         self.assertIn('_DEFERRED_METHODS = frozenset({"kvquant"})', factory)
         self.assertFalse((ROOT / "PERFORMANCE_DATA_FROZEN").exists())
-        self.assertFalse((ROOT / "reference/kvquant").exists())
+        self.assertTrue((ROOT / "reference/kvquant").is_dir())
+        self.assertTrue(
+            (ROOT / "reference/kvquant/fixtures/COMPLETE").is_file()
+        )
         self.assertFalse((ROOT / "src/kvbench/adapters/kvquant.py").exists())
         self.assertFalse((ROOT / "src/kvbench/runtime/kvquant.py").exists())
 

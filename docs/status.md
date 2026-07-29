@@ -1,6 +1,6 @@
 # Project status
 
-Last updated: 2026-07-28
+Last updated: 2026-07-29
 Authoritative contracts: CODEX_WORKFLOW.md for active performance engineering;
 CODEX_POST_PERFORMANCE_QUALITY_VALIDATION.md for post-performance quality
 scheduling; CODEX_QUALITY_EVALUATION_ADDENDUM.md for non-conflicting quality
@@ -8,15 +8,16 @@ requirements; and AGENTS.md. Decision 0005 records precedence.
 
 ## Current state
 
-- Latest completed scoped phase: Phase 9 KVQuant calibration PASS. Its
-  calibration-only container is separate from the authorized Measurement
-  Container. The unchanged Measurement Container Docker image ID / OCI
+- Latest completed scoped phase: Phase 10 KVQuant Reference Lane PASS. Its
+  thin reference image derives from the frozen Phase 9 calibration image and
+  remains separate from the authorized Measurement Container. The unchanged
+  Measurement Container Docker image ID / OCI
   image-index digest remains
   `sha256:059bc9be89387369d7de9e3e9b26d85b6e9902c41e7dbf002ebc45edd188fb7e`;
   container G0 and both BF16 parity smokes pass, and Decision 0016 binds
-  Measurement Lane CUDA execution to that digest only. Phase 8 is the latest
-  completed method measurement-adapter lane. Phase 9 does not change that
-  lane. Official vLLM
+  Measurement Lane CUDA execution to that digest only. Phase 8 remains the
+  latest completed method measurement-adapter lane. Phases 9 and 10 do not
+  change that lane. Official vLLM
   `v0.25.1` commit `752a3a504485790a2e8491cacbb35c137339ad34` is pinned.
 - Phase 6 status: PASS for method-specific G2-TQ at execution commit
   `0df5bb4d445d48e6cba17e30723733f8de35cb14`. The approved admission driver
@@ -84,6 +85,19 @@ requirements; and AGENTS.md. Decision 0005 records precedence.
   `8148306d08205af376994b022f189a0d6837915cd279ca8af6b104e1f4b46ccf`
   was published COMPLETE-last to the existing content-addressed R2 namespace
   and passed clean retrieval. G2-KVQ remains NOT EVALUATED.
+- Phase 10 status: PASS for the KVQuant numerical Reference Lane under
+  Decisions 0021 and 0023. The source-faithful matrix contains exactly nine
+  deterministic fixtures: `kvq4`/`kvq3`/`kvq2` crossed with Key sparse counts
+  0/6/12, while every non-sink Value row retains the frozen fixed-extrema count
+  12 and every sink Value row has count 0. Native SM120, forced PTX/JIT,
+  zero-error and zero-leak Compute Sanitizer coverage, native 32Q/8KV GQA,
+  store/append/decode controls, exact bytes, deterministic regeneration, and
+  clean validation pass. Final fixture ID
+  `kvqref-a50af6511c314b6394e58a7f81ceefb8`, 113-object root
+  `32cdf465a361dd6695b66ccbea0a462bddc075fd9778d0aa8cdaa3f94e6f63ab`,
+  was published COMPLETE-last and passed clean R2 retrieval. The KVQuant
+  Measurement Adapter remains unimplemented and fail-closed; G2-KVQ remains
+  NOT EVALUATED.
 - Active admission gate: native-host G0 PASS; authorized-container G0 PASS;
   native-host BF16 G1 PASS; G2-TQ PASS; G2-KIVI PASS; G2-KVQ NOT EVALUATED
 - Benchmark implementation changes: exact BF16 static cache, fixed-L and
@@ -97,8 +111,9 @@ requirements; and AGENTS.md. Decision 0005 records precedence.
   static KIVI adapter and one KIVI-specific cache state through those same
   runners; it is admitted only at method-specific G2-KIVI. Phase 9 adds only
   one isolated offline calibration container and narrow KVQuant calibration
-  scripts; it does not add a reference runner, Measurement Adapter, or
-  benchmark invocation
+  scripts. Phase 10 adds one isolated KVQuant reference runner and compact
+  numerical fixtures only; it does not add a Measurement Adapter or benchmark
+  invocation
 - CUDA builds or executions: the new formal E00 run passed extension build,
   native execution, forced PTX/JIT, numerical golden, CUDA Graph, allocation,
   SASS/PTX inspection, and all required Compute Sanitizer lanes
@@ -126,7 +141,10 @@ requirements; and AGENTS.md. Decision 0005 records precedence.
   added only offline calibration inputs, Fisher tensors, quantizers, policy
   evidence, and publication receipts. It did not run or record benchmark
   timing, HBM traffic, capacity, Nsight, PPL, LongBench, or other quality
-  results.
+  results. Phase 10 added only source-authoritative fixtures, byte records,
+  duration-free reference traces, CUDA correctness/sanitizer evidence, and
+  publication receipts. It did not create performance, profiler, HBM,
+  capacity, or quality data.
 - Scientific performance claims: none
 - Quality protocol: preregistered by Decision 0005 before any performance or
   quality result
@@ -685,7 +703,8 @@ reference execution is recorded separately above.
 | Phase 8 KIVI measurement adapter | PASS | Execution SHA `462325e9df809d3bcf24a06361bf004bc7383d73`; exact fixtures, rollover, byte accounting, path/allocation audits, Graph, sanitizer, and bounded grid 10/10 PASS; 331-object inner and 341-object report-bearing outer roots are COMPLETE-last and cleanly retrieved. |
 | G2-KIVI | PASS | All three mandatory configurations are admitted and held-out k4v2 conforms; MethodAdmissionReport derives 17/17 PASS checks. Global G2 remains NOT EVALUATED. |
 | Phase 9 KVQuant calibration | PASS | Exact Decision 0021 patched source; isolated image; frozen 16 x 2048 train tokens; 32 K plus 32 V Fisher artifacts; three complete quantizer families; reproducibility; 68-object COMPLETE-last R2 root and clean retrieval. |
-| G2-KVQ | NOT EVALUATED | Phase 9/E09 is complete; requires E10-E11 and resolution of B-006 before applicable execution |
+| Phase 10 KVQuant reference lane | PASS | Decisions 0021/0023; exact calibration binding; nine source-faithful dense/sparse/sink/store/append/decode fixtures; SM120/PTX/JIT/sanitizer PASS; 113-object root `32cdf465a361dd6695b66ccbea0a462bddc075fd9778d0aa8cdaa3f94e6f63ab` COMPLETE-last and cleanly retrieved. |
+| G2-KVQ | NOT EVALUATED | Phase 10/E10 is complete; requires the separately authorized E11 Measurement Adapter and its admission evidence |
 | G1-G5 unified admission | NOT EVALUATED | requires E12 |
 | Pilot/full-scan gates | CLOSED / NOT EVALUATED | Method-specific G2-TQ and G2-KIVI admission do not authorize Pilot or Full Scan |
 | Post-performance quality validation | LOCKED | Decision 0005; `PERFORMANCE_DATA_FROZEN` absent |
@@ -717,10 +736,12 @@ are COMPLETE-last and cleanly retrieved. G0, G1, G2-TQ, and G2-KIVI remain
 PASS; global G2-G5 remain NOT EVALUATED; Full Scan remains CLOSED; quality
 execution remains LOCKED; and `PERFORMANCE_DATA_FROZEN` remains absent.
 
-Phase 9 KVQuant calibration is complete. Final calibration root
+Phase 9 KVQuant calibration remains complete and unchanged. Final calibration root
 `8148306d08205af376994b022f189a0d6837915cd279ca8af6b104e1f4b46ccf`
 is COMPLETE-last and cleanly retrieved from its content-addressed R2 URI.
-Phase 10 KVQuant Reference Lane may be proposed only in a separate new task;
-it has not started. G2-KVQ remains NOT EVALUATED. Pilot, profiling, fitting,
-figures, Full Scan, performance execution, and quality execution have not
-started.
+Phase 10 KVQuant Reference Lane is PASS with immutable fixture root
+`32cdf465a361dd6695b66ccbea0a462bddc075fd9778d0aa8cdaa3f94e6f63ab`.
+Phase 11 may be proposed only in a separate new task; its KVQuant Measurement
+Adapter has not started and remains fail-closed. G2-KVQ remains NOT EVALUATED.
+Pilot, profiling, fitting, figures, Full Scan, performance execution, and
+quality execution have not started.

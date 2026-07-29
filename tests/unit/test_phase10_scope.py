@@ -22,6 +22,9 @@ class Phase10ScopeTests(unittest.TestCase):
             "docker/reference-kvquant.Dockerfile",
             "reference/kvquant/generate_fixtures.py",
             "reference/kvquant/validate_fixtures.py",
+            "tests/unit/test_measurement_container.py",
+            "tests/unit/test_phase9_governance.py",
+            "tests/unit/test_phase9p_governance.py",
             "tests/unit/test_phase10_scope.py",
         }
         self.assertLessEqual(expected, validate_phase2.PHASE10_ALLOWED_PATHS)

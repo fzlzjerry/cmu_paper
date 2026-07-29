@@ -673,6 +673,9 @@ PHASE10_ALLOWED_PATHS = frozenset(
         "reference/kvquant/validate_fixtures.py",
         "scripts/validate_phase2.py",
         "tests/cuda/phase10_kvquant_sanitizer_probe.py",
+        "tests/unit/test_measurement_container.py",
+        "tests/unit/test_phase9_governance.py",
+        "tests/unit/test_phase9p_governance.py",
         "tests/unit/test_phase10_kvquant_reference.py",
         "tests/unit/test_phase10_scope.py",
     }

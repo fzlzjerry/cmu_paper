@@ -263,16 +263,27 @@ class MeasurementContainerDefinitionTests(unittest.TestCase):
         self.assertIn('rm -f -- "$$task_root/image-save.tar"', text)
         self.assertIn('image_id="$(MEASUREMENT_IMAGE_CONFIG_DIGEST)"', text)
         self.assertNotIn("--env-file", text)
-        reference_recipe = text.split("reference-kivi:", 1)[1].split(
+        reference_recipe = text.split("\nreference-kivi:", 1)[1].split(
             "\nvalidate-reference-kivi:", 1
         )[0]
         self.assertIn(
             '--build-arg KIVI_BUILD_REVISION="$(KIVI_REFERENCE_BUILD_REVISION)"',
             reference_recipe,
         )
-        self.assertEqual(text.count("--build-arg"), 1)
+        self.assertEqual(reference_recipe.count("--build-arg"), 1)
+        kvquant_reference_recipe = text.split(
+            "\nreference-kvquant:", 1
+        )[1].split("\nvalidate-reference-kvquant:", 1)[0]
+        self.assertEqual(
+            kvquant_reference_recipe.count("--build-arg"),
+            2,
+        )
         self.assertNotIn(
-            "--build-arg", text.replace(reference_recipe, "")
+            "--build-arg",
+            text.replace(reference_recipe, "").replace(
+                kvquant_reference_recipe,
+                "",
+            ),
         )
 
     def test_container_lock_bootstrap_is_two_pass_and_fail_closed(self) -> None:

@@ -104,7 +104,9 @@ class Phase9GovernanceTests(unittest.TestCase):
                 )
                 self.assertEqual(result.returncode, 0)
 
-    def test_kvquant_execution_and_later_phases_remain_fail_closed(self) -> None:
+    def test_kvquant_measurement_execution_remains_fail_closed_after_reference(
+        self,
+    ) -> None:
         factory = (ROOT / "src/kvbench/adapters/factory.py").read_text(
             encoding="utf-8"
         )
@@ -112,7 +114,10 @@ class Phase9GovernanceTests(unittest.TestCase):
             '_DEFERRED_METHODS = frozenset({"kvquant"})',
             factory,
         )
-        self.assertFalse((ROOT / "reference/kvquant").exists())
+        self.assertTrue((ROOT / "reference/kvquant").is_dir())
+        self.assertTrue(
+            (ROOT / "reference/kvquant/fixtures/COMPLETE").is_file()
+        )
         self.assertFalse((ROOT / "src/kvbench/adapters/kvquant.py").exists())
         self.assertFalse((ROOT / "src/kvbench/runtime/kvquant.py").exists())
         self.assertFalse((ROOT / "PERFORMANCE_DATA_FROZEN").exists())
