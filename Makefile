@@ -49,6 +49,17 @@ KVQUANT_CALIBRATION_DATASET_PARQUET ?= /tmp/kvbench-phase9-inputs/wikitext-2-raw
 KVQUANT_CALIBRATION_MODEL_CACHE ?= /root/.cache/huggingface/hub
 KVQUANT_CALIBRATION_ARTIFACT ?=
 PHASE9_CALIBRATION := /usr/bin/env PYTHONDONTWRITEBYTECODE=1 PYTHONNOUSERSITE=1 PYTHONPATH=$(CURDIR):$(CURDIR)/src $(PHASE2_PYTHON) scripts/phase9_kvquant_calibration.py
+KVQUANT_REFERENCE_BASE_IMAGE := sha256:127759078f2c70c9e795c7a1bb3408df1eaee8fa019319299d283dc8075b216d
+KVQUANT_REFERENCE_IMAGE := sha256:24eb3f6ff39b72f45c353acfbef6ce2d9aaac0860180b4dde8b937593176714b
+KVQUANT_REFERENCE_IMAGE_TAG := kvbench-reference-kvquant:phase10
+KVQUANT_REFERENCE_TOKENIZERS_WHEEL := /tmp/phase9p-tokenizers-wheelhouse/tokenizers-0.15.2-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
+KVQUANT_REFERENCE_TOKENIZERS_SHA256 := 9e0480c452217edd35eca56fafe2029fb4d368b7c0475f8dfa3c5c9c400a7456
+KVQUANT_REFERENCE_SOURCE_ROOT ?= /home/rockrock/third_party_worktrees/kvquant-gqa
+KVQUANT_REFERENCE_BUILD_ROOT ?= /home/rockrock/third_party_worktrees/kvquant-gqa-reference-build
+KVQUANT_REFERENCE_EXTENSION := $(KVQUANT_REFERENCE_BUILD_ROOT)/quant_cuda.cpython-312-x86_64-linux-gnu.so
+KVQUANT_REFERENCE_EXTENSION_SHA256 := 53bee7b4b5a0dead6adb682df1343330963b41149d12c2a876888c1c2ede9597
+KVQUANT_REFERENCE_CALIBRATION := $(CURDIR)/calibration/kvquant/kvqcal-cdb724c806d64d095c040d2673a987a3
+KVQUANT_REFERENCE_PATCH_MANIFEST := $(CURDIR)/third_party/patches/kvquant/manifest.json
 KIVI_REFERENCE_IMAGE := kvbench-reference-kivi:phase7
 KIVI_REFERENCE_PARENT_CONFIG := sha256:059bc9be89387369d7de9e3e9b26d85b6e9902c41e7dbf002ebc45edd188fb7e
 KIVI_REFERENCE_IMAGE_MANIFEST := sha256:f27e4cdef6bd15f18ab76b1fe0e4413ede004b42538c74e3dd90d04172406f75
@@ -75,6 +86,7 @@ KIVI_REFERENCE_BUILD_REVISION := 3417ea0e7f322369eed21bb787a9a9a19b0a69bd
 .PHONY: validate-kivi-b019-patch
 .PHONY: validate-kvquant-gqa-patch
 .PHONY: calibrate-kvquant validate-calibration-kvquant reference-kivi validate-reference-kivi
+.PHONY: reference-kvquant validate-reference-kvquant
 
 preflight:
 	@/usr/bin/env -i PATH=/usr/bin:/bin LC_ALL=C LANG=C TZ=UTC \
@@ -139,6 +151,7 @@ test: checks
 	@$(PHASE3_ENV) $(PHASE3_PYTHON) -m unittest discover -s tests/unit -p 'test_phase8_*.py' -v
 	@$(PHASE3_ENV) $(PHASE3_PYTHON) -m unittest discover -s tests/unit -p 'test_phase9p_*.py' -v
 	@$(PHASE3_ENV) $(PHASE3_PYTHON) -m unittest discover -s tests/unit -p 'test_phase9_*.py' -v
+	@$(PHASE3_ENV) $(PHASE3_PYTHON) -m unittest discover -s tests/unit -p 'test_phase10_*.py' -v
 	@$(PHASE3_ENV) $(PHASE3_PYTHON) -m unittest tests.unit.test_measurement_container tests.unit.test_phase6a_bf16_parity tests.unit.test_phase6a_governance tests.unit.test_preflight_unit tests.unit.test_r2_artifact -v
 	@$(PHASE2_VALIDATE) immutable
 
@@ -170,6 +183,162 @@ calibrate-kvquant: package-lock-check
 
 validate-calibration-kvquant:
 	@$(PHASE9_CALIBRATION) validate $(if $(strip $(KVQUANT_CALIBRATION_ARTIFACT)),--artifact "$(KVQUANT_CALIBRATION_ARTIFACT)")
+
+reference-kvquant: package-lock-check
+	@$(MAKE) KVQUANT_GQA_SOURCE_ROOT="$(KVQUANT_REFERENCE_SOURCE_ROOT)" validate-kvquant-gqa-patch
+	@$(MAKE) KVQUANT_CALIBRATION_ARTIFACT="$(KVQUANT_REFERENCE_CALIBRATION)" validate-calibration-kvquant
+	@command -v docker >/dev/null
+	@test "$$(docker image inspect "$(KVQUANT_REFERENCE_BASE_IMAGE)" --format '{{.Id}}')" = "$(KVQUANT_REFERENCE_BASE_IMAGE)"
+	@test -f "$(KVQUANT_REFERENCE_TOKENIZERS_WHEEL)" && test ! -L "$(KVQUANT_REFERENCE_TOKENIZERS_WHEEL)"
+	@test "$$(sha256sum "$(KVQUANT_REFERENCE_TOKENIZERS_WHEEL)" | cut -d ' ' -f 1)" = "$(KVQUANT_REFERENCE_TOKENIZERS_SHA256)"
+	@if ! docker image inspect "$(KVQUANT_REFERENCE_IMAGE)" >/dev/null 2>&1; then \
+		task_root="$$(mktemp -d /tmp/kvbench-reference-kvquant-build.XXXXXX)"; \
+		trap 'rm -rf -- "$$task_root"' EXIT; \
+		cp docker/reference-kvquant.Dockerfile "$$task_root/Dockerfile"; \
+		cp "$(KVQUANT_REFERENCE_TOKENIZERS_WHEEL)" "$$task_root/"; \
+		test "$$(find "$$task_root" -maxdepth 1 -type f | wc -l)" = 2; \
+		test ! -e "$$task_root/.env"; \
+		DOCKER_BUILDKIT=0 docker build --pull=false --network none \
+			--build-arg BASE_IMAGE="$(KVQUANT_REFERENCE_BASE_IMAGE)" \
+			--build-arg TOKENIZERS_WHEEL_SHA256="$(KVQUANT_REFERENCE_TOKENIZERS_SHA256)" \
+			--tag "$(KVQUANT_REFERENCE_IMAGE_TAG)" \
+			--file "$$task_root/Dockerfile" "$$task_root"; \
+	fi
+	@test "$$(docker image inspect "$(KVQUANT_REFERENCE_IMAGE)" --format '{{.Id}}')" = "$(KVQUANT_REFERENCE_IMAGE)"
+	@build_root="$(KVQUANT_REFERENCE_BUILD_ROOT)"; \
+		source_root="$(KVQUANT_REFERENCE_SOURCE_ROOT)"; \
+		mkdir -p "$$build_root"; \
+		for relative in quant_cuda.cpp quant_cuda_kernel.cu setup_cuda.py; do \
+			source_file="$$source_root/deployment/kvquant/$$relative"; \
+			build_file="$$build_root/$$relative"; \
+			if test -e "$$build_file"; then \
+				test -f "$$build_file" && test ! -L "$$build_file" && cmp -s "$$source_file" "$$build_file"; \
+			else \
+				cp -- "$$source_file" "$$build_file"; \
+			fi; \
+		done; \
+		if test ! -e "$(KVQUANT_REFERENCE_EXTENSION)"; then \
+			docker run --rm --network none --gpus all \
+				--tmpfs /tmp:rw,exec,nosuid,size=2g \
+				--mount type=bind,src="$$build_root",dst=/build \
+				--workdir /build \
+				-e PYTHONDONTWRITEBYTECODE=1 \
+				-e PYTHONNOUSERSITE=1 \
+				-e TORCH_CUDA_ARCH_LIST=12.0 \
+				"$(KVQUANT_REFERENCE_IMAGE)" \
+				/opt/kvbench/.venv/bin/python setup_cuda.py build_ext --inplace; \
+		fi; \
+		test -f "$(KVQUANT_REFERENCE_EXTENSION)" && test ! -L "$(KVQUANT_REFERENCE_EXTENSION)"; \
+		test "$$(sha256sum "$(KVQUANT_REFERENCE_EXTENSION)" | cut -d ' ' -f 1)" = "$(KVQUANT_REFERENCE_EXTENSION_SHA256)"; \
+		/usr/local/cuda/bin/cuobjdump --list-elf "$(KVQUANT_REFERENCE_EXTENSION)" | grep -F '.sm_120.cubin' >/dev/null; \
+		/usr/local/cuda/bin/cuobjdump --dump-ptx "$(KVQUANT_REFERENCE_EXTENSION)" | grep -F '.version 9.0' >/dev/null; \
+		/usr/local/cuda/bin/cuobjdump --dump-ptx "$(KVQUANT_REFERENCE_EXTENSION)" | grep -F '.target sm_120' >/dev/null
+	@docker run --rm --network none --gpus all \
+		--tmpfs /tmp:rw,exec,nosuid,size=2g \
+		--mount type=bind,src="$(CURDIR)",dst=/repo,readonly \
+		--mount type=bind,src="$(KVQUANT_REFERENCE_SOURCE_ROOT)",dst=/source,readonly \
+		--mount type=bind,src="$(KVQUANT_REFERENCE_BUILD_ROOT)",dst=/build,readonly \
+		--mount type=bind,src="$(KVQUANT_REFERENCE_CALIBRATION)",dst=/calibration,readonly \
+		-e PYTHONDONTWRITEBYTECODE=1 \
+		-e PYTHONNOUSERSITE=1 \
+		-e PYTHONPATH=/source/deployment/transformers/src:/source:/build:/repo:/opt/kvbench-reference/deps:/opt/kvbench/.phase3/site-packages \
+		-e CUBLAS_WORKSPACE_CONFIG=:4096:8 \
+		"$(KVQUANT_REFERENCE_IMAGE)" \
+		/opt/kvbench/.venv/bin/python /repo/tests/cuda/phase10_kvquant_sanitizer_probe.py \
+			--source-root /source \
+			--calibration-root /calibration \
+			--patch-manifest /repo/third_party/patches/kvquant/manifest.json
+	@docker run --rm --network none --gpus all \
+		--tmpfs /tmp:rw,exec,nosuid,size=2g \
+		--mount type=bind,src="$(KVQUANT_REFERENCE_SOURCE_ROOT)",dst=/source,readonly \
+		--mount type=bind,src="$(KVQUANT_REFERENCE_BUILD_ROOT)",dst=/build,readonly \
+		-e PYTHONDONTWRITEBYTECODE=1 \
+		-e PYTHONNOUSERSITE=1 \
+		-e PYTHONPATH=/source:/build:/opt/kvbench-reference/deps:/opt/kvbench/.phase3/site-packages \
+		-e CUBLAS_WORKSPACE_CONFIG=:4096:8 \
+		-e CUDA_FORCE_PTX_JIT=1 \
+		-e CUDA_CACHE_DISABLE=1 \
+		-e KVQUANT_RUN_PTX_TESTS=1 \
+		-e KVQUANT_CUDA_EXTENSION_DIR=/build \
+		"$(KVQUANT_REFERENCE_IMAGE)" \
+		/opt/kvbench/.venv/bin/python /source/tests_phase9p/test_ptx_jit.py -v
+	@docker run --rm --network none --gpus all \
+		--tmpfs /tmp:rw,exec,nosuid,size=2g \
+		--mount type=bind,src="$(CURDIR)",dst=/repo,readonly \
+		--mount type=bind,src="$(KVQUANT_REFERENCE_SOURCE_ROOT)",dst=/source,readonly \
+		--mount type=bind,src="$(KVQUANT_REFERENCE_BUILD_ROOT)",dst=/build,readonly \
+		--mount type=bind,src="$(KVQUANT_REFERENCE_CALIBRATION)",dst=/calibration,readonly \
+		-e PYTHONDONTWRITEBYTECODE=1 \
+		-e PYTHONNOUSERSITE=1 \
+		-e PYTHONPATH=/source/deployment/transformers/src:/source:/build:/repo:/opt/kvbench-reference/deps:/opt/kvbench/.phase3/site-packages \
+		-e CUBLAS_WORKSPACE_CONFIG=:4096:8 \
+		--entrypoint /usr/local/cuda-13.0/bin/compute-sanitizer \
+		"$(KVQUANT_REFERENCE_IMAGE)" \
+		--tool memcheck --leak-check full --error-exitcode=86 \
+		--target-processes application-only \
+		/opt/kvbench/.venv/bin/python /repo/tests/cuda/phase10_kvquant_sanitizer_probe.py \
+			--source-root /source \
+			--calibration-root /calibration \
+			--patch-manifest /repo/third_party/patches/kvquant/manifest.json
+	@if test -e reference/kvquant/fixtures; then \
+		$(MAKE) validate-reference-kvquant; \
+	else \
+		docker run --rm --network none --gpus all \
+			--tmpfs /tmp:rw,exec,nosuid,size=2g \
+			--mount type=bind,src="$(CURDIR)",dst=/repo,readonly \
+			--mount type=bind,src="$(CURDIR)/reference/kvquant",dst=/output \
+			--mount type=bind,src="$(KVQUANT_REFERENCE_SOURCE_ROOT)",dst=/source,readonly \
+			--mount type=bind,src="$(KVQUANT_REFERENCE_BUILD_ROOT)",dst=/build,readonly \
+			--mount type=bind,src="$(KVQUANT_REFERENCE_CALIBRATION)",dst=/calibration,readonly \
+			-e PYTHONDONTWRITEBYTECODE=1 \
+			-e PYTHONNOUSERSITE=1 \
+			-e PYTHONPATH=/source/deployment/transformers/src:/source:/build:/repo:/opt/kvbench-reference/deps:/opt/kvbench/.phase3/site-packages \
+			-e CUBLAS_WORKSPACE_CONFIG=:4096:8 \
+			"$(KVQUANT_REFERENCE_IMAGE)" \
+			/opt/kvbench/.venv/bin/python /repo/reference/kvquant/generate_fixtures.py fixtures \
+				--source-root /source \
+				--calibration-root /calibration \
+				--patch-manifest /repo/third_party/patches/kvquant/manifest.json \
+				--extension /build/quant_cuda.cpython-312-x86_64-linux-gnu.so \
+				--reference-root /output; \
+		$(MAKE) validate-reference-kvquant; \
+		determinism_root="$$(mktemp -d /tmp/kvbench-phase10-determinism.XXXXXX)"; \
+		trap 'chmod -R u+w "$$determinism_root" 2>/dev/null || true; rm -rf -- "$$determinism_root"' EXIT; \
+		docker run --rm --network none --gpus all \
+			--tmpfs /tmp:rw,exec,nosuid,size=2g \
+			--mount type=bind,src="$(CURDIR)",dst=/repo,readonly \
+			--mount type=bind,src="$$determinism_root",dst=/output \
+			--mount type=bind,src="$(KVQUANT_REFERENCE_SOURCE_ROOT)",dst=/source,readonly \
+			--mount type=bind,src="$(KVQUANT_REFERENCE_BUILD_ROOT)",dst=/build,readonly \
+			--mount type=bind,src="$(KVQUANT_REFERENCE_CALIBRATION)",dst=/calibration,readonly \
+			-e PYTHONDONTWRITEBYTECODE=1 \
+			-e PYTHONNOUSERSITE=1 \
+			-e PYTHONPATH=/source/deployment/transformers/src:/source:/build:/repo:/opt/kvbench-reference/deps:/opt/kvbench/.phase3/site-packages \
+			-e CUBLAS_WORKSPACE_CONFIG=:4096:8 \
+			"$(KVQUANT_REFERENCE_IMAGE)" \
+			/opt/kvbench/.venv/bin/python /repo/reference/kvquant/generate_fixtures.py fixtures \
+				--source-root /source \
+				--calibration-root /calibration \
+				--patch-manifest /repo/third_party/patches/kvquant/manifest.json \
+				--extension /build/quant_cuda.cpython-312-x86_64-linux-gnu.so \
+				--reference-root /output; \
+		diff -qr reference/kvquant/fixtures "$$determinism_root/fixtures"; \
+		for manifest in source_manifest.json environment.json calibration_manifest.json build_manifest.json; do \
+			cmp -s "reference/kvquant/$$manifest" "$$determinism_root/$$manifest"; \
+		done; \
+	fi
+
+validate-reference-kvquant:
+	@docker run --rm --network none \
+		--tmpfs /tmp:rw,exec,nosuid,size=1g \
+		--mount type=bind,src="$(CURDIR)",dst=/repo,readonly \
+		-e PYTHONDONTWRITEBYTECODE=1 \
+		-e PYTHONNOUSERSITE=1 \
+		-e PYTHONPATH=/repo:/opt/kvbench-reference/deps:/opt/kvbench/.phase3/site-packages \
+		"$(KVQUANT_REFERENCE_IMAGE)" \
+		/opt/kvbench/.venv/bin/python /repo/reference/kvquant/validate_fixtures.py \
+			--fixture-root /repo/reference/kvquant/fixtures
+	@$(PHASE3_ENV) $(PHASE3_PYTHON) -c 'from scripts.r2_artifact import validate_local_artifact; artifact = validate_local_artifact("reference/kvquant/fixtures"); print("{\"status\":\"PASS\",\"local_root_sha256\":\"%s\",\"object_count\":%d}" % (artifact.root_sha256, len(artifact.files)))'
 
 reference-kivi: validate-kivi-b019-patch
 	@command -v docker >/dev/null

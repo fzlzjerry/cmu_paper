@@ -15,10 +15,15 @@ Status: frozen for the Phase 10R rerun.
   `8148306d08205af376994b022f189a0d6837915cd279ca8af6b104e1f4b46ccf`,
   mounted read-only. Fisher, quantizers, and calibration metadata are never
   regenerated or rewritten.
-- Reuse the exact Phase 9 calibration image
+- The exact Phase 9 calibration image
   `sha256:127759078f2c70c9e795c7a1bb3408df1eaee8fa019319299d283dc8075b216d`
-  as the single isolated Reference Lane environment. Source, calibration, and
-  output mounts are separated; credentials are host-only.
+  contains modern `tokenizers==0.22.2`, while the authorized vendored
+  Transformers reference source requires `tokenizers==0.15.2`. Use one thin
+  `docker/reference-kvquant.Dockerfile` derived from that exact image. It adds
+  only the checksum-locked `tokenizers==0.15.2` wheel in an isolated dependency
+  directory, without modifying the Phase 9 image or its installed packages.
+  Source, calibration, and output mounts are separated; credentials are
+  host-only.
 
 ## Frozen fixture contract
 

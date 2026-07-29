@@ -19,6 +19,7 @@ class Phase10ScopeTests(unittest.TestCase):
             "docs/decisions/0023-phase10-kvquant-source-faithful-sparse-fixture-semantics.md",
             "docs/evidence/phase10/blocked-report-custody.json",
             "docs/plans/phase10-kvquant-reference.md",
+            "docker/reference-kvquant.Dockerfile",
             "reference/kvquant/generate_fixtures.py",
             "reference/kvquant/validate_fixtures.py",
             "tests/unit/test_phase10_scope.py",

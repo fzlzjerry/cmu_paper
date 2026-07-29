@@ -658,6 +658,7 @@ PHASE10_ALLOWED_PATHS = frozenset(
         "docs/risk_register.md",
         "docs/status.md",
         "docs/tasks.md",
+        "docker/reference-kvquant.Dockerfile",
         "reference/kvquant/README.md",
         "reference/kvquant/build_manifest.json",
         "reference/kvquant/calibration_manifest.json",
