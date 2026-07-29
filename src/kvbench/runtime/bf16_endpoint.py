@@ -6,6 +6,7 @@ import importlib
 from typing import Any
 
 from kvbench.adapters import KVCacheMethod
+from kvbench.adapters.base import method_requires_pre_rope_key
 from kvbench.runtime.static_cache import BF16StaticCache, CacheStateError
 
 
@@ -50,6 +51,38 @@ def rotate_half_in_place(
     second.addcmul_(first_half_scratch, sin_view[..., half:])
 
 
+def preserve_pre_rope_key_in_query_scratch(
+    query_rope_scratch: Any,
+    key_states: Any,
+) -> Any:
+    """Copy pre-RoPE Key into caller-owned query RoPE scratch storage."""
+
+    if query_rope_scratch.dtype != key_states.dtype:
+        raise EndpointGeometryError(
+            "query RoPE scratch and pre-RoPE Key dtypes differ"
+        )
+    if query_rope_scratch.device != key_states.device:
+        raise EndpointGeometryError(
+            "query RoPE scratch and pre-RoPE Key devices differ"
+        )
+    if not query_rope_scratch.is_contiguous():
+        raise EndpointGeometryError(
+            "query RoPE scratch must be contiguous for pre-RoPE Key reuse"
+        )
+    required = int(key_states.numel())
+    if int(query_rope_scratch.numel()) < required:
+        raise EndpointGeometryError(
+            "query RoPE scratch is too small for native-KV-head pre-RoPE Key"
+        )
+    preserved = (
+        query_rope_scratch.view(-1)
+        .narrow(0, 0, required)
+        .view(tuple(key_states.shape))
+    )
+    preserved.copy_(key_states)
+    return preserved
+
+
 class BF16DecodeEndpoint:
     """Embedding-through-LM-head endpoint with static cache and prepared RoPE."""
 
@@ -63,6 +96,7 @@ class BF16DecodeEndpoint:
         self.model = model
         self.cache = cache
         self.method = method
+        self.method_requires_pre_rope_key = method_requires_pre_rope_key(method)
         config = model.config
         self.num_layers = int(config.num_hidden_layers)
         self.num_query_heads = int(config.num_attention_heads)
@@ -139,26 +173,60 @@ class BF16DecodeEndpoint:
             query_scratch = self.query_rope_scratch[attention.layer_idx]
             key_scratch = self.key_rope_scratch[attention.layer_idx]
         else:
-            query_scratch = torch.empty_like(query[..., : self.head_dim // 2])
+            query_scratch = torch.empty(
+                tuple(query[..., : self.head_dim // 2].shape),
+                dtype=query.dtype,
+                device=query.device,
+            )
             key_scratch = torch.empty_like(key[..., : self.head_dim // 2])
         rotate_half_in_place(query, cos, sin, query_scratch)
+        key_pre_rope = None
+        if self.method_requires_pre_rope_key:
+            if int(key.shape[1]) != self.num_kv_heads:
+                raise EndpointGeometryError(
+                    "pre-RoPE Key does not use native KV-head geometry"
+                )
+            key_pre_rope = preserve_pre_rope_key_in_query_scratch(
+                query_scratch,
+                key,
+            )
         rotate_half_in_place(key, cos, sin, key_scratch)
         if measured_decode:
-            cached_key, cached_value = self.method.append_decode(
-                self.cache,
-                key,
-                value,
-                int(attention.layer_idx),
-                cache_position,
-            )
+            if self.method_requires_pre_rope_key:
+                cached_key, cached_value = self.method.append_decode(
+                    self.cache,
+                    key,
+                    value,
+                    int(attention.layer_idx),
+                    cache_position,
+                    key_pre_rope_states=key_pre_rope,
+                )
+            else:
+                cached_key, cached_value = self.method.append_decode(
+                    self.cache,
+                    key,
+                    value,
+                    int(attention.layer_idx),
+                    cache_position,
+                )
         else:
-            cached_key, cached_value = self.method.store_prefill(
-                self.cache,
-                key,
-                value,
-                int(attention.layer_idx),
-                cache_position,
-            )
+            if self.method_requires_pre_rope_key:
+                cached_key, cached_value = self.method.store_prefill(
+                    self.cache,
+                    key,
+                    value,
+                    int(attention.layer_idx),
+                    cache_position,
+                    key_pre_rope_states=key_pre_rope,
+                )
+            else:
+                cached_key, cached_value = self.method.store_prefill(
+                    self.cache,
+                    key,
+                    value,
+                    int(attention.layer_idx),
+                    cache_position,
+                )
         output = self.method.decode_attention(
             attention,
             query,

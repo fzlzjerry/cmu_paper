@@ -8,6 +8,20 @@ from typing import Any, Mapping, Protocol, runtime_checkable
 from kvbench.schema.base import require_sha256
 
 
+def method_requires_pre_rope_key(method: Any) -> bool:
+    """Return one adapter's static pre-RoPE Key capability.
+
+    The capability is deliberately optional so existing adapters keep their
+    original boundary unchanged.  An adapter that needs the additional Key
+    representation must declare ``requires_pre_rope_key = True`` on its class.
+    """
+
+    capability = getattr(type(method), "requires_pre_rope_key", False)
+    if type(capability) is not bool:
+        raise TypeError("requires_pre_rope_key must be a class-level bool")
+    return capability
+
+
 @dataclass(frozen=True, slots=True)
 class MethodRuntimeContext:
     """Identity and frozen geometry needed by a cache-method adapter."""
@@ -63,8 +77,15 @@ class KVCacheMethod(Protocol):
         value_states: Any,
         layer_idx: int,
         cache_position: Any,
+        *,
+        key_pre_rope_states: Any | None = None,
     ) -> tuple[Any, Any]:
-        """Store prefill K/V and return the attended cache views."""
+        """Store prefill K/V and return the attended cache views.
+
+        ``key_states`` remains the attention-ready, post-RoPE Key.  The
+        optional pre-RoPE Key is provided only to adapters that statically
+        declare ``requires_pre_rope_key = True``.
+        """
 
     def append_decode(
         self,
@@ -73,8 +94,14 @@ class KVCacheMethod(Protocol):
         value_states: Any,
         layer_idx: int,
         cache_position: Any,
+        *,
+        key_pre_rope_states: Any | None = None,
     ) -> tuple[Any, Any]:
-        """Append one decode K/V slot and return attended cache views."""
+        """Append one decode K/V slot and return attended cache views.
+
+        ``key_states`` remains the attention-ready, post-RoPE Key.  The
+        optional pre-RoPE Key follows the same capability rule as prefill.
+        """
 
     def decode_attention(
         self,
