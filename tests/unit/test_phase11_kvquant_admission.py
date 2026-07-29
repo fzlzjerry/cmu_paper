@@ -23,6 +23,7 @@ from kvbench.schema.phase11 import (
     PHASE11_ACCOUNTING_CONTEXTS,
     PHASE11_ADMISSION_CHECK_IDS,
     PHASE11_AGGREGATE_PATCH_SHA256,
+    PHASE11_ALLOCATION_AUDIT_CONTEXTS,
     PHASE11_AUTHORIZED_CONTAINER_DIGEST,
     PHASE11_BOUNDED_POINT_SIGNATURES,
     PHASE11_CALIBRATION_ID,
@@ -202,7 +203,7 @@ def _path_evidence(configuration: str) -> Phase11ExecutionPathEvidence:
 def _allocation_evidence(configuration: str) -> Phase11AllocationEvidence:
     return Phase11AllocationEvidence(
         configuration=configuration,
-        audited_contexts=PHASE11_ACCOUNTING_CONTEXTS,
+        audited_contexts=PHASE11_ALLOCATION_AUDIT_CONTEXTS[configuration],
         cache_growth_bytes=0,
         dynamic_sparse_allocation_bytes=0,
         unknown_allocation_bytes=0,

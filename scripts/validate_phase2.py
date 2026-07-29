@@ -755,13 +755,19 @@ PHASE11PR_ALLOWED_PATHS = frozenset(
 PHASE11_ALLOWED_PATHS = frozenset(
     {
         "Makefile",
-        "configs/methods/kvquant.yaml",
-        "docs/blockers.md",
         "docs/decisions/0026-kvquant-pre-rope-adapter-boundary.md",
         "docs/evidence/phase11/kvquant-method-admission.json",
         "docs/evidence/phase11/kvquant-method-admission.sha256",
+        "docs/evidence/phase11/r2-admission-outer-publish.stderr.txt",
+        "docs/evidence/phase11/r2-admission-outer-publish.stdout.json",
         "docs/evidence/phase11/r2-admission-outer-publication.json",
+        "docs/evidence/phase11/r2-admission-outer-verify.stderr.txt",
+        "docs/evidence/phase11/r2-admission-outer-verify.stdout.json",
+        "docs/evidence/phase11/r2-admission-publish.stderr.txt",
+        "docs/evidence/phase11/r2-admission-publish.stdout.json",
         "docs/evidence/phase11/r2-admission-publication.json",
+        "docs/evidence/phase11/r2-admission-verify.stderr.txt",
+        "docs/evidence/phase11/r2-admission-verify.stdout.json",
         "docs/method_notes/kvquant.md",
         "docs/phase_reports/phase11-kvquant-measurement-adapter.md",
         "docs/plans/phase11-kvquant-measurement-adapter.md",
@@ -776,9 +782,8 @@ PHASE11_ALLOWED_PATHS = frozenset(
         "src/kvbench/adapters/factory.py",
         "src/kvbench/adapters/kvquant.py",
         "src/kvbench/runtime/artifacts.py",
+        "src/kvbench/runtime/allocation_attribution.py",
         "src/kvbench/runtime/bf16_endpoint.py",
-        "src/kvbench/runtime/kvquant_admission.py",
-        "src/kvbench/runtime/kvquant_allocation.py",
         "src/kvbench/runtime/kvquant_cache.py",
         "src/kvbench/runtime/kvquant_fixture.py",
         "src/kvbench/runtime/kvquant_session.py",
@@ -787,16 +792,22 @@ PHASE11_ALLOWED_PATHS = frozenset(
         "tests/cuda/phase11_kvquant_sanitizer_probe.py",
         "tests/cuda/test_phase11_kvquant_cuda.py",
         "tests/graph/test_phase11_kvquant_graph.py",
-        "tests/unit/test_phase11_artifacts.py",
-        "tests/unit/test_phase11_governance.py",
         "tests/unit/test_phase11_kvquant_adapter.py",
         "tests/unit/test_phase11_kvquant_admission.py",
         "tests/unit/test_phase11_kvquant_admission_driver.py",
         "tests/unit/test_phase11_kvquant_cache.py",
+        "tests/unit/test_phase11_kvquant_factory.py",
         "tests/unit/test_phase11_kvquant_fixture.py",
+        "tests/unit/test_phase11_kvquant_session.py",
         "tests/unit/test_phase11_make_targets.py",
         "tests/unit/test_phase11_r2_outer_bundle.py",
         "tests/unit/test_phase11_scope.py",
+        "tests/unit/test_phase6_governance.py",
+        "tests/unit/test_phase9_governance.py",
+        "tests/unit/test_phase9p_governance.py",
+        "tests/unit/test_phase9p_patch_custody.py",
+        "tests/unit/test_phase10_kvquant_reference.py",
+        "tests/unit/test_phase11pr_scope.py",
     }
 )
 
@@ -2209,6 +2220,10 @@ PHASE8_APPROVED_ARTIFACT_ROOT_NAMES = frozenset(
     {"phase8", "phase8_r2_outer"}
 )
 
+PHASE11_APPROVED_ARTIFACT_ROOT_NAMES = frozenset(
+    {"phase11", "phase11_r2_outer"}
+)
+
 
 def validate_phase3_artifact_root() -> list[str]:
     errors: list[str] = []
@@ -2238,6 +2253,7 @@ def validate_phase3_artifact_root() -> list[str]:
                 APPROVED_ARTIFACT_ROOT_NAMES
                 | PHASE7_APPROVED_ARTIFACT_ROOT_NAMES
                 | PHASE8_APPROVED_ARTIFACT_ROOT_NAMES
+                | PHASE11_APPROVED_ARTIFACT_ROOT_NAMES
             )
         )
         if unexpected:

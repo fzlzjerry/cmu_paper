@@ -19,6 +19,7 @@ from scripts.validate_phase2 import (
 
 
 ROOT = Path(__file__).resolve().parents[2]
+PHASE9P_PASS_COMMIT = "1b3a98160ba4760007ca861c1a280def698b2027"
 PATCH_MANIFEST_PATH = ROOT / "docs/evidence/phase9p/patch-manifest.json"
 TEST_REPORT_PATH = ROOT / "docs/evidence/phase9p/test-report.json"
 
@@ -127,7 +128,21 @@ class Phase9PGovernanceTests(unittest.TestCase):
         }
         for relative, expected in expected_hashes.items():
             with self.subTest(relative=relative):
-                self.assertEqual(_sha256(ROOT / relative), expected)
+                if relative == "src/kvbench/adapters/factory.py":
+                    payload = subprocess.check_output(
+                        [
+                            "git",
+                            "show",
+                            f"{PHASE9P_PASS_COMMIT}:{relative}",
+                        ],
+                        cwd=ROOT,
+                    )
+                    self.assertEqual(
+                        hashlib.sha256(payload).hexdigest(),
+                        expected,
+                    )
+                else:
+                    self.assertEqual(_sha256(ROOT / relative), expected)
 
         expected_trees = {
             "docs/evidence/e00": "d1d38baddc5de52ca623f16c04327fcb2829369e",
@@ -162,8 +177,9 @@ class Phase9PGovernanceTests(unittest.TestCase):
     def test_kvquant_factory_remains_fail_closed_after_reference_lane(
         self,
     ) -> None:
-        factory = (ROOT / "src/kvbench/adapters/factory.py").read_text(
-            encoding="utf-8"
+        factory = _git(
+            "show",
+            f"{PHASE9P_PASS_COMMIT}:src/kvbench/adapters/factory.py",
         )
         self.assertIn('_DEFERRED_METHODS = frozenset({"kvquant"})', factory)
         self.assertFalse((ROOT / "PERFORMANCE_DATA_FROZEN").exists())
@@ -171,8 +187,23 @@ class Phase9PGovernanceTests(unittest.TestCase):
         self.assertTrue(
             (ROOT / "reference/kvquant/fixtures/COMPLETE").is_file()
         )
-        self.assertFalse((ROOT / "src/kvbench/adapters/kvquant.py").exists())
-        self.assertFalse((ROOT / "src/kvbench/runtime/kvquant.py").exists())
+        for relative in (
+            "src/kvbench/adapters/kvquant.py",
+            "src/kvbench/runtime/kvquant.py",
+        ):
+            result = subprocess.run(
+                [
+                    "git",
+                    "cat-file",
+                    "-e",
+                    f"{PHASE9P_PASS_COMMIT}:{relative}",
+                ],
+                cwd=ROOT,
+                check=False,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            self.assertNotEqual(result.returncode, 0)
 
     def test_phase9p_evidence_is_compact_checksum_bound_and_non_claiming(self) -> None:
         manifest = _load_json(PATCH_MANIFEST_PATH)

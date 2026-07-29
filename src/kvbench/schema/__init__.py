@@ -99,8 +99,10 @@ from kvbench.schema.phase11 import (
     Phase11GraphEvidence,
     Phase11MethodAdmissionReport,
     Phase11MethodConfiguration,
+    Phase11RunManifest,
     Phase11RunPoint,
     Phase11SanitizerEvidence,
+    parse_phase11_run_manifest,
     require_exact_phase11_grid,
 )
 
@@ -266,6 +268,7 @@ __all__ = [
     "Phase11GraphEvidence",
     "Phase11MethodAdmissionReport",
     "Phase11MethodConfiguration",
+    "Phase11RunManifest",
     "Phase11RunPoint",
     "Phase11SanitizerEvidence",
     "AUTHORIZED_CONTAINER_DIGEST",
@@ -286,6 +289,7 @@ __all__ = [
     "parse_run_manifest",
     "parse_phase6_run_manifest",
     "parse_phase9_calibration_manifest",
+    "parse_phase11_run_manifest",
     "require_exact_phase11_grid",
     "sha256_hex",
 ]

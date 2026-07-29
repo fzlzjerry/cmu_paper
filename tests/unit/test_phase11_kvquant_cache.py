@@ -6,6 +6,8 @@ import gc
 from pathlib import Path
 import unittest
 
+import torch
+
 from kvbench.runtime.kvquant_cache import (
     KVQUANT_CONFIG_BITS,
     KVQUANT_HEAD_DIM,
@@ -95,6 +97,14 @@ class KVQuantStaticCacheTests(unittest.TestCase):
                     (1, 8, 1, 128),
                 )
                 self.assertEqual(cache.key_float_staging.shape, (1, 1024))
+                self.assertEqual(
+                    cache.value_store_lower_bounds.shape,
+                    (18,),
+                )
+                self.assertEqual(
+                    cache.value_store_upper_bounds.shape,
+                    (18,),
+                )
                 self.assertEqual(cache.key_selector_lower.shape, (1024,))
                 self.assertEqual(cache.key_selector_upper.shape, (1024,))
                 self.assertEqual(float(cache.key_selector_lower[0]), -1.0)
@@ -247,6 +257,11 @@ class KVQuantStaticCacheTests(unittest.TestCase):
         cache.finish_prefill(17, key_active_entries=32 * 12 * 6)
         self.assertEqual(cache.active_context, 17)
 
+        fixed_position = torch.tensor([17], dtype=torch.int64)
+        cache.bind_fixed_position_tensor_untimed(
+            fixed_position,
+            logical_position=17,
+        )
         cache.begin_fixed(17)
         self.assertEqual(cache.fixed_slot(0), 12)
         cache.packed_key_cache[0, 0, 0, 12].fill_(7)
@@ -265,10 +280,22 @@ class KVQuantStaticCacheTests(unittest.TestCase):
             cache.fixed_slot(32)
 
         cache.reset_active_length(17, key_active_entries=32 * 12 * 6)
+        growing_positions = tuple(
+            torch.tensor([position], dtype=torch.int64)
+            for position in range(17, 21)
+        )
+        cache.bind_growing_position_tensors_untimed(
+            growing_positions,
+            starting_position=17,
+        )
         cache.begin_growing(17, 4)
         for step in range(4):
             cache.select_growing_step(step)
             self.assertEqual(cache.growing_slot(31), 12 + step)
+            cache.validate_decode_position_binding(
+                growing_positions[step],
+                payload_slot=12 + step,
+            )
             cache.growing_scratch_overwrite(layer_idx=31)
             cache.commit_growing(key_active_entries_added=32 * 6)
             self.assertEqual(cache.active_context, 18 + step)
@@ -276,6 +303,74 @@ class KVQuantStaticCacheTests(unittest.TestCase):
         self.assertEqual(cache.mode, "ready")
         with self.assertRaisesRegex(CacheBoundsError, "trajectory"):
             cache.begin_growing(21, 2)
+
+    def test_decode_position_binding_rejects_identity_and_slot_drift(self) -> None:
+        cache = _cache(capacity=22)
+        cache.begin_prefill()
+        cache.finish_prefill(17, key_active_entries=0)
+        fixed_position = torch.tensor([17], dtype=torch.int64)
+        cache.bind_fixed_position_tensor_untimed(
+            fixed_position,
+            logical_position=17,
+        )
+        cache.begin_fixed(17)
+        cache.validate_decode_position_binding(
+            fixed_position,
+            payload_slot=12,
+        )
+        with self.assertRaisesRegex(CacheStateError, "physical slot"):
+            cache.validate_decode_position_binding(
+                torch.tensor([17], dtype=torch.int64),
+                payload_slot=12,
+            )
+        with self.assertRaisesRegex(CacheStateError, "physical slot"):
+            cache.validate_decode_position_binding(
+                fixed_position,
+                payload_slot=13,
+            )
+
+        unbound = _cache(capacity=22)
+        unbound.begin_prefill()
+        unbound.finish_prefill(17, key_active_entries=0)
+        with self.assertRaisesRegex(CacheStateError, "not bound"):
+            unbound.begin_fixed(17)
+
+        growing = _cache(capacity=22)
+        growing.begin_prefill()
+        growing.finish_prefill(17, key_active_entries=0)
+        positions = tuple(
+            torch.tensor([position], dtype=torch.int64)
+            for position in range(17, 21)
+        )
+        growing.bind_growing_position_tensors_untimed(
+            positions,
+            starting_position=17,
+        )
+        growing.begin_growing(17, 4)
+        growing.select_growing_step(0)
+        growing.validate_decode_position_binding(
+            positions[0],
+            payload_slot=12,
+        )
+        growing.commit_growing(key_active_entries_added=0)
+        growing.select_growing_step(1)
+        growing.validate_decode_position_binding(
+            positions[1],
+            payload_slot=13,
+        )
+        with self.assertRaisesRegex(CacheStateError, "physical slot"):
+            growing.validate_decode_position_binding(
+                positions[0],
+                payload_slot=13,
+            )
+        with self.assertRaisesRegex(CacheStateError, "binding changed"):
+            growing.bind_growing_position_tensors_untimed(
+                tuple(
+                    torch.tensor([position], dtype=torch.int64)
+                    for position in range(17, 21)
+                ),
+                starting_position=17,
+            )
 
     def test_layout_and_pointer_identity_are_stable(self) -> None:
         cache = _cache()
@@ -296,6 +391,9 @@ class KVQuantStaticCacheTests(unittest.TestCase):
             "repeat_interleave(",
             ".item(",
             ".tolist(",
+            ".cpu(",
+            ".numpy(",
+            "synchronize(",
         ):
             with self.subTest(forbidden=forbidden):
                 self.assertNotIn(forbidden, source)

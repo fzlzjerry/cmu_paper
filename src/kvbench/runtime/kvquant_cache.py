@@ -404,6 +404,15 @@ class KVQuantStaticCache:
         self.value_upper_bound_staging = torch.empty_like(
             self.value_scale_staging
         )
+        # Store-time bounds remain caller-owned so the exact upstream
+        # parallel Value pack can consume the full prefix without allocating
+        # threshold outputs.  Only the declared prefix slice is live.
+        self.value_store_lower_bounds = torch.zeros(
+            (self.capacity,), dtype=torch.float32, device=self.device
+        )
+        self.value_store_upper_bounds = torch.zeros_like(
+            self.value_store_lower_bounds
+        )
         self.fixed_negative_one = torch.full(
             (1,), -1.0, dtype=torch.float32, device=self.device
         )
@@ -461,6 +470,9 @@ class KVQuantStaticCache:
         self._prefix_length = 0
         self._output_steps = 0
         self._growing_step = -1
+        self._fixed_position_binding: tuple[int, int] | None = None
+        self._growing_position_bindings: tuple[tuple[int, int], ...] = ()
+        self._expected_decode_position_binding: tuple[int, int] | None = None
         self._known_key_active_entries: int | None = 0
 
     @property
@@ -520,6 +532,90 @@ class KVQuantStaticCache:
                 "quantized position is outside the non-sink cache capacity"
             )
         return position - self.sink_tokens
+
+    def _position_tensor_pointer(self, cache_position: Any) -> int:
+        torch = _torch()
+        if (
+            tuple(int(item) for item in cache_position.shape) != (1,)
+            or cache_position.dtype != torch.int64
+            or cache_position.device != self.device
+            or not cache_position.is_contiguous()
+        ):
+            raise CacheStateError(
+                "cache position tensor differs from frozen scalar layout"
+            )
+        pointer = cache_position.data_ptr()
+        if type(pointer) is not int or pointer <= 0:
+            raise CacheStateError("cache position tensor has no stable pointer")
+        return pointer
+
+    def bind_fixed_position_tensor_untimed(
+        self,
+        cache_position: Any,
+        *,
+        logical_position: int,
+    ) -> None:
+        """Bind one precreated fixed-L position tensor before measured use."""
+
+        self._payload_slot(logical_position)
+        binding = (
+            self._position_tensor_pointer(cache_position),
+            logical_position,
+        )
+        if (
+            self._fixed_position_binding is not None
+            and self._fixed_position_binding != binding
+        ):
+            raise CacheStateError("fixed cache position binding changed")
+        self._fixed_position_binding = binding
+
+    def bind_growing_position_tensors_untimed(
+        self,
+        cache_positions: tuple[Any, ...],
+        *,
+        starting_position: int,
+    ) -> None:
+        """Bind the complete precreated growing trajectory before measurement."""
+
+        if not cache_positions:
+            raise CacheStateError("growing cache position binding is empty")
+        bindings = tuple(
+            (
+                self._position_tensor_pointer(cache_position),
+                starting_position + step,
+            )
+            for step, cache_position in enumerate(cache_positions)
+        )
+        for _, logical_position in bindings:
+            self._payload_slot(logical_position)
+        if len({pointer for pointer, _ in bindings}) != len(bindings):
+            raise CacheStateError("growing cache position pointers overlap")
+        if (
+            self._growing_position_bindings
+            and self._growing_position_bindings != bindings
+        ):
+            raise CacheStateError("growing cache position binding changed")
+        self._growing_position_bindings = bindings
+
+    def validate_decode_position_binding(
+        self,
+        cache_position: Any,
+        *,
+        payload_slot: int,
+    ) -> None:
+        """Fail closed on pointer/slot drift without reading a CUDA scalar."""
+
+        binding = self._expected_decode_position_binding
+        if binding is None:
+            raise CacheStateError("decode cache position is not statically bound")
+        pointer, logical_position = binding
+        if (
+            self._position_tensor_pointer(cache_position) != pointer
+            or self._payload_slot(logical_position) != payload_slot
+        ):
+            raise CacheStateError(
+                "decode cache position differs from the physical slot"
+            )
 
     def payload_slot_for_position(self, position: int) -> int:
         """Map one absolute non-sink position to the source cache column."""
@@ -594,6 +690,8 @@ class KVQuantStaticCache:
             ("value_zero_point_staging", self.value_zero_point_staging),
             ("value_lower_bound_staging", self.value_lower_bound_staging),
             ("value_upper_bound_staging", self.value_upper_bound_staging),
+            ("value_store_lower_bounds", self.value_store_lower_bounds),
+            ("value_store_upper_bounds", self.value_store_upper_bounds),
             ("fixed_negative_one", self.fixed_negative_one),
             ("fixed_positive_one", self.fixed_positive_one),
             ("fixed_zero", self.fixed_zero),
@@ -667,6 +765,8 @@ class KVQuantStaticCache:
                 self.value_zero_point_staging,
                 self.value_lower_bound_staging,
                 self.value_upper_bound_staging,
+                self.value_store_lower_bounds,
+                self.value_store_upper_bounds,
                 self.fixed_negative_one,
                 self.fixed_positive_one,
                 self.fixed_zero,
@@ -755,6 +855,7 @@ class KVQuantStaticCache:
             + 2 * kv_elements * 4
             + levels * 4
             + 5 * 4
+            + 2 * capacity * 4
             + 3 * 4
             + 8
         )
@@ -942,6 +1043,9 @@ class KVQuantStaticCache:
             "sparse_shape": tuple(self.key_sparse_values.shape),
             "sink_key_shape": tuple(self.sink_key.shape),
             "sink_value_shape": tuple(self.sink_value.shape),
+            "value_store_bounds_shape": tuple(
+                self.value_store_lower_bounds.shape
+            ),
             "decode_logits_bf16_shape": tuple(self.decode_logits_bf16.shape),
             "sink_logits_fp16_shape": tuple(self.sink_logits_fp16.shape),
             "sink_output_fp16_shape": tuple(self.sink_output_fp16.shape),
@@ -981,6 +1085,9 @@ class KVQuantStaticCache:
             "dense_v": tuple(self.packed_value_cache.shape),
             "key_metadata": tuple(self.key_lookup_table.shape),
             "value_metadata": tuple(self.value_lookup_cache.shape),
+            "value_store_bounds": tuple(
+                self.value_store_lower_bounds.shape
+            ),
             "key_sparse_values": tuple(self.key_sparse_values.shape),
             "key_sparse_indices": tuple(self.key_sparse_indices.shape),
             "value_sparse_values": tuple(self.value_sparse_values.shape),
@@ -1018,6 +1125,7 @@ class KVQuantStaticCache:
             raise CacheStateError("prefill cannot begin in the current mode")
         self._mode = "prefill"
         self._declared_prefill_length = 0
+        self._expected_decode_position_binding = None
         self._known_key_active_entries = None
 
     def finish_prefill(
@@ -1058,7 +1166,15 @@ class KVQuantStaticCache:
             raise CacheStateError(
                 "fixed-L prefix length does not match active state"
             )
+        if (
+            self._fixed_position_binding is None
+            or self._fixed_position_binding[1] != length
+        ):
+            raise CacheStateError(
+                "fixed-L cache position is not bound to the prefix"
+            )
         self._prefix_length = length
+        self._expected_decode_position_binding = self._fixed_position_binding
         self._mode = "fixed"
 
     def prepare_fixed(self, prefix_length: int) -> None:
@@ -1086,9 +1202,22 @@ class KVQuantStaticCache:
             raise CacheStateError(
                 "growing prefix length does not match active state"
             )
+        if (
+            len(self._growing_position_bindings) != steps
+            or any(
+                logical_position != length + step
+                for step, (_, logical_position) in enumerate(
+                    self._growing_position_bindings
+                )
+            )
+        ):
+            raise CacheStateError(
+                "growing cache positions are not bound to the trajectory"
+            )
         self._prefix_length = length
         self._output_steps = steps
         self._growing_step = -1
+        self._expected_decode_position_binding = None
         self._mode = "growing_ready"
 
     def prepare_growing(self, prefix_length: int, output_steps: int) -> None:
@@ -1104,6 +1233,9 @@ class KVQuantStaticCache:
         if self._active_context != self._prefix_length + step:
             raise CacheStateError("growing active context does not match selected step")
         self._growing_step = step
+        self._expected_decode_position_binding = (
+            self._growing_position_bindings[step]
+        )
         self._mode = "growing_step"
 
     def growing_slot(self, layer_idx: int) -> int:
@@ -1140,6 +1272,7 @@ class KVQuantStaticCache:
             self._known_key_active_entries += added
         elif key_active_entries_added is None:
             self._known_key_active_entries = None
+        self._expected_decode_position_binding = None
         self._mode = "growing_ready"
 
     def finish_growing_step(self) -> None:
@@ -1154,6 +1287,7 @@ class KVQuantStaticCache:
         self._prefix_length = 0
         self._output_steps = 0
         self._growing_step = -1
+        self._expected_decode_position_binding = None
 
     def reset_active_length(
         self,
@@ -1168,6 +1302,7 @@ class KVQuantStaticCache:
         self._prefix_length = 0
         self._output_steps = 0
         self._growing_step = -1
+        self._expected_decode_position_binding = None
         if key_active_entries is None:
             self._known_key_active_entries = (
                 0 if checked <= self.sink_tokens else None

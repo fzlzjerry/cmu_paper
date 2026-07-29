@@ -33,15 +33,6 @@ from kvbench.runtime.kvquant_cache import (
     KVQUANT_VALUE_CAP,
     KVQuantStaticCache,
 )
-from kvbench.runtime.kvquant_fixture import (
-    KVQUANT_CALIBRATION_ID,
-    KVQUANT_CALIBRATION_ROOT_SHA256,
-    KVQUANT_EXECUTION_SOURCE_IDENTIFIER,
-    KVQUANT_FIXTURE_ID,
-    KVQUANT_FIXTURE_ROOT_SHA256,
-    KVQUANT_HISTORICAL_FIXTURE_ID,
-    KVQUANT_HISTORICAL_ROOT_SHA256,
-)
 from kvbench.runtime.static_cache import CacheStateError
 from kvbench.schema import canonical_json_bytes, sha256_hex
 from kvbench.schema.base import require_sha256
@@ -52,6 +43,7 @@ KVQUANT_ADAPTER_FINGERPRINT_SCHEMA_VERSION = (
     "kvbench-kvquant-method-adapter-config-1.0.0"
 )
 KVQUANT_METHOD_IDENTIFIER = "kvquant_gqa_upstream_patch_v1"
+KVQUANT_EXECUTION_SOURCE_IDENTIFIER = "kvquant_gqa_graphsafe_kvq3_v2"
 KVQUANT_UPSTREAM_BASE_COMMIT = "57a238357f0ffe50084670fcd5781c9848f80ea2"
 KVQUANT_UPSTREAM_BASE_TREE = "094e0f736f77ee327e5350cbd1eefb1c936aa77b"
 KVQUANT_DECISION_0021_PATCH_SHA256 = (
@@ -70,6 +62,18 @@ KVQUANT_EXTENSION_SHA256 = (
 )
 KVQUANT_AUTHORIZED_CONTAINER_DIGEST = (
     "sha256:059bc9be89387369d7de9e3e9b26d85b6e9902c41e7dbf002ebc45edd188fb7e"
+)
+KVQUANT_CALIBRATION_ID = "kvqcal-cdb724c806d64d095c040d2673a987a3"
+KVQUANT_CALIBRATION_ROOT_SHA256 = (
+    "8148306d08205af376994b022f189a0d6837915cd279ca8af6b104e1f4b46ccf"
+)
+KVQUANT_HISTORICAL_FIXTURE_ID = "kvqref-a50af6511c314b6394e58a7f81ceefb8"
+KVQUANT_HISTORICAL_ROOT_SHA256 = (
+    "32cdf465a361dd6695b66ccbea0a462bddc075fd9778d0aa8cdaa3f94e6f63ab"
+)
+KVQUANT_FIXTURE_ID = "kvqref-2e0a0e9022c50cbc6fb497d88cae973e"
+KVQUANT_FIXTURE_ROOT_SHA256 = (
+    "c28682d58706b58812dc1db69ba5eb4982339ba13f39bf67f751794cdaabfdec"
 )
 KVQUANT_QUANTIZER_SHA256 = {
     "kvq4": "a8c009633ac4cad952deb2a2fa96c44ef928a1510dadcf11dee29a7a3efe1bf6",
@@ -158,6 +162,7 @@ def _required_extension_symbols() -> tuple[str, ...]:
         per_bit.extend(
             (
                 f"vecquant{bits}appendvecKsparse",
+                f"vecquant{bits}appendvecVsparseParallel",
                 (
                     f"vecquant{bits}matmul_nuq_perchannel_transposed_"
                     "rope_mha_batched_fused_opt2"
@@ -501,6 +506,8 @@ class KVQuantMethodAdapter:
             cache.value_active_counts,
             cache.sink_key,
             cache.sink_value,
+            cache.value_store_lower_bounds,
+            cache.value_store_upper_bounds,
         ):
             tensor.zero_()
         cache.reset_active_length()
@@ -640,6 +647,12 @@ class KVQuantMethodAdapter:
         )
         cache.value_lower_bound_staging.copy_(cache.selector_dense_lower)
         cache.value_upper_bound_staging.copy_(cache.selector_dense_upper)
+        cache.value_store_lower_bounds[
+            payload_slot : payload_slot + 1
+        ].copy_(cache.value_lower_bound_staging)
+        cache.value_store_upper_bounds[
+            payload_slot : payload_slot + 1
+        ].copy_(cache.value_upper_bound_staging)
         cache.value_scale_staging.copy_(
             cache.value_upper_bound_staging
         ).sub_(cache.value_lower_bound_staging).mul_(0.5)
@@ -721,6 +734,33 @@ class KVQuantMethodAdapter:
                 ],
                 value=value_states[:, :, position : position + 1, :],
             )
+        quantized_tokens = tokens - sink
+        if quantized_tokens:
+            # Phase 11P-R corrected the exact upstream parallel Value-store
+            # kernel.  The caller-owned append API above freezes metadata and
+            # sparse state per row; this final store-only pass overwrites the
+            # dense prefix through that corrected source path.  The temporary
+            # FP32 layout conversion occurs only during untimed prefill, never
+            # in measured append/decode or graph replay.
+            value_parallel = (
+                value_states[0, :, sink:tokens, :]
+                .transpose(1, 2)
+                .float()
+                .contiguous()
+            )
+            cache.packed_value_cache[
+                layer_idx, :, :, :quantized_tokens
+            ].zero_()
+            getattr(
+                self._runtime(),
+                f"vecquant{self.bits}appendvecVsparseParallel",
+            )(
+                cache.packed_value_cache[layer_idx],
+                cache.value_lookup_cache[layer_idx],
+                value_parallel,
+                cache.value_store_lower_bounds[:quantized_tokens],
+                cache.value_store_upper_bounds[:quantized_tokens],
+            )
         handle = self._handle(cache, layer_idx)
         handle.prefill = True
         handle.prefill_key_states = key_states
@@ -753,9 +793,17 @@ class KVQuantMethodAdapter:
         if tokens != 1 or key_pre_rope_states is None:
             raise CacheStateError("KVQuant append requires exactly one token")
         if cache.mode == "fixed":
-            payload_slot = cache.fixed_scratch_overwrite(layer_idx=layer_idx)
+            payload_slot = cache.fixed_slot(layer_idx)
         else:
-            payload_slot = cache.growing_scratch_overwrite(layer_idx=layer_idx)
+            payload_slot = cache.growing_slot(layer_idx)
+        cache.validate_decode_position_binding(
+            cache_position,
+            payload_slot=payload_slot,
+        )
+        cache.zero_payload_slot(
+            layer_idx=layer_idx,
+            payload_slot=payload_slot,
+        )
         self._pack_nonsink_token(
             cache,
             layer_idx=layer_idx,
@@ -843,10 +891,15 @@ class KVQuantMethodAdapter:
                 :, query_head, cache.sink_tokens : total
             ].copy_(key_output[:, query_head, :])
         cache.decode_logits_bf16.mul_(scaling)
+        # Passing a BF16 input together with ``dtype=float32`` makes PyTorch
+        # allocate a full logits-sized conversion temporary even when ``out``
+        # is caller-owned.  Preserve the same BF16-rounded input semantics by
+        # copying into the preallocated FP32 softmax workspace first, then run
+        # the FP32 softmax in place.
+        cache.decode_softmax.copy_(cache.decode_logits_bf16)
         torch.softmax(
-            cache.decode_logits_bf16,
+            cache.decode_softmax,
             dim=-1,
-            dtype=torch.float32,
             out=cache.decode_softmax,
         )
         cache.decode_logits_bf16.copy_(cache.decode_softmax)

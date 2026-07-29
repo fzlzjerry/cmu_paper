@@ -34,6 +34,7 @@ from kvbench.runtime.kvquant_fixture import (
     load_fixture_tensor_file_untimed,
     load_kvquant_fixture,
 )
+from kvbench.runtime.static_cache import CacheStateError
 
 
 class _Projection:
@@ -284,9 +285,13 @@ class Phase11KVQuantMethodTests(unittest.TestCase):
             ),
         )
         symbols = set(_required_extension_symbols())
-        self.assertEqual(len(symbols), 12)
+        self.assertEqual(len(symbols), 15)
         for bits in (4, 3, 2):
             self.assertIn(f"vecquant{bits}appendvecKsparse", symbols)
+            self.assertIn(
+                f"vecquant{bits}appendvecVsparseParallel",
+                symbols,
+            )
 
     def test_all_three_static_configurations_and_fail_closed_geometry(
         self,
@@ -312,6 +317,35 @@ class Phase11KVQuantMethodTests(unittest.TestCase):
                 )
         with self.assertRaisesRegex(ValueError, "unsupported"):
             KVQuantMethodAdapter(context, "kvq5")
+
+    def test_append_rejects_unbound_position_identity_before_cuda_path(
+        self,
+    ) -> None:
+        method = KVQuantMethodAdapter(_runtime_context(), "kvq4")
+        cache = method.allocate(
+            batch_size=1,
+            capacity=18,
+            device="cpu",
+        )
+        method.initialize_cache_untimed(cache)
+        cache.reset_active_length(17, key_active_entries=0)
+        bound_position = torch.tensor([17], dtype=torch.int64)
+        cache.bind_fixed_position_tensor_untimed(
+            bound_position,
+            logical_position=17,
+        )
+        cache.prepare_fixed(17)
+        key = torch.zeros((1, 8, 1, 128), dtype=torch.bfloat16)
+        value = torch.zeros_like(key)
+        with self.assertRaisesRegex(CacheStateError, "physical slot"):
+            method.append_decode(
+                cache,
+                key,
+                value,
+                0,
+                torch.tensor([17], dtype=torch.int64),
+                key_pre_rope_states=key,
+            )
 
     def test_frozen_layer_zero_metadata_matches_corrected_oracle(self) -> None:
         context = _runtime_context()
@@ -377,6 +411,15 @@ class Phase11KVQuantMethodTests(unittest.TestCase):
         ):
             with self.subTest(forbidden=forbidden):
                 self.assertNotIn(forbidden, sources)
+
+    def test_prefill_uses_corrected_parallel_value_store(self) -> None:
+        source = inspect.getsource(KVQuantMethodAdapter.store_prefill)
+        self.assertIn(
+            'f"vecquant{self.bits}appendvecVsparseParallel"',
+            source,
+        )
+        self.assertIn("value_store_lower_bounds", source)
+        self.assertIn("value_store_upper_bounds", source)
 
 
 if __name__ == "__main__":

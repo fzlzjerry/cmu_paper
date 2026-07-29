@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import dataclasses
+from datetime import datetime
 import math
 from typing import ClassVar, Literal
 
@@ -18,6 +19,7 @@ from kvbench.schema.base import (
     require_git_sha,
     require_identifier,
     require_oci_digest,
+    require_relative_path,
     require_run_id,
     require_schema,
     require_sha256,
@@ -64,6 +66,11 @@ PHASE11_AUTHORIZED_CONTAINER_DIGEST = (
 PHASE11_DECISIONS = ("0021", "0023", "0024", "0025")
 PHASE11_CONFIGURATIONS = ("kvq4", "kvq3", "kvq2")
 PHASE11_ACCOUNTING_CONTEXTS = (5, 17, 18, 128, 4096)
+PHASE11_ALLOCATION_AUDIT_CONTEXTS = {
+    "kvq4": (128, 4096, 17),
+    "kvq3": (128,),
+    "kvq2": (128,),
+}
 PHASE11_DECODE_ATOL = 0.01
 PHASE11_DECODE_RTOL = 0.01
 PHASE11_RECIPROCAL_TOLERANCE = 1e-9
@@ -131,6 +138,134 @@ PHASE11_ADMISSION_CHECK_IDS = (
 def _require_nonnegative_int(value: int, *, field_name: str) -> None:
     if type(value) is not int or value < 0:
         raise ValueError(f"{field_name} must be a nonnegative integer")
+
+
+def _validate_phase11_lifecycle(
+    *,
+    status: RunStatus,
+    created_at_utc: str,
+    started_at_utc: str | None,
+    finished_at_utc: str | None,
+    inventory_path: str | None,
+    failure_reason: str | None,
+) -> None:
+    require_utc_timestamp(created_at_utc, field_name="created_at_utc")
+    if status is RunStatus.CREATED:
+        if any(
+            value is not None
+            for value in (
+                started_at_utc,
+                finished_at_utc,
+                inventory_path,
+                failure_reason,
+            )
+        ):
+            raise ValueError("created Phase 11 manifest has later lifecycle fields")
+    elif status in {RunStatus.RUNNING, RunStatus.FINALIZING}:
+        if started_at_utc is None:
+            raise ValueError("nonterminal Phase 11 manifest requires started_at_utc")
+        require_utc_timestamp(started_at_utc, field_name="started_at_utc")
+        if any(
+            value is not None
+            for value in (finished_at_utc, inventory_path, failure_reason)
+        ):
+            raise ValueError(
+                "nonterminal Phase 11 manifest has terminal-only fields"
+            )
+    else:
+        if started_at_utc is None or finished_at_utc is None:
+            raise ValueError("terminal Phase 11 manifest requires timestamps")
+        require_utc_timestamp(started_at_utc, field_name="started_at_utc")
+        require_utc_timestamp(finished_at_utc, field_name="finished_at_utc")
+        if inventory_path != "artifact_inventory.json":
+            raise ValueError("terminal Phase 11 manifest has wrong inventory")
+        if status is RunStatus.COMPLETED and failure_reason is not None:
+            raise ValueError("completed Phase 11 manifest cannot carry failure")
+        if status.is_failure and not failure_reason:
+            raise ValueError("failed Phase 11 manifest requires a reason")
+    timestamps = [
+        datetime.fromisoformat(value.replace("Z", "+00:00"))
+        for value in (created_at_utc, started_at_utc, finished_at_utc)
+        if value is not None
+    ]
+    if timestamps != sorted(timestamps):
+        raise ValueError("Phase 11 lifecycle timestamps are out of order")
+
+
+@dataclasses.dataclass(frozen=True, slots=True)
+class Phase11RunManifest(StrictModel):
+    """One append-only local Phase 11 admission-evidence bundle."""
+
+    schema_version: str
+    artifact_schema_version: str
+    run_id: str
+    status: RunStatus
+    created_at_utc: str
+    started_at_utc: str | None
+    finished_at_utc: str | None
+    run_kind: Literal["phase11_admission"]
+    git_sha: str
+    git_dirty: bool
+    authority: "Phase11Authority"
+    bounded_point_count: Literal[9]
+    measurement_scope: MeasurementScope
+    quality_status: QualityValidationState
+    claim_eligibility: ClaimEligibility
+    quality_execution: QualityExecutionState
+    performance_claim_eligible: bool
+    performance_data_frozen: bool
+    quality_benchmark_executed: bool
+    speedup_calculated: bool
+    r_hbm: None
+    full_scan_state: Literal["CLOSED"]
+    g2_kvq_state: Literal["NOT_EVALUATED_PUBLICATION_PENDING"]
+    global_g2_g5_state: Literal["NOT_EVALUATED"]
+    inventory_path: str | None
+    failure_reason: str | None
+
+    SCHEMA_VERSION: ClassVar[str] = (
+        "kvbench-phase11-kvquant-run-manifest-1.0.0"
+    )
+    ARTIFACT_SCHEMA_VERSION: ClassVar[str] = "kvbench-artifacts-1.0.0"
+
+    def __post_init__(self) -> None:
+        require_schema(self.schema_version, self.SCHEMA_VERSION)
+        require_schema(
+            self.artifact_schema_version,
+            self.ARTIFACT_SCHEMA_VERSION,
+        )
+        require_run_id(self.run_id)
+        require_git_sha(self.git_sha)
+        if self.git_dirty:
+            raise ValueError("Phase 11 admission requires a clean Git tree")
+        if (
+            self.authority.authorized_container_digest
+            != PHASE11_AUTHORIZED_CONTAINER_DIGEST
+            or self.measurement_scope
+            is not MeasurementScope.MEASUREMENT_CONTAINER_ADMISSION
+            or self.quality_status is not QualityValidationState.UNVALIDATED
+            or self.claim_eligibility is not ClaimEligibility.PERFORMANCE_ONLY
+            or self.quality_execution is not QualityExecutionState.LOCKED
+            or self.performance_claim_eligible
+            or self.performance_data_frozen
+            or self.quality_benchmark_executed
+            or self.speedup_calculated
+            or self.r_hbm is not None
+        ):
+            raise ValueError("Phase 11 local bundle must remain a non-claim")
+        if self.inventory_path is not None:
+            require_relative_path(
+                self.inventory_path,
+                field_name="inventory_path",
+            )
+        _validate_phase11_lifecycle(
+            status=self.status,
+            created_at_utc=self.created_at_utc,
+            started_at_utc=self.started_at_utc,
+            finished_at_utc=self.finished_at_utc,
+            inventory_path=self.inventory_path,
+            failure_reason=self.failure_reason,
+        )
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
@@ -568,7 +703,10 @@ class Phase11AllocationEvidence(StrictModel):
     def __post_init__(self) -> None:
         if self.configuration not in PHASE11_CONFIGURATIONS:
             raise ValueError("unknown Phase 11 allocation configuration")
-        if self.audited_contexts != PHASE11_ACCOUNTING_CONTEXTS:
+        if (
+            self.audited_contexts
+            != PHASE11_ALLOCATION_AUDIT_CONTEXTS[self.configuration]
+        ):
             raise ValueError("Phase 11 allocation contexts differ")
         for field_name in (
             "cache_growth_bytes",
@@ -906,3 +1044,11 @@ class Phase11MethodAdmissionReport(StrictModel):
             is not MeasurementScope.MEASUREMENT_CONTAINER_ADMISSION
         ):
             raise ValueError("Phase 11 report must remain a non-claim")
+
+
+def parse_phase11_run_manifest(
+    payload: dict[str, object],
+) -> Phase11RunManifest:
+    """Parse only the strict local Phase 11 lifecycle manifest."""
+
+    return Phase11RunManifest.from_dict(payload)

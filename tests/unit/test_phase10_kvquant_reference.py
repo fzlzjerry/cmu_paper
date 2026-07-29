@@ -25,6 +25,7 @@ DECISION_0021_SHA256 = (
 CALIBRATION_ROOT = (
     "8148306d08205af376994b022f189a0d6837915cd279ca8af6b104e1f4b46ccf"
 )
+PHASE10_PASS_COMMIT = "dab34fc2671ad58b695a993b204bbc0b83a3d651"
 
 
 class Phase10KVQuantReferenceTests(unittest.TestCase):
@@ -90,12 +91,35 @@ class Phase10KVQuantReferenceTests(unittest.TestCase):
         self.assertIn(CALIBRATION_ROOT, config)
 
     def test_measurement_adapter_remains_fail_closed(self) -> None:
-        factory = (
-            ROOT / "src/kvbench/adapters/factory.py"
-        ).read_text(encoding="utf-8")
+        factory = subprocess.check_output(
+            [
+                "git",
+                "show",
+                f"{PHASE10_PASS_COMMIT}:src/kvbench/adapters/factory.py",
+            ],
+            cwd=ROOT,
+            text=True,
+        )
         self.assertIn('_DEFERRED_METHODS = frozenset({"kvquant"})', factory)
-        self.assertFalse((ROOT / "src/kvbench/adapters/kvquant.py").exists())
-        self.assertFalse((ROOT / "src/kvbench/runtime/kvquant.py").exists())
+        for relative in (
+            "src/kvbench/adapters/kvquant.py",
+            "src/kvbench/runtime/kvquant.py",
+        ):
+            self.assertNotEqual(
+                subprocess.run(
+                    [
+                        "git",
+                        "cat-file",
+                        "-e",
+                        f"{PHASE10_PASS_COMMIT}:{relative}",
+                    ],
+                    cwd=ROOT,
+                    check=False,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                ).returncode,
+                0,
+            )
 
     def test_phase_boundaries_and_protected_methods_are_preserved(self) -> None:
         changed = validate_phase2.current_phase10_paths()

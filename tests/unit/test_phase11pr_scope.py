@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 from pathlib import Path
+import subprocess
 import unittest
 
 from scripts import validate_phase2
@@ -217,12 +218,25 @@ class Phase11PRScopeTests(unittest.TestCase):
             "docs/decisions/0025-kvquant-deterministic-kvq3-value-pack.md",
             frozen,
         )
-        self.assertFalse(
-            (ROOT / "src/kvbench/adapters/kvquant.py").exists()
-        )
-        self.assertFalse(
-            (ROOT / "src/kvbench/runtime/kvquant.py").exists()
-        )
+        for relative in (
+            "src/kvbench/adapters/kvquant.py",
+            "src/kvbench/runtime/kvquant.py",
+        ):
+            self.assertNotEqual(
+                subprocess.run(
+                    [
+                        "git",
+                        "cat-file",
+                        "-e",
+                        f"{validate_phase2.PHASE11_ENTRY_COMMIT}:{relative}",
+                    ],
+                    cwd=ROOT,
+                    check=False,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                ).returncode,
+                0,
+            )
 
 
 if __name__ == "__main__":

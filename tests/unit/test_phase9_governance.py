@@ -17,6 +17,7 @@ from scripts.validate_phase2 import (
 
 
 ROOT = Path(__file__).resolve().parents[2]
+PHASE9_PASS_COMMIT = "a873fc93754fa86bfb757fce476388897bee8dca"
 
 
 def sha256(path: Path) -> str:
@@ -75,14 +76,24 @@ class Phase9GovernanceTests(unittest.TestCase):
         }
         for relative, digest in expected.items():
             with self.subTest(relative=relative):
-                self.assertEqual(sha256(ROOT / relative), digest)
+                if relative == "src/kvbench/adapters/factory.py":
+                    payload = subprocess.check_output(
+                        [
+                            "git",
+                            "show",
+                            f"{PHASE9_PASS_COMMIT}:{relative}",
+                        ],
+                        cwd=ROOT,
+                    )
+                    self.assertEqual(hashlib.sha256(payload).hexdigest(), digest)
+                else:
+                    self.assertEqual(sha256(ROOT / relative), digest)
 
         for relative in (
             "configs/methods/bf16.yaml",
             "configs/methods/turboquant.yaml",
             "configs/methods/kivi.yaml",
             "docker/measurement.Dockerfile",
-            "src/kvbench/adapters/factory.py",
             "docs/evidence/phase6",
             "docs/evidence/phase7",
             "docs/evidence/phase8",
@@ -107,8 +118,14 @@ class Phase9GovernanceTests(unittest.TestCase):
     def test_kvquant_measurement_execution_remains_fail_closed_after_reference(
         self,
     ) -> None:
-        factory = (ROOT / "src/kvbench/adapters/factory.py").read_text(
-            encoding="utf-8"
+        factory = subprocess.check_output(
+            [
+                "git",
+                "show",
+                f"{PHASE9_PASS_COMMIT}:src/kvbench/adapters/factory.py",
+            ],
+            cwd=ROOT,
+            text=True,
         )
         self.assertIn(
             '_DEFERRED_METHODS = frozenset({"kvquant"})',
@@ -118,8 +135,25 @@ class Phase9GovernanceTests(unittest.TestCase):
         self.assertTrue(
             (ROOT / "reference/kvquant/fixtures/COMPLETE").is_file()
         )
-        self.assertFalse((ROOT / "src/kvbench/adapters/kvquant.py").exists())
-        self.assertFalse((ROOT / "src/kvbench/runtime/kvquant.py").exists())
+        for relative in (
+            "src/kvbench/adapters/kvquant.py",
+            "src/kvbench/runtime/kvquant.py",
+        ):
+            self.assertNotEqual(
+                subprocess.run(
+                    [
+                        "git",
+                        "cat-file",
+                        "-e",
+                        f"{PHASE9_PASS_COMMIT}:{relative}",
+                    ],
+                    cwd=ROOT,
+                    check=False,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                ).returncode,
+                0,
+            )
         self.assertFalse((ROOT / "PERFORMANCE_DATA_FROZEN").exists())
         for forbidden in (
             ROOT / "artifacts/quality",

@@ -2470,11 +2470,13 @@ class AttributionRules:
         if self.policy_authority not in {
             "structural_test_only",
             "decision_0009_production",
+            "decision_0013_direct_compressed_composition",
             "decision_0013_phase8_kivi_composition",
         }:
             raise AllocationAttributionError("unknown policy authority")
         if self.policy_authority in {
             "decision_0009_production",
+            "decision_0013_direct_compressed_composition",
             "decision_0013_phase8_kivi_composition",
         }:
             if (
@@ -2634,31 +2636,39 @@ def instantiate_decision_0009_production_rules(
     )
 
 
-def instantiate_decision_0013_phase8_kivi_rules(
+def _instantiate_decision_0013_direct_compressed_rules(
     *,
     geometry: AllocationGeometry,
     backend_identity: str,
     composition_binding_sha256: str,
+    policy_authority: str,
 ) -> AttributionRules:
-    """Bind KIVI to the ordinary Decision 0013 endpoint allocations.
+    """Bind direct compressed decode to ordinary Decision 0013 allocations.
 
-    KIVI replaces every Flash-attention call in the 32-layer endpoint with
-    its allocation-free direct compressed-cache path.  The retained model
-    operations therefore use the exact ordinary Decision 0013 policies, while
-    the four Flash-specific policies and split-K workspaces are forbidden.
+    A direct compressed-cache method replaces every Flash-attention call in
+    the 32-layer endpoint. The retained model operations therefore use the
+    exact ordinary Decision 0013 policies, while the four Flash-specific
+    policies and split-K workspaces are forbidden.
     """
 
     if type(geometry) is not AllocationGeometry:
         raise AllocationAttributionError(
-            "Phase 8 KIVI rules require AllocationGeometry"
+            "direct-compressed rules require AllocationGeometry"
         )
     if not isinstance(backend_identity, str) or not backend_identity:
         raise AllocationAttributionError(
-            "Phase 8 KIVI backend identity must be nonempty"
+            "direct-compressed backend identity must be nonempty"
         )
     if not _valid_sha256(composition_binding_sha256):
         raise AllocationAttributionError(
-            "Phase 8 KIVI composition binding must be a SHA-256"
+            "direct-compressed composition binding must be a SHA-256"
+        )
+    if policy_authority not in {
+        "decision_0013_direct_compressed_composition",
+        "decision_0013_phase8_kivi_composition",
+    }:
+        raise AllocationAttributionError(
+            "direct-compressed policy authority is invalid"
         )
     if not _decision_0009_catalog_is_intact():
         raise AllocationAttributionError(
@@ -2727,10 +2737,42 @@ def instantiate_decision_0013_phase8_kivi_rules(
         frozen_backend_identity=backend_identity,
         permitted_allocation_policies=tuple(policies),
         split_k_expected_pair_count=None,
-        policy_authority="decision_0013_phase8_kivi_composition",
+        policy_authority=policy_authority,
         policy_catalog_id=DECISION_0009_POLICY_CATALOG_ID,
         policy_catalog_sha256=DECISION_0009_POLICY_CATALOG_SHA256,
         production_binding_sha256=composition_binding_sha256,
+    )
+
+
+def instantiate_decision_0013_direct_compressed_rules(
+    *,
+    geometry: AllocationGeometry,
+    backend_identity: str,
+    composition_binding_sha256: str,
+) -> AttributionRules:
+    """Create method-neutral Decision 0013 direct-compressed rules."""
+
+    return _instantiate_decision_0013_direct_compressed_rules(
+        geometry=geometry,
+        backend_identity=backend_identity,
+        composition_binding_sha256=composition_binding_sha256,
+        policy_authority="decision_0013_direct_compressed_composition",
+    )
+
+
+def instantiate_decision_0013_phase8_kivi_rules(
+    *,
+    geometry: AllocationGeometry,
+    backend_identity: str,
+    composition_binding_sha256: str,
+) -> AttributionRules:
+    """Preserve the exact Phase 8 KIVI composition identity."""
+
+    return _instantiate_decision_0013_direct_compressed_rules(
+        geometry=geometry,
+        backend_identity=backend_identity,
+        composition_binding_sha256=composition_binding_sha256,
+        policy_authority="decision_0013_phase8_kivi_composition",
     )
 
 

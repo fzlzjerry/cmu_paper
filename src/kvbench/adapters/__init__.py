@@ -12,6 +12,11 @@ from kvbench.adapters.kivi import (
     KIVI_ADAPTER_VERSION,
     KIVIMethodAdapter,
 )
+from kvbench.adapters.kvquant import (
+    KVQUANT_ADAPTER_VERSION,
+    KVQUANT_METHOD_IDENTIFIER,
+    KVQuantMethodAdapter,
+)
 from kvbench.adapters.turboquant import (
     TURBOQUANT_ADAPTER_VERSION,
     TurboQuantMethodAdapter,
@@ -24,6 +29,9 @@ __all__ = [
     "KVCacheMethod",
     "KIVI_ADAPTER_VERSION",
     "KIVIMethodAdapter",
+    "KVQUANT_ADAPTER_VERSION",
+    "KVQUANT_METHOD_IDENTIFIER",
+    "KVQuantMethodAdapter",
     "MethodRuntimeContext",
     "TURBOQUANT_ADAPTER_VERSION",
     "TurboQuantMethodAdapter",

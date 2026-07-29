@@ -34,10 +34,19 @@ class Phase11ScopeTests(unittest.TestCase):
     def test_allowlist_is_exact_and_small(self) -> None:
         required = {
             "docs/decisions/0026-kvquant-pre-rope-adapter-boundary.md",
+            "docs/evidence/phase11/r2-admission-outer-publish.stderr.txt",
+            "docs/evidence/phase11/r2-admission-outer-publish.stdout.json",
+            "docs/evidence/phase11/r2-admission-outer-verify.stderr.txt",
+            "docs/evidence/phase11/r2-admission-outer-verify.stdout.json",
+            "docs/evidence/phase11/r2-admission-publish.stderr.txt",
+            "docs/evidence/phase11/r2-admission-publish.stdout.json",
+            "docs/evidence/phase11/r2-admission-verify.stderr.txt",
+            "docs/evidence/phase11/r2-admission-verify.stdout.json",
             "docs/plans/phase11-kvquant-measurement-adapter.md",
             "src/kvbench/adapters/base.py",
             "src/kvbench/adapters/factory.py",
             "src/kvbench/adapters/kvquant.py",
+            "src/kvbench/runtime/allocation_attribution.py",
             "src/kvbench/runtime/bf16_endpoint.py",
             "src/kvbench/runtime/kvquant_cache.py",
             "src/kvbench/runtime/kvquant_session.py",
@@ -60,6 +69,17 @@ class Phase11ScopeTests(unittest.TestCase):
         }
         self.assertFalse(
             rejected & validate_phase2.PHASE11_ALLOWED_PATHS
+        )
+        prohibited_or_unused = {
+            "configs/methods/kvquant.yaml",
+            "docs/blockers.md",
+            "src/kvbench/runtime/kvquant_admission.py",
+            "src/kvbench/runtime/kvquant_allocation.py",
+            "tests/unit/test_phase11_artifacts.py",
+            "tests/unit/test_phase11_governance.py",
+        }
+        self.assertFalse(
+            prohibited_or_unused & validate_phase2.PHASE11_ALLOWED_PATHS
         )
 
     def test_historical_authorities_remain_byte_exact(self) -> None:
@@ -100,6 +120,14 @@ class Phase11ScopeTests(unittest.TestCase):
                 self.assertEqual(observed, expected)
 
     def test_no_broad_phase11_artifact_or_fixture_paths(self) -> None:
+        self.assertEqual(
+            validate_phase2.PHASE11_APPROVED_ARTIFACT_ROOT_NAMES,
+            frozenset({"phase11", "phase11_r2_outer"}),
+        )
+        self.assertNotIn(
+            "phase11_profiler",
+            validate_phase2.PHASE11_APPROVED_ARTIFACT_ROOT_NAMES,
+        )
         self.assertFalse(
             any(
                 path.startswith("reference/kvquant_phase11pr/")

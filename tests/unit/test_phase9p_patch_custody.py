@@ -337,8 +337,14 @@ class Phase9PPatchCustodyTests(unittest.TestCase):
         self.assertFalse(boundaries["kvquant_adapter_enabled"])
         self.assertFalse(boundaries["performance_or_profiler_data_created"])
         self.assertFalse(boundaries["quality_data_created"])
-        factory = (ROOT / "src/kvbench/adapters/factory.py").read_text(
-            encoding="utf-8"
+        factory = subprocess.check_output(
+            [
+                "git",
+                "show",
+                f"{PHASE9P_FINAL_COMMIT}:src/kvbench/adapters/factory.py",
+            ],
+            cwd=ROOT,
+            text=True,
         )
         self.assertIn('_DEFERRED_METHODS = frozenset({"kvquant"})', factory)
         self.assertFalse((ROOT / "PERFORMANCE_DATA_FROZEN").exists())

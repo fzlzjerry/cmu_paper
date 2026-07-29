@@ -22,6 +22,17 @@ from scripts.validate_phase2 import (
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 
 
+def _turboquant_admission_target() -> str:
+    makefile = (REPOSITORY_ROOT / "Makefile").read_text(encoding="utf-8")
+    try:
+        return makefile.split("\nadmit-turboquant:", maxsplit=1)[1].split(
+            "\nvalidate-admission-turboquant:",
+            maxsplit=1,
+        )[0]
+    except IndexError as error:
+        raise AssertionError("TurboQuant admission target is absent") from error
+
+
 class _FakeB018Run:
     def __init__(self, name: str) -> None:
         self.stage = Path("/tmp") / name
@@ -118,7 +129,7 @@ class Phase6GovernanceTests(unittest.TestCase):
         )
 
     def test_admission_rehydrates_e00_immutable_modes_in_clone(self) -> None:
-        makefile = (REPOSITORY_ROOT / "Makefile").read_text(encoding="utf-8")
+        makefile = _turboquant_admission_target()
         self.assertEqual(
             makefile.count(
                 'chmod -R a-w "$$task_root/source/docs/evidence/e00"'
@@ -134,7 +145,7 @@ class Phase6GovernanceTests(unittest.TestCase):
         )
 
     def test_admission_uses_only_the_locked_container_python(self) -> None:
-        makefile = (REPOSITORY_ROOT / "Makefile").read_text(encoding="utf-8")
+        makefile = _turboquant_admission_target()
         command = (
             "make PHASE2_PYTHON=/opt/kvbench/.venv/bin/python "
             "PHASE3_PYTHON=/opt/kvbench/.venv/bin/python "
