@@ -41,6 +41,7 @@ PHASE9P_ENTRY_COMMIT = "f2c6475f09cdf6e9660552eb23c91b03e386aa59"
 PHASE9P_FINAL_COMMIT = "1b3a98160ba4760007ca861c1a280def698b2027"
 PHASE9_ENTRY_COMMIT = "b4d253724717076188a38032d6d6204fdf15e191"
 PHASE10_ENTRY_COMMIT = "a873fc93754fa86bfb757fce476388897bee8dca"
+PHASE11PR_ENTRY_COMMIT = "1cb2c95be61a328f88a031ae4ce91784dddec736"
 QUALITY_COMMIT = "a7b8285dd8ed2fb598efbb3312e9f55064a0ee64"
 ENVIRONMENT_COMMIT = "ea176994921c793789ebbd9d42515ce20ae4baee"
 EVIDENCE_COMMIT = "fb164b5ea96031ca40b21f4b8436a49a3bb5b8d2"
@@ -682,6 +683,75 @@ PHASE10_ALLOWED_PATHS = frozenset(
     | PHASE10_FIXTURE_PATHS
 )
 
+PHASE11P_ALLOWED_PATHS = frozenset(
+    {
+        "docs/decisions/0024-kvquant-graph-safe-caller-owned-cuda-apis.md",
+    }
+)
+PHASE11PR_FIXTURE_PATHS = frozenset(
+    f"reference/kvquant_phase11pr/fixtures/{family}/{case}/{member}"
+    for family in PHASE10_FIXTURE_FAMILIES
+    for case in PHASE10_FIXTURE_CASES
+    for member in PHASE10_FIXTURE_MEMBERS
+)
+PHASE11PR_SAFE_TENSOR_PATHS = frozenset(
+    path
+    for path in PHASE11PR_FIXTURE_PATHS
+    if path.endswith(".safetensors")
+)
+PHASE11PR_FIXTURE_ROOT_PATHS = frozenset(
+    {
+        "reference/kvquant_phase11pr/fixtures/COMPLETE",
+        "reference/kvquant_phase11pr/fixtures/artifact_inventory.json",
+        "reference/kvquant_phase11pr/fixtures/checksums.sha256",
+        "reference/kvquant_phase11pr/fixtures/manifest.json",
+        "reference/kvquant_phase11pr/fixtures/reference_trace.json",
+        "reference/kvquant_phase11pr/fixtures/reuse_proof.json",
+        (
+            "reference/kvquant_phase11pr/fixtures/authority/"
+            "build_manifest.json"
+        ),
+        (
+            "reference/kvquant_phase11pr/fixtures/authority/"
+            "calibration_manifest.json"
+        ),
+        (
+            "reference/kvquant_phase11pr/fixtures/authority/"
+            "environment.json"
+        ),
+        (
+            "reference/kvquant_phase11pr/fixtures/authority/"
+            "source_manifest.json"
+        ),
+    }
+)
+PHASE11PR_ALLOWED_PATHS = frozenset(
+    {
+        "Makefile",
+        "docs/decisions/0025-kvquant-deterministic-kvq3-value-pack.md",
+        "docs/evidence/phase11pr/cuda-validation.json",
+        "docs/evidence/phase11pr/r2-publication.json",
+        "docs/phase_reports/phase11p-r-kvq3-value-pack.md",
+        "reference/kvquant_phase11pr/generate_corrected_bundle.py",
+        "reference/kvquant_phase11pr/validate_corrected_bundle.py",
+        "scripts/validate_kvquant_graphsafe_patch.py",
+        "scripts/validate_phase2.py",
+        "tests/cuda/phase11pr_kvq3_pack_validation.py",
+        "tests/unit/test_phase9p_patch_custody.py",
+        "tests/unit/test_phase11pr_scope.py",
+        (
+            "third_party/patches/kvquant/"
+            "0002-graphsafe-kvq3-deterministic.patch"
+        ),
+        (
+            "third_party/patches/kvquant/"
+            "graphsafe-kvq3-manifest.json"
+        ),
+    }
+    | PHASE11PR_FIXTURE_PATHS
+    | PHASE11PR_FIXTURE_ROOT_PATHS
+)
+
 
 RAW_RESULT_SUFFIXES = {
     ".bin",
@@ -1059,8 +1129,23 @@ def historical_phase9_paths() -> set[str]:
 
 
 def current_phase10_paths() -> set[str]:
+    """Return the frozen Phase 10 plus Phase 11P decision segment."""
+
+    return git_paths(
+        (
+            "diff",
+            "--name-only",
+            "-z",
+            PHASE10_ENTRY_COMMIT,
+            PHASE11PR_ENTRY_COMMIT,
+            "--",
+        )
+    )
+
+
+def current_phase11pr_paths() -> set[str]:
     changed = git_paths(
-        ("diff", "--name-only", "-z", PHASE10_ENTRY_COMMIT, "--")
+        ("diff", "--name-only", "-z", PHASE11PR_ENTRY_COMMIT, "--")
     )
     untracked = git_paths(
         ("ls-files", "--others", "--exclude-standard", "-z", "--")
@@ -1115,7 +1200,7 @@ def current_phase5_paths() -> set[str]:
 
 
 def changed_paths() -> set[str]:
-    return current_phase10_paths()
+    return current_phase11pr_paths()
 
 
 def repository_python_paths() -> list[Path]:
@@ -1129,11 +1214,15 @@ def repository_python_paths() -> list[Path]:
     paths.add(ROOT / "scripts" / "phase8_kivi_admission.py")
     paths.add(ROOT / "scripts" / "phase8_r2_outer_bundle.py")
     paths.add(ROOT / "scripts" / "validate_kvquant_gqa_patch.py")
+    paths.add(ROOT / "scripts" / "validate_kvquant_graphsafe_patch.py")
     paths.add(ROOT / "scripts" / "phase9_kvquant_calibration.py")
     paths.add(ROOT / "scripts" / "phase9_kvquant_worker.py")
     phase10_reference = ROOT / "reference" / "kvquant"
     if phase10_reference.is_dir():
         paths.update(phase10_reference.glob("*.py"))
+    phase11pr_reference = ROOT / "reference" / "kvquant_phase11pr"
+    if phase11pr_reference.is_dir():
+        paths.update(phase11pr_reference.glob("*.py"))
     schema_tests = ROOT / "tests" / "schema"
     if schema_tests.is_dir():
         paths.update(schema_tests.rglob("*.py"))
@@ -1150,6 +1239,7 @@ def repository_python_paths() -> list[Path]:
         paths.update(unit_tests.glob("test_phase9p_*.py"))
         paths.update(unit_tests.glob("test_phase9_*.py"))
         paths.update(unit_tests.glob("test_phase10_*.py"))
+        paths.update(unit_tests.glob("test_phase11pr_*.py"))
         paths.update(
             unit_tests / name
             for name in (
@@ -1178,6 +1268,11 @@ def repository_python_paths() -> list[Path]:
         )
         if phase10_sanitizer_probe.is_file():
             paths.add(phase10_sanitizer_probe)
+        phase11pr_validation = (
+            cuda_tests / "phase11pr_kvq3_pack_validation.py"
+        )
+        if phase11pr_validation.is_file():
+            paths.add(phase11pr_validation)
     graph_tests = ROOT / "tests" / "graph"
     if graph_tests.is_dir():
         paths.update(graph_tests.glob("test_phase3_*.py"))
@@ -2306,6 +2401,10 @@ def check_scope() -> int:
         errors.append(
             "the accepted Phase 10 entry commit is not an ancestor of HEAD"
         )
+    if not commit_is_ancestor(PHASE11PR_ENTRY_COMMIT):
+        errors.append(
+            "the accepted Phase 11P-R entry commit is not an ancestor of HEAD"
+        )
     phase5 = historical_phase5_paths()
     phase5_unexpected = sorted(phase5 - PHASE5_ALLOWED_PATHS)
     if phase5_unexpected:
@@ -2364,27 +2463,36 @@ def check_scope() -> int:
             "files outside the approved Phase 9 calibration plan: "
             f"{phase9_unexpected!r}"
         )
-    changed = current_phase10_paths()
-    phase10_unexpected = sorted(changed - PHASE10_ALLOWED_PATHS)
+    phase10 = current_phase10_paths()
+    phase10_unexpected = sorted(
+        phase10 - PHASE10_ALLOWED_PATHS - PHASE11P_ALLOWED_PATHS
+    )
     if phase10_unexpected:
         errors.append(
-            "files outside the approved Phase 10 reference plan: "
+            "files outside the frozen Phase 10 and Phase 11P plan: "
             f"{phase10_unexpected!r}"
+        )
+    changed = current_phase11pr_paths()
+    phase11pr_unexpected = sorted(changed - PHASE11PR_ALLOWED_PATHS)
+    if phase11pr_unexpected:
+        errors.append(
+            "files outside the approved Phase 11P-R correction plan: "
+            f"{phase11pr_unexpected!r}"
         )
     for relative in sorted(changed):
         if relative.startswith("docs/evidence/e00/"):
             errors.append(f"immutable E00 evidence changed: {relative}")
         if relative in QUALITY_PROTOCOL_HASHES:
             errors.append(
-                f"quality protocol changed during Phase 10: {relative}"
+                f"quality protocol changed during Phase 11P-R: {relative}"
             )
         if (
             Path(relative).suffix in RAW_RESULT_SUFFIXES
-            and relative not in PHASE10_SAFE_TENSOR_PATHS
+            and relative not in PHASE11PR_SAFE_TENSOR_PATHS
         ):
             errors.append(
                 f"forbidden binary, kernel, model, or profiler artifact "
-                f"in Phase 10 Git scope: {relative}"
+                f"in Phase 11P-R Git scope: {relative}"
             )
         if relative.startswith(
             (
@@ -2396,7 +2504,7 @@ def check_scope() -> int:
             )
         ):
             errors.append(
-                f"forbidden result tree in Phase 10 scope: {relative}"
+                f"forbidden result tree in Phase 11P-R scope: {relative}"
             )
     e00_changes = git_paths(
         (

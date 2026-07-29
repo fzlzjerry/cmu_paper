@@ -60,6 +60,8 @@ KVQUANT_REFERENCE_EXTENSION := $(KVQUANT_REFERENCE_BUILD_ROOT)/quant_cuda.cpytho
 KVQUANT_REFERENCE_EXTENSION_SHA256 := 53bee7b4b5a0dead6adb682df1343330963b41149d12c2a876888c1c2ede9597
 KVQUANT_REFERENCE_CALIBRATION := $(CURDIR)/calibration/kvquant/kvqcal-cdb724c806d64d095c040d2673a987a3
 KVQUANT_REFERENCE_PATCH_MANIFEST := $(CURDIR)/third_party/patches/kvquant/manifest.json
+KVQUANT_GRAPHSAFE_SOURCE_ROOT ?= /home/rockrock/third_party_worktrees/kvquant-gqa
+KVQUANT_PHASE11PR_FIXTURES := $(CURDIR)/reference/kvquant_phase11pr/fixtures
 KIVI_REFERENCE_IMAGE := kvbench-reference-kivi:phase7
 KIVI_REFERENCE_PARENT_CONFIG := sha256:059bc9be89387369d7de9e3e9b26d85b6e9902c41e7dbf002ebc45edd188fb7e
 KIVI_REFERENCE_IMAGE_MANIFEST := sha256:f27e4cdef6bd15f18ab76b1fe0e4413ede004b42538c74e3dd90d04172406f75
@@ -85,8 +87,10 @@ KIVI_REFERENCE_BUILD_REVISION := 3417ea0e7f322369eed21bb787a9a9a19b0a69bd
 .PHONY: validate-phase8-r2-outer-publication
 .PHONY: validate-kivi-b019-patch
 .PHONY: validate-kvquant-gqa-patch
+.PHONY: validate-kvquant-graphsafe-patch
 .PHONY: calibrate-kvquant validate-calibration-kvquant reference-kivi validate-reference-kivi
 .PHONY: reference-kvquant validate-reference-kvquant
+.PHONY: validate-reference-kvquant-phase11pr
 
 preflight:
 	@/usr/bin/env -i PATH=/usr/bin:/bin LC_ALL=C LANG=C TZ=UTC \
@@ -152,6 +156,7 @@ test: checks
 	@$(PHASE3_ENV) $(PHASE3_PYTHON) -m unittest discover -s tests/unit -p 'test_phase9p_*.py' -v
 	@$(PHASE3_ENV) $(PHASE3_PYTHON) -m unittest discover -s tests/unit -p 'test_phase9_*.py' -v
 	@$(PHASE3_ENV) $(PHASE3_PYTHON) -m unittest discover -s tests/unit -p 'test_phase10_*.py' -v
+	@$(PHASE3_ENV) $(PHASE3_PYTHON) -m unittest discover -s tests/unit -p 'test_phase11pr_*.py' -v
 	@$(PHASE3_ENV) $(PHASE3_PYTHON) -m unittest tests.unit.test_measurement_container tests.unit.test_phase6a_bf16_parity tests.unit.test_phase6a_governance tests.unit.test_preflight_unit tests.unit.test_r2_artifact -v
 	@$(PHASE2_VALIDATE) immutable
 
@@ -176,6 +181,9 @@ validate-kivi-b019-patch:
 
 validate-kvquant-gqa-patch:
 	@$(PHASE2_ENV) $(PHASE2_PYTHON) scripts/validate_kvquant_gqa_patch.py $(if $(strip $(KVQUANT_GQA_SOURCE_ROOT)),--source-root "$(KVQUANT_GQA_SOURCE_ROOT)")
+
+validate-kvquant-graphsafe-patch:
+	@$(PHASE2_ENV) $(PHASE2_PYTHON) -m scripts.validate_kvquant_graphsafe_patch --source-root "$(KVQUANT_GRAPHSAFE_SOURCE_ROOT)"
 
 calibrate-kvquant: package-lock-check
 	@$(MAKE) KVQUANT_GQA_SOURCE_ROOT="$(KVQUANT_CALIBRATION_SOURCE_ROOT)" validate-kvquant-gqa-patch
@@ -337,6 +345,10 @@ validate-reference-kvquant:
 		/opt/kvbench/.venv/bin/python /repo/reference/kvquant/validate_fixtures.py \
 			--fixtures /repo/reference/kvquant/fixtures
 	@$(PHASE3_ENV) $(PHASE3_PYTHON) -c 'from scripts.r2_artifact import validate_local_artifact; artifact = validate_local_artifact("reference/kvquant/fixtures"); print("{\"status\":\"PASS\",\"local_root_sha256\":\"%s\",\"object_count\":%d}" % (artifact.root_sha256, len(artifact.files)))'
+
+validate-reference-kvquant-phase11pr:
+	@$(PHASE3_ENV) $(PHASE3_PYTHON) -m reference.kvquant_phase11pr.validate_corrected_bundle --fixtures "$(KVQUANT_PHASE11PR_FIXTURES)" --old-fixtures "$(CURDIR)/reference/kvquant/fixtures"
+	@$(PHASE3_ENV) $(PHASE3_PYTHON) -c 'from scripts.r2_artifact import validate_local_artifact; artifact = validate_local_artifact("reference/kvquant_phase11pr/fixtures"); print("{\"status\":\"PASS\",\"local_root_sha256\":\"%s\",\"object_count\":%d}" % (artifact.root_sha256, len(artifact.files)))'
 
 reference-kivi: validate-kivi-b019-patch
 	@command -v docker >/dev/null
