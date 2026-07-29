@@ -111,7 +111,7 @@ CASES = (
     ("key_few_value_fixed12", 6),
     ("key_cap_value_fixed12", 12),
 )
-FIXTURE_ID = "kvqref-bd4504010fbf9dfb64f9a30901f27050"
+FIXTURE_ID = "kvqref-a50af6511c314b6394e58a7f81ceefb8"
 
 # Frozen before final nine-fixture generation.  These bounds include the
 # source path's BF16 boundary and are checked independently for every case.
@@ -289,7 +289,7 @@ def _tensor_record(tensor: Any) -> dict[str, Any]:
 
 
 def _save_safetensors(path: Path, tensors: Mapping[str, Any]) -> None:
-    from safetensors.torch import save_file
+    from safetensors.torch import save
 
     if path.exists() or path.is_symlink():
         raise ReferenceGenerationError(f"fixture file already exists: {path}")
@@ -297,14 +297,31 @@ def _save_safetensors(path: Path, tensors: Mapping[str, Any]) -> None:
         name: tensor.detach().contiguous().cpu()
         for name, tensor in sorted(tensors.items())
     }
-    save_file(
+    encoded = save(
         payload,
-        str(path),
         metadata={
             "format": "kvbench-phase10-kvquant-reference",
             "fixture_id": FIXTURE_ID,
         },
     )
+    header_length = int.from_bytes(encoded[:8], byteorder="little")
+    header_end = 8 + header_length
+    header = json.loads(encoded[8:header_end])
+    if not isinstance(header, dict):
+        raise ReferenceGenerationError("safe-format header is not an object")
+    canonical_header = json.dumps(
+        header,
+        ensure_ascii=False,
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode("utf-8")
+    canonical_header += b" " * (-len(canonical_header) % 8)
+    canonical = (
+        len(canonical_header).to_bytes(8, byteorder="little")
+        + canonical_header
+        + encoded[header_end:]
+    )
+    _write_exclusive(path, canonical)
 
 
 def _validate_source(source_root: Path, patch_manifest_path: Path) -> dict[str, Any]:
@@ -1818,24 +1835,33 @@ def _authority_manifests(
     sys = __import__("sys")
     python_version = ".".join(map(str, sys.version_info[:3]))
     gcc_identity = _run(("/usr/bin/gcc", "--version")).splitlines()[0]
-    nvcc_identity = _run(
-        ("/usr/local/cuda/bin/nvcc", "--version")
-    ).splitlines()[-1]
-    installed_freeze = _run(
-        (sys.executable, "-m", "pip", "freeze", "--all")
+    nvcc_identity = _run(("/usr/local/cuda/bin/nvcc", "--version"))
+    base_distribution_versions = json.loads(
+        _run(
+            (
+                sys.executable,
+                "-c",
+                (
+                    "import importlib.metadata as m,json;"
+                    "d={x.metadata['Name'].lower():x.version for x in "
+                    "m.distributions(path=['/opt/kvbench/.phase3/site-packages'])};"
+                    "print(json.dumps({k:d.get(k) for k in "
+                    "['transformers','tokenizers']},sort_keys=True))"
+                ),
+            )
+        )
     )
-    installed_versions = {
-        line.split("==", 1)[0].lower(): line.split("==", 1)[1]
-        for line in installed_freeze.splitlines()
-        if "==" in line
-    }
     runtime_identity = {
         "python": python_version,
         "pytorch": torch.__version__,
         "cuda_userspace": torch.version.cuda,
-        "transformers_installed": installed_versions.get("transformers"),
+        "transformers_installed": base_distribution_versions.get(
+            "transformers"
+        ),
         "transformers_vendored": transformers.__version__,
-        "tokenizers_base_installed": EXPECTED_TOKENIZERS_BASE,
+        "tokenizers_base_installed": base_distribution_versions.get(
+            "tokenizers"
+        ),
         "tokenizers_active": tokenizers.__version__,
         "gcc_version": EXPECTED_GCC if EXPECTED_GCC in gcc_identity else None,
         "nvcc_version": EXPECTED_NVCC if EXPECTED_NVCC in nvcc_identity else None,
@@ -1896,9 +1922,9 @@ def _authority_manifests(
         "pytorch": torch.__version__,
         "cuda_userspace": torch.version.cuda,
         "cuda_runtime": torch._C._cuda_getCompiledVersion(),
-        "transformers_installed": installed_versions["transformers"],
+        "transformers_installed": base_distribution_versions["transformers"],
         "transformers_vendored": transformers.__version__,
-        "tokenizers_base_installed": EXPECTED_TOKENIZERS_BASE,
+        "tokenizers_base_installed": base_distribution_versions["tokenizers"],
         "tokenizers_active": tokenizers.__version__,
         "compiler": gcc_identity,
         "cuda_compiler": nvcc_identity,
@@ -2239,7 +2265,10 @@ def generate_bundle(arguments: argparse.Namespace) -> dict[str, Any]:
 
     reference_root.mkdir(parents=True, exist_ok=True)
     temporary = Path(
-        tempfile.mkdtemp(prefix="kvbench-phase10-fixtures-", dir="/tmp")
+        tempfile.mkdtemp(
+            prefix=".kvbench-phase10-fixtures-",
+            dir=reference_root,
+        )
     )
     stage = temporary / "fixtures"
     stage.mkdir()

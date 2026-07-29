@@ -19,7 +19,7 @@ from typing import Any
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 REFERENCE_ROOT = REPOSITORY_ROOT / "reference" / "kvquant"
 DEFAULT_FIXTURE_ROOT = REFERENCE_ROOT / "fixtures"
-FIXTURE_ID = "kvqref-bd4504010fbf9dfb64f9a30901f27050"
+FIXTURE_ID = "kvqref-a50af6511c314b6394e58a7f81ceefb8"
 
 METHOD_IDENTIFIER = "kvquant_gqa_upstream_patch_v1"
 UPSTREAM_BASE_COMMIT = "57a238357f0ffe50084670fcd5781c9848f80ea2"

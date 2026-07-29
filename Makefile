@@ -280,9 +280,7 @@ reference-kvquant: package-lock-check
 			--source-root /source \
 			--calibration-root /calibration \
 			--patch-manifest /repo/third_party/patches/kvquant/manifest.json
-	@if test -e reference/kvquant/fixtures; then \
-		$(MAKE) validate-reference-kvquant; \
-	else \
+	@if ! test -e reference/kvquant/fixtures; then \
 		docker run --rm --network none --gpus all \
 			--tmpfs /tmp:rw,exec,nosuid,size=2g \
 			--mount type=bind,src="$(CURDIR)",dst=/repo,readonly \
@@ -301,9 +299,10 @@ reference-kvquant: package-lock-check
 				--patch-manifest /repo/third_party/patches/kvquant/manifest.json \
 				--extension /build/quant_cuda.cpython-312-x86_64-linux-gnu.so \
 				--reference-root /output; \
-		$(MAKE) validate-reference-kvquant; \
-		determinism_root="$$(mktemp -d /tmp/kvbench-phase10-determinism.XXXXXX)"; \
-		trap 'chmod -R u+w "$$determinism_root" 2>/dev/null || true; rm -rf -- "$$determinism_root"' EXIT; \
+	fi
+	@$(MAKE) validate-reference-kvquant
+	@determinism_root="$$(mktemp -d /tmp/kvbench-phase10-determinism.XXXXXX)"; \
+	trap 'chmod -R u+w "$$determinism_root" 2>/dev/null || true; rm -rf -- "$$determinism_root"' EXIT; \
 		docker run --rm --network none --gpus all \
 			--tmpfs /tmp:rw,exec,nosuid,size=2g \
 			--mount type=bind,src="$(CURDIR)",dst=/repo,readonly \
@@ -325,8 +324,7 @@ reference-kvquant: package-lock-check
 		diff -qr reference/kvquant/fixtures "$$determinism_root/fixtures"; \
 		for manifest in source_manifest.json environment.json calibration_manifest.json build_manifest.json; do \
 			cmp -s "reference/kvquant/$$manifest" "$$determinism_root/$$manifest"; \
-		done; \
-	fi
+		done
 
 validate-reference-kvquant:
 	@docker run --rm --network none \
@@ -337,7 +335,7 @@ validate-reference-kvquant:
 		-e PYTHONPATH=/repo:/opt/kvbench-reference/deps:/opt/kvbench/.phase3/site-packages \
 		"$(KVQUANT_REFERENCE_IMAGE)" \
 		/opt/kvbench/.venv/bin/python /repo/reference/kvquant/validate_fixtures.py \
-			--fixture-root /repo/reference/kvquant/fixtures
+			--fixtures /repo/reference/kvquant/fixtures
 	@$(PHASE3_ENV) $(PHASE3_PYTHON) -c 'from scripts.r2_artifact import validate_local_artifact; artifact = validate_local_artifact("reference/kvquant/fixtures"); print("{\"status\":\"PASS\",\"local_root_sha256\":\"%s\",\"object_count\":%d}" % (artifact.root_sha256, len(artifact.files)))'
 
 reference-kivi: validate-kivi-b019-patch

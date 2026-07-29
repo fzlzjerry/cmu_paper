@@ -1,0 +1,78 @@
+{
+  "build": {
+    "architecture_flags": [
+      "-gencode=arch=compute_120,code=sm_120",
+      "-gencode=arch=compute_120,code=compute_120"
+    ],
+    "compute_120_ptx": true,
+    "cuda": "13.0",
+    "cuda_compiler": "Cuda compilation tools, release 13.0, V13.0.88",
+    "extension_sha256": "53bee7b4b5a0dead6adb682df1343330963b41149d12c2a876888c1c2ede9597",
+    "extension_size_bytes": 12991816,
+    "host_compiler": "gcc 13.3.0",
+    "patched_tree": "c4f1490c9c0c4ec46099f1e95c092516df2adb4e",
+    "sm_120_cubin": true,
+    "source_authority": "kvquant_gqa_upstream_patch_v1"
+  },
+  "compute_sanitizer": {
+    "cases": [
+      "kvq4/key_zero_value_fixed12",
+      "kvq4/key_few_value_fixed12",
+      "kvq4/key_cap_value_fixed12",
+      "kvq3/key_few_value_fixed12",
+      "kvq2/key_zero_value_fixed12",
+      "kvq2/key_cap_value_fixed12"
+    ],
+    "command_class": "memcheck --leak-check full --target-processes application-only",
+    "error_count": 0,
+    "leaked_allocations": 0,
+    "leaked_bytes": 0,
+    "performance_measurement": false,
+    "status": "PASS",
+    "tool_sha256": "5cba659e1cd603aa2370e103425f184368e6ed405da90ce85743c4399c324dbc",
+    "version": "2025.3.1.0 (build 36400806)"
+  },
+  "container": {
+    "base_image_config_digest": "sha256:127759078f2c70c9e795c7a1bb3408df1eaee8fa019319299d283dc8075b216d",
+    "credentials_in_image": false,
+    "image_config_digest": "sha256:24eb3f6ff39b72f45c353acfbef6ce2d9aaac0860180b4dde8b937593176714b",
+    "model_weights_in_image": false,
+    "network": "disabled",
+    "reference_dockerfile_sha256": "f1b2f2a6f6f15bf364eb3a8b7a26f01504edbe2dbcfe74b619b1c519120a618e"
+  },
+  "forced_ptx_jit": {
+    "cuda_cache_disabled": true,
+    "cuda_force_ptx_jit": true,
+    "families": [
+      "4-bit dense and sparse",
+      "3-bit dense and sparse",
+      "2-bit dense and sparse"
+    ],
+    "gqa_and_mha": "PASS",
+    "status": "PASS"
+  },
+  "hardware": {
+    "compute_capability": "12.0",
+    "driver": "595.71.05",
+    "gpu_name": "NVIDIA RTX PRO 6000 Blackwell Workstation Edition",
+    "gpu_uuid": "GPU-75bd273e-6b20-0d22-1b0b-5fbb6fb0025b"
+  },
+  "native_execution": {
+    "backend_fallback": false,
+    "cases": [
+      "kvq4/key_zero_value_fixed12",
+      "kvq4/key_few_value_fixed12",
+      "kvq4/key_cap_value_fixed12",
+      "kvq3/key_few_value_fixed12",
+      "kvq2/key_zero_value_fixed12",
+      "kvq2/key_cap_value_fixed12"
+    ],
+    "compute_capability": "sm_120",
+    "status": "PASS"
+  },
+  "recorded_at_utc": "2026-07-29T04:27:34Z",
+  "run_kind": "reference_validation",
+  "schema_version": "kvbench-phase10-cuda-validation-1.0.0",
+  "status": "PASS",
+  "timing_fields_present": false
+}
