@@ -1,0 +1,32 @@
+{
+  "claims": {
+    "algorithm_changed": false,
+    "calibration_changed": false,
+    "fixture_artifact_produced": false,
+    "performance_claim": false,
+    "phase11_started": false,
+    "quality_claim": false
+  },
+  "immutable": true,
+  "report_path": "docs/phase_reports/phase10-kvquant-reference-blocked.md",
+  "repository_storage": {
+    "byte_count": 9309,
+    "content_body_changed": false,
+    "normalization": "append_one_posix_terminal_newline_only",
+    "sha256": "0362ac36f03ec8b92c0b154ad85fd4e810c3d45332f7c063b1da00d7adc94e4d",
+    "transport_metadata_retained": true
+  },
+  "schema": "kvbench.phase10.blocked_report_custody.v1",
+  "source": {
+    "byte_count": 9308,
+    "event_line": 780,
+    "event_timestamp_utc": "2026-07-28T22:29:27.674Z",
+    "kind": "codex_conversation_assistant_final",
+    "message_id": "msg_0e47f3456ffbaf6f016a692d2a755c8191ab7514fbf82d0dfe",
+    "session_id": "019faaae-cfe4-7e42-b7c3-b150b81f9fab",
+    "sha256": "ca8669e8a056a2f77428c3a31a2115407b63013e989fe93ebebef5af3af9921f",
+    "starting_head": "a873fc93754fa86bfb757fce476388897bee8dca",
+    "terminal_newline_present": false
+  },
+  "status": "BLOCKED"
+}

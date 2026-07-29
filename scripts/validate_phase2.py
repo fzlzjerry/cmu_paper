@@ -40,6 +40,7 @@ PHASE8_ENTRY_COMMIT = "8d6d766a34a15bd40bd42cc47c5482b0dd052cc0"
 PHASE9P_ENTRY_COMMIT = "f2c6475f09cdf6e9660552eb23c91b03e386aa59"
 PHASE9P_FINAL_COMMIT = "1b3a98160ba4760007ca861c1a280def698b2027"
 PHASE9_ENTRY_COMMIT = "b4d253724717076188a38032d6d6204fdf15e191"
+PHASE10_ENTRY_COMMIT = "a873fc93754fa86bfb757fce476388897bee8dca"
 QUALITY_COMMIT = "a7b8285dd8ed2fb598efbb3312e9f55064a0ee64"
 ENVIRONMENT_COMMIT = "ea176994921c793789ebbd9d42515ce20ae4baee"
 EVIDENCE_COMMIT = "fb164b5ea96031ca40b21f4b8436a49a3bb5b8d2"
@@ -615,6 +616,68 @@ PHASE9_ALLOWED_PATHS = frozenset(
     }
 )
 
+PHASE10_FIXTURE_FAMILIES = ("kvq4", "kvq3", "kvq2")
+PHASE10_FIXTURE_CASES = (
+    "key_zero_value_fixed12",
+    "key_few_value_fixed12",
+    "key_cap_value_fixed12",
+)
+PHASE10_FIXTURE_MEMBERS = (
+    "fixture_manifest.json",
+    "inputs.safetensors",
+    "dense_payload.safetensors",
+    "metadata.safetensors",
+    "sparse_values.safetensors",
+    "sparse_indices.safetensors",
+    "sink.safetensors",
+    "store_state.safetensors",
+    "append_state.safetensors",
+    "decode_output.safetensors",
+    "byte_breakdown.json",
+    "checksums.sha256",
+)
+PHASE10_FIXTURE_PATHS = frozenset(
+    f"reference/kvquant/fixtures/{family}/{case}/{member}"
+    for family in PHASE10_FIXTURE_FAMILIES
+    for case in PHASE10_FIXTURE_CASES
+    for member in PHASE10_FIXTURE_MEMBERS
+)
+PHASE10_SAFE_TENSOR_PATHS = frozenset(
+    path for path in PHASE10_FIXTURE_PATHS if path.endswith(".safetensors")
+)
+PHASE10_ALLOWED_PATHS = frozenset(
+    {
+        "Makefile",
+        "docs/decisions/0023-phase10-kvquant-source-faithful-sparse-fixture-semantics.md",
+        "docs/evidence/phase10/blocked-report-custody.json",
+        "docs/evidence/phase10/cuda-validation.json",
+        "docs/evidence/phase10/r2-publication.json",
+        "docs/phase_reports/phase10-kvquant-reference-blocked.md",
+        "docs/phase_reports/phase10-kvquant-reference.md",
+        "docs/plans/phase10-kvquant-reference.md",
+        "docs/risk_register.md",
+        "docs/status.md",
+        "docs/tasks.md",
+        "reference/kvquant/README.md",
+        "reference/kvquant/build_manifest.json",
+        "reference/kvquant/calibration_manifest.json",
+        "reference/kvquant/environment.json",
+        "reference/kvquant/fixtures/COMPLETE",
+        "reference/kvquant/fixtures/artifact_inventory.json",
+        "reference/kvquant/fixtures/checksums.sha256",
+        "reference/kvquant/fixtures/manifest.json",
+        "reference/kvquant/fixtures/reference_trace.json",
+        "reference/kvquant/generate_fixtures.py",
+        "reference/kvquant/source_manifest.json",
+        "reference/kvquant/validate_fixtures.py",
+        "scripts/validate_phase2.py",
+        "tests/cuda/phase10_kvquant_sanitizer_probe.py",
+        "tests/unit/test_phase10_kvquant_reference.py",
+        "tests/unit/test_phase10_scope.py",
+    }
+    | PHASE10_FIXTURE_PATHS
+)
+
 
 RAW_RESULT_SUFFIXES = {
     ".bin",
@@ -978,14 +1041,33 @@ def current_kvquant_patch_custody_paths() -> set[str]:
     )
 
 
-def current_phase9_paths() -> set[str]:
+def historical_phase9_paths() -> set[str]:
+    return git_paths(
+        (
+            "diff",
+            "--name-only",
+            "-z",
+            PHASE9_ENTRY_COMMIT,
+            PHASE10_ENTRY_COMMIT,
+            "--",
+        )
+    )
+
+
+def current_phase10_paths() -> set[str]:
     changed = git_paths(
-        ("diff", "--name-only", "-z", PHASE9_ENTRY_COMMIT, "--")
+        ("diff", "--name-only", "-z", PHASE10_ENTRY_COMMIT, "--")
     )
     untracked = git_paths(
         ("ls-files", "--others", "--exclude-standard", "-z", "--")
     )
     return changed | untracked
+
+
+def current_phase9_paths() -> set[str]:
+    """Compatibility view of the completed, frozen Phase 9 segment."""
+
+    return historical_phase9_paths()
 
 
 def current_phase9p_paths() -> set[str]:
@@ -1029,7 +1111,7 @@ def current_phase5_paths() -> set[str]:
 
 
 def changed_paths() -> set[str]:
-    return current_phase9_paths()
+    return current_phase10_paths()
 
 
 def repository_python_paths() -> list[Path]:
@@ -1045,6 +1127,9 @@ def repository_python_paths() -> list[Path]:
     paths.add(ROOT / "scripts" / "validate_kvquant_gqa_patch.py")
     paths.add(ROOT / "scripts" / "phase9_kvquant_calibration.py")
     paths.add(ROOT / "scripts" / "phase9_kvquant_worker.py")
+    phase10_reference = ROOT / "reference" / "kvquant"
+    if phase10_reference.is_dir():
+        paths.update(phase10_reference.glob("*.py"))
     schema_tests = ROOT / "tests" / "schema"
     if schema_tests.is_dir():
         paths.update(schema_tests.rglob("*.py"))
@@ -1060,6 +1145,7 @@ def repository_python_paths() -> list[Path]:
         paths.update(unit_tests.glob("test_phase8_*.py"))
         paths.update(unit_tests.glob("test_phase9p_*.py"))
         paths.update(unit_tests.glob("test_phase9_*.py"))
+        paths.update(unit_tests.glob("test_phase10_*.py"))
         paths.update(
             unit_tests / name
             for name in (
@@ -1083,6 +1169,11 @@ def repository_python_paths() -> list[Path]:
         phase8_sanitizer_probe = cuda_tests / "phase8_kivi_sanitizer_probe.py"
         if phase8_sanitizer_probe.is_file():
             paths.add(phase8_sanitizer_probe)
+        phase10_sanitizer_probe = (
+            cuda_tests / "phase10_kvquant_sanitizer_probe.py"
+        )
+        if phase10_sanitizer_probe.is_file():
+            paths.add(phase10_sanitizer_probe)
     graph_tests = ROOT / "tests" / "graph"
     if graph_tests.is_dir():
         paths.update(graph_tests.glob("test_phase3_*.py"))
@@ -2207,6 +2298,10 @@ def check_scope() -> int:
         errors.append(
             "the accepted Phase 9 entry commit is not an ancestor of HEAD"
         )
+    if not commit_is_ancestor(PHASE10_ENTRY_COMMIT):
+        errors.append(
+            "the accepted Phase 10 entry commit is not an ancestor of HEAD"
+        )
     phase5 = historical_phase5_paths()
     phase5_unexpected = sorted(phase5 - PHASE5_ALLOWED_PATHS)
     if phase5_unexpected:
@@ -2258,24 +2353,34 @@ def check_scope() -> int:
             "files outside the approved KVQuant patch-custody plan: "
             f"{custody_unexpected!r}"
         )
-    changed = current_phase9_paths()
-    phase9_unexpected = sorted(changed - PHASE9_ALLOWED_PATHS)
+    phase9 = historical_phase9_paths()
+    phase9_unexpected = sorted(phase9 - PHASE9_ALLOWED_PATHS)
     if phase9_unexpected:
         errors.append(
             "files outside the approved Phase 9 calibration plan: "
             f"{phase9_unexpected!r}"
+        )
+    changed = current_phase10_paths()
+    phase10_unexpected = sorted(changed - PHASE10_ALLOWED_PATHS)
+    if phase10_unexpected:
+        errors.append(
+            "files outside the approved Phase 10 reference plan: "
+            f"{phase10_unexpected!r}"
         )
     for relative in sorted(changed):
         if relative.startswith("docs/evidence/e00/"):
             errors.append(f"immutable E00 evidence changed: {relative}")
         if relative in QUALITY_PROTOCOL_HASHES:
             errors.append(
-                f"quality protocol changed during Phase 9: {relative}"
+                f"quality protocol changed during Phase 10: {relative}"
             )
-        if Path(relative).suffix in RAW_RESULT_SUFFIXES:
+        if (
+            Path(relative).suffix in RAW_RESULT_SUFFIXES
+            and relative not in PHASE10_SAFE_TENSOR_PATHS
+        ):
             errors.append(
                 f"forbidden binary, kernel, model, or profiler artifact "
-                f"in Phase 9 Git scope: {relative}"
+                f"in Phase 10 Git scope: {relative}"
             )
         if relative.startswith(
             (
@@ -2287,7 +2392,7 @@ def check_scope() -> int:
             )
         ):
             errors.append(
-                f"forbidden result tree in Phase 9 scope: {relative}"
+                f"forbidden result tree in Phase 10 scope: {relative}"
             )
     e00_changes = git_paths(
         (
