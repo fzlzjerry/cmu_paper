@@ -608,6 +608,10 @@ validate-admission-kvquant: verify-measurement-container
 		outer_source="$$(realpath -e "$(PHASE11_KVQUANT_OUTER_ARTIFACT)")"; \
 		test -d "$$inner_source" && test ! -L "$(PHASE11_KVQUANT_INNER_ARTIFACT)"; \
 		test -d "$$outer_source" && test ! -L "$(PHASE11_KVQUANT_OUTER_ARTIFACT)"; \
+		case "$$inner_source" in "$$repository_root"/artifacts/phase11/*) ;; *) echo '{"status":"BLOCKED","reason":"phase11_inner_artifact_must_be_repository_relative"}' >&2; exit 2;; esac; \
+		case "$$outer_source" in "$$repository_root"/artifacts/phase11_r2_outer/*) ;; *) echo '{"status":"BLOCKED","reason":"phase11_outer_artifact_must_be_repository_relative"}' >&2; exit 2;; esac; \
+		inner_relative="$${inner_source#$$repository_root/}"; \
+		outer_relative="$${outer_source#$$repository_root/}"; \
 		inner_name="$$(basename "$$inner_source")"; \
 		outer_name="$$(basename "$$outer_source")"; \
 		[[ "$$inner_name" =~ ^[a-z0-9][a-z0-9._-]{0,127}$$ ]]; \
@@ -626,19 +630,20 @@ validate-admission-kvquant: verify-measurement-container
 		test -f "$$task_root/repository/$(PHASE11_KVQUANT_METHOD_ADMISSION_CHECKSUM)"; \
 		test -f "$$task_root/repository/$(PHASE11_KVQUANT_PUBLICATION_RECEIPT)"; \
 		(cd "$$task_root/repository/docs/evidence/phase11" && /usr/bin/sha256sum -c "$$(basename "$(PHASE11_KVQUANT_METHOD_ADMISSION_CHECKSUM)")"); \
+		mkdir -p "$$task_root/repository/$$(dirname "$$inner_relative")" "$$task_root/repository/$$(dirname "$$outer_relative")"; \
 		cid="$$(docker create --read-only --network=none \
 			--tmpfs /tmp:rw,exec,nosuid,nodev,size=1g \
 			--mount "type=bind,src=$$task_root/repository,dst=/home/rockrock/cmu_paper,readonly" \
-			--mount "type=bind,src=$$inner_source,dst=/opt/phase11-inner/$$inner_name,readonly" \
-			--mount "type=bind,src=$$outer_source,dst=/opt/phase11-outer/$$outer_name,readonly" \
+			--mount "type=bind,src=$$inner_source,dst=/home/rockrock/cmu_paper/$$inner_relative,readonly" \
+			--mount "type=bind,src=$$outer_source,dst=/home/rockrock/cmu_paper/$$outer_relative,readonly" \
 			--env PYTHONDONTWRITEBYTECODE=1 \
 			--env PYTHONNOUSERSITE=1 \
 			--env PYTHONPATH=/home/rockrock/cmu_paper/src:/home/rockrock/cmu_paper:/opt/kvbench/.phase3/site-packages \
 			--workdir /home/rockrock/cmu_paper \
 			--entrypoint /opt/kvbench/.venv/bin/python "$$image_id" \
 			-m scripts.phase11_kvquant_admission --validate-only \
-			--artifact "/opt/phase11-inner/$$inner_name" \
-			--outer-artifact "/opt/phase11-outer/$$outer_name" \
+			--artifact "/home/rockrock/cmu_paper/$$inner_relative" \
+			--outer-artifact "/home/rockrock/cmu_paper/$$outer_relative" \
 			--method-admission-report "/home/rockrock/cmu_paper/$(PHASE11_KVQUANT_METHOD_ADMISSION_REPORT)" \
 			--publication-receipt "/home/rockrock/cmu_paper/$(PHASE11_KVQUANT_PUBLICATION_RECEIPT)")"; \
 		[[ "$$cid" =~ ^[0-9a-f]{64}$$ ]]; \

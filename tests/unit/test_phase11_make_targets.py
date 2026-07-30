@@ -380,17 +380,23 @@ class Phase11KVQuantMakeTargetTests(unittest.TestCase):
             "docker create --read-only --network=none",
             "src=$$task_root/repository,"
             "dst=/home/rockrock/cmu_paper,readonly",
-            "src=$$inner_source,dst=/opt/phase11-inner/"
-            "$$inner_name,readonly",
-            "src=$$outer_source,dst=/opt/phase11-outer/"
-            "$$outer_name,readonly",
+            "phase11_inner_artifact_must_be_repository_relative",
+            "phase11_outer_artifact_must_be_repository_relative",
+            'inner_relative="$${inner_source#$$repository_root/}"',
+            'outer_relative="$${outer_source#$$repository_root/}"',
+            'mkdir -p "$$task_root/repository/'
+            '$$(dirname "$$inner_relative")"',
+            "src=$$inner_source,dst=/home/rockrock/cmu_paper/"
+            "$$inner_relative,readonly",
+            "src=$$outer_source,dst=/home/rockrock/cmu_paper/"
+            "$$outer_relative,readonly",
             "--entrypoint /opt/kvbench/.venv/bin/python",
             "PYTHONPATH=/home/rockrock/cmu_paper/src:"
             "/home/rockrock/cmu_paper:"
             "/opt/kvbench/.phase3/site-packages",
             "--validate-only",
-            '--artifact "/opt/phase11-inner/$$inner_name"',
-            '--outer-artifact "/opt/phase11-outer/$$outer_name"',
+            '--artifact "/home/rockrock/cmu_paper/$$inner_relative"',
+            '--outer-artifact "/home/rockrock/cmu_paper/$$outer_relative"',
             "--method-admission-report "
             '"/home/rockrock/cmu_paper/'
             '$(PHASE11_KVQUANT_METHOD_ADMISSION_REPORT)"',
