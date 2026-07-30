@@ -1,0 +1,105 @@
+{
+  "admission_status": "PASS",
+  "artifact_status": "completed",
+  "bucket_lock": {
+    "bucket": "kvbench-artifacts",
+    "bucket_exists": true,
+    "bucket_public": false,
+    "covered_prefix": "kvbench/sha256/",
+    "custom_domain_count": 0,
+    "enabled": true,
+    "enabled_custom_domain_count": 0,
+    "endpoint": "https://<R2_ACCOUNT_ID>.r2.cloudflarestorage.com",
+    "endpoint_class": "cloudflare_r2_s3",
+    "lock_prefix": "kvbench/sha256/",
+    "lock_rule_id": "kvbench-evidence-indefinite",
+    "lock_rule_name": null,
+    "lock_scope": "exact",
+    "managed_r2_dev_enabled": false,
+    "provider": "cloudflare_r2",
+    "public_custom_domain": false,
+    "public_r2_dev": false,
+    "public_state_result": "PASS",
+    "retention_condition": "Indefinite",
+    "retention_type": "Indefinite",
+    "verification_result": "PASS",
+    "verified_at_utc": "2026-07-30T04:35:42.128338Z"
+  },
+  "clean_retrieval": {
+    "bundle_validation_valid": true,
+    "checksum_ledger_valid": true,
+    "complete_marker_valid": true,
+    "destination_initially_empty": true,
+    "inventory_valid": true,
+    "object_count": 165,
+    "provider": "cloudflare_r2",
+    "result": "PASS",
+    "retrieved_at_utc": "2026-07-30T04:42:25.359258Z",
+    "root_digest_valid": true,
+    "root_sha256": "0834410509ea7324a41715e0e84e09617bf9b188b10394a234f9a57e804dd1f2",
+    "unexpected_objects": false,
+    "uri": "r2://kvbench-artifacts/kvbench/sha256/0834410509ea7324a41715e0e84e09617bf9b188b10394a234f9a57e804dd1f2/"
+  },
+  "credential_values_recorded": false,
+  "env_file_read": false,
+  "local_validation": {
+    "bundle_validation_valid": true,
+    "checksum_ledger_valid": true,
+    "complete": true,
+    "complete_marker_valid": true,
+    "inventory_valid": true,
+    "object_count": 165,
+    "root_digest_valid": true,
+    "root_sha256": "0834410509ea7324a41715e0e84e09617bf9b188b10394a234f9a57e804dd1f2",
+    "status": "completed",
+    "valid": true
+  },
+  "publication": {
+    "complete_last": true,
+    "conditional_writes": true,
+    "content_addressed": true,
+    "object_count": 165,
+    "provider": "cloudflare_r2",
+    "publication_order_sha256": "0f223c55647de7f83988ea0903d8b91cb2245017ce2553d5e2f6f7087b2deeba",
+    "published_at_utc": "2026-07-30T04:40:02.010123Z",
+    "result": "PASS",
+    "root_sha256": "0834410509ea7324a41715e0e84e09617bf9b188b10394a234f9a57e804dd1f2",
+    "uploaded_count": 101,
+    "uri": "r2://kvbench-artifacts/kvbench/sha256/0834410509ea7324a41715e0e84e09617bf9b188b10394a234f9a57e804dd1f2/",
+    "verified_existing_count": 64
+  },
+  "raw_tool_evidence": {
+    "publish": {
+      "command_argv": [
+        ".venv/bin/python",
+        "scripts/r2_artifact.py",
+        "publish",
+        "artifacts/phase11/phase11-launch.7xSY6E/phase11-20260730t030934524z-3b52b426-424aec-kvquant"
+      ],
+      "returncode": 0,
+      "stderr_path": "docs/evidence/phase11/r2-admission-publish.stderr.txt",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stdout_path": "docs/evidence/phase11/r2-admission-publish.stdout.json",
+      "stdout_sha256": "ed230a0bea04b9bdb8113d4369a5f1c02f66ba0e618ab80dc419e381fdf90453",
+      "working_directory": "."
+    },
+    "verify": {
+      "command_argv": [
+        ".venv/bin/python",
+        "scripts/r2_artifact.py",
+        "verify",
+        "0834410509ea7324a41715e0e84e09617bf9b188b10394a234f9a57e804dd1f2"
+      ],
+      "returncode": 0,
+      "stderr_path": "docs/evidence/phase11/r2-admission-verify.stderr.txt",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stdout_path": "docs/evidence/phase11/r2-admission-verify.stdout.json",
+      "stdout_sha256": "3c086df2d329b09baa565c159e49dcec006f0fb1ce67d061fae3c0c00ca49823",
+      "working_directory": "."
+    }
+  },
+  "recorded_at_utc": "2026-07-30T04:46:03.663012Z",
+  "schema_version": "kvbench-phase11-kvquant-admission-r2-publication-1.0.0",
+  "source_git_sha": "3b52b42674c23e2be8e7a5b2355c77629b904b2a",
+  "source_run_id": "phase11-20260730t030934524z-3b52b426-424aec-kvquant"
+}

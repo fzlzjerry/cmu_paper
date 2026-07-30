@@ -1,6 +1,6 @@
 # Project status
 
-Last updated: 2026-07-29
+Last updated: 2026-07-30
 Authoritative contracts: CODEX_WORKFLOW.md for active performance engineering;
 CODEX_POST_PERFORMANCE_QUALITY_VALIDATION.md for post-performance quality
 scheduling; CODEX_QUALITY_EVALUATION_ADDENDUM.md for non-conflicting quality
@@ -8,17 +8,17 @@ requirements; and AGENTS.md. Decision 0005 records precedence.
 
 ## Current state
 
-- Latest completed scoped phase: Phase 10 KVQuant Reference Lane PASS. Its
-  thin reference image derives from the frozen Phase 9 calibration image and
-  remains separate from the authorized Measurement Container. The unchanged
-  Measurement Container Docker image ID / OCI
-  image-index digest remains
+- Latest completed scoped phase: Phase 11R KVQuant Measurement Adapter PASS.
+  The Adapter uses the authorized Measurement Container and the immutable
+  Phase 9 calibration plus corrected Phase 11P-R numerical oracle; it does not
+  change either bundle. The unchanged Measurement Container Docker image ID /
+  OCI image-index digest remains
   `sha256:059bc9be89387369d7de9e3e9b26d85b6e9902c41e7dbf002ebc45edd188fb7e`;
   container G0 and both BF16 parity smokes pass, and Decision 0016 binds
-  Measurement Lane CUDA execution to that digest only. Phase 8 remains the
-  latest completed method measurement-adapter lane. Phases 9 and 10 do not
-  change that lane. Official vLLM
-  `v0.25.1` commit `752a3a504485790a2e8491cacbb35c137339ad34` is pinned.
+  Measurement Lane CUDA execution to that digest only. G2-TQ, G2-KIVI, and
+  G2-KVQ are method-specific PASS; Global G2-G5 remain NOT EVALUATED.
+  Official vLLM `v0.25.1` commit
+  `752a3a504485790a2e8491cacbb35c137339ad34` remains pinned.
 - Phase 6 status: PASS for method-specific G2-TQ at execution commit
   `0df5bb4d445d48e6cba17e30723733f8de35cb14`. The approved admission driver
   reran all three mandatory Compute Sanitizer probes against that clean HEAD
@@ -98,20 +98,18 @@ requirements; and AGENTS.md. Decision 0005 records precedence.
   was published COMPLETE-last and passed clean R2 retrieval. The KVQuant
   Measurement Adapter remained unimplemented and fail-closed at that phase
   boundary; G2-KVQ remained NOT EVALUATED.
-- Phase 11 status: BLOCKED. One static `kvq4`/`kvq3`/`kvq2` adapter conforms
-  to all nine corrected fixtures, and the first six L=128 eager/Graph
-  admission points pass. The first L=4096 eager point stopped with exact
-  post-warmup output instability. An exact-container control proves that the
-  frozen Value-decode kernel is byte stable at quantized width 124 but yields
-  20 distinct SHA-256 outputs in 20 identical width-4092 executions. The
-  source contains inter-block floating `atomicAdd` reductions and a tail
-  shared-memory initialization hazard; their individual causal shares were
-  not dynamically isolated. The failed 100-object local bundle and raw
-  control are preserved. No tolerance was loosened, no corrected CUDA or
-  algorithmic source was changed, no R2 publication or MethodAdmissionReport
-  was created, and G2-KVQ remains NOT EVALUATED.
+- Phase 11R status: PASS. The static `kvq4`/`kvq3`/`kvq2` Adapter binds
+  Decision 0027's deterministic q4 Value-decode API and caller-owned FP32
+  workspace. All nine corrected fixtures, the nine-point bounded admission,
+  exact path/byte/allocation/GQA controls, fixed-L Graph, and Compute
+  Sanitizer pass. The 165-object admission root
+  `0834410509ea7324a41715e0e84e09617bf9b188b10394a234f9a57e804dd1f2`
+  is COMPLETE-last and cleanly retrieved; MethodAdmissionReport SHA-256 is
+  `59ef5bfc581a68cdc4d21c4c0a840f046e698633f7475f79906063c6e333ae6a`.
+  The earlier BLOCKED report, failed 100-object bundle, and diagnostic remain
+  immutable. G2-KVQ is PASS.
 - Active admission gate: native-host G0 PASS; authorized-container G0 PASS;
-  native-host BF16 G1 PASS; G2-TQ PASS; G2-KIVI PASS; G2-KVQ NOT EVALUATED
+  native-host BF16 G1 PASS; G2-TQ PASS; G2-KIVI PASS; G2-KVQ PASS
 - Benchmark implementation changes: exact BF16 static cache, fixed-L and
   growing-context runners, eager and CUDA Graph lanes, timing, allocation,
   telemetry, campaign lifecycle, and source-backed G1 reporting are
@@ -124,9 +122,9 @@ requirements; and AGENTS.md. Decision 0005 records precedence.
   runners; it is admitted only at method-specific G2-KIVI. Phase 9 adds only
   one isolated offline calibration container and narrow KVQuant calibration
   scripts. Phase 10 adds one isolated KVQuant reference runner and compact
-  numerical fixtures only. Phase 11 adds one provisional static KVQuant
-  adapter through the same common runners, but it is not admitted because the
-  frozen long-context Value reduction is execution-history dependent.
+  numerical fixtures only. Phase 11R admits one static KVQuant Adapter through
+  the same common runners after binding Decision 0027's deterministic q4
+  decode API; no new framework or runner was introduced.
 - CUDA builds or executions: the new formal E00 run passed extension build,
   native execution, forced PTX/JIT, numerical golden, CUDA Graph, allocation,
   SASS/PTX inspection, and all required Compute Sanitizer lanes
@@ -157,10 +155,10 @@ requirements; and AGENTS.md. Decision 0005 records precedence.
   results. Phase 10 added only source-authoritative fixtures, byte records,
   duration-free reference traces, CUDA correctness/sanitizer evidence, and
   publication receipts. It did not create performance, profiler, HBM,
-  capacity, or quality data. Phase 11 added correctness, allocation, Graph,
-  sanitizer, and six completed bounded-admission points only. Its L=4096
-  failure and untimed determinism control are non-claim evidence; no speedup,
-  comparative latency, profiler, HBM, capacity, or quality result was
+  capacity, or quality data. Phase 11R added only correctness, allocation,
+  Graph, sanitizer, and nine bounded-admission points. The earlier L=4096
+  failure and untimed determinism control remain non-claim evidence; no
+  speedup, comparative latency, profiler, HBM, capacity, or quality result was
   produced.
 - Scientific performance claims: none
 - Quality protocol: preregistered by Decision 0005 before any performance or
@@ -169,7 +167,8 @@ requirements; and AGENTS.md. Decision 0005 records precedence.
 - Quality runs or quality-only dependency installations: none
 - Full-scan admission: CLOSED
 - Gate state: native-host and authorized-container G0 PASS; native-host BF16 G1
-  PASS; method-specific G2-TQ and G2-KIVI PASS; global G2-G5 NOT EVALUATED
+  PASS; method-specific G2-TQ, G2-KIVI, and G2-KVQ PASS; global G2-G5 NOT
+  EVALUATED
 
 ## Phase 7 KIVI reference lane
 
@@ -721,10 +720,10 @@ reference execution is recorded separately above.
 | G2-KIVI | PASS | All three mandatory configurations are admitted and held-out k4v2 conforms; MethodAdmissionReport derives 17/17 PASS checks. Global G2 remains NOT EVALUATED. |
 | Phase 9 KVQuant calibration | PASS | Exact Decision 0021 patched source; isolated image; frozen 16 x 2048 train tokens; 32 K plus 32 V Fisher artifacts; three complete quantizer families; reproducibility; 68-object COMPLETE-last R2 root and clean retrieval. |
 | Phase 10 KVQuant reference lane | PASS | Decisions 0021/0023; exact calibration binding; nine source-faithful dense/sparse/sink/store/append/decode fixtures; SM120/PTX/JIT/sanitizer PASS; 113-object root `32cdf465a361dd6695b66ccbea0a462bddc075fd9778d0aa8cdaa3f94e6f63ab` COMPLETE-last and cleanly retrieved. |
-| Phase 11 KVQuant measurement adapter | BLOCKED | Static adapter and all nine corrected fixture checks pass; six L=128 eager/Graph points pass. The first L=4096 eager point exposes non-byte-deterministic inter-block floating Value reduction. Failed local root `227e37abc8649433bf806bbc527829c4062dd2ca6da5cbeafc8f152dbfb9a982` is preserved; publication and MethodAdmissionReport were not attempted. |
-| G2-KVQ | NOT EVALUATED | Phase 11 stopped before the nine-point grid completed; durable publication, clean retrieval, and MethodAdmissionReport were not attempted. |
+| Phase 11 KVQuant measurement adapter | PASS | Decision 0027 q4 deterministic decode binding; all nine corrected fixtures; exact byte/path/allocation/GQA controls; fixed-L Graph; zero-error sanitizer; bounded grid 9/9 PASS; 165-object inner root `0834410509ea7324a41715e0e84e09617bf9b188b10394a234f9a57e804dd1f2` COMPLETE-last and cleanly retrieved. |
+| G2-KVQ | PASS | All three bit widths satisfy the method-specific admission criteria; MethodAdmissionReport SHA-256 `59ef5bfc581a68cdc4d21c4c0a840f046e698633f7475f79906063c6e333ae6a`. Global G2 remains NOT EVALUATED. |
 | G1-G5 unified admission | NOT EVALUATED | requires E12 |
-| Pilot/full-scan gates | CLOSED / NOT EVALUATED | Method-specific G2-TQ and G2-KIVI admission do not authorize Pilot or Full Scan |
+| Pilot/full-scan gates | CLOSED / NOT EVALUATED | Method-specific G2-TQ, G2-KIVI, and G2-KVQ admission do not authorize Pilot or Full Scan |
 | Post-performance quality validation | LOCKED | Decision 0005; `PERFORMANCE_DATA_FROZEN` absent |
 
 ## Phase 0 acceptance
@@ -759,10 +758,10 @@ Phase 9 KVQuant calibration remains complete and unchanged. Final calibration ro
 is COMPLETE-last and cleanly retrieved from its content-addressed R2 URI.
 Phase 10 KVQuant Reference Lane is PASS with immutable fixture root
 `32cdf465a361dd6695b66ccbea0a462bddc075fd9778d0aa8cdaa3f94e6f63ab`.
-Phase 11 is BLOCKED at kvq4 L=4096 eager: identical long-context Value-decode
-inputs do not produce byte-stable output under the Decision 0025 CUDA source.
-A separate, checksum-bound CUDA remediation must make the Value reduction and
-tail initialization deterministic, then rerun the complete Phase 11 admission
-under a fresh source and extension identity. G2-KVQ remains NOT EVALUATED.
+Phase 11R is PASS under Decision 0027. The Adapter binds the deterministic q4
+Value-decode API and caller-owned FP32 workspace; all nine corrected fixtures,
+the nine-point bounded grid, allocation/path/GQA/Graph controls, sanitizer,
+durable publication, and clean retrieval pass. G2-KVQ is PASS while Global
+G2-G5 remain NOT EVALUATED.
 Phase 12, Pilot, profiling, fitting, figures, Full Scan, performance
 execution, and quality execution have not started.

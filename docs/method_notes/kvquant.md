@@ -1,7 +1,8 @@
 # KVQuant source note
 
-Status: Phase 9P patched-upstream compatibility PASS and Phase 9 calibration
-PASS; Phase 10 reference work and G2-KVQ remain NOT EVALUATED.
+Status: Phase 9P patched-upstream compatibility, Phase 9 calibration, Phase 10
+reference, and Phase 11R method-specific G2-KVQ admission PASS. Global G2-G5
+remain NOT EVALUATED.
 
 ## Paper and source
 
@@ -235,4 +236,32 @@ the root under indefinite Bucket Lock rule `kvbench-evidence-indefinite`.
    Lane requires fixed-cap preallocation and graph-stable pointers.
 8. Phase 9P establishes focused CUDA Graph, replay-allocation, and cap-reached
    correctness for the patched extension. Component-level Measurement Adapter
-   byte accounting and G2-KVQ remain unimplemented and NOT EVALUATED.
+   byte accounting and G2-KVQ require their own later admission evidence.
+
+## Phase 11R Measurement Adapter admission
+
+Decision 0027 binds execution source
+`kvquant_gqa_longctx_deterministic_v3`, corrected commit/tree
+`4b8533b29b04f8c4bf55f688a41fefe20487637b` /
+`46f2149a0369d5c97d9a6bc77d57b5f3a5a5fb3b`, aggregate patch SHA-256
+`bae63bced549479709b10d7f6a8ee35a8f21ec18cc040a7424591cee47c1b0a6`,
+and extension SHA-256
+`a79644923ba131e56abe95029e669346dbbb11fd210d2b9f8b2086819ffeaad1`.
+The q4 Adapter uses its deterministic fixed-order Value decode with one
+caller-owned, preallocated FP32 `[1,32,32,128]` workspace. q3 and q2 retain
+their corrected paths.
+
+All nine corrected fixtures match for payload, metadata, sparse, sink, store,
+append, and byte records; decode agrees within the pre-frozen tolerance. Native
+32Q/8KV mapping, fixed-cap sparse state, sink semantics, current-stream
+execution, fixed-L CUDA Graph replay, zero replay allocation, and zero-error
+memcheck/initcheck pass. The bounded admission grid passes 9/9. The 165-object
+inner admission root
+`0834410509ea7324a41715e0e84e09617bf9b188b10394a234f9a57e804dd1f2`
+was published COMPLETE-last and cleanly retrieved. MethodAdmissionReport
+SHA-256 is
+`59ef5bfc581a68cdc4d21c4c0a840f046e698633f7475f79906063c6e333ae6a`.
+
+G2-KVQ is PASS only for this exact method/source/container/calibration/oracle
+and bounded admission contract. Global G2-G5 remain NOT EVALUATED; no
+performance, speedup, HBM, capacity, or quality conclusion follows.
