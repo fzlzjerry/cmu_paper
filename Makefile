@@ -631,11 +631,13 @@ validate-admission-kvquant: verify-measurement-container
 		test -f "$$task_root/repository/$(PHASE11_KVQUANT_PUBLICATION_RECEIPT)"; \
 		(cd "$$task_root/repository/docs/evidence/phase11" && /usr/bin/sha256sum -c "$$(basename "$(PHASE11_KVQUANT_METHOD_ADMISSION_CHECKSUM)")"); \
 		mkdir -p "$$task_root/repository/$$(dirname "$$inner_relative")" "$$task_root/repository/$$(dirname "$$outer_relative")"; \
+		/usr/bin/cp --archive --reflink=auto "$$inner_source" "$$task_root/repository/$$(dirname "$$inner_relative")/"; \
+		/usr/bin/cp --archive --reflink=auto "$$outer_source" "$$task_root/repository/$$(dirname "$$outer_relative")/"; \
+		test "$$(/usr/bin/env -i PATH=/usr/bin:/bin LC_ALL=C LANG=C TZ=UTC PYTHONDONTWRITEBYTECODE=1 PYTHONNOUSERSITE=1 PYTHONPATH="$$task_root/repository:$$task_root/repository/src" /usr/bin/python3 -c 'import sys; from scripts.r2_artifact import validate_local_artifact; print(validate_local_artifact(sys.argv[1],environ={}).root_sha256)' "$$task_root/repository/$$inner_relative")" = "$$(cat "$$task_root/inner-root.sha256")"; \
+		test "$$(/usr/bin/env -i PATH=/usr/bin:/bin LC_ALL=C LANG=C TZ=UTC PYTHONDONTWRITEBYTECODE=1 PYTHONNOUSERSITE=1 PYTHONPATH="$$task_root/repository:$$task_root/repository/src" /usr/bin/python3 -c 'import sys; from scripts.r2_artifact import validate_local_artifact; print(validate_local_artifact(sys.argv[1],environ={}).root_sha256)' "$$task_root/repository/$$outer_relative")" = "$$(cat "$$task_root/outer-root.sha256")"; \
 		cid="$$(docker create --read-only --network=none \
 			--tmpfs /tmp:rw,exec,nosuid,nodev,size=1g \
 			--mount "type=bind,src=$$task_root/repository,dst=/home/rockrock/cmu_paper,readonly" \
-			--mount "type=bind,src=$$inner_source,dst=/home/rockrock/cmu_paper/$$inner_relative,readonly" \
-			--mount "type=bind,src=$$outer_source,dst=/home/rockrock/cmu_paper/$$outer_relative,readonly" \
 			--env PYTHONDONTWRITEBYTECODE=1 \
 			--env PYTHONNOUSERSITE=1 \
 			--env PYTHONPATH=/home/rockrock/cmu_paper/src:/home/rockrock/cmu_paper:/opt/kvbench/.phase3/site-packages \

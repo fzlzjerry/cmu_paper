@@ -386,10 +386,12 @@ class Phase11KVQuantMakeTargetTests(unittest.TestCase):
             'outer_relative="$${outer_source#$$repository_root/}"',
             'mkdir -p "$$task_root/repository/'
             '$$(dirname "$$inner_relative")"',
-            "src=$$inner_source,dst=/home/rockrock/cmu_paper/"
-            "$$inner_relative,readonly",
-            "src=$$outer_source,dst=/home/rockrock/cmu_paper/"
-            "$$outer_relative,readonly",
+            "/usr/bin/cp --archive --reflink=auto "
+            '"$$inner_source"',
+            "/usr/bin/cp --archive --reflink=auto "
+            '"$$outer_source"',
+            'validate_local_artifact(sys.argv[1],environ={})'
+            ".root_sha256",
             "--entrypoint /opt/kvbench/.venv/bin/python",
             "PYTHONPATH=/home/rockrock/cmu_paper/src:"
             "/home/rockrock/cmu_paper:"
@@ -417,6 +419,16 @@ class Phase11KVQuantMakeTargetTests(unittest.TestCase):
                     flags=re.MULTILINE,
                 )
             )
+        self.assertNotIn("dst=/opt/phase11-inner", recipe)
+        self.assertNotIn("dst=/opt/phase11-outer", recipe)
+        self.assertNotIn(
+            "src=$$inner_source,dst=/home/rockrock/cmu_paper/",
+            recipe,
+        )
+        self.assertNotIn(
+            "src=$$outer_source,dst=/home/rockrock/cmu_paper/",
+            recipe,
+        )
         for forbidden in (
             "--gpus",
             "--pid=host",
