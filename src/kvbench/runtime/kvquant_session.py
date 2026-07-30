@@ -19,9 +19,10 @@ from kvbench.adapters.kvquant import (
     KVQUANT_CORRECTED_TREE,
     KVQUANT_DECISIONS,
     KVQUANT_DECISION_0021_PATCH_SHA256,
+    KVQUANT_DETERMINISTIC_VALUE_DECODE_APIS,
+    KVQUANT_EXECUTION_SOURCE_IDENTIFIER,
     KVQUANT_EXTENSION_SHA256,
     KVQUANT_METHOD_IDENTIFIER,
-    KVQUANT_Q4_DETERMINISTIC_VALUE_DECODE_API,
     KVQUANT_QUANTIZER_SHA256,
     KVQUANT_UPSTREAM_BASE_COMMIT,
     KVQUANT_UPSTREAM_BASE_TREE,
@@ -69,7 +70,6 @@ from kvbench.schema.phase11 import (
     PHASE11_CALIBRATION_ROOT,
     PHASE11_DECODE_ATOL,
     PHASE11_DECODE_RTOL,
-    PHASE11_EXECUTION_SOURCE_IDENTIFIER,
     PHASE11_FIXTURE_ID,
     PHASE11_FIXTURE_ROOT,
     PHASE11_HISTORICAL_FIXTURE_ID,
@@ -277,13 +277,13 @@ def phase11_kvquant_backend_fingerprint() -> str:
 
     source_root = Path(__file__).resolve().parents[1]
     payload = {
-        "schema_version": "kvbench-phase11-kvquant-backend-1.0.0",
+        "schema_version": "kvbench-phase11-kvquant-backend-1.1.0",
         "prefill_backend": BACKEND_IDENTITY,
         "decode_backend": {
             "implementation": "corrected_kvquant_direct_compressed_decode",
             "method_identifier": KVQUANT_METHOD_IDENTIFIER,
             "execution_source_identifier": (
-                PHASE11_EXECUTION_SOURCE_IDENTIFIER
+                KVQUANT_EXECUTION_SOURCE_IDENTIFIER
             ),
             "upstream_base_commit": KVQUANT_UPSTREAM_BASE_COMMIT,
             "upstream_base_tree": KVQUANT_UPSTREAM_BASE_TREE,
@@ -301,16 +301,23 @@ def phase11_kvquant_backend_fingerprint() -> str:
             "authorized_container_digest": (
                 KVQUANT_AUTHORIZED_CONTAINER_DIGEST
             ),
-            "deterministic_q4_value_decode": {
-                "api": KVQUANT_Q4_DETERMINISTIC_VALUE_DECODE_API,
+            "deterministic_value_decode": {
+                "apis": {
+                    str(bits): api
+                    for bits, api in (
+                        KVQUANT_DETERMINISTIC_VALUE_DECODE_APIS.items()
+                    )
+                },
                 "caller_owned_workspace": True,
-                "workspace_shape": list(
+                "q4_workspace_shape": list(
                     KVQUANT_Q4_VALUE_DECODE_WORKSPACE_SHAPE
                 ),
                 "workspace_dtype": "float32",
-                "workspace_bytes": (
+                "q4_workspace_bytes": (
                     KVQUANT_Q4_VALUE_DECODE_WORKSPACE_BYTES
                 ),
+                "q23_workspace_alias": "decode_logits",
+                "q23_additional_allocated_bytes": 0,
                 "reduction_order": (
                     "token_ascending_slot_ascending_then_tile_ascending"
                 ),
@@ -338,7 +345,7 @@ def kvquant_runtime_context() -> MethodRuntimeContext:
     return MethodRuntimeContext(
         model_id=MODEL_ID,
         model_revision=MODEL_REVISION,
-        backend_id="pytorch_flash_kvquant_longctx_deterministic_v3",
+        backend_id="pytorch_flash_kvquant_longctx_deterministic_q23_v4",
         backend_fingerprint=phase11_kvquant_backend_fingerprint(),
         num_layers=_LAYERS,
         num_query_heads=_QUERY_HEADS,

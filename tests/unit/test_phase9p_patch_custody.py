@@ -287,7 +287,12 @@ class Phase9PPatchCustodyTests(unittest.TestCase):
                 "0001-llama31-native-gqa.patch",
                 "0002-graphsafe-kvq3-deterministic.patch",
                 "0003-deterministic-long-context-value-decode.patch",
+                (
+                    "0004-deterministic-long-context-"
+                    "q3-q2-value-decode.patch"
+                ),
                 "deterministic-long-context-manifest.json",
+                "deterministic-long-context-q3-q2-manifest.json",
                 "graphsafe-kvq3-manifest.json",
                 "manifest.json",
             },

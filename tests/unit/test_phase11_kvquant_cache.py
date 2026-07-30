@@ -137,6 +137,7 @@ class KVQuantStaticCacheTests(unittest.TestCase):
                     )
                 else:
                     self.assertIsNone(cache.q4_value_decode_workspace)
+                    self.assertIsNotNone(cache.q23_value_decode_workspace)
                     self.assertNotIn(
                         "q4_value_decode_workspace",
                         cache.storage_geometry(),
@@ -177,6 +178,31 @@ class KVQuantStaticCacheTests(unittest.TestCase):
                 )
                 del cache
                 gc.collect()
+
+    def test_q3_q2_workspace_reuses_owned_logits_storage(self) -> None:
+        for family in ("kvq3", "kvq2"):
+            with self.subTest(family=family):
+                cache = _cache(config_name=family, capacity=257)
+                workspace = cache.q23_value_decode_workspace
+                self.assertIsNotNone(workspace)
+                assert workspace is not None
+                self.assertEqual(tuple(workspace.shape), (1, 32, 1, 128))
+                self.assertEqual(
+                    workspace.untyped_storage().data_ptr(),
+                    cache.decode_logits.untyped_storage().data_ptr(),
+                )
+                self.assertEqual(
+                    cache.layout_fingerprint(),
+                    cache.layout_fingerprint(),
+                )
+                self.assertEqual(
+                    cache.byte_breakdown(),
+                    cache.predicted_byte_breakdown(),
+                )
+                self.assertIn(
+                    "q23_value_decode_workspace_data_ptr",
+                    cache.pointers(),
+                )
 
     def test_physical_accounting_is_exact_for_all_families(self) -> None:
         for family in KVQUANT_CONFIG_BITS:

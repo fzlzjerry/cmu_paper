@@ -48,6 +48,7 @@ KVQUANT_Q4_VALUE_DECODE_WORKSPACE_BYTES: Final[int] = (
     * KVQUANT_HEAD_DIM
     * 4
 )
+KVQUANT_Q23_VALUE_DECODE_TILE_WIDTH: Final[int] = 128
 _TORCH: Any | None = None
 
 
@@ -480,6 +481,24 @@ class KVQuantStaticCache:
                 device=self.device,
             )
             if self.config_name == "kvq4"
+            else None
+        )
+        q23_max_quantized = max(self.capacity - self.sink_tokens, 0)
+        q23_max_tiles = (
+            q23_max_quantized + KVQUANT_Q23_VALUE_DECODE_TILE_WIDTH - 1
+        ) // KVQUANT_Q23_VALUE_DECODE_TILE_WIDTH
+        q23_stored_tiles = max(q23_max_tiles - 1, 0)
+        q23_workspace_elements = (
+            q23_stored_tiles * KVQUANT_Q23_VALUE_DECODE_TILE_WIDTH
+        )
+        self.q23_value_decode_workspace = (
+            self.decode_logits[:, :, :q23_workspace_elements].view(
+                self.batch_size,
+                self.num_query_heads,
+                q23_stored_tiles,
+                self.head_dim,
+            )
+            if self.config_name in {"kvq3", "kvq2"}
             else None
         )
         self.reserved_workspace = torch.empty(
@@ -1058,14 +1077,19 @@ class KVQuantStaticCache:
     def pointers(self) -> dict[str, int]:
         """Return audit-only pointer identities outside measured execution."""
 
-        return {
+        pointers = {
             f"{name}_data_ptr": int(tensor.data_ptr())
             for name, tensor in self._owned_named_tensors()
         }
+        if self.q23_value_decode_workspace is not None:
+            pointers["q23_value_decode_workspace_data_ptr"] = int(
+                self.q23_value_decode_workspace.data_ptr()
+            )
+        return pointers
 
     def layout_fingerprint(self) -> str:
         payload = {
-            "schema": "kvbench-kvquant-static-cache-layout-1.1.0",
+            "schema": "kvbench-kvquant-static-cache-layout-1.2.0",
             "configuration": self.config_name,
             "bits": self.bits,
             "levels": self.levels,
@@ -1108,6 +1132,27 @@ class KVQuantStaticCache:
             "q4_value_decode_max_tiles": (
                 KVQUANT_Q4_VALUE_DECODE_MAX_TILES
                 if self.q4_value_decode_workspace is not None
+                else None
+            ),
+            "q23_value_decode_workspace_shape": (
+                None
+                if self.q23_value_decode_workspace is None
+                else tuple(self.q23_value_decode_workspace.shape)
+            ),
+            "q23_value_decode_workspace_dtype": (
+                None
+                if self.q23_value_decode_workspace is None
+                else str(self.q23_value_decode_workspace.dtype)
+            ),
+            "q23_value_decode_workspace_alias": (
+                None
+                if self.q23_value_decode_workspace is None
+                else "decode_logits"
+            ),
+            "q23_value_decode_additional_allocated_bytes": 0,
+            "q23_value_decode_tile_width": (
+                KVQUANT_Q23_VALUE_DECODE_TILE_WIDTH
+                if self.q23_value_decode_workspace is not None
                 else None
             ),
             "dense_dtype": str(self.packed_key_cache.dtype),
@@ -1162,6 +1207,10 @@ class KVQuantStaticCache:
         if self.q4_value_decode_workspace is not None:
             geometry["q4_value_decode_workspace"] = tuple(
                 self.q4_value_decode_workspace.shape
+            )
+        if self.q23_value_decode_workspace is not None:
+            geometry["q23_value_decode_workspace_alias"] = tuple(
+                self.q23_value_decode_workspace.shape
             )
         return geometry
 

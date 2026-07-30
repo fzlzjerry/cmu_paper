@@ -74,9 +74,9 @@ def _runtime_context() -> MethodRuntimeContext:
     return MethodRuntimeContext(
         model_id="phase11-kvquant-corrected-fixture",
         model_revision="0e9e39f249a16976918f6564b8830bc894c89659",
-        backend_id="kvquant-gqa-longctx-deterministic-v3",
+        backend_id="kvquant-gqa-longctx-deterministic-q23-v4",
         backend_fingerprint=hashlib.sha256(
-            b"phase11-kvquant-gqa-longctx-deterministic-v3"
+            b"phase11-kvquant-gqa-longctx-deterministic-q23-v4"
         ).hexdigest(),
         num_layers=32,
         num_query_heads=32,
@@ -545,6 +545,9 @@ class Phase11KVQuantCudaTests(unittest.TestCase):
                     else:
                         self.assertIsNone(
                             cache.q4_value_decode_workspace
+                        )
+                        self.assertIsNotNone(
+                            cache.q23_value_decode_workspace
                         )
                     self.assertEqual(
                         cache.gqa_geometry(),

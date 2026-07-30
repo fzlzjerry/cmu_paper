@@ -63,7 +63,7 @@ def _runtime_context() -> MethodRuntimeContext:
     return MethodRuntimeContext(
         model_id="phase11-kvquant-graph-fixture",
         model_revision="0e9e39f249a16976918f6564b8830bc894c89659",
-        backend_id="kvquant-gqa-longctx-deterministic-v3",
+        backend_id="kvquant-gqa-longctx-deterministic-q23-v4",
         backend_fingerprint=hashlib.sha256(
             b"phase11-kvquant-fixed-graph"
         ).hexdigest(),
@@ -266,6 +266,11 @@ class Phase11KVQuantGraphTests(unittest.TestCase):
                     )
                 else:
                     self.assertIsNone(cache.q4_value_decode_workspace)
+                    self.assertIsNotNone(cache.q23_value_decode_workspace)
+                    self.assertIn(
+                        "q23_value_decode_workspace_data_ptr",
+                        pointers_before,
+                    )
 
                 with mock.patch(
                     "kvbench.adapters.kvquant.flash_attention_forward",

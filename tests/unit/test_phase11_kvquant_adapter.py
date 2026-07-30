@@ -21,6 +21,7 @@ from kvbench.adapters.kvquant import (
     KVQUANT_CORRECTED_COMMIT,
     KVQUANT_CORRECTED_TREE,
     KVQUANT_DECISIONS,
+    KVQUANT_DETERMINISTIC_VALUE_DECODE_APIS,
     KVQUANT_EXTENSION_SHA256,
     KVQUANT_Q4_DETERMINISTIC_VALUE_DECODE_API,
     KVQUANT_QUANTIZER_SHA256,
@@ -265,21 +266,21 @@ class Phase11KVQuantMethodTests(unittest.TestCase):
     def test_exact_authority_and_required_cuda_surface(self) -> None:
         self.assertEqual(
             KVQUANT_AGGREGATE_PATCH_SHA256,
-            "bae63bced549479709b10d7f6a8ee35a8f21ec18cc040a7424591cee47c1b0a6",
+            "7b9d3cc6773e8ef37697601c885f2c5ec581dffd57cf59424d03e68f147bd55a",
         )
         self.assertEqual(
             KVQUANT_CORRECTED_COMMIT,
-            "4b8533b29b04f8c4bf55f688a41fefe20487637b",
+            "34b0bdfa83082e1f30387d9ac5cca369006e089c",
         )
         self.assertEqual(
             KVQUANT_CORRECTED_TREE,
-            "46f2149a0369d5c97d9a6bc77d57b5f3a5a5fb3b",
+            "1f85af65fe03061583ffe8bd91e47d7ecffdd312",
         )
         self.assertEqual(
             KVQUANT_EXTENSION_SHA256,
-            "a79644923ba131e56abe95029e669346dbbb11fd210d2b9f8b2086819ffeaad1",
+            "b3c33badb8e55b19d6b2ce535182e964ce51e5102d8413b29701dd3d817ad73d",
         )
-        self.assertEqual(KVQUANT_DECISIONS[-1], "0027")
+        self.assertEqual(KVQUANT_DECISIONS[-1], "0029")
         self.assertEqual(
             KVQUANT_AUTHORIZED_CONTAINER_DIGEST,
             (
@@ -288,8 +289,15 @@ class Phase11KVQuantMethodTests(unittest.TestCase):
             ),
         )
         symbols = set(_required_extension_symbols())
-        self.assertEqual(len(symbols), 16)
-        self.assertIn(KVQUANT_Q4_DETERMINISTIC_VALUE_DECODE_API, symbols)
+        self.assertEqual(len(symbols), 18)
+        self.assertEqual(
+            KVQUANT_DETERMINISTIC_VALUE_DECODE_APIS[4],
+            KVQUANT_Q4_DETERMINISTIC_VALUE_DECODE_API,
+        )
+        self.assertTrue(
+            set(KVQUANT_DETERMINISTIC_VALUE_DECODE_APIS.values())
+            <= symbols
+        )
         for bits in (4, 3, 2):
             self.assertIn(f"vecquant{bits}appendvecKsparse", symbols)
             self.assertIn(
@@ -417,7 +425,7 @@ class Phase11KVQuantMethodTests(unittest.TestCase):
             with self.subTest(forbidden=forbidden):
                 self.assertNotIn(forbidden, sources)
 
-    def test_q4_uses_deterministic_workspace_and_q3_q2_remain_legacy(
+    def test_all_bits_use_deterministic_caller_owned_workspace(
         self,
     ) -> None:
         class _Runtime:
@@ -430,11 +438,7 @@ class Phase11KVQuantMethodTests(unittest.TestCase):
 
                 return call
 
-        for configuration, expected_arguments in (
-            ("kvq4", 8),
-            ("kvq3", 7),
-            ("kvq2", 7),
-        ):
+        for configuration in ("kvq4", "kvq3", "kvq2"):
             with self.subTest(configuration=configuration):
                 method = KVQuantMethodAdapter(
                     _runtime_context(),
@@ -456,23 +460,20 @@ class Phase11KVQuantMethodTests(unittest.TestCase):
                 )
                 self.assertEqual(len(runtime.calls), 1)
                 name, arguments = runtime.calls[0]
-                self.assertEqual(len(arguments), expected_arguments)
+                self.assertEqual(len(arguments), 8)
+                self.assertEqual(
+                    name,
+                    KVQUANT_DETERMINISTIC_VALUE_DECODE_APIS[method.bits],
+                )
                 if configuration == "kvq4":
-                    self.assertEqual(
-                        name,
-                        KVQUANT_Q4_DETERMINISTIC_VALUE_DECODE_API,
-                    )
                     self.assertIs(
                         arguments[-1],
                         cache.q4_value_decode_workspace,
                     )
                 else:
-                    self.assertEqual(
-                        name,
-                        (
-                            f"vecquant{method.bits}matmul_nuq_perchannel_"
-                            "transposed_mha_batched_fused_opt2"
-                        ),
+                    self.assertIs(
+                        arguments[-1],
+                        cache.q23_value_decode_workspace,
                     )
                     self.assertIsNone(cache.q4_value_decode_workspace)
 

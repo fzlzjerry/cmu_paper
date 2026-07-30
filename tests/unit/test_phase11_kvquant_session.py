@@ -14,9 +14,10 @@ from kvbench.adapters.kvquant import (
     KVQUANT_CORRECTED_COMMIT,
     KVQUANT_CORRECTED_TREE,
     KVQUANT_DECISIONS,
+    KVQUANT_DETERMINISTIC_VALUE_DECODE_APIS,
+    KVQUANT_EXECUTION_SOURCE_IDENTIFIER,
     KVQUANT_EXTENSION_SHA256,
     KVQUANT_METHOD_IDENTIFIER,
-    KVQUANT_Q4_DETERMINISTIC_VALUE_DECODE_API,
 )
 from kvbench.runtime.kvquant_cache import (
     KVQUANT_Q4_VALUE_DECODE_WORKSPACE_BYTES,
@@ -44,7 +45,6 @@ from kvbench.schema.phase11 import (
     PHASE11_CORRECTED_COMMIT,
     PHASE11_CORRECTED_TREE,
     PHASE11_DECISIONS,
-    PHASE11_EXECUTION_SOURCE_IDENTIFIER,
     PHASE11_EXTENSION_SHA256,
     PHASE11_METHOD_IDENTIFIER,
 )
@@ -210,22 +210,13 @@ class Phase11KVQuantSessionTests(unittest.TestCase):
             KVQUANT_METHOD_IDENTIFIER,
             PHASE11_METHOD_IDENTIFIER,
         )
-        self.assertEqual(
+        self.assertNotEqual(
             KVQUANT_AGGREGATE_PATCH_SHA256,
             PHASE11_AGGREGATE_PATCH_SHA256,
         )
-        self.assertEqual(
-            KVQUANT_CORRECTED_COMMIT,
-            PHASE11_CORRECTED_COMMIT,
-        )
-        self.assertEqual(
-            KVQUANT_CORRECTED_TREE,
-            PHASE11_CORRECTED_TREE,
-        )
-        self.assertEqual(
-            KVQUANT_EXTENSION_SHA256,
-            PHASE11_EXTENSION_SHA256,
-        )
+        self.assertNotEqual(KVQUANT_CORRECTED_COMMIT, PHASE11_CORRECTED_COMMIT)
+        self.assertNotEqual(KVQUANT_CORRECTED_TREE, PHASE11_CORRECTED_TREE)
+        self.assertNotEqual(KVQUANT_EXTENSION_SHA256, PHASE11_EXTENSION_SHA256)
         self.assertEqual(
             KVQUANT_AUTHORIZED_CONTAINER_DIGEST,
             PHASE11_AUTHORIZED_CONTAINER_DIGEST,
@@ -246,20 +237,21 @@ class Phase11KVQuantSessionTests(unittest.TestCase):
         )
         self.assertEqual(
             context.backend_id,
-            "pytorch_flash_kvquant_longctx_deterministic_v3",
+            "pytorch_flash_kvquant_longctx_deterministic_q23_v4",
         )
-        self.assertEqual(KVQUANT_DECISIONS, PHASE11_DECISIONS)
+        self.assertEqual(KVQUANT_DECISIONS[:-1], PHASE11_DECISIONS)
+        self.assertEqual(KVQUANT_DECISIONS[-1], "0029")
         self.assertNotEqual(
-            PHASE11_EXECUTION_SOURCE_IDENTIFIER,
+            KVQUANT_EXECUTION_SOURCE_IDENTIFIER,
             PHASE11_METHOD_IDENTIFIER,
         )
 
-    def test_backend_fingerprint_binds_decision0027_q4_workspace(
+    def test_backend_fingerprint_binds_decision0029_q23_workspace(
         self,
     ) -> None:
         source = inspect.getsource(phase11_kvquant_backend_fingerprint)
         self.assertIn(
-            "KVQUANT_Q4_DETERMINISTIC_VALUE_DECODE_API",
+            "KVQUANT_DETERMINISTIC_VALUE_DECODE_APIS",
             source,
         )
         self.assertIn(
@@ -271,8 +263,9 @@ class Phase11KVQuantSessionTests(unittest.TestCase):
             source,
         )
         self.assertTrue(
-            KVQUANT_Q4_DETERMINISTIC_VALUE_DECODE_API.endswith(
-                "_deterministic_out"
+            all(
+                api.endswith("_deterministic_out")
+                for api in KVQUANT_DETERMINISTIC_VALUE_DECODE_APIS.values()
             )
         )
         self.assertEqual(

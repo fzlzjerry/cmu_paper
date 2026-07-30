@@ -125,7 +125,7 @@ def _runtime_context() -> MethodRuntimeContext:
     return MethodRuntimeContext(
         model_id="phase11-kvquant-sanitizer",
         model_revision="0e9e39f249a16976918f6564b8830bc894c89659",
-        backend_id="kvquant-gqa-longctx-deterministic-v3",
+        backend_id="kvquant-gqa-longctx-deterministic-q23-v4",
         backend_fingerprint=hashlib.sha256(
             b"phase11-kvquant-sanitizer"
         ).hexdigest(),
@@ -268,6 +268,8 @@ def _run_case(
             )
     elif cache.q4_value_decode_workspace is not None:
         raise RuntimeError("non-q4 cache owns a q4 decode workspace")
+    elif cache.q23_value_decode_workspace is None:
+        raise RuntimeError("q3/q2 deterministic workspace alias differs")
     cache.prepare_prefill(PREFIX_LENGTH)
     method.store_prefill(
         cache,

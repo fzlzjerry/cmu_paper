@@ -46,6 +46,7 @@ PHASE11_ENTRY_COMMIT = "72f1897af78b738cc8c74fd335a8957a8e8f5d6c"
 PHASE11D_ENTRY_COMMIT = "69e99389b548e82e65e027cc0ea7b86c9fbe43dd"
 PHASE11R_ENTRY_COMMIT = "f0f02364a556da70e67b3107a0c0afad5f75eae9"
 PHASE12E_ENTRY_COMMIT = "7c7af7cd1efe4a8befa36ceaedb11e2b47733276"
+PHASE11DQ23_ENTRY_COMMIT = "2bc6aaa1d05b08d50f4c01bbc0b2863dd8689fe1"
 QUALITY_COMMIT = "a7b8285dd8ed2fb598efbb3312e9f55064a0ee64"
 ENVIRONMENT_COMMIT = "ea176994921c793789ebbd9d42515ce20ae4baee"
 EVIDENCE_COMMIT = "fb164b5ea96031ca40b21f4b8436a49a3bb5b8d2"
@@ -907,6 +908,47 @@ PHASE12E_ALLOWED_PATHS = frozenset(
         "tests/unit/test_phase12e_scope.py",
     }
 )
+PHASE11DQ23_ALLOWED_PATHS = frozenset(
+    {
+        "Makefile",
+        (
+            "docs/decisions/"
+            "0029-kvquant-deterministic-long-context-q3-q2-value-decode.md"
+        ),
+        "docs/evidence/phase11dq23/cuda-validation.json",
+        (
+            "docs/phase_reports/"
+            "phase11dq23-kvquant-deterministic-long-context-q3-q2.md"
+        ),
+        "scripts/phase11dq23_kvquant_validation.py",
+        "scripts/validate_kvquant_q23_long_context_patch.py",
+        "scripts/validate_phase2.py",
+        "src/kvbench/adapters/kvquant.py",
+        "src/kvbench/runtime/kvquant_cache.py",
+        "src/kvbench/runtime/kvquant_session.py",
+        "tests/cuda/phase11_kvquant_sanitizer_probe.py",
+        (
+            "tests/cuda/"
+            "phase11dq23_kvquant_long_context_validation.py"
+        ),
+        "tests/cuda/test_phase11_kvquant_cuda.py",
+        "tests/graph/test_phase11_kvquant_graph.py",
+        "tests/unit/test_phase11_kvquant_adapter.py",
+        "tests/unit/test_phase11_kvquant_cache.py",
+        "tests/unit/test_phase11_kvquant_session.py",
+        "tests/unit/test_phase11dq23_scope.py",
+        "tests/unit/test_phase12e_scope.py",
+        "tests/unit/test_phase9p_patch_custody.py",
+        (
+            "third_party/patches/kvquant/"
+            "0004-deterministic-long-context-q3-q2-value-decode.patch"
+        ),
+        (
+            "third_party/patches/kvquant/"
+            "deterministic-long-context-q3-q2-manifest.json"
+        ),
+    }
+)
 
 
 RAW_RESULT_SUFFIXES = {
@@ -1381,11 +1423,32 @@ def current_phase11r_paths() -> set[str]:
     return historical_phase11r_paths()
 
 
+def historical_phase12e_paths() -> set[str]:
+    """Return the completed Phase 12E validator-only remediation."""
+
+    return git_paths(
+        (
+            "diff",
+            "--name-only",
+            "-z",
+            PHASE12E_ENTRY_COMMIT,
+            PHASE11DQ23_ENTRY_COMMIT,
+            "--",
+        )
+    )
+
+
 def current_phase12e_paths() -> set[str]:
-    """Return tracked and untracked changes in the narrow Phase 12E segment."""
+    """Compatibility view of the completed, frozen Phase 12E segment."""
+
+    return historical_phase12e_paths()
+
+
+def current_phase11dq23_paths() -> set[str]:
+    """Return tracked and untracked Phase 11D-Q23 changes."""
 
     changed = git_paths(
-        ("diff", "--name-only", "-z", PHASE12E_ENTRY_COMMIT, "--")
+        ("diff", "--name-only", "-z", PHASE11DQ23_ENTRY_COMMIT, "--")
     )
     untracked = git_paths(
         ("ls-files", "--others", "--exclude-standard", "-z", "--")
@@ -1440,7 +1503,7 @@ def current_phase5_paths() -> set[str]:
 
 
 def changed_paths() -> set[str]:
-    return current_phase12e_paths()
+    return current_phase11dq23_paths()
 
 
 def repository_python_paths() -> list[Path]:
@@ -1457,6 +1520,10 @@ def repository_python_paths() -> list[Path]:
     paths.add(ROOT / "scripts" / "validate_kvquant_graphsafe_patch.py")
     paths.add(ROOT / "scripts" / "phase11d_kvquant_validation.py")
     paths.add(ROOT / "scripts" / "validate_kvquant_long_context_patch.py")
+    paths.add(ROOT / "scripts" / "phase11dq23_kvquant_validation.py")
+    paths.add(
+        ROOT / "scripts" / "validate_kvquant_q23_long_context_patch.py"
+    )
     paths.add(ROOT / "scripts" / "phase9_kvquant_calibration.py")
     paths.add(ROOT / "scripts" / "phase9_kvquant_worker.py")
     phase10_reference = ROOT / "reference" / "kvquant"
@@ -2395,6 +2462,87 @@ PHASE8_APPROVED_ARTIFACT_ROOT_NAMES = frozenset(
 PHASE11_APPROVED_ARTIFACT_ROOT_NAMES = frozenset(
     {"phase11", "phase11_r2_outer"}
 )
+PHASE12_BLOCKED_ARTIFACT_ROOT_NAMES = frozenset({"phase12"})
+PHASE12_BLOCKED_STAGING_DIRECTORIES = frozenset(
+    {
+        ".kvbench-reservations",
+        (
+            ".kvbench-reservations/"
+            "phase12-20260730t000000000000z-2bc6aaa1-abcdef"
+        ),
+        ".kvbench-staging",
+        (
+            ".kvbench-staging/"
+            "phase12-20260730t000000000000z-2bc6aaa1-abcdef."
+            "df41252db7c860d9755c4843.staging"
+        ),
+        (
+            ".kvbench-staging/"
+            "phase12-20260730t000000000000z-2bc6aaa1-abcdef."
+            "df41252db7c860d9755c4843.staging/unified"
+        ),
+    }
+)
+PHASE12_BLOCKED_STAGING_FILE_SHA256S = {
+    (
+        ".kvbench-staging/"
+        "phase12-20260730t000000000000z-2bc6aaa1-abcdef."
+        "df41252db7c860d9755c4843.staging/campaign-reservation.json"
+    ): "d123ba56f1341176dab82e8b4eba108117053c018f11e7ed2ec94a1f8a3e16a1",
+    (
+        ".kvbench-staging/"
+        "phase12-20260730t000000000000z-2bc6aaa1-abcdef."
+        "df41252db7c860d9755c4843.staging/unified/entry-authority.json"
+    ): "033f883fbfd001e515d345cb8f1c9e0568b6c60b6e3fd4bef2dacf51b1672e6c",
+    (
+        ".kvbench-staging/"
+        "phase12-20260730t000000000000z-2bc6aaa1-abcdef."
+        "df41252db7c860d9755c4843.staging/unified/entry-g1-g4.json"
+    ): "27e336995b26aac74e954432dc2786d6704b223f5a77bf2beb6fe34a648d65e9",
+}
+
+
+def validate_phase12_blocked_artifact_root() -> list[str]:
+    """Freeze the pre-G5 Phase 12 staging tree without admitting new runs."""
+
+    root = ROOT / "artifacts" / "phase12"
+    if not root.exists() and not root.is_symlink():
+        return []
+    if root.is_symlink() or not root.is_dir():
+        return ["historical Phase 12 blocked artifact root is unsafe"]
+    observed_directories: set[str] = set()
+    observed_files: set[str] = set()
+    for path in root.rglob("*"):
+        relative = path.relative_to(root).as_posix()
+        if path.is_symlink():
+            return [
+                "historical Phase 12 blocked artifact contains a symlink: "
+                f"{relative}"
+            ]
+        if path.is_dir():
+            observed_directories.add(relative)
+        elif path.is_file():
+            observed_files.add(relative)
+        else:
+            return [
+                "historical Phase 12 blocked artifact contains an unsafe "
+                f"entry: {relative}"
+            ]
+    errors: list[str] = []
+    if observed_directories != PHASE12_BLOCKED_STAGING_DIRECTORIES:
+        errors.append(
+            "historical Phase 12 blocked artifact directories differ"
+        )
+    if observed_files != set(PHASE12_BLOCKED_STAGING_FILE_SHA256S):
+        errors.append("historical Phase 12 blocked artifact files differ")
+    for relative, expected in PHASE12_BLOCKED_STAGING_FILE_SHA256S.items():
+        path = root / relative
+        if path.is_file() and sha256(path) != expected:
+            errors.append(
+                "historical Phase 12 blocked artifact checksum differs: "
+                f"{relative}"
+            )
+    return errors
 
 
 def validate_phase3_artifact_root() -> list[str]:
@@ -2426,12 +2574,14 @@ def validate_phase3_artifact_root() -> list[str]:
                 | PHASE7_APPROVED_ARTIFACT_ROOT_NAMES
                 | PHASE8_APPROVED_ARTIFACT_ROOT_NAMES
                 | PHASE11_APPROVED_ARTIFACT_ROOT_NAMES
+                | PHASE12_BLOCKED_ARTIFACT_ROOT_NAMES
             )
         )
         if unexpected:
             errors.append(
                 f"unapproved artifact roots: {unexpected!r}"
             )
+    errors.extend(validate_phase12_blocked_artifact_root())
     errors.extend(validate_phase3_campaign_and_report_roots(artifacts))
     if not phase3.exists() and not phase3.is_symlink():
         return errors
@@ -2684,6 +2834,10 @@ def check_scope() -> int:
         errors.append(
             "the accepted Phase 12E entry commit is not an ancestor of HEAD"
         )
+    if not commit_is_ancestor(PHASE11DQ23_ENTRY_COMMIT):
+        errors.append(
+            "the accepted Phase 11D-Q23 entry commit is not an ancestor of HEAD"
+        )
     phase5 = historical_phase5_paths()
     phase5_unexpected = sorted(phase5 - PHASE5_ALLOWED_PATHS)
     if phase5_unexpected:
@@ -2781,26 +2935,34 @@ def check_scope() -> int:
             "admission-rerun plan: "
             f"{phase11r_unexpected!r}"
         )
-    changed = current_phase12e_paths()
-    phase12e_unexpected = sorted(changed - PHASE12E_ALLOWED_PATHS)
+    phase12e = historical_phase12e_paths()
+    phase12e_unexpected = sorted(phase12e - PHASE12E_ALLOWED_PATHS)
     if phase12e_unexpected:
         errors.append(
-            "files outside the approved Phase 12E historical-authority "
-            f"remediation plan: {phase12e_unexpected!r}"
+            "historical files outside the approved Phase 12E "
+            f"historical-authority remediation plan: {phase12e_unexpected!r}"
+        )
+    changed = current_phase11dq23_paths()
+    phase11dq23_unexpected = sorted(changed - PHASE11DQ23_ALLOWED_PATHS)
+    if phase11dq23_unexpected:
+        errors.append(
+            "files outside the approved Phase 11D-Q23 CUDA remediation "
+            f"plan: {phase11dq23_unexpected!r}"
         )
     for relative in sorted(changed):
         if relative.startswith("docs/evidence/e00/"):
             errors.append(f"immutable E00 evidence changed: {relative}")
         if relative in QUALITY_PROTOCOL_HASHES:
             errors.append(
-                f"quality protocol changed during Phase 12E: {relative}"
+                "quality protocol changed during Phase 11D-Q23: "
+                f"{relative}"
             )
         if (
             Path(relative).suffix in RAW_RESULT_SUFFIXES
         ):
             errors.append(
                 f"forbidden binary, kernel, model, or profiler artifact "
-                f"in Phase 12E Git scope: {relative}"
+                f"in Phase 11D-Q23 Git scope: {relative}"
             )
         if relative.startswith(
             (
@@ -2812,7 +2974,7 @@ def check_scope() -> int:
             )
         ):
             errors.append(
-                f"forbidden result tree in Phase 12E scope: {relative}"
+                f"forbidden result tree in Phase 11D-Q23 scope: {relative}"
             )
     e00_changes = git_paths(
         (

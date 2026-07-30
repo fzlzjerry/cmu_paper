@@ -70,7 +70,11 @@ class Phase12EScopeTests(unittest.TestCase):
         }
         self.assertLessEqual(required, current)
         self.assertLessEqual(current, validate_phase2.PHASE12E_ALLOWED_PATHS)
-        self.assertEqual(validate_phase2.changed_paths(), current)
+        self.assertEqual(
+            current,
+            validate_phase2.historical_phase12e_paths(),
+        )
+        self.assertNotEqual(validate_phase2.changed_paths(), current)
 
     def test_method_evidence_and_future_work_are_rejected(self) -> None:
         rejected = {

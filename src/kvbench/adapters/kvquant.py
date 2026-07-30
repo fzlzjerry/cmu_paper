@@ -39,13 +39,13 @@ from kvbench.schema import canonical_json_bytes, sha256_hex
 from kvbench.schema.base import require_sha256
 
 
-KVQUANT_ADAPTER_VERSION = "kvbench-kvquant-method-adapter-1.1.0"
+KVQUANT_ADAPTER_VERSION = "kvbench-kvquant-method-adapter-1.2.0"
 KVQUANT_ADAPTER_FINGERPRINT_SCHEMA_VERSION = (
-    "kvbench-kvquant-method-adapter-config-1.1.0"
+    "kvbench-kvquant-method-adapter-config-1.2.0"
 )
 KVQUANT_METHOD_IDENTIFIER = "kvquant_gqa_upstream_patch_v1"
 KVQUANT_EXECUTION_SOURCE_IDENTIFIER = (
-    "kvquant_gqa_longctx_deterministic_v3"
+    "kvquant_gqa_longctx_deterministic_q23_v4"
 )
 KVQUANT_UPSTREAM_BASE_COMMIT = "57a238357f0ffe50084670fcd5781c9848f80ea2"
 KVQUANT_UPSTREAM_BASE_TREE = "094e0f736f77ee327e5350cbd1eefb1c936aa77b"
@@ -53,15 +53,15 @@ KVQUANT_DECISION_0021_PATCH_SHA256 = (
     "db3b6fb7ec0a72e25001e1c83a5158d86512248db5c3a06c61895598d1d482d6"
 )
 KVQUANT_AGGREGATE_PATCH_SHA256 = (
-    "bae63bced549479709b10d7f6a8ee35a8f21ec18cc040a7424591cee47c1b0a6"
+    "7b9d3cc6773e8ef37697601c885f2c5ec581dffd57cf59424d03e68f147bd55a"
 )
-KVQUANT_CORRECTED_COMMIT = "4b8533b29b04f8c4bf55f688a41fefe20487637b"
-KVQUANT_CORRECTED_TREE = "46f2149a0369d5c97d9a6bc77d57b5f3a5a5fb3b"
+KVQUANT_CORRECTED_COMMIT = "34b0bdfa83082e1f30387d9ac5cca369006e089c"
+KVQUANT_CORRECTED_TREE = "1f85af65fe03061583ffe8bd91e47d7ecffdd312"
 KVQUANT_CORRECTED_CUDA_SHA256 = (
-    "43c73ccc61bfedcec09197c55e223702dec705e3cec2a2d9357d8fa89c76cc31"
+    "457a1d8d7bd07ba2e7e8420cbe3b722b52471f131ecc88f7f5442584a8b212f9"
 )
 KVQUANT_EXTENSION_SHA256 = (
-    "a79644923ba131e56abe95029e669346dbbb11fd210d2b9f8b2086819ffeaad1"
+    "b3c33badb8e55b19d6b2ce535182e964ce51e5102d8413b29701dd3d817ad73d"
 )
 KVQUANT_AUTHORIZED_CONTAINER_DIGEST = (
     "sha256:059bc9be89387369d7de9e3e9b26d85b6e9902c41e7dbf002ebc45edd188fb7e"
@@ -91,11 +91,19 @@ KVQUANT_DECISIONS = (
     "0025",
     "0026",
     "0027",
+    "0029",
 )
 KVQUANT_Q4_DETERMINISTIC_VALUE_DECODE_API = (
     "vecquant4matmul_nuq_perchannel_transposed_"
     "mha_batched_fused_opt2_deterministic_out"
 )
+KVQUANT_DETERMINISTIC_VALUE_DECODE_APIS = {
+    bits: (
+        f"vecquant{bits}matmul_nuq_perchannel_transposed_"
+        "mha_batched_fused_opt2_deterministic_out"
+    )
+    for bits in (4, 3, 2)
+}
 _REPOSITORY_ROOT = Path(__file__).resolve().parents[3]
 _DEFAULT_CALIBRATION_ROOT = (
     _REPOSITORY_ROOT
@@ -170,7 +178,7 @@ def _required_extension_symbols() -> tuple[str, ...]:
         "select_fixed_outliers_1024_cap12_out",
         "key_sparse_residual_1024_cap12_out",
         "append_value_sparse_1024_cap12_out",
-        KVQUANT_Q4_DETERMINISTIC_VALUE_DECODE_API,
+        *KVQUANT_DETERMINISTIC_VALUE_DECODE_APIS.values(),
     )
     per_bit: list[str] = []
     for bits in (4, 3, 2):
@@ -919,15 +927,20 @@ class KVQuantMethodAdapter:
         )
         cache.decode_logits_bf16.copy_(cache.decode_softmax)
 
-        value_weights = cache.decode_logits.reshape(-1)[
-            : KVQUANT_NUM_QUERY_HEADS * quantized
-        ].view(1, KVQUANT_NUM_QUERY_HEADS, quantized)
-        for query_head in range(KVQUANT_NUM_QUERY_HEADS):
-            value_weights[:, query_head, :].copy_(
-                cache.decode_logits_bf16[
-                    :, query_head, cache.sink_tokens : total
-                ]
-            )
+        if self.bits == 4:
+            value_weights = cache.decode_logits.reshape(-1)[
+                : KVQUANT_NUM_QUERY_HEADS * quantized
+            ].view(1, KVQUANT_NUM_QUERY_HEADS, quantized)
+            for query_head in range(KVQUANT_NUM_QUERY_HEADS):
+                value_weights[:, query_head, :].copy_(
+                    cache.decode_logits_bf16[
+                        :, query_head, cache.sink_tokens : total
+                    ]
+                )
+        else:
+            value_weights = cache.decode_softmax[
+                :, :, cache.sink_tokens : total
+            ]
         self._decode_quantized_value(
             runtime=runtime,
             cache=cache,
@@ -971,7 +984,7 @@ class KVQuantMethodAdapter:
         value_weights: Any,
         quantized: int,
     ) -> None:
-        """Dispatch only q4 through the deterministic caller-owned API."""
+        """Dispatch every bit width through its deterministic out API."""
 
         cache.decode_quantized_output.zero_()
         if self.bits == 4:
@@ -980,26 +993,15 @@ class KVQuantMethodAdapter:
                 raise CacheStateError(
                     "KVQuant q4 deterministic workspace differs"
                 )
-            getattr(
-                runtime,
-                KVQUANT_Q4_DETERMINISTIC_VALUE_DECODE_API,
-            )(
-                value_weights,
-                cache.packed_value_cache[layer_idx],
-                cache.decode_quantized_output,
-                cache.value_lookup_cache[layer_idx],
-                quantized,
-                cache.value_sparse_values[layer_idx],
-                cache.value_sparse_indices[layer_idx],
-                workspace,
-            )
-            return
+        else:
+            workspace = cache.q23_value_decode_workspace
+            if workspace is None:
+                raise CacheStateError(
+                    "KVQuant q3/q2 deterministic workspace differs"
+                )
         getattr(
             runtime,
-            (
-                f"vecquant{self.bits}matmul_nuq_perchannel_transposed_"
-                "mha_batched_fused_opt2"
-            ),
+            KVQUANT_DETERMINISTIC_VALUE_DECODE_APIS[self.bits],
         )(
             value_weights,
             cache.packed_value_cache[layer_idx],
@@ -1008,6 +1010,7 @@ class KVQuantMethodAdapter:
             quantized,
             cache.value_sparse_values[layer_idx],
             cache.value_sparse_indices[layer_idx],
+            workspace,
         )
 
     def decode_attention(
@@ -1116,11 +1119,18 @@ class KVQuantMethodAdapter:
                 "value_sink_active": 0,
                 "sparse_value_dtype": "float32",
                 "sparse_index_dtype": "int32",
-                "q4_value_decode_api": (
-                    KVQUANT_Q4_DETERMINISTIC_VALUE_DECODE_API
+                "value_decode_api": (
+                    KVQUANT_DETERMINISTIC_VALUE_DECODE_APIS[self.bits]
                 ),
-                "q4_value_decode_workspace_shape": list(
-                    KVQUANT_Q4_VALUE_DECODE_WORKSPACE_SHAPE
+                "value_decode_workspace": (
+                    "dedicated_q4"
+                    if self.bits == 4
+                    else "decode_logits_alias_no_additional_storage"
+                ),
+                "q4_value_decode_workspace_shape": (
+                    list(KVQUANT_Q4_VALUE_DECODE_WORKSPACE_SHAPE)
+                    if self.bits == 4
+                    else None
                 ),
             },
             "supports_cuda_graph": self.supports_cuda_graph(),
