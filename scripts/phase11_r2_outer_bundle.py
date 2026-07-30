@@ -26,6 +26,7 @@ from kvbench.schema.phase11 import (
     PHASE11_CONFIGURATIONS,
     PHASE11_CORRECTED_COMMIT,
     PHASE11_CORRECTED_TREE,
+    PHASE11_DECISIONS,
     PHASE11_EXECUTION_SOURCE_IDENTIFIER,
     PHASE11_EXTENSION_SHA256,
     PHASE11_FIXTURE_ID,
@@ -104,7 +105,7 @@ METHOD_ADMISSION_CHECKSUM_RELATIVE = (
 PASS_REPORT_RELATIVE = (
     Path("docs")
     / "phase_reports"
-    / "phase11-kvquant-measurement-adapter.md"
+    / "phase11r-kvquant-measurement-adapter.md"
 )
 REQUIRED_REPOSITORY_FILES = (
     INNER_RECEIPT_RELATIVE,
@@ -140,7 +141,7 @@ BUNDLED_METHOD_CHECKSUM_PATH = PurePosixPath(
     "admission", "method-admission.sha256"
 )
 BUNDLED_PASS_REPORT_PATH = PurePosixPath(
-    "reports", "phase11-kvquant-measurement-adapter.md"
+    "reports", "phase11r-kvquant-measurement-adapter.md"
 )
 MANIFEST_SCHEMA = "kvbench-phase11-r2-outer-bundle-1.0.0"
 INNER_RECEIPT_SCHEMA = (
@@ -1465,7 +1466,7 @@ def _validate_phase_report(
         "Working tree": "CLEAN",
         "Algorithm identifier": PHASE11_METHOD_IDENTIFIER,
         "Execution-source identifier": PHASE11_EXECUTION_SOURCE_IDENTIFIER,
-        "Decisions": "0021, 0023, 0024, 0025",
+        "Decisions": ", ".join(PHASE11_DECISIONS),
         "Aggregate patch SHA": PHASE11_AGGREGATE_PATCH_SHA256,
         "Corrected commit": PHASE11_CORRECTED_COMMIT,
         "Corrected tree": PHASE11_CORRECTED_TREE,

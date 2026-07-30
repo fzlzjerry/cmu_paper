@@ -27,6 +27,9 @@ from kvbench.adapters.kvquant import (
     KVQuantMethodAdapter,
 )
 from kvbench.runtime.cuda_graph import capture_fixed_graph
+from kvbench.runtime.kvquant_cache import (
+    KVQUANT_Q4_VALUE_DECODE_WORKSPACE_SHAPE,
+)
 from kvbench.runtime.kvquant_fixture import (
     KVQUANT_FIXTURE_ID,
     KVQUANT_FIXTURE_ROOT_SHA256,
@@ -57,12 +60,12 @@ MODE_CASES = {
 }
 _AUTHORITY = {
     "aggregate_patch_sha256": (
-        "23a15db86790299392412c3ce2da7d971f4f073cfaf6839d82d3746c8b56b551"
+        "bae63bced549479709b10d7f6a8ee35a8f21ec18cc040a7424591cee47c1b0a6"
     ),
-    "corrected_commit": "0d9df350bd1788284e1ce76a8bf6e886beca5efa",
-    "corrected_tree": "a85cf7bf093982a4bf89c33d4e6794d9a85f846d",
+    "corrected_commit": "4b8533b29b04f8c4bf55f688a41fefe20487637b",
+    "corrected_tree": "46f2149a0369d5c97d9a6bc77d57b5f3a5a5fb3b",
     "extension_sha256": (
-        "46c41aad8f56d58608d4c1273bd3a72fd36c8f69f9ca2c5a046f0c811631bf51"
+        "a79644923ba131e56abe95029e669346dbbb11fd210d2b9f8b2086819ffeaad1"
     ),
     "fixture_id": "kvqref-2e0a0e9022c50cbc6fb497d88cae973e",
     "fixture_root_sha256": (
@@ -122,7 +125,7 @@ def _runtime_context() -> MethodRuntimeContext:
     return MethodRuntimeContext(
         model_id="phase11-kvquant-sanitizer",
         model_revision="0e9e39f249a16976918f6564b8830bc894c89659",
-        backend_id="kvquant-gqa-graphsafe-kvq3-v2",
+        backend_id="kvquant-gqa-longctx-deterministic-v3",
         backend_fingerprint=hashlib.sha256(
             b"phase11-kvquant-sanitizer"
         ).hexdigest(),
@@ -254,6 +257,17 @@ def _run_case(
     )
     method.initialize_cache_untimed(cache)
     pointers_before = cache.pointers()
+    if family == "kvq4":
+        if (
+            cache.q4_value_decode_workspace is None
+            or tuple(cache.q4_value_decode_workspace.shape)
+            != KVQUANT_Q4_VALUE_DECODE_WORKSPACE_SHAPE
+        ):
+            raise RuntimeError(
+                "KVQuant q4 deterministic workspace differs"
+            )
+    elif cache.q4_value_decode_workspace is not None:
+        raise RuntimeError("non-q4 cache owns a q4 decode workspace")
     cache.prepare_prefill(PREFIX_LENGTH)
     method.store_prefill(
         cache,

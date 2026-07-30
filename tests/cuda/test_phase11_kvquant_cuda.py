@@ -17,6 +17,9 @@ from kvbench.adapters.kvquant import (
     KVQUANT_EXTENSION_SHA256,
     KVQuantMethodAdapter,
 )
+from kvbench.runtime.kvquant_cache import (
+    KVQUANT_Q4_VALUE_DECODE_WORKSPACE_SHAPE,
+)
 from kvbench.runtime.kvquant_fixture import (
     KVQUANT_CASES,
     KVQUANT_FAMILIES,
@@ -71,9 +74,9 @@ def _runtime_context() -> MethodRuntimeContext:
     return MethodRuntimeContext(
         model_id="phase11-kvquant-corrected-fixture",
         model_revision="0e9e39f249a16976918f6564b8830bc894c89659",
-        backend_id="kvquant-gqa-graphsafe-kvq3-v2",
+        backend_id="kvquant-gqa-longctx-deterministic-v3",
         backend_fingerprint=hashlib.sha256(
-            b"phase11-kvquant-gqa-graphsafe-kvq3-v2"
+            b"phase11-kvquant-gqa-longctx-deterministic-v3"
         ).hexdigest(),
         num_layers=32,
         num_query_heads=32,
@@ -534,6 +537,15 @@ class Phase11KVQuantCudaTests(unittest.TestCase):
                         self._prefill_append_decode(fixture, files)
                     )
                     self.assertEqual(pointers_after, pointers_before)
+                    if family == "kvq4":
+                        self.assertEqual(
+                            tuple(cache.q4_value_decode_workspace.shape),
+                            KVQUANT_Q4_VALUE_DECODE_WORKSPACE_SHAPE,
+                        )
+                    else:
+                        self.assertIsNone(
+                            cache.q4_value_decode_workspace
+                        )
                     self.assertEqual(
                         cache.gqa_geometry(),
                         {
@@ -561,7 +573,7 @@ class Phase11KVQuantCudaTests(unittest.TestCase):
                     self.torch.cuda.empty_cache()
 
     def test_non_default_stream_orders_store_append_and_decode(self) -> None:
-        fixture = self.fixtures[("kvq3", "key_few_value_fixed12")]
+        fixture = self.fixtures[("kvq4", "key_cap_value_fixed12")]
         files = _fixture_files(fixture)
         method, cache = self._new_method_cache(fixture.family)
         source = self._cuda_inputs(files)

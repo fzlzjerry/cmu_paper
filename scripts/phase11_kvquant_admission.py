@@ -32,6 +32,7 @@ from typing import Any, Mapping, Sequence
 from kvbench.adapters.kvquant import (
     KVQUANT_ADAPTER_VERSION,
     KVQUANT_EXTENSION_SHA256,
+    KVQUANT_Q4_DETERMINISTIC_VALUE_DECODE_API,
     KVQuantMethodAdapter,
 )
 from kvbench.runtime.allocation import collect_cuda_allocator_raw
@@ -132,7 +133,9 @@ from kvbench.schema.phase11 import (
 )
 from kvbench.schema.phase3 import GateDisposition
 from scripts.r2_artifact import validate_local_artifact
-from scripts.validate_kvquant_graphsafe_patch import validate as validate_source
+from scripts.validate_kvquant_long_context_patch import (
+    validate as validate_source,
+)
 
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
@@ -148,10 +151,12 @@ SANITIZER_PROBE = (
 )
 _GIT_BOUND_SOURCE_PATHS = (
     "scripts/phase11_kvquant_admission.py",
+    "scripts/validate_kvquant_long_context_patch.py",
     "src/kvbench/adapters/kvquant.py",
     "src/kvbench/runtime/kvquant_cache.py",
     "src/kvbench/runtime/bf16_endpoint.py",
     "src/kvbench/runtime/kvquant_session.py",
+    "src/kvbench/schema/phase11.py",
     "tests/cuda/test_phase11_kvquant_cuda.py",
     "tests/graph/test_phase11_kvquant_graph.py",
     "tests/cuda/phase11_kvquant_sanitizer_probe.py",
@@ -160,9 +165,10 @@ _RUNTIME_CALIBRATION_PATH = Path(
     "/opt/kvquant-calibration"
 ) / PHASE11_CALIBRATION_ID
 _PHASE11_CALIBRATION_OBJECT_COUNT = 68
-_GRAPHSAFE_PATCH_MANIFEST_PATH = (
+_EXECUTION_PATCH_MANIFEST_PATH = (
     REPOSITORY_ROOT
-    / "third_party/patches/kvquant/graphsafe-kvq3-manifest.json"
+    / "third_party/patches/kvquant/"
+    "deterministic-long-context-manifest.json"
 )
 CONTAINER_PYTHON = Path("/opt/kvbench/.venv/bin/python")
 SANITIZER = Path("/usr/local/cuda-13.0/bin/compute-sanitizer")
@@ -204,6 +210,7 @@ _SANITIZER_RUNS = (
     ("memcheck", "kvq2"),
     ("memcheck", "sink-gqa-fixed"),
     ("memcheck", "graph-replay"),
+    ("initcheck", "kvq4-cap"),
     ("initcheck", "kvq3-distinct"),
 )
 _BITS = {"kvq4": 4, "kvq3": 3, "kvq2": 2}
@@ -770,6 +777,7 @@ def _static_execution_path() -> tuple[Phase11ExecutionPathEvidence, ...]:
             "_pack_nonsink_token",
             "append_decode",
             "_decode_compressed",
+            "_decode_quantized_value",
             "decode_attention",
         )
     )
@@ -835,6 +843,10 @@ def _static_execution_path() -> tuple[Phase11ExecutionPathEvidence, ...]:
     pack_calls, pack_templates = bindings("_pack_nonsink_token")
     _, store_templates = bindings("store_prefill")
     _, decode_templates = bindings("_decode_compressed")
+    _, value_decode_templates = bindings("_decode_quantized_value")
+    value_decode_source = inspect.getsource(
+        KVQuantMethodAdapter._decode_quantized_value
+    )
     required_bindings = (
         "select_fixed_outliers_1024_cap12_out" in pack_calls,
         "key_sparse_residual_1024_cap12_out" in pack_calls,
@@ -853,7 +865,17 @@ def _static_execution_path() -> tuple[Phase11ExecutionPathEvidence, ...]:
             "vecquant{self.bits}matmul_nuq_perchannel_transposed_"
             "mha_batched_fused_opt2"
         )
-        in decode_templates,
+        in value_decode_templates,
+        "if self.bits == 4:" in value_decode_source,
+        "cache.q4_value_decode_workspace" in value_decode_source,
+        (
+            "KVQUANT_Q4_DETERMINISTIC_VALUE_DECODE_API"
+            in value_decode_source
+        ),
+        (
+            KVQUANT_Q4_DETERMINISTIC_VALUE_DECODE_API
+            .endswith("_deterministic_out")
+        ),
     )
     if not all(required_bindings):
         raise Phase11KVQuantDriverError(
@@ -866,6 +888,9 @@ def _static_execution_path() -> tuple[Phase11ExecutionPathEvidence, ...]:
             device_resident_value_parameters=True,
             current_cuda_stream=True,
             corrected_kvq3_pack=True,
+            deterministic_q4_value_decode=True,
+            caller_owned_q4_value_workspace=True,
+            fixed_order_q4_value_reduction=True,
             direct_compressed_decode=True,
             native_gqa=True,
             value_fixed_12=True,
@@ -1620,8 +1645,8 @@ def _strict_json(path: Path) -> dict[str, Any]:
     return value
 
 
-def _expected_graphsafe_changed_paths() -> tuple[str, ...]:
-    manifest = _strict_json(_GRAPHSAFE_PATCH_MANIFEST_PATH)
+def _expected_execution_changed_paths() -> tuple[str, ...]:
+    manifest = _strict_json(_EXECUTION_PATCH_MANIFEST_PATH)
     records = manifest.get("patched_files")
     if (
         not isinstance(records, list)
@@ -1643,12 +1668,12 @@ def _expected_graphsafe_changed_paths() -> tuple[str, ...]:
         )
     ):
         raise Phase11KVQuantDriverError(
-            "Decision 0025 changed-file authority differs"
+            "Decision 0027 changed-file authority differs"
         )
     paths = tuple(str(record["path"]) for record in records)
     if len(set(paths)) != len(paths):
         raise Phase11KVQuantDriverError(
-            "Decision 0025 changed-file authority contains duplicates"
+            "Decision 0027 changed-file authority contains duplicates"
         )
     return paths
 
@@ -1735,11 +1760,16 @@ def _validate_authority_environment_and_gqa(
         or set(source)
         != {
             "status",
+            "decision",
+            "decision_status",
             "patched_commit",
             "patched_tree",
             "aggregate_patch_sha256",
             "aggregate_changed_paths",
+            "parent_commit",
+            "parent_tree",
             "parent_relative_changed_paths",
+            "source_contract",
             "reconstruction",
         }
         or set(code_objects)
@@ -1792,24 +1822,38 @@ def _validate_authority_environment_and_gqa(
         != PHASE11_EXTENSION_SHA256
         or environment.get("fresh_build_source_equivalent") is not True
         or environment.get("nvcc_cuda_object_byte_reproducible") is not False
-        or not isinstance(
-            environment.get("fresh_build_byte_identical_to_authority"),
-            bool,
+        or (
+            environment.get("fresh_build_byte_identical_to_authority")
+            is not True
         )
         or _require_sha256_value(
             environment.get("fresh_build_extension_sha256"),
             label="fresh extension identity",
         )
-        != environment.get("fresh_build_extension_sha256")
+        != PHASE11_EXTENSION_SHA256
         or source.get("status") != "PASS"
+        or source.get("decision")
+        != (
+            "docs/decisions/"
+            "0027-kvquant-deterministic-long-context-value-decode.md"
+        )
+        or source.get("decision_status") != "Accepted"
         or source.get("patched_commit") != PHASE11_CORRECTED_COMMIT
         or source.get("patched_tree") != PHASE11_CORRECTED_TREE
         or source.get("aggregate_patch_sha256")
         != PHASE11_AGGREGATE_PATCH_SHA256
         or tuple(aggregate_paths or ())
-        != _expected_graphsafe_changed_paths()
+        != _expected_execution_changed_paths()
+        or source.get("source_contract") != "PASS"
+        or source.get("parent_commit")
+        != "0d9df350bd1788284e1ce76a8bf6e886beca5efa"
+        or source.get("parent_tree")
+        != "a85cf7bf093982a4bf89c33d4e6794d9a85f846d"
         or parent_paths
-        != ["deployment/kvquant/quant_cuda_kernel.cu"]
+        != [
+            "deployment/kvquant/quant_cuda.cpp",
+            "deployment/kvquant/quant_cuda_kernel.cu",
+        ]
         or code_objects.get("schema_version")
         != "kvbench-phase11-sm120-code-object-check-1.0.0"
         or code_objects.get("native_sm120") is not True
@@ -3231,6 +3275,7 @@ def run_admission() -> dict[str, Any]:
         or source_result.get("aggregate_patch_sha256")
         != PHASE11_AGGREGATE_PATCH_SHA256
         or extension_sha256 != PHASE11_EXTENSION_SHA256
+        or fresh_extension_sha256 != PHASE11_EXTENSION_SHA256
     ):
         raise Phase11KVQuantDriverError("execution source identity differs")
     initial = _manifest(

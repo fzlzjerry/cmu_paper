@@ -17,9 +17,11 @@ from kvbench.adapters.kvquant import (
     KVQUANT_CORRECTED_COMMIT,
     KVQUANT_CORRECTED_CUDA_SHA256,
     KVQUANT_CORRECTED_TREE,
+    KVQUANT_DECISIONS,
     KVQUANT_DECISION_0021_PATCH_SHA256,
     KVQUANT_EXTENSION_SHA256,
     KVQUANT_METHOD_IDENTIFIER,
+    KVQUANT_Q4_DETERMINISTIC_VALUE_DECODE_API,
     KVQUANT_QUANTIZER_SHA256,
     KVQUANT_UPSTREAM_BASE_COMMIT,
     KVQUANT_UPSTREAM_BASE_TREE,
@@ -32,6 +34,8 @@ from kvbench.runtime.bf16_endpoint import BF16DecodeEndpoint
 from kvbench.runtime.cuda_graph import CapturedFixedGraph, capture_fixed_graph
 from kvbench.runtime.kvquant_cache import (
     KVQUANT_CONFIG_BITS,
+    KVQUANT_Q4_VALUE_DECODE_WORKSPACE_BYTES,
+    KVQUANT_Q4_VALUE_DECODE_WORKSPACE_SHAPE,
     KVQuantStaticCache,
 )
 from kvbench.runtime.model_loader import (
@@ -291,11 +295,27 @@ def phase11_kvquant_backend_fingerprint() -> str:
             "corrected_tree": KVQUANT_CORRECTED_TREE,
             "corrected_cuda_sha256": KVQUANT_CORRECTED_CUDA_SHA256,
             "extension_sha256": KVQUANT_EXTENSION_SHA256,
+            "decisions": list(KVQUANT_DECISIONS),
             "fixture_id": PHASE11_FIXTURE_ID,
             "fixture_root": PHASE11_FIXTURE_ROOT,
             "authorized_container_digest": (
                 KVQUANT_AUTHORIZED_CONTAINER_DIGEST
             ),
+            "deterministic_q4_value_decode": {
+                "api": KVQUANT_Q4_DETERMINISTIC_VALUE_DECODE_API,
+                "caller_owned_workspace": True,
+                "workspace_shape": list(
+                    KVQUANT_Q4_VALUE_DECODE_WORKSPACE_SHAPE
+                ),
+                "workspace_dtype": "float32",
+                "workspace_bytes": (
+                    KVQUANT_Q4_VALUE_DECODE_WORKSPACE_BYTES
+                ),
+                "reduction_order": (
+                    "token_ascending_slot_ascending_then_tile_ascending"
+                ),
+                "current_pytorch_cuda_stream": True,
+            },
         },
         "local_sources": {
             relative: hashlib.sha256(
@@ -318,7 +338,7 @@ def kvquant_runtime_context() -> MethodRuntimeContext:
     return MethodRuntimeContext(
         model_id=MODEL_ID,
         model_revision=MODEL_REVISION,
-        backend_id="pytorch_flash_kvquant_graphsafe_kvq3_v2",
+        backend_id="pytorch_flash_kvquant_longctx_deterministic_v3",
         backend_fingerprint=phase11_kvquant_backend_fingerprint(),
         num_layers=_LAYERS,
         num_query_heads=_QUERY_HEADS,

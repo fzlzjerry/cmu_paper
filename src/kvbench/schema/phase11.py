@@ -31,22 +31,22 @@ from kvbench.schema.phase3 import GateDisposition
 
 
 PHASE11_METHOD_IDENTIFIER = "kvquant_gqa_upstream_patch_v1"
-PHASE11_EXECUTION_SOURCE_IDENTIFIER = "kvquant_gqa_graphsafe_kvq3_v2"
+PHASE11_EXECUTION_SOURCE_IDENTIFIER = "kvquant_gqa_longctx_deterministic_v3"
 PHASE11_UPSTREAM_BASE_COMMIT = "57a238357f0ffe50084670fcd5781c9848f80ea2"
 PHASE11_UPSTREAM_BASE_TREE = "094e0f736f77ee327e5350cbd1eefb1c936aa77b"
 PHASE11_DECISION_0021_PATCH_SHA256 = (
     "db3b6fb7ec0a72e25001e1c83a5158d86512248db5c3a06c61895598d1d482d6"
 )
 PHASE11_AGGREGATE_PATCH_SHA256 = (
-    "23a15db86790299392412c3ce2da7d971f4f073cfaf6839d82d3746c8b56b551"
+    "bae63bced549479709b10d7f6a8ee35a8f21ec18cc040a7424591cee47c1b0a6"
 )
-PHASE11_CORRECTED_COMMIT = "0d9df350bd1788284e1ce76a8bf6e886beca5efa"
-PHASE11_CORRECTED_TREE = "a85cf7bf093982a4bf89c33d4e6794d9a85f846d"
+PHASE11_CORRECTED_COMMIT = "4b8533b29b04f8c4bf55f688a41fefe20487637b"
+PHASE11_CORRECTED_TREE = "46f2149a0369d5c97d9a6bc77d57b5f3a5a5fb3b"
 PHASE11_CORRECTED_CUDA_SHA256 = (
-    "07ea018378e10ee80e0485e42225ab9903adcee0879af27c621289f147fabba1"
+    "43c73ccc61bfedcec09197c55e223702dec705e3cec2a2d9357d8fa89c76cc31"
 )
 PHASE11_EXTENSION_SHA256 = (
-    "46c41aad8f56d58608d4c1273bd3a72fd36c8f69f9ca2c5a046f0c811631bf51"
+    "a79644923ba131e56abe95029e669346dbbb11fd210d2b9f8b2086819ffeaad1"
 )
 PHASE11_CALIBRATION_ID = "kvqcal-cdb724c806d64d095c040d2673a987a3"
 PHASE11_CALIBRATION_ROOT = (
@@ -63,7 +63,7 @@ PHASE11_FIXTURE_ROOT = (
 PHASE11_AUTHORIZED_CONTAINER_DIGEST = (
     "sha256:059bc9be89387369d7de9e3e9b26d85b6e9902c41e7dbf002ebc45edd188fb7e"
 )
-PHASE11_DECISIONS = ("0021", "0023", "0024", "0025")
+PHASE11_DECISIONS = ("0021", "0023", "0024", "0025", "0026", "0027")
 PHASE11_CONFIGURATIONS = ("kvq4", "kvq3", "kvq2")
 PHASE11_ACCOUNTING_CONTEXTS = (5, 17, 18, 128, 4096)
 PHASE11_ALLOCATION_AUDIT_CONTEXTS = {
@@ -657,6 +657,9 @@ class Phase11ExecutionPathEvidence(StrictModel):
     device_resident_value_parameters: bool
     current_cuda_stream: bool
     corrected_kvq3_pack: bool
+    deterministic_q4_value_decode: bool
+    caller_owned_q4_value_workspace: bool
+    fixed_order_q4_value_reduction: bool
     direct_compressed_decode: bool
     native_gqa: bool
     value_fixed_12: bool

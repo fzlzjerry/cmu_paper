@@ -24,6 +24,7 @@ from kvbench.schema import (
 from kvbench.schema.phase11 import (
     PHASE11_BOUNDED_POINT_SIGNATURES,
     PHASE11_CONFIGURATIONS,
+    PHASE11_DECISIONS,
     PHASE11_EXTENSION_SHA256,
     Phase11RunManifest,
     Phase11RunPoint,
@@ -59,7 +60,7 @@ from scripts.phase11_kvquant_admission import (
     Phase11KVQuantDriverError,
     _GIT_BOUND_SOURCE_PATHS,
     _RUNTIME_CALIBRATION_PATH,
-    _expected_graphsafe_changed_paths,
+    _expected_execution_changed_paths,
     _validate_inner_records,
     derive_phase11_method_admission_report,
     write_phase11_method_admission_report,
@@ -81,10 +82,12 @@ LOCK_ID = "phase11-test-indefinite-lock"
 def _test_git_binding() -> dict[str, object]:
     hashes = {
         "scripts/phase11_kvquant_admission.py": "2" * 64,
+        "scripts/validate_kvquant_long_context_patch.py": "4" * 64,
         "src/kvbench/adapters/kvquant.py": "b" * 64,
         "src/kvbench/runtime/kvquant_cache.py": "c" * 64,
         "src/kvbench/runtime/bf16_endpoint.py": "d" * 64,
         "src/kvbench/runtime/kvquant_session.py": "e" * 64,
+        "src/kvbench/schema/phase11.py": "5" * 64,
         "tests/cuda/test_phase11_kvquant_cuda.py": "f" * 64,
         "tests/graph/test_phase11_kvquant_graph.py": "1" * 64,
         "tests/cuda/phase11_kvquant_sanitizer_probe.py": "3" * 64,
@@ -363,17 +366,30 @@ def _make_inner_bundle(
             "git_source_binding": _test_git_binding(),
             "source_validation": {
                 "status": "PASS",
+                "decision": (
+                    "docs/decisions/"
+                    "0027-kvquant-deterministic-long-context-value-decode.md"
+                ),
+                "decision_status": "Accepted",
                 "patched_commit": _authority().corrected_commit,
                 "patched_tree": _authority().corrected_tree,
                 "aggregate_patch_sha256": (
                     _authority().aggregate_patch_sha256
                 ),
                 "aggregate_changed_paths": list(
-                    _expected_graphsafe_changed_paths()
+                    _expected_execution_changed_paths()
+                ),
+                "parent_commit": (
+                    "0d9df350bd1788284e1ce76a8bf6e886beca5efa"
+                ),
+                "parent_tree": (
+                    "a85cf7bf093982a4bf89c33d4e6794d9a85f846d"
                 ),
                 "parent_relative_changed_paths": [
-                    "deployment/kvquant/quant_cuda_kernel.cu"
+                    "deployment/kvquant/quant_cuda.cpp",
+                    "deployment/kvquant/quant_cuda_kernel.cu",
                 ],
+                "source_contract": "PASS",
                 "reconstruction": {"status": "PASS"},
             },
             "authority_extension_path": "/authority/quant_cuda.so",
@@ -664,7 +680,7 @@ def _write_governance(
         f"Algorithm identifier: {report.authority.method_identifier}\n"
         "Execution-source identifier: "
         f"{report.authority.execution_source_identifier}\n"
-        "Decisions: 0021, 0023, 0024, 0025\n"
+        f"Decisions: {', '.join(PHASE11_DECISIONS)}\n"
         f"Aggregate patch SHA: {report.authority.aggregate_patch_sha256}\n"
         f"Corrected commit: {report.authority.corrected_commit}\n"
         f"Corrected tree: {report.authority.corrected_tree}\n"
@@ -882,6 +898,22 @@ class Phase11R2OuterBundleTests(unittest.TestCase):
         self.assertEqual(validation.run_id, run_id)
         self.assertEqual(validation.admission_run_count, 9)
         return final
+
+    def test_pass_report_uses_phase11r_path_not_immutable_blocked_path(
+        self,
+    ) -> None:
+        self.assertEqual(
+            PASS_REPORT_RELATIVE.as_posix(),
+            "docs/phase_reports/phase11r-kvquant-measurement-adapter.md",
+        )
+        self.assertEqual(
+            BUNDLED_PASS_REPORT_PATH.as_posix(),
+            "reports/phase11r-kvquant-measurement-adapter.md",
+        )
+        self.assertNotEqual(
+            PASS_REPORT_RELATIVE.as_posix(),
+            "docs/phase_reports/phase11-kvquant-measurement-adapter.md",
+        )
 
     def test_report_writer_is_derived_and_refuses_overwrite(self) -> None:
         repository = self.repository / "writer-repository"

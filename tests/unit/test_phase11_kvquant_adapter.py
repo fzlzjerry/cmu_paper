@@ -20,7 +20,9 @@ from kvbench.adapters.kvquant import (
     KVQUANT_AUTHORIZED_CONTAINER_DIGEST,
     KVQUANT_CORRECTED_COMMIT,
     KVQUANT_CORRECTED_TREE,
+    KVQUANT_DECISIONS,
     KVQUANT_EXTENSION_SHA256,
+    KVQUANT_Q4_DETERMINISTIC_VALUE_DECODE_API,
     KVQUANT_QUANTIZER_SHA256,
     KVQuantMethodAdapter,
     _required_extension_symbols,
@@ -263,20 +265,21 @@ class Phase11KVQuantMethodTests(unittest.TestCase):
     def test_exact_authority_and_required_cuda_surface(self) -> None:
         self.assertEqual(
             KVQUANT_AGGREGATE_PATCH_SHA256,
-            "23a15db86790299392412c3ce2da7d971f4f073cfaf6839d82d3746c8b56b551",
+            "bae63bced549479709b10d7f6a8ee35a8f21ec18cc040a7424591cee47c1b0a6",
         )
         self.assertEqual(
             KVQUANT_CORRECTED_COMMIT,
-            "0d9df350bd1788284e1ce76a8bf6e886beca5efa",
+            "4b8533b29b04f8c4bf55f688a41fefe20487637b",
         )
         self.assertEqual(
             KVQUANT_CORRECTED_TREE,
-            "a85cf7bf093982a4bf89c33d4e6794d9a85f846d",
+            "46f2149a0369d5c97d9a6bc77d57b5f3a5a5fb3b",
         )
         self.assertEqual(
             KVQUANT_EXTENSION_SHA256,
-            "46c41aad8f56d58608d4c1273bd3a72fd36c8f69f9ca2c5a046f0c811631bf51",
+            "a79644923ba131e56abe95029e669346dbbb11fd210d2b9f8b2086819ffeaad1",
         )
+        self.assertEqual(KVQUANT_DECISIONS[-1], "0027")
         self.assertEqual(
             KVQUANT_AUTHORIZED_CONTAINER_DIGEST,
             (
@@ -285,7 +288,8 @@ class Phase11KVQuantMethodTests(unittest.TestCase):
             ),
         )
         symbols = set(_required_extension_symbols())
-        self.assertEqual(len(symbols), 15)
+        self.assertEqual(len(symbols), 16)
+        self.assertIn(KVQUANT_Q4_DETERMINISTIC_VALUE_DECODE_API, symbols)
         for bits in (4, 3, 2):
             self.assertIn(f"vecquant{bits}appendvecKsparse", symbols)
             self.assertIn(
@@ -395,6 +399,7 @@ class Phase11KVQuantMethodTests(unittest.TestCase):
                 KVQuantMethodAdapter._pack_nonsink_token,
                 KVQuantMethodAdapter.append_decode,
                 KVQuantMethodAdapter._decode_compressed,
+                KVQuantMethodAdapter._decode_quantized_value,
             )
         )
         for forbidden in (
@@ -411,6 +416,65 @@ class Phase11KVQuantMethodTests(unittest.TestCase):
         ):
             with self.subTest(forbidden=forbidden):
                 self.assertNotIn(forbidden, sources)
+
+    def test_q4_uses_deterministic_workspace_and_q3_q2_remain_legacy(
+        self,
+    ) -> None:
+        class _Runtime:
+            def __init__(self) -> None:
+                self.calls: list[tuple[str, tuple[object, ...]]] = []
+
+            def __getattr__(self, name: str) -> object:
+                def call(*args: object) -> None:
+                    self.calls.append((name, args))
+
+                return call
+
+        for configuration, expected_arguments in (
+            ("kvq4", 8),
+            ("kvq3", 7),
+            ("kvq2", 7),
+        ):
+            with self.subTest(configuration=configuration):
+                method = KVQuantMethodAdapter(
+                    _runtime_context(),
+                    configuration,
+                )
+                cache = method.allocate(
+                    batch_size=1,
+                    capacity=18,
+                    device="cpu",
+                )
+                runtime = _Runtime()
+                value_weights = torch.empty((1, 32, 13))
+                method._decode_quantized_value(
+                    runtime=runtime,
+                    cache=cache,
+                    layer_idx=0,
+                    value_weights=value_weights,
+                    quantized=13,
+                )
+                self.assertEqual(len(runtime.calls), 1)
+                name, arguments = runtime.calls[0]
+                self.assertEqual(len(arguments), expected_arguments)
+                if configuration == "kvq4":
+                    self.assertEqual(
+                        name,
+                        KVQUANT_Q4_DETERMINISTIC_VALUE_DECODE_API,
+                    )
+                    self.assertIs(
+                        arguments[-1],
+                        cache.q4_value_decode_workspace,
+                    )
+                else:
+                    self.assertEqual(
+                        name,
+                        (
+                            f"vecquant{method.bits}matmul_nuq_perchannel_"
+                            "transposed_mha_batched_fused_opt2"
+                        ),
+                    )
+                    self.assertIsNone(cache.q4_value_decode_workspace)
 
     def test_prefill_uses_corrected_parallel_value_store(self) -> None:
         source = inspect.getsource(KVQuantMethodAdapter.store_prefill)

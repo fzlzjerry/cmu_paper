@@ -12,13 +12,13 @@ MAKEFILE = (REPOSITORY_ROOT / "Makefile").read_text(encoding="utf-8")
 AUTHORIZED_CONTAINER = (
     "sha256:059bc9be89387369d7de9e3e9b26d85b6e9902c41e7dbf002ebc45edd188fb7e"
 )
-CORRECTED_COMMIT = "0d9df350bd1788284e1ce76a8bf6e886beca5efa"
-CORRECTED_TREE = "a85cf7bf093982a4bf89c33d4e6794d9a85f846d"
+CORRECTED_COMMIT = "4b8533b29b04f8c4bf55f688a41fefe20487637b"
+CORRECTED_TREE = "46f2149a0369d5c97d9a6bc77d57b5f3a5a5fb3b"
 AGGREGATE_PATCH = (
-    "23a15db86790299392412c3ce2da7d971f4f073cfaf6839d82d3746c8b56b551"
+    "bae63bced549479709b10d7f6a8ee35a8f21ec18cc040a7424591cee47c1b0a6"
 )
 AUTHORITY_EXTENSION = (
-    "46c41aad8f56d58608d4c1273bd3a72fd36c8f69f9ca2c5a046f0c811631bf51"
+    "a79644923ba131e56abe95029e669346dbbb11fd210d2b9f8b2086819ffeaad1"
 )
 CALIBRATION_ROOT = (
     "8148306d08205af376994b022f189a0d6837915cd279ca8af6b104e1f4b46ccf"
@@ -140,7 +140,11 @@ class Phase11KVQuantMakeTargetTests(unittest.TestCase):
         self.assertIn("$(PHASE11_KVQUANT_CORRECTED_COMMIT)", recipe)
         self.assertIn("$(PHASE11_KVQUANT_CORRECTED_TREE)", recipe)
         self.assertIn(
-            "-m scripts.validate_kvquant_graphsafe_patch",
+            "-m scripts.validate_kvquant_long_context_patch",
+            recipe,
+        )
+        self.assertIn(
+            '"$(PHASE11D_KVQUANT_SOURCE_ROOT)"',
             recipe,
         )
         self.assertIn(
@@ -176,10 +180,12 @@ class Phase11KVQuantMakeTargetTests(unittest.TestCase):
         recipe = _recipe("admit-kvquant")
         for relative in (
             "scripts/phase11_kvquant_admission.py",
+            "scripts/validate_kvquant_long_context_patch.py",
             "src/kvbench/adapters/kvquant.py",
             "src/kvbench/runtime/bf16_endpoint.py",
             "src/kvbench/runtime/kvquant_cache.py",
             "src/kvbench/runtime/kvquant_session.py",
+            "src/kvbench/schema/phase11.py",
             "tests/cuda/phase11_kvquant_sanitizer_probe.py",
             "tests/cuda/test_phase11_kvquant_cuda.py",
             "tests/graph/test_phase11_kvquant_graph.py",
@@ -210,30 +216,40 @@ class Phase11KVQuantMakeTargetTests(unittest.TestCase):
             3,
         )
 
-    def test_authority_binary_and_fresh_build_are_distinctly_bound(self) -> None:
+    def test_stripped_fresh_build_is_the_runtime_authority(self) -> None:
         recipe = _recipe("admit-kvquant")
-        self.assertIn(
-            'test -f "$(PHASE11_KVQUANT_EXTENSION)"',
-            recipe,
+        self.assertIsNone(
+            re.search(
+                r"^PHASE11_KVQUANT_EXTENSION\s*\?=",
+                MAKEFILE,
+                flags=re.MULTILINE,
+            )
         )
-        self.assertIn(
-            'test ! -L "$(PHASE11_KVQUANT_EXTENSION)"',
-            recipe,
-        )
+        self.assertNotIn("$(PHASE11_KVQUANT_EXTENSION)", recipe)
+        self.assertNotIn("/opt/kvquant-authority", recipe)
         self.assertIn("$(PHASE11_KVQUANT_EXTENSION_SHA256)", recipe)
         self.assertIn("setup_cuda.py build_ext --inplace", recipe)
+        self.assertIn(
+            '/usr/bin/strip --strip-unneeded "$$fresh_extension"',
+            recipe,
+        )
+        self.assertIn(
+            'sha256sum "$$fresh_extension"',
+            recipe,
+        )
         self.assertIn(".sm_120.cubin", recipe)
         self.assertIn(".target sm_120", recipe)
         self.assertIn(
-            'KVBENCH_KVQUANT_EXTENSION="$$authority_extension"',
+            'KVBENCH_KVQUANT_EXTENSION="$$fresh_extension"',
             recipe,
         )
         self.assertIn(
             'KVBENCH_KVQUANT_FRESH_BUILD_EXTENSION="$$fresh_extension"',
             recipe,
         )
-        self.assertNotIn(
-            'sha256sum "$$fresh_extension"',
+        self.assertIn(
+            "-m scripts.validate_kvquant_long_context_patch "
+            "--source-root /opt/kvquant-source",
             recipe,
         )
 
@@ -247,8 +263,6 @@ class Phase11KVQuantMakeTargetTests(unittest.TestCase):
             '--gpus "device=$(MEASUREMENT_GPU_UUID)"',
             "dst=/home/rockrock/cmu_paper,readonly",
             "dst=/opt/kvquant-source,readonly",
-            "dst=/opt/kvquant-authority/"
-            "quant_cuda.cpython-312-x86_64-linux-gnu.so,readonly",
             "dst=/opt/kvquant-calibration/"
             "kvqcal-cdb724c806d64d095c040d2673a987a3,readonly",
             "models--meta-llama--Llama-3.1-8B-Instruct,readonly",

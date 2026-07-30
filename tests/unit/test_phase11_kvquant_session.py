@@ -13,10 +13,16 @@ from kvbench.adapters.kvquant import (
     KVQUANT_AUTHORIZED_CONTAINER_DIGEST,
     KVQUANT_CORRECTED_COMMIT,
     KVQUANT_CORRECTED_TREE,
+    KVQUANT_DECISIONS,
     KVQUANT_EXTENSION_SHA256,
     KVQUANT_METHOD_IDENTIFIER,
+    KVQUANT_Q4_DETERMINISTIC_VALUE_DECODE_API,
 )
-from kvbench.runtime.kvquant_cache import KVQuantStaticCache
+from kvbench.runtime.kvquant_cache import (
+    KVQUANT_Q4_VALUE_DECODE_WORKSPACE_BYTES,
+    KVQUANT_Q4_VALUE_DECODE_WORKSPACE_SHAPE,
+    KVQuantStaticCache,
+)
 from kvbench.runtime.kvquant_session import (
     KVQuantEndpointSession,
     _historical_prefix_sha256,
@@ -37,6 +43,7 @@ from kvbench.schema.phase11 import (
     PHASE11_BOUNDED_POINT_SIGNATURES,
     PHASE11_CORRECTED_COMMIT,
     PHASE11_CORRECTED_TREE,
+    PHASE11_DECISIONS,
     PHASE11_EXECUTION_SOURCE_IDENTIFIER,
     PHASE11_EXTENSION_SHA256,
     PHASE11_METHOD_IDENTIFIER,
@@ -239,11 +246,42 @@ class Phase11KVQuantSessionTests(unittest.TestCase):
         )
         self.assertEqual(
             context.backend_id,
-            "pytorch_flash_kvquant_graphsafe_kvq3_v2",
+            "pytorch_flash_kvquant_longctx_deterministic_v3",
         )
+        self.assertEqual(KVQUANT_DECISIONS, PHASE11_DECISIONS)
         self.assertNotEqual(
             PHASE11_EXECUTION_SOURCE_IDENTIFIER,
             PHASE11_METHOD_IDENTIFIER,
+        )
+
+    def test_backend_fingerprint_binds_decision0027_q4_workspace(
+        self,
+    ) -> None:
+        source = inspect.getsource(phase11_kvquant_backend_fingerprint)
+        self.assertIn(
+            "KVQUANT_Q4_DETERMINISTIC_VALUE_DECODE_API",
+            source,
+        )
+        self.assertIn(
+            "KVQUANT_Q4_VALUE_DECODE_WORKSPACE_SHAPE",
+            source,
+        )
+        self.assertIn(
+            "KVQUANT_Q4_VALUE_DECODE_WORKSPACE_BYTES",
+            source,
+        )
+        self.assertTrue(
+            KVQUANT_Q4_DETERMINISTIC_VALUE_DECODE_API.endswith(
+                "_deterministic_out"
+            )
+        )
+        self.assertEqual(
+            KVQUANT_Q4_VALUE_DECODE_WORKSPACE_SHAPE,
+            (1, 32, 32, 128),
+        )
+        self.assertEqual(
+            KVQUANT_Q4_VALUE_DECODE_WORKSPACE_BYTES,
+            524_288,
         )
 
     def test_method_config_binds_calibration_without_license_gate(self) -> None:

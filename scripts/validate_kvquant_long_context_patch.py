@@ -28,6 +28,8 @@ PARENT_TREE = "a85cf7bf093982a4bf89c33d4e6794d9a85f846d"
 BASE_COMMIT = "57a238357f0ffe50084670fcd5781c9848f80ea2"
 BASE_TREE = "094e0f736f77ee327e5350cbd1eefb1c936aa77b"
 SOURCE_REPOSITORY = "https://github.com/SqueezeAILab/KVQuant.git"
+PHASE11R_ENTRY_COMMIT = "f0f02364a556da70e67b3107a0c0afad5f75eae9"
+PHASE11R_ENTRY_ADAPTER_PATH = "src/kvbench/adapters/kvquant.py"
 
 CPP_PATH = "deployment/kvquant/quant_cuda.cpp"
 CUDA_PATH = "deployment/kvquant/quant_cuda_kernel.cu"
@@ -106,8 +108,11 @@ PRESERVED_FILE_AUTHORITY = {
         "0002-graphsafe-kvq3-deterministic.patch",
         "23a15db86790299392412c3ce2da7d971f4f073cfaf6839d82d3746c8b56b551",
     ),
+}
+PRESERVED_GIT_BLOB_AUTHORITY = {
     "adapter_sha256": (
-        ROOT / "src/kvbench/adapters/kvquant.py",
+        PHASE11R_ENTRY_COMMIT,
+        PHASE11R_ENTRY_ADAPTER_PATH,
         "897a94541924c4222f0aeb02b9ad190504bc850809c9687cdd93c93da0245fe3",
     ),
 }
@@ -204,12 +209,33 @@ def _validate_preserved_authority(manifest: dict[str, Any]) -> None:
         name: expected
         for name, (_, expected) in PRESERVED_FILE_AUTHORITY.items()
     }
+    expected_values.update(
+        {
+            name: expected
+            for name, (_, _, expected) in (
+                PRESERVED_GIT_BLOB_AUTHORITY.items()
+            )
+        }
+    )
     expected_values.update(PRESERVED_IDENTITY_AUTHORITY)
     if observed != expected_values:
         raise base.ValidationError("preserved authority digest inventory mismatch")
     for name, (path, expected) in PRESERVED_FILE_AUTHORITY.items():
         if base._sha256(path.read_bytes()) != expected:
             raise base.ValidationError(f"preserved authority changed: {name}")
+    for name, (commit, path, expected) in (
+        PRESERVED_GIT_BLOB_AUTHORITY.items()
+    ):
+        blob = base._run_git(
+            ROOT,
+            "show",
+            f"{commit}:{path}",
+            binary=True,
+        )
+        if not isinstance(blob, bytes) or base._sha256(blob) != expected:
+            raise base.ValidationError(
+                f"preserved entry Git blob changed: {name}"
+            )
 
 
 def _extract_function(source: str, marker: str) -> str:

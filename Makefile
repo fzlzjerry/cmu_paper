@@ -63,12 +63,11 @@ KVQUANT_REFERENCE_PATCH_MANIFEST := $(CURDIR)/third_party/patches/kvquant/manife
 KVQUANT_GRAPHSAFE_SOURCE_ROOT ?= /home/rockrock/third_party_worktrees/kvquant-gqa
 KVQUANT_PHASE11PR_FIXTURES := $(CURDIR)/reference/kvquant_phase11pr/fixtures
 override PHASE11_KVQUANT_AUTHORIZED_IMAGE_CONFIG_DIGEST := sha256:059bc9be89387369d7de9e3e9b26d85b6e9902c41e7dbf002ebc45edd188fb7e
-override PHASE11_KVQUANT_CORRECTED_COMMIT := 0d9df350bd1788284e1ce76a8bf6e886beca5efa
-override PHASE11_KVQUANT_CORRECTED_TREE := a85cf7bf093982a4bf89c33d4e6794d9a85f846d
-override PHASE11_KVQUANT_AGGREGATE_PATCH_SHA256 := 23a15db86790299392412c3ce2da7d971f4f073cfaf6839d82d3746c8b56b551
-override PHASE11_KVQUANT_EXTENSION_SHA256 := 46c41aad8f56d58608d4c1273bd3a72fd36c8f69f9ca2c5a046f0c811631bf51
+override PHASE11_KVQUANT_CORRECTED_COMMIT := 4b8533b29b04f8c4bf55f688a41fefe20487637b
+override PHASE11_KVQUANT_CORRECTED_TREE := 46f2149a0369d5c97d9a6bc77d57b5f3a5a5fb3b
+override PHASE11_KVQUANT_AGGREGATE_PATCH_SHA256 := bae63bced549479709b10d7f6a8ee35a8f21ec18cc040a7424591cee47c1b0a6
+override PHASE11_KVQUANT_EXTENSION_SHA256 := a79644923ba131e56abe95029e669346dbbb11fd210d2b9f8b2086819ffeaad1
 override PHASE11_KVQUANT_CALIBRATION_ROOT_SHA256 := 8148306d08205af376994b022f189a0d6837915cd279ca8af6b104e1f4b46ccf
-PHASE11_KVQUANT_EXTENSION ?= /tmp/phase11pr-kvquant-build.N3MCwA/lib/quant_cuda.cpython-312-x86_64-linux-gnu.so
 override PHASE11_KVQUANT_CALIBRATION := $(CURDIR)/calibration/kvquant/kvqcal-cdb724c806d64d095c040d2673a987a3
 PHASE11_KVQUANT_INNER_ARTIFACT ?=
 PHASE11_KVQUANT_OUTER_ARTIFACT ?=
@@ -467,8 +466,6 @@ admit-kvquant: verify-measurement-container
 		test "$$repository_root" = "$(CURDIR)"; \
 		image_id="$(PHASE11_KVQUANT_AUTHORIZED_IMAGE_CONFIG_DIGEST)"; \
 		test "$$(docker image inspect "$$image_id" --format '{{.Id}}')" = "$$image_id"; \
-		test -f "$(PHASE11_KVQUANT_EXTENSION)" && test ! -L "$(PHASE11_KVQUANT_EXTENSION)"; \
-		test "$$(sha256sum "$(PHASE11_KVQUANT_EXTENSION)" | cut -d ' ' -f 1)" = "$(PHASE11_KVQUANT_EXTENSION_SHA256)"; \
 		git clone --quiet --no-local --no-checkout "$(CURDIR)" "$$task_root/repository"; \
 		git -C "$$task_root/repository" checkout --quiet --detach "$$head"; \
 		git -C "$$task_root/repository" remote remove origin; \
@@ -485,10 +482,12 @@ admit-kvquant: verify-measurement-container
 		test -z "$$(git -C "$$task_root/repository" status --porcelain=v1 --untracked-files=all)"; \
 		for file in \
 			scripts/phase11_kvquant_admission.py \
+			scripts/validate_kvquant_long_context_patch.py \
 			src/kvbench/adapters/kvquant.py \
 			src/kvbench/runtime/bf16_endpoint.py \
 			src/kvbench/runtime/kvquant_cache.py \
 			src/kvbench/runtime/kvquant_session.py \
+			src/kvbench/schema/phase11.py \
 			tests/cuda/phase11_kvquant_sanitizer_probe.py \
 			tests/cuda/test_phase11_kvquant_cuda.py \
 			tests/graph/test_phase11_kvquant_graph.py; do \
@@ -503,13 +502,13 @@ admit-kvquant: verify-measurement-container
 		ln -s /opt/kvbench/.venv/lib "$$task_root/repository/.venv/lib"; \
 		ln -s /opt/kvbench/.venv/pyvenv.cfg "$$task_root/repository/.venv/pyvenv.cfg"; \
 		ln -s /opt/kvbench/.phase3/site-packages "$$task_root/repository/.phase3/site-packages"; \
-		git clone --quiet --no-local --no-checkout "$(KVQUANT_GRAPHSAFE_SOURCE_ROOT)" "$$task_root/kvquant-source"; \
+		git clone --quiet --no-local --no-checkout "$(PHASE11D_KVQUANT_SOURCE_ROOT)" "$$task_root/kvquant-source"; \
 		git -C "$$task_root/kvquant-source" checkout --quiet --detach "$(PHASE11_KVQUANT_CORRECTED_COMMIT)"; \
 		git -C "$$task_root/kvquant-source" remote remove origin; \
 		test "$$(git -C "$$task_root/kvquant-source" rev-parse HEAD)" = "$(PHASE11_KVQUANT_CORRECTED_COMMIT)"; \
 		test "$$(git -C "$$task_root/kvquant-source" rev-parse HEAD^{tree})" = "$(PHASE11_KVQUANT_CORRECTED_TREE)"; \
 		test -z "$$(git -C "$$task_root/kvquant-source" status --porcelain=v1 --untracked-files=all)"; \
-		/usr/bin/env -i PATH=/usr/bin:/bin LC_ALL=C LANG=C TZ=UTC PYTHONDONTWRITEBYTECODE=1 PYTHONNOUSERSITE=1 PYTHONPATH="$(CURDIR):$(CURDIR)/src" /usr/bin/python3 -m scripts.validate_kvquant_graphsafe_patch --source-root "$$task_root/kvquant-source" > "$$task_root/source-validation.json"; \
+		/usr/bin/env -i PATH=/usr/bin:/bin LC_ALL=C LANG=C TZ=UTC PYTHONDONTWRITEBYTECODE=1 PYTHONNOUSERSITE=1 PYTHONPATH="$(CURDIR):$(CURDIR)/src" /usr/bin/python3 -m scripts.validate_kvquant_long_context_patch --source-root "$$task_root/kvquant-source" > "$$task_root/source-validation.json"; \
 		test "$$(/usr/bin/env -i PATH=/usr/bin:/bin LC_ALL=C LANG=C TZ=UTC /usr/bin/python3 -I -c 'import json,sys; print(json.load(open(sys.argv[1], encoding="utf-8"))["aggregate_patch_sha256"])' "$$task_root/source-validation.json")" = "$(PHASE11_KVQUANT_AGGREGATE_PATCH_SHA256)"; \
 		mkdir "$$task_root/kvquant-build"; \
 		for file in setup_cuda.py quant_cuda.cpp quant_cuda_kernel.cu measurement_cuda_kernel.cu; do \
@@ -558,7 +557,6 @@ admit-kvquant: verify-measurement-container
 			--mount "type=bind,src=$$artifact_root,dst=/home/rockrock/cmu_paper/artifacts/phase11" \
 			--mount "type=bind,src=$$task_root/kvquant-source,dst=/opt/kvquant-source,readonly" \
 			--mount "type=bind,src=$$task_root/kvquant-build,dst=/opt/kvquant-build" \
-			--mount "type=bind,src=$(PHASE11_KVQUANT_EXTENSION),dst=/opt/kvquant-authority/quant_cuda.cpython-312-x86_64-linux-gnu.so,readonly" \
 			--mount "type=bind,src=$$calibration_root,dst=/opt/kvquant-calibration/kvqcal-cdb724c806d64d095c040d2673a987a3,readonly" \
 			--mount "type=bind,src=$$model_root,dst=/root/.cache/huggingface/hub/models--meta-llama--Llama-3.1-8B-Instruct,readonly" \
 			--env PYTHONDONTWRITEBYTECODE=1 \
@@ -578,7 +576,7 @@ admit-kvquant: verify-measurement-container
 			--workdir /home/rockrock/cmu_paper \
 			--entrypoint /usr/bin/bash "$$image_id" \
 			--noprofile --norc -eu -o pipefail -c \
-			'cd /opt/kvquant-build && /opt/kvbench/.venv/bin/python setup_cuda.py build_ext --inplace && fresh_extension="$$(find /opt/kvquant-build -maxdepth 1 -type f -name "quant_cuda.*.so" -print -quit)" && test -n "$$fresh_extension" && /usr/local/cuda-13.0/bin/cuobjdump --list-elf "$$fresh_extension" | grep -F ".sm_120.cubin" >/dev/null && /usr/local/cuda-13.0/bin/cuobjdump --dump-ptx "$$fresh_extension" | grep -F ".target sm_120" >/dev/null && authority_extension=/opt/kvquant-authority/quant_cuda.cpython-312-x86_64-linux-gnu.so && test "$$(sha256sum "$$authority_extension" | cut -d " " -f 1)" = "$(PHASE11_KVQUANT_EXTENSION_SHA256)" && export KVBENCH_KVQUANT_EXTENSION="$$authority_extension" KVBENCH_KVQUANT_FRESH_BUILD_EXTENSION="$$fresh_extension" && /opt/kvbench/.venv/bin/python -m scripts.validate_kvquant_graphsafe_patch --source-root /opt/kvquant-source && cd /home/rockrock/cmu_paper && /opt/kvbench/.venv/bin/python -m scripts.phase11_kvquant_admission')"; \
+			'cd /opt/kvquant-build && /opt/kvbench/.venv/bin/python setup_cuda.py build_ext --inplace && fresh_extension="$$(find /opt/kvquant-build -maxdepth 1 -type f -name "quant_cuda.*.so" -print -quit)" && test -n "$$fresh_extension" && /usr/bin/strip --strip-unneeded "$$fresh_extension" && test "$$(sha256sum "$$fresh_extension" | cut -d " " -f 1)" = "$(PHASE11_KVQUANT_EXTENSION_SHA256)" && /usr/local/cuda-13.0/bin/cuobjdump --list-elf "$$fresh_extension" | grep -F ".sm_120.cubin" >/dev/null && /usr/local/cuda-13.0/bin/cuobjdump --dump-ptx "$$fresh_extension" | grep -F ".target sm_120" >/dev/null && export KVBENCH_KVQUANT_EXTENSION="$$fresh_extension" KVBENCH_KVQUANT_FRESH_BUILD_EXTENSION="$$fresh_extension" && /opt/kvbench/.venv/bin/python -m scripts.validate_kvquant_long_context_patch --source-root /opt/kvquant-source && cd /home/rockrock/cmu_paper && /opt/kvbench/.venv/bin/python -m scripts.phase11_kvquant_admission')"; \
 		[[ "$$cid" =~ ^[0-9a-f]{64}$$ ]]; \
 		docker start --attach "$$cid"; \
 		docker rm -f "$$cid" >/dev/null; cid=""; \

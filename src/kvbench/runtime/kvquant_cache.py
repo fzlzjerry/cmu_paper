@@ -33,6 +33,21 @@ KVQUANT_SINK_TOKENS: Final[int] = 5
 KVQUANT_KEY_CAP: Final[int] = 12
 KVQUANT_VALUE_CAP: Final[int] = 12
 KVQUANT_ROPE_DIM: Final[int] = 64
+KVQUANT_Q4_VALUE_DECODE_TILE_WIDTH: Final[int] = 128
+KVQUANT_Q4_VALUE_DECODE_MAX_TILES: Final[int] = 32
+KVQUANT_Q4_VALUE_DECODE_WORKSPACE_SHAPE: Final[tuple[int, ...]] = (
+    KVQUANT_BATCH_SIZE,
+    KVQUANT_NUM_QUERY_HEADS,
+    KVQUANT_Q4_VALUE_DECODE_MAX_TILES,
+    KVQUANT_HEAD_DIM,
+)
+KVQUANT_Q4_VALUE_DECODE_WORKSPACE_BYTES: Final[int] = (
+    KVQUANT_BATCH_SIZE
+    * KVQUANT_NUM_QUERY_HEADS
+    * KVQUANT_Q4_VALUE_DECODE_MAX_TILES
+    * KVQUANT_HEAD_DIM
+    * 4
+)
 _TORCH: Any | None = None
 
 
@@ -458,6 +473,15 @@ class KVQuantStaticCache:
         self.sink_output_fp16 = torch.zeros(
             query_shape, dtype=torch.float16, device=self.device
         )
+        self.q4_value_decode_workspace = (
+            torch.empty(
+                KVQUANT_Q4_VALUE_DECODE_WORKSPACE_SHAPE,
+                dtype=torch.float32,
+                device=self.device,
+            )
+            if self.config_name == "kvq4"
+            else None
+        )
         self.reserved_workspace = torch.empty(
             (self.external_workspace_bytes,),
             dtype=torch.uint8,
@@ -645,7 +669,7 @@ class KVQuantStaticCache:
         )
 
     def _owned_named_tensors(self) -> tuple[tuple[str, Any], ...]:
-        return (
+        tensors = (
             ("packed_key_cache", self.packed_key_cache),
             ("packed_value_cache", self.packed_value_cache),
             ("key_codebook", self.key_codebook),
@@ -705,8 +729,15 @@ class KVQuantStaticCache:
             ("decode_sink_contribution", self.decode_sink_contribution),
             ("decode_quantized_output", self.decode_quantized_output),
             ("sink_output_fp16", self.sink_output_fp16),
-            ("reserved_workspace", self.reserved_workspace),
         )
+        if self.q4_value_decode_workspace is not None:
+            tensors += (
+                (
+                    "q4_value_decode_workspace",
+                    self.q4_value_decode_workspace,
+                ),
+            )
+        return (*tensors, ("reserved_workspace", self.reserved_workspace))
 
     def _owned_tensors(self) -> tuple[Any, ...]:
         return tuple(tensor for _, tensor in self._owned_named_tensors())
@@ -785,6 +816,11 @@ class KVQuantStaticCache:
                 self.decode_sink_contribution,
                 self.decode_quantized_output,
                 self.sink_output_fp16,
+                *(
+                    ()
+                    if self.q4_value_decode_workspace is None
+                    else (self.q4_value_decode_workspace,)
+                ),
                 self.reserved_workspace,
             )
         )
@@ -868,6 +904,11 @@ class KVQuantStaticCache:
             * 2
             + 4 * query_elements * 4
             + query_elements * 2
+            + (
+                KVQUANT_Q4_VALUE_DECODE_WORKSPACE_BYTES
+                if self.config_name == "kvq4"
+                else 0
+            )
             + self.external_workspace_bytes
         )
         return {
@@ -1024,7 +1065,7 @@ class KVQuantStaticCache:
 
     def layout_fingerprint(self) -> str:
         payload = {
-            "schema": "kvbench-kvquant-static-cache-layout-1.0.0",
+            "schema": "kvbench-kvquant-static-cache-layout-1.1.0",
             "configuration": self.config_name,
             "bits": self.bits,
             "levels": self.levels,
@@ -1049,6 +1090,26 @@ class KVQuantStaticCache:
             "decode_logits_bf16_shape": tuple(self.decode_logits_bf16.shape),
             "sink_logits_fp16_shape": tuple(self.sink_logits_fp16.shape),
             "sink_output_fp16_shape": tuple(self.sink_output_fp16.shape),
+            "q4_value_decode_workspace_shape": (
+                None
+                if self.q4_value_decode_workspace is None
+                else tuple(self.q4_value_decode_workspace.shape)
+            ),
+            "q4_value_decode_workspace_dtype": (
+                None
+                if self.q4_value_decode_workspace is None
+                else str(self.q4_value_decode_workspace.dtype)
+            ),
+            "q4_value_decode_tile_width": (
+                KVQUANT_Q4_VALUE_DECODE_TILE_WIDTH
+                if self.q4_value_decode_workspace is not None
+                else None
+            ),
+            "q4_value_decode_max_tiles": (
+                KVQUANT_Q4_VALUE_DECODE_MAX_TILES
+                if self.q4_value_decode_workspace is not None
+                else None
+            ),
             "dense_dtype": str(self.packed_key_cache.dtype),
             "sparse_value_dtype": str(self.key_sparse_values.dtype),
             "sparse_index_dtype": str(self.key_sparse_indices.dtype),
@@ -1080,7 +1141,7 @@ class KVQuantStaticCache:
     def storage_geometry(self) -> dict[str, tuple[int, ...]]:
         """Expose exact native-HKV shapes for manifests and path audits."""
 
-        return {
+        geometry = {
             "dense_k": tuple(self.packed_key_cache.shape),
             "dense_v": tuple(self.packed_value_cache.shape),
             "key_metadata": tuple(self.key_lookup_table.shape),
@@ -1098,6 +1159,11 @@ class KVQuantStaticCache:
             "sink_logits_fp16": tuple(self.sink_logits_fp16.shape),
             "sink_output_fp16": tuple(self.sink_output_fp16.shape),
         }
+        if self.q4_value_decode_workspace is not None:
+            geometry["q4_value_decode_workspace"] = tuple(
+                self.q4_value_decode_workspace.shape
+            )
+        return geometry
 
     def zero_payload_slot(self, *, layer_idx: int, payload_slot: int) -> None:
         """Zero one caller-owned append destination before source ``atomicOr``."""

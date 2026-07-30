@@ -23,6 +23,9 @@ from kvbench.runtime.kvquant_fixture import (
     load_fixture_tensor_file_untimed,
     load_kvquant_fixture,
 )
+from kvbench.runtime.kvquant_cache import (
+    KVQUANT_Q4_VALUE_DECODE_WORKSPACE_SHAPE,
+)
 from kvbench.runtime.turboquant_admission import (
     PHASE6_CONTAINER_ENVIRONMENT_VALUE,
     PHASE6_CONTAINER_ENVIRONMENT_VARIABLE,
@@ -60,7 +63,7 @@ def _runtime_context() -> MethodRuntimeContext:
     return MethodRuntimeContext(
         model_id="phase11-kvquant-graph-fixture",
         model_revision="0e9e39f249a16976918f6564b8830bc894c89659",
-        backend_id="kvquant-gqa-graphsafe-kvq3-v2",
+        backend_id="kvquant-gqa-longctx-deterministic-v3",
         backend_fingerprint=hashlib.sha256(
             b"phase11-kvquant-fixed-graph"
         ).hexdigest(),
@@ -252,6 +255,17 @@ class Phase11KVQuantGraphTests(unittest.TestCase):
                     device=self.device,
                 )
                 pointers_before = self._pointer_snapshot(cache, tracked)
+                if family == "kvq4":
+                    self.assertEqual(
+                        tuple(cache.q4_value_decode_workspace.shape),
+                        KVQUANT_Q4_VALUE_DECODE_WORKSPACE_SHAPE,
+                    )
+                    self.assertIn(
+                        "q4_value_decode_workspace_data_ptr",
+                        pointers_before,
+                    )
+                else:
+                    self.assertIsNone(cache.q4_value_decode_workspace)
 
                 with mock.patch(
                     "kvbench.adapters.kvquant.flash_attention_forward",

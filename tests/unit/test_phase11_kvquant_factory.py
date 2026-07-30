@@ -88,7 +88,7 @@ class Phase11KVQuantFactoryTests(unittest.TestCase):
         self.assertEqual(KVQUANT_METHOD_IDENTIFIER, "kvquant_gqa_upstream_patch_v1")
         self.assertEqual(
             KVQUANT_ADAPTER_VERSION,
-            "kvbench-kvquant-method-adapter-1.0.0",
+            "kvbench-kvquant-method-adapter-1.1.0",
         )
         self.assertIsNotNone(config.calibration)
         assert config.calibration is not None

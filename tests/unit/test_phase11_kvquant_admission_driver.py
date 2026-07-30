@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import dataclasses
 import inspect
+import json
 import os
 from pathlib import Path
 from types import SimpleNamespace
@@ -31,6 +32,7 @@ from kvbench.schema.phase11 import (
     Phase11RunManifest,
 )
 from scripts import phase11_kvquant_admission as driver
+from scripts import validate_kvquant_long_context_patch as source_validator
 
 
 _REQUIRED_COMPLETED_PAYLOADS = (
@@ -398,6 +400,29 @@ class Phase11KVQuantAdmissionDriverTests(unittest.TestCase):
         source = inspect.getsource(driver._run_sanitizer)
         self.assertIn('"--image-config-digest"', source)
         self.assertIn("PHASE11_AUTHORIZED_CONTAINER_DIGEST", source)
+        self.assertIn(
+            ("initcheck", "kvq4-cap"),
+            driver._SANITIZER_RUNS,
+        )
+
+    def test_decision0027_validator_binds_entry_adapter_git_blob(self) -> None:
+        manifest = json.loads(
+            source_validator.MANIFEST.read_text(encoding="utf-8")
+        )
+        self.assertNotIn(
+            "adapter_sha256",
+            source_validator.PRESERVED_FILE_AUTHORITY,
+        )
+        self.assertEqual(
+            source_validator.PRESERVED_GIT_BLOB_AUTHORITY[
+                "adapter_sha256"
+            ][:2],
+            (
+                "f0f02364a556da70e67b3107a0c0afad5f75eae9",
+                "src/kvbench/adapters/kvquant.py",
+            ),
+        )
+        source_validator._validate_preserved_authority(manifest)
 
     def test_static_path_binds_split_fstring_kernel_suffixes(self) -> None:
         paths = driver._static_execution_path()
@@ -406,7 +431,41 @@ class Phase11KVQuantAdmissionDriverTests(unittest.TestCase):
             ("kvq4", "kvq3", "kvq2"),
         )
         self.assertTrue(all(item.direct_compressed_decode for item in paths))
+        self.assertTrue(
+            all(item.deterministic_q4_value_decode for item in paths)
+        )
+        self.assertTrue(
+            all(item.caller_owned_q4_value_workspace for item in paths)
+        )
+        self.assertTrue(
+            all(item.fixed_order_q4_value_reduction for item in paths)
+        )
         self.assertTrue(all(item.no_backend_fallback for item in paths))
+
+    def test_static_path_rejects_missing_q4_deterministic_binding(
+        self,
+    ) -> None:
+        real_getsource = inspect.getsource
+
+        def source(value: object) -> str:
+            observed = real_getsource(value)
+            if value is driver.KVQuantMethodAdapter._decode_quantized_value:
+                observed = observed.replace(
+                    "KVQUANT_Q4_DETERMINISTIC_VALUE_DECODE_API",
+                    "UNBOUND_Q4_VALUE_DECODE_API",
+                )
+            return observed
+
+        with mock.patch.object(
+            driver.inspect,
+            "getsource",
+            side_effect=source,
+        ):
+            with self.assertRaisesRegex(
+                driver.Phase11KVQuantDriverError,
+                "source binding is incomplete",
+            ):
+                driver._static_execution_path()
 
     def test_static_path_rejects_unrelated_kernel_name_decoy(self) -> None:
         real_getsource = inspect.getsource

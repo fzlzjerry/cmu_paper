@@ -15,6 +15,8 @@ from kvbench.runtime.kvquant_cache import (
     KVQUANT_NUM_KV_HEADS,
     KVQUANT_NUM_LAYERS,
     KVQUANT_NUM_QUERY_HEADS,
+    KVQUANT_Q4_VALUE_DECODE_WORKSPACE_BYTES,
+    KVQUANT_Q4_VALUE_DECODE_WORKSPACE_SHAPE,
     KVQUANT_SINK_TOKENS,
     KVQUANT_VALUE_CAP,
     KVQuantStaticCache,
@@ -114,6 +116,31 @@ class KVQuantStaticCacheTests(unittest.TestCase):
                 self.assertEqual(cache.decode_logits_bf16.shape, (1, 32, 18))
                 self.assertEqual(cache.sink_logits_fp16.shape, (1, 32, 5))
                 self.assertEqual(cache.sink_output_fp16.shape, (1, 32, 128))
+                if family == "kvq4":
+                    self.assertIsNotNone(cache.q4_value_decode_workspace)
+                    self.assertEqual(
+                        tuple(cache.q4_value_decode_workspace.shape),
+                        KVQUANT_Q4_VALUE_DECODE_WORKSPACE_SHAPE,
+                    )
+                    self.assertEqual(
+                        str(cache.q4_value_decode_workspace.dtype),
+                        "torch.float32",
+                    )
+                    self.assertTrue(
+                        cache.q4_value_decode_workspace.is_contiguous()
+                    )
+                    self.assertEqual(
+                        cache.storage_geometry()[
+                            "q4_value_decode_workspace"
+                        ],
+                        KVQUANT_Q4_VALUE_DECODE_WORKSPACE_SHAPE,
+                    )
+                else:
+                    self.assertIsNone(cache.q4_value_decode_workspace)
+                    self.assertNotIn(
+                        "q4_value_decode_workspace",
+                        cache.storage_geometry(),
+                    )
                 self.assertEqual(str(cache.packed_key_cache.dtype), "torch.int32")
                 self.assertEqual(str(cache.key_sparse_values.dtype), "torch.float32")
                 self.assertEqual(str(cache.key_sparse_indices.dtype), "torch.int32")
@@ -182,6 +209,11 @@ class KVQuantStaticCacheTests(unittest.TestCase):
                         + cache.decode_sink_contribution.untyped_storage().nbytes()
                         + cache.decode_quantized_output.untyped_storage().nbytes()
                         + cache.sink_output_fp16.untyped_storage().nbytes()
+                        + (
+                            KVQUANT_Q4_VALUE_DECODE_WORKSPACE_BYTES
+                            if family == "kvq4"
+                            else 0
+                        )
                         + 257
                     ),
                 )
