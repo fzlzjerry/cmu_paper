@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import ast
 import ctypes
 import gc
 import hashlib
@@ -32,6 +33,14 @@ TILE_WIDTH = 128
 STORED_TILES = (WIDTH + TILE_WIDTH - 1) // TILE_WIDTH - 1
 ATOL = 0.01
 RTOL = 0.01
+EXPECTED_MODELING_LLAMA_SHA256 = (
+    "f557acc086ce9b7abff57eec741d97286c09a85cc44c221c8cba43beb9ded308"
+)
+GQA_HELPER_NAMES = (
+    "_validate_gqa_geometry",
+    "_gqa_query_key_matmul",
+    "_gqa_score_value_matmul",
+)
 APIS = {
     bits: (
         f"vecquant{bits}matmul_nuq_perchannel_transposed_"
@@ -46,7 +55,14 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--mode",
         required=True,
-        choices=("determinism", "fixtures", "stream", "graph", "sanitizer"),
+        choices=(
+            "determinism",
+            "fixtures",
+            "stream",
+            "graph",
+            "mha_gqa",
+            "sanitizer",
+        ),
     )
     parser.add_argument("--extension", type=Path, required=True)
     parser.add_argument("--extension-sha256", required=True)
@@ -82,6 +98,53 @@ def _load_extension(path: Path, expected_sha256: str) -> ModuleType:
     if missing:
         raise RuntimeError(f"Phase 11D-Q23 deterministic APIs are absent: {missing}")
     return module
+
+
+def _load_frozen_gqa_helpers(
+    source_root: Path,
+) -> tuple[dict[str, Any], dict[str, str]]:
+    source_path = (
+        source_root.resolve(strict=True)
+        / "deployment/transformers/src/transformers/models/llama/"
+        "modeling_llama.py"
+    )
+    source_bytes = source_path.read_bytes()
+    source_sha256 = hashlib.sha256(source_bytes).hexdigest()
+    if source_sha256 != EXPECTED_MODELING_LLAMA_SHA256:
+        raise RuntimeError("frozen modeling_llama.py identity differs")
+    source_text = source_bytes.decode("utf-8")
+    parsed = ast.parse(source_text, filename=str(source_path))
+    selected: dict[str, ast.FunctionDef | ast.AsyncFunctionDef] = {}
+    for node in parsed.body:
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            if node.name in GQA_HELPER_NAMES:
+                if node.name in selected:
+                    raise RuntimeError(f"duplicate frozen GQA helper: {node.name}")
+                selected[node.name] = node
+    if set(selected) != set(GQA_HELPER_NAMES):
+        raise RuntimeError("frozen GQA helper set is incomplete")
+    ordered_nodes = [selected[name] for name in GQA_HELPER_NAMES]
+    helper_sources = {
+        name: ast.get_source_segment(source_text, selected[name]) or ""
+        for name in GQA_HELPER_NAMES
+    }
+    if not all(helper_sources.values()):
+        raise RuntimeError("frozen GQA helper source extraction failed")
+    helper_module = ast.Module(body=ordered_nodes, type_ignores=[])
+    ast.fix_missing_locations(helper_module)
+    namespace: dict[str, Any] = {"torch": torch}
+    exec(compile(helper_module, str(source_path), "exec"), namespace)
+    helpers = {name: namespace[name] for name in GQA_HELPER_NAMES}
+    identities = {
+        "modeling_llama_sha256": source_sha256,
+        **{
+            f"{name}_sha256": hashlib.sha256(
+                helper_sources[name].encode("utf-8")
+            ).hexdigest()
+            for name in GQA_HELPER_NAMES
+        },
+    }
+    return helpers, identities
 
 
 def _require_environment() -> None:
@@ -549,6 +612,49 @@ def _run_sanitizer(runtime: ModuleType) -> dict[str, Any]:
     }
 
 
+def _run_mha_gqa(source_root: Path) -> dict[str, Any]:
+    helpers, identities = _load_frozen_gqa_helpers(source_root)
+    query_key = helpers["_gqa_query_key_matmul"]
+    score_value = helpers["_gqa_score_value_matmul"]
+    torch.manual_seed(20260721)
+    torch.cuda.manual_seed_all(20260721)
+    device = torch.device("cuda:0")
+    query = torch.randn(1, 32, 3, 128, device=device)
+    key = torch.randn(1, 8, 128, 5, device=device)
+    scores = torch.randn(1, 32, 3, 5, device=device)
+    value = torch.randn(1, 8, 5, 128, device=device)
+    native_key = query_key(query, key, 4)
+    native_value = score_value(scores, value, 4)
+    repeated_key = key.repeat_interleave(4, dim=1)
+    repeated_value = value.repeat_interleave(4, dim=1)
+    torch.testing.assert_close(native_key, torch.matmul(query, repeated_key))
+    torch.testing.assert_close(
+        native_value,
+        torch.matmul(scores, repeated_value),
+    )
+    mha_query = query[:, :8]
+    mha_scores = scores[:, :8]
+    mha_key = query_key(mha_query, key, 1)
+    mha_value = score_value(mha_scores, value, 1)
+    torch.testing.assert_close(mha_key, torch.matmul(mha_query, key))
+    torch.testing.assert_close(mha_value, torch.matmul(mha_scores, value))
+    return {
+        "mode": "mha_gqa",
+        "source_identities": identities,
+        "gqa_mapping": "query_head//4",
+        "gqa_output_sha256": {
+            "query_key": _tensor_sha256(native_key),
+            "score_value": _tensor_sha256(native_value),
+        },
+        "mha_output_sha256": {
+            "query_key": _tensor_sha256(mha_key),
+            "score_value": _tensor_sha256(mha_value),
+        },
+        "independent_control": "explicit_repeat_for_gqa_direct_matmul_for_mha",
+        "passed": True,
+    }
+
+
 def main() -> None:
     arguments = _parse_args()
     _require_environment()
@@ -570,6 +676,10 @@ def main() -> None:
         result = _run_stream(runtime)
     elif arguments.mode == "graph":
         result = _run_graph(runtime)
+    elif arguments.mode == "mha_gqa":
+        if arguments.source_root is None:
+            raise RuntimeError("mha_gqa mode requires the source root")
+        result = _run_mha_gqa(arguments.source_root)
     else:
         result = _run_sanitizer(runtime)
     result.update(

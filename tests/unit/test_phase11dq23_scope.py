@@ -181,6 +181,39 @@ class Phase11DQ23ScopeTests(unittest.TestCase):
             {"status": "PASS", "value": 1},
         )
 
+    def test_mha_gqa_regression_uses_exact_existing_cuda_tests(self) -> None:
+        expected = {
+            (
+                "tests_phase9p.test_deployment_gqa.DeploymentCudaTests."
+                "test_4_3_2_bit_native_gqa_matches_explicit_repeat_reference"
+            ),
+            (
+                "tests_phase9p.test_deployment_gqa.DeploymentCudaTests."
+                "test_mha_groups_one_matches_direct_unpacked_4_3_2_bit_reference"
+            ),
+            (
+                "tests_phase9p.test_deployment_gqa.DeploymentCudaTests."
+                "test_cap_reached_sparse_4_3_2_bit_gqa_matches_native_kv_reference"
+            ),
+            (
+                "tests_phase9p.test_deployment_gqa.DeploymentCudaTests."
+                "test_all_changed_kernels_capture_and_allocate_nothing"
+            ),
+        }
+        self.assertEqual(
+            set(
+                phase11dq23_kvquant_validation.EXISTING_MHA_GQA_CUDA_TESTS
+            ),
+            expected,
+        )
+        self.assertNotIn(
+            (
+                "tests_phase9p.test_deployment_gqa.DeploymentCudaTests."
+                "test_python_eager_prefill_gqa_and_mha_match_explicit_repeat"
+            ),
+            expected,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

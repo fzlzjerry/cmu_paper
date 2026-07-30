@@ -32,6 +32,24 @@ Q4_HARNESS_RELATIVE = Path(
 )
 SANITIZER = Path("/usr/local/cuda-13.0/bin/compute-sanitizer")
 CUOBJDUMP = Path("/usr/local/cuda-13.0/bin/cuobjdump")
+EXISTING_MHA_GQA_CUDA_TESTS = (
+    (
+        "tests_phase9p.test_deployment_gqa.DeploymentCudaTests."
+        "test_4_3_2_bit_native_gqa_matches_explicit_repeat_reference"
+    ),
+    (
+        "tests_phase9p.test_deployment_gqa.DeploymentCudaTests."
+        "test_mha_groups_one_matches_direct_unpacked_4_3_2_bit_reference"
+    ),
+    (
+        "tests_phase9p.test_deployment_gqa.DeploymentCudaTests."
+        "test_cap_reached_sparse_4_3_2_bit_gqa_matches_native_kv_reference"
+    ),
+    (
+        "tests_phase9p.test_deployment_gqa.DeploymentCudaTests."
+        "test_all_changed_kernels_capture_and_allocate_nothing"
+    ),
+)
 
 
 class Phase11DQ23ValidationError(RuntimeError):
@@ -567,6 +585,29 @@ def main() -> int:
             "current Adapter fixture/graph regression failed"
         )
 
+    source_helper_command = _harness_command(
+        repository_root,
+        extension,
+        extension_sha256,
+        "mha_gqa",
+        source_root=source_root,
+    )
+    source_helper_record = _record_command(
+        output_root,
+        "mha-gqa-source-helper-control",
+        source_helper_command,
+        _run(
+            source_helper_command,
+            cwd=repository_root,
+            environment=environment,
+            timeout=1800,
+        ),
+    )
+    source_helper_result = _require_result(
+        source_helper_record,
+        "mha-gqa-source-helper-control",
+    )
+
     gqa_environment = dict(environment)
     gqa_environment.update(
         {
@@ -582,7 +623,7 @@ def main() -> int:
         sys.executable,
         "-m",
         "unittest",
-        "tests_phase9p.test_deployment_gqa.DeploymentCudaTests",
+        *EXISTING_MHA_GQA_CUDA_TESTS,
         "-v",
     )
     gqa_record = _record_command(
@@ -624,9 +665,12 @@ def main() -> int:
             "passed": True,
         },
         "mha_gqa_regression": {
-            "returncode": gqa_record["returncode"],
-            "stdout_sha256": gqa_record["stdout_sha256"],
-            "stderr_sha256": gqa_record["stderr_sha256"],
+            "frozen_source_helper_control": source_helper_result,
+            "existing_cuda_test_count": len(EXISTING_MHA_GQA_CUDA_TESTS),
+            "existing_cuda_tests": list(EXISTING_MHA_GQA_CUDA_TESTS),
+            "existing_cuda_returncode": gqa_record["returncode"],
+            "existing_cuda_stdout_sha256": gqa_record["stdout_sha256"],
+            "existing_cuda_stderr_sha256": gqa_record["stderr_sha256"],
             "passed": True,
         },
         "code_objects": code_objects,
