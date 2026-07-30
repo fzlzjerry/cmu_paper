@@ -1149,6 +1149,11 @@ class Phase11R2OuterBundleTests(unittest.TestCase):
                 kind="inner",
             )
         )
+        verify_payload = json.loads(verify.read_text(encoding="utf-8"))
+        verify_payload["bucket_lock"]["verified_at_utc"] = (
+            "2026-07-30T01:04:30Z"
+        )
+        verify.write_bytes(json_bytes(verify_payload))
         payload = assemble_publication_receipt(
             artifact_root=self.source,
             publish_output=publish,
@@ -1169,6 +1174,10 @@ class Phase11R2OuterBundleTests(unittest.TestCase):
         self.assertEqual(
             payload["clean_retrieval"]["retrieved_at_utc"],
             "2026-07-30T01:05:00Z",
+        )
+        self.assertEqual(
+            payload["bucket_lock"]["verified_at_utc"],
+            "2026-07-30T01:03:00Z",
         )
         bad_publish = json.loads(publish.read_text(encoding="utf-8"))
         bad_publish["publish"]["publication_order_sha256"] = "0" * 64
@@ -1204,6 +1213,36 @@ class Phase11R2OuterBundleTests(unittest.TestCase):
                 source_run_id=INNER_RUN_ID,
                 source_git_sha=EXECUTION_GIT_SHA,
                 recorded_at_utc="2026-07-30T01:04:30Z",
+                repository_root=self.repository,
+            )
+
+    def test_receipt_assembler_rejects_stable_bucket_lock_drift(
+        self,
+    ) -> None:
+        publish, publish_stderr, verify, verify_stderr = (
+            _write_raw_r2_tool_outputs(
+                self.repository,
+                self.source,
+                kind="inner",
+            )
+        )
+        verify_payload = json.loads(verify.read_text(encoding="utf-8"))
+        verify_payload["bucket_lock"]["lock_rule_id"] = "different-lock"
+        verify.write_bytes(json_bytes(verify_payload))
+        with self.assertRaisesRegex(
+            Phase11OuterBundleError,
+            "identities differ",
+        ):
+            assemble_publication_receipt(
+                artifact_root=self.source,
+                publish_output=publish,
+                publish_stderr=publish_stderr,
+                verify_output=verify,
+                verify_stderr=verify_stderr,
+                receipt_kind="inner",
+                source_run_id=INNER_RUN_ID,
+                source_git_sha=EXECUTION_GIT_SHA,
+                recorded_at_utc="2026-07-30T01:06:00Z",
                 repository_root=self.repository,
             )
 

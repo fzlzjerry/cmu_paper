@@ -710,6 +710,17 @@ def _validate_bucket_lock(lock: Mapping[str, Any]) -> str:
     return lock_rule_id
 
 
+def _stable_bucket_lock_identity(
+    lock: Mapping[str, Any],
+) -> dict[str, Any]:
+    _validate_bucket_lock(lock)
+    return {
+        key: value
+        for key, value in lock.items()
+        if key != "verified_at_utc"
+    }
+
+
 def _parse_utc(value: object, *, label: str) -> datetime:
     if (
         not isinstance(value, str)
@@ -910,6 +921,16 @@ def _validate_publication_receipt_core(
         raw_verify.get("verify"),
         label="raw verifier result",
     )
+    raw_publish_lock = _require_mapping(
+        raw_publish.get("bucket_lock"),
+        label="raw publisher Bucket Lock",
+    )
+    raw_verify_lock = _require_mapping(
+        raw_verify.get("bucket_lock"),
+        label="raw verifier Bucket Lock",
+    )
+    receipt_lock_identity = _stable_bucket_lock_identity(lock)
+    raw_verify_lock_identity = _stable_bucket_lock_identity(raw_verify_lock)
     published_at = _parse_utc(
         publication.get("published_at_utc"),
         label="publication timestamp",
@@ -1018,8 +1039,8 @@ def _validate_publication_receipt_core(
         or retrieval.get("bundle_validation_valid") is not True
         or retrieval.get("unexpected_objects") is not False
         or not (published_at <= retrieved_at <= recorded_at)
-        or raw_publish.get("bucket_lock") != lock
-        or raw_verify.get("bucket_lock") != lock
+        or raw_publish_lock != lock
+        or raw_verify_lock_identity != receipt_lock_identity
         or publication.get("provider") != raw_publication.get("provider")
         or publication.get("root_sha256")
         != raw_publication.get("root_sha256")
@@ -1182,11 +1203,12 @@ def assemble_publication_receipt(
         verified["bucket_lock"],
         label="verifier Bucket Lock",
     )
-    if publish_lock != verify_lock:
+    publish_lock_identity = _stable_bucket_lock_identity(publish_lock)
+    verify_lock_identity = _stable_bucket_lock_identity(verify_lock)
+    if publish_lock_identity != verify_lock_identity:
         raise Phase11OuterBundleError(
             "publisher and verifier Bucket Lock identities differ"
         )
-    _validate_bucket_lock(publish_lock)
     expected_uri = _r2_uri(artifact.root_sha256)
     expected_order = _publication_order_sha256(artifact)
     if (
