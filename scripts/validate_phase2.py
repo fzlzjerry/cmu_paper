@@ -47,6 +47,7 @@ PHASE11D_ENTRY_COMMIT = "69e99389b548e82e65e027cc0ea7b86c9fbe43dd"
 PHASE11R_ENTRY_COMMIT = "f0f02364a556da70e67b3107a0c0afad5f75eae9"
 PHASE12E_ENTRY_COMMIT = "7c7af7cd1efe4a8befa36ceaedb11e2b47733276"
 PHASE11DQ23_ENTRY_COMMIT = "2bc6aaa1d05b08d50f4c01bbc0b2863dd8689fe1"
+PHASE11RQ23_ENTRY_COMMIT = "d99920e5dd7ea94bce7c98b4301bd035c073dfea"
 QUALITY_COMMIT = "a7b8285dd8ed2fb598efbb3312e9f55064a0ee64"
 ENVIRONMENT_COMMIT = "ea176994921c793789ebbd9d42515ce20ae4baee"
 EVIDENCE_COMMIT = "fb164b5ea96031ca40b21f4b8436a49a3bb5b8d2"
@@ -949,6 +950,59 @@ PHASE11DQ23_ALLOWED_PATHS = frozenset(
         ),
     }
 )
+PHASE11RQ23_ALLOWED_PATHS = frozenset(
+    {
+        "Makefile",
+        "docs/evidence/phase11rq23/kvquant-method-admission.json",
+        "docs/evidence/phase11rq23/kvquant-method-admission.sha256",
+        (
+            "docs/evidence/phase11rq23/"
+            "r2-admission-outer-publish.stderr.txt"
+        ),
+        (
+            "docs/evidence/phase11rq23/"
+            "r2-admission-outer-publish.stdout.json"
+        ),
+        (
+            "docs/evidence/phase11rq23/"
+            "r2-admission-outer-publication.json"
+        ),
+        (
+            "docs/evidence/phase11rq23/"
+            "r2-admission-outer-verify.stderr.txt"
+        ),
+        (
+            "docs/evidence/phase11rq23/"
+            "r2-admission-outer-verify.stdout.json"
+        ),
+        "docs/evidence/phase11rq23/r2-admission-publish.stderr.txt",
+        "docs/evidence/phase11rq23/r2-admission-publish.stdout.json",
+        "docs/evidence/phase11rq23/r2-admission-publication.json",
+        "docs/evidence/phase11rq23/r2-admission-verify.stderr.txt",
+        "docs/evidence/phase11rq23/r2-admission-verify.stdout.json",
+        "docs/method_notes/kvquant.md",
+        (
+            "docs/phase_reports/"
+            "phase11rq23-kvquant-measurement-adapter.md"
+        ),
+        "docs/plans/phase11rq23-kvquant-admission-rerun.md",
+        "docs/risk_register.md",
+        "docs/status.md",
+        "docs/tasks.md",
+        "scripts/phase11_kvquant_admission.py",
+        "scripts/phase11_r2_outer_bundle.py",
+        "scripts/validate_phase2.py",
+        "src/kvbench/schema/__init__.py",
+        "src/kvbench/schema/phase11.py",
+        "tests/unit/test_phase11rq23_kvquant_admission.py",
+        "tests/unit/test_phase11rq23_kvquant_admission_driver.py",
+        "tests/unit/test_phase11rq23_make_targets.py",
+        "tests/unit/test_phase11rq23_r2_outer_bundle.py",
+        "tests/unit/test_phase11rq23_r2_outer_profile.py",
+        "tests/unit/test_phase11rq23_schema.py",
+        "tests/unit/test_phase11rq23_scope.py",
+    }
+)
 
 
 RAW_RESULT_SUFFIXES = {
@@ -1444,11 +1498,32 @@ def current_phase12e_paths() -> set[str]:
     return historical_phase12e_paths()
 
 
+def historical_phase11dq23_paths() -> set[str]:
+    """Return the completed deterministic q3/q2 CUDA remediation."""
+
+    return git_paths(
+        (
+            "diff",
+            "--name-only",
+            "-z",
+            PHASE11DQ23_ENTRY_COMMIT,
+            PHASE11RQ23_ENTRY_COMMIT,
+            "--",
+        )
+    )
+
+
 def current_phase11dq23_paths() -> set[str]:
-    """Return tracked and untracked Phase 11D-Q23 changes."""
+    """Compatibility view of the completed, frozen Phase 11D-Q23 segment."""
+
+    return historical_phase11dq23_paths()
+
+
+def current_phase11rq23_paths() -> set[str]:
+    """Return tracked and untracked Phase 11R-Q23 admission changes."""
 
     changed = git_paths(
-        ("diff", "--name-only", "-z", PHASE11DQ23_ENTRY_COMMIT, "--")
+        ("diff", "--name-only", "-z", PHASE11RQ23_ENTRY_COMMIT, "--")
     )
     untracked = git_paths(
         ("ls-files", "--others", "--exclude-standard", "-z", "--")
@@ -2838,6 +2913,10 @@ def check_scope() -> int:
         errors.append(
             "the accepted Phase 11D-Q23 entry commit is not an ancestor of HEAD"
         )
+    if not commit_is_ancestor(PHASE11RQ23_ENTRY_COMMIT):
+        errors.append(
+            "the accepted Phase 11R-Q23 entry commit is not an ancestor of HEAD"
+        )
     phase5 = historical_phase5_paths()
     phase5_unexpected = sorted(phase5 - PHASE5_ALLOWED_PATHS)
     if phase5_unexpected:
@@ -2942,19 +3021,31 @@ def check_scope() -> int:
             "historical files outside the approved Phase 12E "
             f"historical-authority remediation plan: {phase12e_unexpected!r}"
         )
-    changed = current_phase11dq23_paths()
-    phase11dq23_unexpected = sorted(changed - PHASE11DQ23_ALLOWED_PATHS)
+    phase11dq23 = historical_phase11dq23_paths()
+    phase11dq23_unexpected = sorted(
+        phase11dq23 - PHASE11DQ23_ALLOWED_PATHS
+    )
     if phase11dq23_unexpected:
         errors.append(
-            "files outside the approved Phase 11D-Q23 CUDA remediation "
+            "historical files outside the approved Phase 11D-Q23 CUDA "
+            "remediation "
             f"plan: {phase11dq23_unexpected!r}"
+        )
+    changed = current_phase11rq23_paths()
+    phase11rq23_unexpected = sorted(
+        changed - PHASE11RQ23_ALLOWED_PATHS
+    )
+    if phase11rq23_unexpected:
+        errors.append(
+            "files outside the approved Phase 11R-Q23 admission-rerun "
+            f"plan: {phase11rq23_unexpected!r}"
         )
     for relative in sorted(changed):
         if relative.startswith("docs/evidence/e00/"):
             errors.append(f"immutable E00 evidence changed: {relative}")
         if relative in QUALITY_PROTOCOL_HASHES:
             errors.append(
-                "quality protocol changed during Phase 11D-Q23: "
+                "quality protocol changed during Phase 11R-Q23: "
                 f"{relative}"
             )
         if (
@@ -2962,7 +3053,7 @@ def check_scope() -> int:
         ):
             errors.append(
                 f"forbidden binary, kernel, model, or profiler artifact "
-                f"in Phase 11D-Q23 Git scope: {relative}"
+                f"in Phase 11R-Q23 Git scope: {relative}"
             )
         if relative.startswith(
             (
@@ -2974,7 +3065,7 @@ def check_scope() -> int:
             )
         ):
             errors.append(
-                f"forbidden result tree in Phase 11D-Q23 scope: {relative}"
+                f"forbidden result tree in Phase 11R-Q23 scope: {relative}"
             )
     e00_changes = git_paths(
         (

@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-"""Build and validate the self-reference-safe Phase 11 R2 outer bundle."""
+"""Build and validate the self-reference-safe Phase 11 R2 outer bundle.
+
+The CLI defaults to the immutable Decision 0027 authority.  The Decision 0029
+successor is available only through its explicit, non-mixable authority
+profile and separate repository evidence namespace.
+"""
 
 from __future__ import annotations
 
@@ -33,7 +38,22 @@ from kvbench.schema.phase11 import (
     PHASE11_FIXTURE_ROOT,
     PHASE11_HISTORICAL_FIXTURE_ROOT,
     PHASE11_METHOD_IDENTIFIER,
+    PHASE11Q23_AGGREGATE_PATCH_SHA256,
+    PHASE11Q23_CALIBRATION_ID,
+    PHASE11Q23_CALIBRATION_ROOT,
+    PHASE11Q23_CONFIGURATIONS,
+    PHASE11Q23_CORRECTED_COMMIT,
+    PHASE11Q23_CORRECTED_TREE,
+    PHASE11Q23_DECISIONS,
+    PHASE11Q23_EXECUTION_SOURCE_IDENTIFIER,
+    PHASE11Q23_EXTENSION_SHA256,
+    PHASE11Q23_FIXTURE_ID,
+    PHASE11Q23_FIXTURE_ROOT,
+    PHASE11Q23_HISTORICAL_FIXTURE_ROOT,
+    PHASE11Q23_METHOD_IDENTIFIER,
     Phase11MethodAdmissionReport,
+    Phase11RQ23MethodAdmissionReport,
+    Phase11RQ23RunManifest,
     Phase11RunManifest,
     Phase11RunPoint,
     require_exact_phase11_grid,
@@ -54,6 +74,13 @@ from scripts.r2_artifact import (
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 OUTER_ARTIFACT_ROOT_RELATIVE = Path("artifacts") / "phase11_r2_outer"
+AUTHORITY_PROFILE_DECISION0027 = "decision0027"
+AUTHORITY_PROFILE_DECISION0029 = "decision0029"
+AUTHORITY_PROFILE_CHOICES = (
+    AUTHORITY_PROFILE_DECISION0027,
+    AUTHORITY_PROFILE_DECISION0029,
+)
+AUTHORITY_PROFILE = AUTHORITY_PROFILE_DECISION0027
 INNER_RECEIPT_RELATIVE = (
     Path("docs")
     / "evidence"
@@ -144,6 +171,12 @@ BUNDLED_PASS_REPORT_PATH = PurePosixPath(
     "reports", "phase11r-kvquant-measurement-adapter.md"
 )
 MANIFEST_SCHEMA = "kvbench-phase11-r2-outer-bundle-1.0.0"
+OUTER_BUNDLE_VALIDATION_SCHEMA = (
+    "kvbench-phase11-r2-outer-bundle-validation-1.0.0"
+)
+OUTER_PUBLICATION_VALIDATION_SCHEMA = (
+    "kvbench-phase11-r2-outer-publication-validation-1.0.0"
+)
 INNER_RECEIPT_SCHEMA = (
     "kvbench-phase11-kvquant-admission-r2-publication-1.0.0"
 )
@@ -154,6 +187,7 @@ BOUNDED_GRID_SCHEMA = "kvbench-phase11-bounded-grid-1.0.0"
 POINT_SCHEMA = "kvbench-phase11-kvquant-point-1.0.0"
 INVENTORY_SCHEMA = "kvbench-artifact-inventory-1.0.0"
 COMPLETION_SCHEMA = "kvbench-completion-1.0.0"
+PASS_REPORT_HEADING = "PHASE 11 REPORT"
 _GIT_SHA_RE = re.compile(r"[0-9a-f]{40}")
 _UTC_TIMESTAMP_RE = re.compile(
     r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z"
@@ -188,8 +222,224 @@ _FORBIDDEN_CLAIM_KEYS = frozenset(
 )
 
 
+@dataclass(frozen=True)
+class _AuthorityProfile:
+    name: str
+    method_identifier: str
+    execution_source_identifier: str
+    aggregate_patch_sha256: str
+    corrected_commit: str
+    corrected_tree: str
+    extension_sha256: str
+    decisions: tuple[str, ...]
+    calibration_id: str
+    calibration_root: str
+    historical_fixture_root: str
+    fixture_id: str
+    fixture_root: str
+    configurations: tuple[str, ...]
+    run_manifest_class: type[Any]
+    method_admission_report_class: type[Any]
+    evidence_namespace: str
+    pass_report_name: str
+    pass_report_heading: str
+    manifest_schema: str
+    outer_bundle_validation_schema: str
+    inner_receipt_schema: str
+    outer_receipt_schema: str
+    outer_publication_validation_schema: str
+
+
+_AUTHORITY_PROFILES = {
+    AUTHORITY_PROFILE_DECISION0027: _AuthorityProfile(
+        name=AUTHORITY_PROFILE_DECISION0027,
+        method_identifier=PHASE11_METHOD_IDENTIFIER,
+        execution_source_identifier=PHASE11_EXECUTION_SOURCE_IDENTIFIER,
+        aggregate_patch_sha256=PHASE11_AGGREGATE_PATCH_SHA256,
+        corrected_commit=PHASE11_CORRECTED_COMMIT,
+        corrected_tree=PHASE11_CORRECTED_TREE,
+        extension_sha256=PHASE11_EXTENSION_SHA256,
+        decisions=PHASE11_DECISIONS,
+        calibration_id=PHASE11_CALIBRATION_ID,
+        calibration_root=PHASE11_CALIBRATION_ROOT,
+        historical_fixture_root=PHASE11_HISTORICAL_FIXTURE_ROOT,
+        fixture_id=PHASE11_FIXTURE_ID,
+        fixture_root=PHASE11_FIXTURE_ROOT,
+        configurations=PHASE11_CONFIGURATIONS,
+        run_manifest_class=Phase11RunManifest,
+        method_admission_report_class=Phase11MethodAdmissionReport,
+        evidence_namespace="phase11",
+        pass_report_name="phase11r-kvquant-measurement-adapter.md",
+        pass_report_heading="PHASE 11 REPORT",
+        manifest_schema="kvbench-phase11-r2-outer-bundle-1.0.0",
+        outer_bundle_validation_schema=(
+            "kvbench-phase11-r2-outer-bundle-validation-1.0.0"
+        ),
+        inner_receipt_schema=(
+            "kvbench-phase11-kvquant-admission-r2-publication-1.0.0"
+        ),
+        outer_receipt_schema=(
+            "kvbench-phase11-kvquant-admission-r2-outer-publication-1.0.0"
+        ),
+        outer_publication_validation_schema=(
+            "kvbench-phase11-r2-outer-publication-validation-1.0.0"
+        ),
+    ),
+    AUTHORITY_PROFILE_DECISION0029: _AuthorityProfile(
+        name=AUTHORITY_PROFILE_DECISION0029,
+        method_identifier=PHASE11Q23_METHOD_IDENTIFIER,
+        execution_source_identifier=(
+            PHASE11Q23_EXECUTION_SOURCE_IDENTIFIER
+        ),
+        aggregate_patch_sha256=PHASE11Q23_AGGREGATE_PATCH_SHA256,
+        corrected_commit=PHASE11Q23_CORRECTED_COMMIT,
+        corrected_tree=PHASE11Q23_CORRECTED_TREE,
+        extension_sha256=PHASE11Q23_EXTENSION_SHA256,
+        decisions=PHASE11Q23_DECISIONS,
+        calibration_id=PHASE11Q23_CALIBRATION_ID,
+        calibration_root=PHASE11Q23_CALIBRATION_ROOT,
+        historical_fixture_root=PHASE11Q23_HISTORICAL_FIXTURE_ROOT,
+        fixture_id=PHASE11Q23_FIXTURE_ID,
+        fixture_root=PHASE11Q23_FIXTURE_ROOT,
+        configurations=PHASE11Q23_CONFIGURATIONS,
+        run_manifest_class=Phase11RQ23RunManifest,
+        method_admission_report_class=Phase11RQ23MethodAdmissionReport,
+        evidence_namespace="phase11rq23",
+        pass_report_name=(
+            "phase11rq23-kvquant-measurement-adapter.md"
+        ),
+        pass_report_heading="PHASE 11R-Q23 REPORT",
+        manifest_schema=(
+            "kvbench-phase11rq23-r2-outer-bundle-1.0.0"
+        ),
+        outer_bundle_validation_schema=(
+            "kvbench-phase11rq23-r2-outer-bundle-validation-1.0.0"
+        ),
+        inner_receipt_schema=(
+            "kvbench-phase11rq23-kvquant-admission-"
+            "r2-publication-1.0.0"
+        ),
+        outer_receipt_schema=(
+            "kvbench-phase11rq23-kvquant-admission-"
+            "r2-outer-publication-1.0.0"
+        ),
+        outer_publication_validation_schema=(
+            "kvbench-phase11rq23-r2-outer-publication-validation-1.0.0"
+        ),
+    ),
+}
+
+
+def _activate_profile(name: str) -> None:
+    """Activate one exact, non-mixable Phase 11 authority profile."""
+
+    try:
+        profile = _AUTHORITY_PROFILES[name]
+    except KeyError as error:
+        raise Phase11OuterBundleError(
+            "Phase 11 authority profile is invalid"
+        ) from error
+
+    evidence = Path("docs") / "evidence" / profile.evidence_namespace
+    globals().update(
+        {
+            "AUTHORITY_PROFILE": profile.name,
+            "PHASE11_METHOD_IDENTIFIER": profile.method_identifier,
+            "PHASE11_EXECUTION_SOURCE_IDENTIFIER": (
+                profile.execution_source_identifier
+            ),
+            "PHASE11_AGGREGATE_PATCH_SHA256": (
+                profile.aggregate_patch_sha256
+            ),
+            "PHASE11_CORRECTED_COMMIT": profile.corrected_commit,
+            "PHASE11_CORRECTED_TREE": profile.corrected_tree,
+            "PHASE11_EXTENSION_SHA256": profile.extension_sha256,
+            "PHASE11_DECISIONS": profile.decisions,
+            "PHASE11_CALIBRATION_ID": profile.calibration_id,
+            "PHASE11_CALIBRATION_ROOT": profile.calibration_root,
+            "PHASE11_HISTORICAL_FIXTURE_ROOT": (
+                profile.historical_fixture_root
+            ),
+            "PHASE11_FIXTURE_ID": profile.fixture_id,
+            "PHASE11_FIXTURE_ROOT": profile.fixture_root,
+            "PHASE11_CONFIGURATIONS": profile.configurations,
+            "Phase11RunManifest": profile.run_manifest_class,
+            "Phase11MethodAdmissionReport": (
+                profile.method_admission_report_class
+            ),
+            "INNER_RECEIPT_RELATIVE": (
+                evidence / "r2-admission-publication.json"
+            ),
+            "OUTER_RECEIPT_RELATIVE": (
+                evidence / "r2-admission-outer-publication.json"
+            ),
+            "INNER_PUBLISH_STDOUT_RELATIVE": (
+                evidence / "r2-admission-publish.stdout.json"
+            ),
+            "INNER_PUBLISH_STDERR_RELATIVE": (
+                evidence / "r2-admission-publish.stderr.txt"
+            ),
+            "INNER_VERIFY_STDOUT_RELATIVE": (
+                evidence / "r2-admission-verify.stdout.json"
+            ),
+            "INNER_VERIFY_STDERR_RELATIVE": (
+                evidence / "r2-admission-verify.stderr.txt"
+            ),
+            "OUTER_PUBLISH_STDOUT_RELATIVE": (
+                evidence / "r2-admission-outer-publish.stdout.json"
+            ),
+            "OUTER_PUBLISH_STDERR_RELATIVE": (
+                evidence / "r2-admission-outer-publish.stderr.txt"
+            ),
+            "OUTER_VERIFY_STDOUT_RELATIVE": (
+                evidence / "r2-admission-outer-verify.stdout.json"
+            ),
+            "OUTER_VERIFY_STDERR_RELATIVE": (
+                evidence / "r2-admission-outer-verify.stderr.txt"
+            ),
+            "METHOD_ADMISSION_RELATIVE": (
+                evidence / "kvquant-method-admission.json"
+            ),
+            "METHOD_ADMISSION_CHECKSUM_RELATIVE": (
+                evidence / "kvquant-method-admission.sha256"
+            ),
+            "PASS_REPORT_RELATIVE": (
+                Path("docs")
+                / "phase_reports"
+                / profile.pass_report_name
+            ),
+            "BUNDLED_PASS_REPORT_PATH": (
+                PurePosixPath("reports") / profile.pass_report_name
+            ),
+            "MANIFEST_SCHEMA": profile.manifest_schema,
+            "OUTER_BUNDLE_VALIDATION_SCHEMA": (
+                profile.outer_bundle_validation_schema
+            ),
+            "INNER_RECEIPT_SCHEMA": profile.inner_receipt_schema,
+            "OUTER_RECEIPT_SCHEMA": profile.outer_receipt_schema,
+            "OUTER_PUBLICATION_VALIDATION_SCHEMA": (
+                profile.outer_publication_validation_schema
+            ),
+            "PASS_REPORT_HEADING": profile.pass_report_heading,
+        }
+    )
+    globals()["REQUIRED_REPOSITORY_FILES"] = (
+        INNER_RECEIPT_RELATIVE,
+        INNER_PUBLISH_STDOUT_RELATIVE,
+        INNER_PUBLISH_STDERR_RELATIVE,
+        INNER_VERIFY_STDOUT_RELATIVE,
+        INNER_VERIFY_STDERR_RELATIVE,
+        METHOD_ADMISSION_RELATIVE,
+        METHOD_ADMISSION_CHECKSUM_RELATIVE,
+        PASS_REPORT_RELATIVE,
+    )
+
+
 class Phase11OuterBundleError(RuntimeError):
     """The Phase 11 outer bundle failed a narrow validation rule."""
+
+
+_activate_profile(AUTHORITY_PROFILE_DECISION0027)
 
 
 @dataclass(frozen=True)
@@ -206,9 +456,7 @@ class Phase11OuterBundleValidation:
 
     def to_dict(self) -> dict[str, object]:
         return {
-            "schema_version": (
-                "kvbench-phase11-r2-outer-bundle-validation-1.0.0"
-            ),
+            "schema_version": OUTER_BUNDLE_VALIDATION_SCHEMA,
             "status": "PASS",
             "run_id": self.run_id,
             "root_sha256": self.root_sha256,
@@ -243,9 +491,7 @@ class Phase11OuterPublicationValidation:
 
     def to_dict(self) -> dict[str, object]:
         return {
-            "schema_version": (
-                "kvbench-phase11-r2-outer-publication-validation-1.0.0"
-            ),
+            "schema_version": OUTER_PUBLICATION_VALIDATION_SCHEMA,
             "status": "PASS",
             "run_id": self.run_id,
             "root_sha256": self.root_sha256,
@@ -1538,7 +1784,7 @@ def _validate_phase_report(
     }
     if (
         re.match(
-            r"^\s*#?\s*PHASE 11 REPORT\s*$",
+            rf"^\s*#?\s*{re.escape(PASS_REPORT_HEADING)}\s*$",
             text,
             re.IGNORECASE | re.MULTILINE,
         )
@@ -2290,6 +2536,15 @@ def _clean_git_sha(repository_root: Path) -> str:
 
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--authority-profile",
+        choices=AUTHORITY_PROFILE_CHOICES,
+        default=AUTHORITY_PROFILE_DECISION0027,
+        help=(
+            "select the exact Decision 0027 historical or Decision 0029 "
+            "successor authority"
+        ),
+    )
     commands = parser.add_subparsers(dest="operation", required=True)
     build = commands.add_parser("build")
     build.add_argument("--source-bundle", required=True, type=Path)
@@ -2318,6 +2573,7 @@ def _parser() -> argparse.ArgumentParser:
 def main(argv: Sequence[str] | None = None) -> int:
     arguments = _parser().parse_args(argv)
     try:
+        _activate_profile(arguments.authority_profile)
         if arguments.operation == "build":
             source = arguments.source_bundle.resolve(strict=True)
             revision = _clean_git_sha(REPOSITORY_ROOT)

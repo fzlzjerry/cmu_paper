@@ -75,6 +75,95 @@ PHASE11_DECODE_ATOL = 0.01
 PHASE11_DECODE_RTOL = 0.01
 PHASE11_RECIPROCAL_TOLERANCE = 1e-9
 
+PHASE11Q23_METHOD_IDENTIFIER = PHASE11_METHOD_IDENTIFIER
+PHASE11Q23_EXECUTION_SOURCE_IDENTIFIER = (
+    "kvquant_gqa_longctx_deterministic_q23_v4"
+)
+PHASE11Q23_UPSTREAM_BASE_COMMIT = PHASE11_UPSTREAM_BASE_COMMIT
+PHASE11Q23_UPSTREAM_BASE_TREE = PHASE11_UPSTREAM_BASE_TREE
+PHASE11Q23_DECISION_0021_PATCH_SHA256 = PHASE11_DECISION_0021_PATCH_SHA256
+PHASE11Q23_AGGREGATE_PATCH_SHA256 = (
+    "7b9d3cc6773e8ef37697601c885f2c5ec581dffd57cf59424d03e68f147bd55a"
+)
+PHASE11Q23_CORRECTED_COMMIT = "34b0bdfa83082e1f30387d9ac5cca369006e089c"
+PHASE11Q23_CORRECTED_TREE = "1f85af65fe03061583ffe8bd91e47d7ecffdd312"
+PHASE11Q23_CORRECTED_CUDA_SHA256 = (
+    "457a1d8d7bd07ba2e7e8420cbe3b722b52471f131ecc88f7f5442584a8b212f9"
+)
+PHASE11Q23_EXTENSION_SHA256 = (
+    "b3c33badb8e55b19d6b2ce535182e964ce51e5102d8413b29701dd3d817ad73d"
+)
+PHASE11Q23_DECISIONS = (
+    "0021",
+    "0023",
+    "0024",
+    "0025",
+    "0026",
+    "0027",
+    "0029",
+)
+PHASE11Q23_CALIBRATION_ID = PHASE11_CALIBRATION_ID
+PHASE11Q23_CALIBRATION_ROOT = PHASE11_CALIBRATION_ROOT
+PHASE11Q23_HISTORICAL_FIXTURE_ID = PHASE11_HISTORICAL_FIXTURE_ID
+PHASE11Q23_HISTORICAL_FIXTURE_ROOT = PHASE11_HISTORICAL_FIXTURE_ROOT
+PHASE11Q23_FIXTURE_ID = PHASE11_FIXTURE_ID
+PHASE11Q23_FIXTURE_ROOT = PHASE11_FIXTURE_ROOT
+PHASE11Q23_AUTHORIZED_CONTAINER_DIGEST = PHASE11_AUTHORIZED_CONTAINER_DIGEST
+PHASE11Q23_CONFIGURATIONS = PHASE11_CONFIGURATIONS
+
+_PHASE11_RUN_MANIFEST_SCHEMA = "kvbench-phase11-kvquant-run-manifest-1.0.0"
+_PHASE11Q23_RUN_MANIFEST_SCHEMA = (
+    "kvbench-phase11rq23-kvquant-run-manifest-1.0.0"
+)
+_PHASE11_ADMISSION_REPORT_SCHEMA = (
+    "kvbench-phase11-kvquant-admission-report-1.0.0"
+)
+_PHASE11Q23_ADMISSION_REPORT_SCHEMA = (
+    "kvbench-phase11rq23-kvquant-admission-report-1.0.0"
+)
+
+_PHASE11_AUTHORITY_IDENTITY = (
+    PHASE11_METHOD_IDENTIFIER,
+    PHASE11_EXECUTION_SOURCE_IDENTIFIER,
+    PHASE11_UPSTREAM_BASE_COMMIT,
+    PHASE11_UPSTREAM_BASE_TREE,
+    PHASE11_DECISION_0021_PATCH_SHA256,
+    PHASE11_AGGREGATE_PATCH_SHA256,
+    PHASE11_CORRECTED_COMMIT,
+    PHASE11_CORRECTED_TREE,
+    PHASE11_CORRECTED_CUDA_SHA256,
+    PHASE11_EXTENSION_SHA256,
+    PHASE11_DECISIONS,
+    PHASE11_CALIBRATION_ID,
+    PHASE11_CALIBRATION_ROOT,
+    PHASE11_HISTORICAL_FIXTURE_ID,
+    PHASE11_HISTORICAL_FIXTURE_ROOT,
+    PHASE11_FIXTURE_ID,
+    PHASE11_FIXTURE_ROOT,
+    PHASE11_AUTHORIZED_CONTAINER_DIGEST,
+)
+
+_PHASE11Q23_AUTHORITY_IDENTITY = (
+    PHASE11Q23_METHOD_IDENTIFIER,
+    PHASE11Q23_EXECUTION_SOURCE_IDENTIFIER,
+    PHASE11Q23_UPSTREAM_BASE_COMMIT,
+    PHASE11Q23_UPSTREAM_BASE_TREE,
+    PHASE11Q23_DECISION_0021_PATCH_SHA256,
+    PHASE11Q23_AGGREGATE_PATCH_SHA256,
+    PHASE11Q23_CORRECTED_COMMIT,
+    PHASE11Q23_CORRECTED_TREE,
+    PHASE11Q23_CORRECTED_CUDA_SHA256,
+    PHASE11Q23_EXTENSION_SHA256,
+    PHASE11Q23_DECISIONS,
+    PHASE11Q23_CALIBRATION_ID,
+    PHASE11Q23_CALIBRATION_ROOT,
+    PHASE11Q23_HISTORICAL_FIXTURE_ID,
+    PHASE11Q23_HISTORICAL_FIXTURE_ROOT,
+    PHASE11Q23_FIXTURE_ID,
+    PHASE11Q23_FIXTURE_ROOT,
+    PHASE11Q23_AUTHORIZED_CONTAINER_DIGEST,
+)
+
 PHASE11_FIXTURE_CASES = tuple(
     f"{configuration}/{case}"
     for configuration in PHASE11_CONFIGURATIONS
@@ -133,6 +222,49 @@ PHASE11_ADMISSION_CHECK_IDS = (
     "durable_publication",
     "clean_retrieval",
 )
+
+
+def _phase11_authority_identity(
+    authority: "Phase11Authority",
+) -> tuple[object, ...]:
+    return (
+        authority.method_identifier,
+        authority.execution_source_identifier,
+        authority.upstream_base_commit,
+        authority.upstream_base_tree,
+        authority.decision_0021_patch_sha256,
+        authority.aggregate_patch_sha256,
+        authority.corrected_commit,
+        authority.corrected_tree,
+        authority.corrected_cuda_sha256,
+        authority.extension_sha256,
+        authority.decisions,
+        authority.calibration_id,
+        authority.calibration_root,
+        authority.historical_fixture_id,
+        authority.historical_fixture_root,
+        authority.fixture_id,
+        authority.fixture_root,
+        authority.authorized_container_digest,
+    )
+
+
+def _require_phase11_schema_authority(
+    *,
+    schema_version: str,
+    authority: "Phase11Authority",
+) -> None:
+    expected_by_schema = {
+        _PHASE11_RUN_MANIFEST_SCHEMA: _PHASE11_AUTHORITY_IDENTITY,
+        _PHASE11_ADMISSION_REPORT_SCHEMA: _PHASE11_AUTHORITY_IDENTITY,
+        _PHASE11Q23_RUN_MANIFEST_SCHEMA: _PHASE11Q23_AUTHORITY_IDENTITY,
+        _PHASE11Q23_ADMISSION_REPORT_SCHEMA: _PHASE11Q23_AUTHORITY_IDENTITY,
+    }
+    expected = expected_by_schema.get(schema_version)
+    if expected is None or _phase11_authority_identity(authority) != expected:
+        raise ValueError(
+            "Phase 11 schema and source authority profile do not match"
+        )
 
 
 def _require_nonnegative_int(value: int, *, field_name: str) -> None:
@@ -223,9 +355,7 @@ class Phase11RunManifest(StrictModel):
     inventory_path: str | None
     failure_reason: str | None
 
-    SCHEMA_VERSION: ClassVar[str] = (
-        "kvbench-phase11-kvquant-run-manifest-1.0.0"
-    )
+    SCHEMA_VERSION: ClassVar[str] = _PHASE11_RUN_MANIFEST_SCHEMA
     ARTIFACT_SCHEMA_VERSION: ClassVar[str] = "kvbench-artifacts-1.0.0"
 
     def __post_init__(self) -> None:
@@ -238,6 +368,10 @@ class Phase11RunManifest(StrictModel):
         require_git_sha(self.git_sha)
         if self.git_dirty:
             raise ValueError("Phase 11 admission requires a clean Git tree")
+        _require_phase11_schema_authority(
+            schema_version=self.schema_version,
+            authority=self.authority,
+        )
         if (
             self.authority.authorized_container_digest
             != PHASE11_AUTHORIZED_CONTAINER_DIGEST
@@ -315,48 +449,18 @@ class Phase11Authority(StrictModel):
             (self.fixture_id, "fixture_id"),
         ):
             require_identifier(value, field_name=name)
-        observed = (
-            self.method_identifier,
-            self.execution_source_identifier,
-            self.upstream_base_commit,
-            self.upstream_base_tree,
-            self.decision_0021_patch_sha256,
-            self.aggregate_patch_sha256,
-            self.corrected_commit,
-            self.corrected_tree,
-            self.corrected_cuda_sha256,
-            self.extension_sha256,
-            self.decisions,
-            self.calibration_id,
-            self.calibration_root,
-            self.historical_fixture_id,
-            self.historical_fixture_root,
-            self.fixture_id,
-            self.fixture_root,
-            self.authorized_container_digest,
-        )
-        expected = (
-            PHASE11_METHOD_IDENTIFIER,
-            PHASE11_EXECUTION_SOURCE_IDENTIFIER,
-            PHASE11_UPSTREAM_BASE_COMMIT,
-            PHASE11_UPSTREAM_BASE_TREE,
-            PHASE11_DECISION_0021_PATCH_SHA256,
-            PHASE11_AGGREGATE_PATCH_SHA256,
-            PHASE11_CORRECTED_COMMIT,
-            PHASE11_CORRECTED_TREE,
-            PHASE11_CORRECTED_CUDA_SHA256,
-            PHASE11_EXTENSION_SHA256,
-            PHASE11_DECISIONS,
-            PHASE11_CALIBRATION_ID,
-            PHASE11_CALIBRATION_ROOT,
-            PHASE11_HISTORICAL_FIXTURE_ID,
-            PHASE11_HISTORICAL_FIXTURE_ROOT,
-            PHASE11_FIXTURE_ID,
-            PHASE11_FIXTURE_ROOT,
-            PHASE11_AUTHORIZED_CONTAINER_DIGEST,
-        )
-        if observed != expected:
+        if _phase11_authority_identity(self) not in {
+            _PHASE11_AUTHORITY_IDENTITY,
+            _PHASE11Q23_AUTHORITY_IDENTITY,
+        }:
             raise ValueError("Phase 11 authority differs from the frozen record")
+
+
+class Phase11RQ23RunManifest(Phase11RunManifest):
+    """Decision 0029-bound append-only Phase 11 rerun bundle."""
+
+    __slots__ = ()
+    SCHEMA_VERSION: ClassVar[str] = _PHASE11Q23_RUN_MANIFEST_SCHEMA
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
@@ -790,11 +894,18 @@ class Phase11SanitizerEvidence(StrictModel):
         require_sha256(self.extension_sha256, field_name="extension_sha256")
         require_sha256(self.stdout_sha256, field_name="stdout_sha256")
         require_sha256(self.stderr_sha256, field_name="stderr_sha256")
+        source_identity = (self.corrected_tree, self.extension_sha256)
         if (
             self.cases != PHASE11_SANITIZER_CASES
             or self.container_digest != PHASE11_AUTHORIZED_CONTAINER_DIGEST
-            or self.corrected_tree != PHASE11_CORRECTED_TREE
-            or self.extension_sha256 != PHASE11_EXTENSION_SHA256
+            or source_identity
+            not in {
+                (PHASE11_CORRECTED_TREE, PHASE11_EXTENSION_SHA256),
+                (
+                    PHASE11Q23_CORRECTED_TREE,
+                    PHASE11Q23_EXTENSION_SHA256,
+                ),
+            }
             or not self.command_argv
             or not all(item.strip() for item in self.command_argv)
             or not self.tool_version.strip()
@@ -915,12 +1026,29 @@ class Phase11MethodAdmissionReport(StrictModel):
     measurement_scope: MeasurementScope
     creation_git_sha: str
 
-    SCHEMA_VERSION: ClassVar[str] = (
-        "kvbench-phase11-kvquant-admission-report-1.0.0"
-    )
+    SCHEMA_VERSION: ClassVar[str] = _PHASE11_ADMISSION_REPORT_SCHEMA
 
     def __post_init__(self) -> None:
         require_schema(self.schema_version, self.SCHEMA_VERSION)
+        _require_phase11_schema_authority(
+            schema_version=self.schema_version,
+            authority=self.authority,
+        )
+        expected_sanitizer_source = (
+            (
+                PHASE11Q23_CORRECTED_TREE,
+                PHASE11Q23_EXTENSION_SHA256,
+            )
+            if self.schema_version == _PHASE11Q23_ADMISSION_REPORT_SCHEMA
+            else (PHASE11_CORRECTED_TREE, PHASE11_EXTENSION_SHA256)
+        )
+        if (
+            self.sanitizer_evidence.corrected_tree,
+            self.sanitizer_evidence.extension_sha256,
+        ) != expected_sanitizer_source:
+            raise ValueError(
+                "Phase 11 report and sanitizer source authority do not match"
+            )
         require_utc_timestamp(self.created_at_utc)
         require_git_sha(self.creation_git_sha)
         if self.method_name is not MethodName.KVQUANT:
@@ -1047,6 +1175,13 @@ class Phase11MethodAdmissionReport(StrictModel):
             is not MeasurementScope.MEASUREMENT_CONTAINER_ADMISSION
         ):
             raise ValueError("Phase 11 report must remain a non-claim")
+
+
+class Phase11RQ23MethodAdmissionReport(Phase11MethodAdmissionReport):
+    """Decision 0029-bound KVQuant MethodAdmissionReport."""
+
+    __slots__ = ()
+    SCHEMA_VERSION: ClassVar[str] = _PHASE11Q23_ADMISSION_REPORT_SCHEMA
 
 
 def parse_phase11_run_manifest(

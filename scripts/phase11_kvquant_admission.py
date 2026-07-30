@@ -31,6 +31,7 @@ from typing import Any, Mapping, Sequence
 
 from kvbench.adapters.kvquant import (
     KVQUANT_ADAPTER_VERSION,
+    KVQUANT_DETERMINISTIC_VALUE_DECODE_APIS,
     KVQUANT_EXTENSION_SHA256,
     KVQUANT_Q4_DETERMINISTIC_VALUE_DECODE_API,
     KVQuantMethodAdapter,
@@ -115,6 +116,13 @@ from kvbench.schema.phase11 import (
     PHASE11_SANITIZER_CASES,
     PHASE11_UPSTREAM_BASE_COMMIT,
     PHASE11_UPSTREAM_BASE_TREE,
+    PHASE11Q23_AGGREGATE_PATCH_SHA256,
+    PHASE11Q23_CORRECTED_COMMIT,
+    PHASE11Q23_CORRECTED_CUDA_SHA256,
+    PHASE11Q23_CORRECTED_TREE,
+    PHASE11Q23_DECISIONS,
+    PHASE11Q23_EXECUTION_SOURCE_IDENTIFIER,
+    PHASE11Q23_EXTENSION_SHA256,
     Phase11AllocationEvidence,
     Phase11AdmissionCheck,
     Phase11AdmissionGates,
@@ -129,12 +137,17 @@ from kvbench.schema.phase11 import (
     Phase11RunManifest,
     Phase11RunPoint,
     Phase11SanitizerEvidence,
+    Phase11RQ23MethodAdmissionReport,
+    Phase11RQ23RunManifest,
     require_exact_phase11_grid,
 )
 from kvbench.schema.phase3 import GateDisposition
 from scripts.r2_artifact import validate_local_artifact
 from scripts.validate_kvquant_long_context_patch import (
     validate as validate_source,
+)
+from scripts.validate_kvquant_q23_long_context_patch import (
+    validate as validate_q23_source,
 )
 
 
@@ -161,6 +174,7 @@ _GIT_BOUND_SOURCE_PATHS = (
     "tests/graph/test_phase11_kvquant_graph.py",
     "tests/cuda/phase11_kvquant_sanitizer_probe.py",
 )
+_LEGACY_GIT_BOUND_SOURCE_PATHS = _GIT_BOUND_SOURCE_PATHS
 _RUNTIME_CALIBRATION_PATH = Path(
     "/opt/kvquant-calibration"
 ) / PHASE11_CALIBRATION_ID
@@ -179,6 +193,58 @@ FINAL_RECEIPT_SCHEMA = (
 FINAL_RECEIPT_PATH = (
     REPOSITORY_ROOT
     / "docs/evidence/phase11/r2-admission-outer-publication.json"
+)
+_AUTHORITY_PROFILE_DECISION_0027 = "decision0027"
+_AUTHORITY_PROFILE_DECISION_0029 = "decision0029"
+_AUTHORITY_PROFILES = (
+    _AUTHORITY_PROFILE_DECISION_0027,
+    _AUTHORITY_PROFILE_DECISION_0029,
+)
+_ACTIVE_AUTHORITY_PROFILE = _AUTHORITY_PROFILE_DECISION_0027
+_SOURCE_DECISION_PATH = (
+    "docs/decisions/"
+    "0027-kvquant-deterministic-long-context-value-decode.md"
+)
+_SOURCE_PARENT_COMMIT = "0d9df350bd1788284e1ce76a8bf6e886beca5efa"
+_SOURCE_PARENT_TREE = "a85cf7bf093982a4bf89c33d4e6794d9a85f846d"
+_Q23_EVIDENCE_MOUNT = Path("/opt/phase11dq23-evidence")
+_Q23_EVIDENCE_ROOT_SHA256 = (
+    "8b65112ea2d49b58ee07c1533b429fac1a8af7466e09adad073d9a22ae2ec790"
+)
+_Q23_TRACKED_EVIDENCE_PATH = (
+    REPOSITORY_ROOT / "docs/evidence/phase11dq23/cuda-validation.json"
+)
+_Q23_TRACKED_EVIDENCE_SHA256 = (
+    "04759580cf6ddbd6d5108f5069058ce71994a12c0ce6b951b36093ab222b934c"
+)
+_Q23_EVIDENCE_OBJECT_COUNT = 46
+_LEGACY_EXECUTION_SOURCE_IDENTIFIER = PHASE11_EXECUTION_SOURCE_IDENTIFIER
+_LEGACY_AGGREGATE_PATCH_SHA256 = PHASE11_AGGREGATE_PATCH_SHA256
+_LEGACY_CORRECTED_COMMIT = PHASE11_CORRECTED_COMMIT
+_LEGACY_CORRECTED_TREE = PHASE11_CORRECTED_TREE
+_LEGACY_CORRECTED_CUDA_SHA256 = PHASE11_CORRECTED_CUDA_SHA256
+_LEGACY_EXTENSION_SHA256 = PHASE11_EXTENSION_SHA256
+_LEGACY_DECISIONS = PHASE11_DECISIONS
+_LEGACY_RUN_MANIFEST_CLASS = Phase11RunManifest
+_LEGACY_METHOD_ADMISSION_REPORT_CLASS = Phase11MethodAdmissionReport
+_LEGACY_VALIDATE_SOURCE = validate_source
+_LEGACY_EXECUTION_PATCH_MANIFEST_PATH = _EXECUTION_PATCH_MANIFEST_PATH
+_Q23_EXECUTION_PATCH_MANIFEST_PATH = (
+    REPOSITORY_ROOT
+    / "third_party/patches/kvquant/"
+    "deterministic-long-context-q3-q2-manifest.json"
+)
+_Q23_GIT_BOUND_SOURCE_PATHS = (
+    "scripts/phase11_kvquant_admission.py",
+    "scripts/validate_kvquant_q23_long_context_patch.py",
+    "src/kvbench/adapters/kvquant.py",
+    "src/kvbench/runtime/kvquant_cache.py",
+    "src/kvbench/runtime/bf16_endpoint.py",
+    "src/kvbench/runtime/kvquant_session.py",
+    "src/kvbench/schema/phase11.py",
+    "tests/cuda/test_phase11_kvquant_cuda.py",
+    "tests/graph/test_phase11_kvquant_graph.py",
+    "tests/cuda/phase11_kvquant_sanitizer_probe.py",
 )
 _HOST_ONLY_R2_ENVIRONMENT = (
     "R2_ACCOUNT_ID",
@@ -227,6 +293,88 @@ _FORBIDDEN_ALLOCATION_CLASSES = frozenset(
 
 class Phase11KVQuantDriverError(RuntimeError):
     """The bounded KVQuant admission driver failed closed."""
+
+
+def _activate_authority_profile(name: str) -> None:
+    """Select one exact, non-mixable execution-source authority."""
+
+    if name not in _AUTHORITY_PROFILES:
+        raise Phase11KVQuantDriverError(
+            "Phase 11 authority profile is invalid"
+        )
+    if name == _AUTHORITY_PROFILE_DECISION_0027:
+        values = {
+            "PHASE11_EXECUTION_SOURCE_IDENTIFIER": (
+                _LEGACY_EXECUTION_SOURCE_IDENTIFIER
+            ),
+            "PHASE11_AGGREGATE_PATCH_SHA256": (
+                _LEGACY_AGGREGATE_PATCH_SHA256
+            ),
+            "PHASE11_CORRECTED_COMMIT": _LEGACY_CORRECTED_COMMIT,
+            "PHASE11_CORRECTED_TREE": _LEGACY_CORRECTED_TREE,
+            "PHASE11_CORRECTED_CUDA_SHA256": (
+                _LEGACY_CORRECTED_CUDA_SHA256
+            ),
+            "PHASE11_EXTENSION_SHA256": _LEGACY_EXTENSION_SHA256,
+            "PHASE11_DECISIONS": _LEGACY_DECISIONS,
+            "Phase11RunManifest": _LEGACY_RUN_MANIFEST_CLASS,
+            "Phase11MethodAdmissionReport": (
+                _LEGACY_METHOD_ADMISSION_REPORT_CLASS
+            ),
+            "validate_source": _LEGACY_VALIDATE_SOURCE,
+            "_GIT_BOUND_SOURCE_PATHS": _LEGACY_GIT_BOUND_SOURCE_PATHS,
+            "_EXECUTION_PATCH_MANIFEST_PATH": (
+                _LEGACY_EXECUTION_PATCH_MANIFEST_PATH
+            ),
+            "_SOURCE_DECISION_PATH": (
+                "docs/decisions/"
+                "0027-kvquant-deterministic-long-context-value-decode.md"
+            ),
+            "_SOURCE_PARENT_COMMIT": (
+                "0d9df350bd1788284e1ce76a8bf6e886beca5efa"
+            ),
+            "_SOURCE_PARENT_TREE": (
+                "a85cf7bf093982a4bf89c33d4e6794d9a85f846d"
+            ),
+        }
+    else:
+        values = {
+            "PHASE11_EXECUTION_SOURCE_IDENTIFIER": (
+                PHASE11Q23_EXECUTION_SOURCE_IDENTIFIER
+            ),
+            "PHASE11_AGGREGATE_PATCH_SHA256": (
+                PHASE11Q23_AGGREGATE_PATCH_SHA256
+            ),
+            "PHASE11_CORRECTED_COMMIT": PHASE11Q23_CORRECTED_COMMIT,
+            "PHASE11_CORRECTED_TREE": PHASE11Q23_CORRECTED_TREE,
+            "PHASE11_CORRECTED_CUDA_SHA256": (
+                PHASE11Q23_CORRECTED_CUDA_SHA256
+            ),
+            "PHASE11_EXTENSION_SHA256": PHASE11Q23_EXTENSION_SHA256,
+            "PHASE11_DECISIONS": PHASE11Q23_DECISIONS,
+            "Phase11RunManifest": Phase11RQ23RunManifest,
+            "Phase11MethodAdmissionReport": (
+                Phase11RQ23MethodAdmissionReport
+            ),
+            "validate_source": validate_q23_source,
+            "_GIT_BOUND_SOURCE_PATHS": _Q23_GIT_BOUND_SOURCE_PATHS,
+            "_EXECUTION_PATCH_MANIFEST_PATH": (
+                _Q23_EXECUTION_PATCH_MANIFEST_PATH
+            ),
+            "_SOURCE_DECISION_PATH": (
+                "docs/decisions/"
+                "0029-kvquant-deterministic-long-context-q3-q2-"
+                "value-decode.md"
+            ),
+            "_SOURCE_PARENT_COMMIT": (
+                "4b8533b29b04f8c4bf55f688a41fefe20487637b"
+            ),
+            "_SOURCE_PARENT_TREE": (
+                "46f2149a0369d5c97d9a6bc77d57b5f3a5a5fb3b"
+            ),
+        }
+    values["_ACTIVE_AUTHORITY_PROFILE"] = name
+    globals().update(values)
 
 
 def _utc_now() -> str:
@@ -403,7 +551,12 @@ def _authority() -> Phase11Authority:
 
 def _run_id(git_sha: str) -> str:
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dt%H%M%S%f")[:-3] + "z"
-    return f"phase11-{stamp}-{git_sha[:8]}-{secrets.token_hex(3)}-kvquant"
+    phase = (
+        "phase11rq23"
+        if _ACTIVE_AUTHORITY_PROFILE == _AUTHORITY_PROFILE_DECISION_0029
+        else "phase11"
+    )
+    return f"{phase}-{stamp}-{git_sha[:8]}-{secrets.token_hex(3)}-kvquant"
 
 
 def _point_run_id(
@@ -847,7 +1000,7 @@ def _static_execution_path() -> tuple[Phase11ExecutionPathEvidence, ...]:
     value_decode_source = inspect.getsource(
         KVQuantMethodAdapter._decode_quantized_value
     )
-    required_bindings = (
+    common_bindings = (
         "select_fixed_outliers_1024_cap12_out" in pack_calls,
         "key_sparse_residual_1024_cap12_out" in pack_calls,
         "append_value_sparse_1024_cap12_out" in pack_calls,
@@ -861,23 +1014,40 @@ def _static_execution_path() -> tuple[Phase11ExecutionPathEvidence, ...]:
             "rope_mha_batched_fused_opt2"
         )
         in decode_templates,
-        (
-            "vecquant{self.bits}matmul_nuq_perchannel_transposed_"
-            "mha_batched_fused_opt2"
-        )
-        in value_decode_templates,
-        "if self.bits == 4:" in value_decode_source,
-        "cache.q4_value_decode_workspace" in value_decode_source,
-        (
-            "KVQUANT_Q4_DETERMINISTIC_VALUE_DECODE_API"
-            in value_decode_source
-        ),
-        (
-            KVQUANT_Q4_DETERMINISTIC_VALUE_DECODE_API
-            .endswith("_deterministic_out")
-        ),
     )
-    if not all(required_bindings):
+    if _ACTIVE_AUTHORITY_PROFILE == _AUTHORITY_PROFILE_DECISION_0029:
+        deterministic_bindings = (
+            "cache.q4_value_decode_workspace" in value_decode_source,
+            "cache.q23_value_decode_workspace" in value_decode_source,
+            (
+                "KVQUANT_DETERMINISTIC_VALUE_DECODE_APIS[self.bits]"
+                in value_decode_source
+            ),
+            set(KVQUANT_DETERMINISTIC_VALUE_DECODE_APIS) == {2, 3, 4},
+            all(
+                api.endswith("_deterministic_out")
+                for api in KVQUANT_DETERMINISTIC_VALUE_DECODE_APIS.values()
+            ),
+        )
+    else:
+        deterministic_bindings = (
+            (
+                "vecquant{self.bits}matmul_nuq_perchannel_transposed_"
+                "mha_batched_fused_opt2"
+            )
+            in value_decode_templates,
+            "if self.bits == 4:" in value_decode_source,
+            "cache.q4_value_decode_workspace" in value_decode_source,
+            (
+                "KVQUANT_Q4_DETERMINISTIC_VALUE_DECODE_API"
+                in value_decode_source
+            ),
+            (
+                KVQUANT_Q4_DETERMINISTIC_VALUE_DECODE_API
+                .endswith("_deterministic_out")
+            ),
+        )
+    if not all((*common_bindings, *deterministic_bindings)):
         raise Phase11KVQuantDriverError(
             "KVQuant direct compressed source binding is incomplete"
         )
@@ -1645,6 +1815,285 @@ def _strict_json(path: Path) -> dict[str, Any]:
     return value
 
 
+def _validate_q23_evidence_bundle(root: Path) -> dict[str, Any]:
+    """Validate the exact checksum-bound Decision 0029 CUDA evidence."""
+
+    try:
+        metadata = root.lstat()
+        resolved = root.resolve(strict=True)
+    except OSError as error:
+        raise Phase11KVQuantDriverError(
+            "Decision 0029 CUDA evidence mount is unavailable"
+        ) from error
+    if (
+        stat.S_ISLNK(metadata.st_mode)
+        or not stat.S_ISDIR(metadata.st_mode)
+        or resolved != root
+    ):
+        raise Phase11KVQuantDriverError(
+            "Decision 0029 CUDA evidence mount is unsafe"
+        )
+    files: dict[str, Path] = {}
+    for path in sorted(root.rglob("*")):
+        if path.is_dir():
+            continue
+        relative = path.relative_to(root).as_posix()
+        item = path.lstat()
+        if (
+            stat.S_ISLNK(item.st_mode)
+            or not stat.S_ISREG(item.st_mode)
+            or item.st_nlink != 1
+            or path.resolve(strict=True) != path
+            or relative.startswith("../")
+            or "/../" in relative
+            or Path(relative).name == ".env"
+        ):
+            raise Phase11KVQuantDriverError(
+                "Decision 0029 CUDA evidence contains an unsafe object"
+            )
+        files[relative] = path
+    if len(files) != _Q23_EVIDENCE_OBJECT_COUNT:
+        raise Phase11KVQuantDriverError(
+            "Decision 0029 CUDA evidence object count differs"
+        )
+
+    ledger_path = files.get("checksums.sha256")
+    complete_path = files.get("COMPLETE")
+    inventory_path = files.get("artifact_inventory.json")
+    summary_path = files.get("summary.json")
+    if any(
+        path is None
+        for path in (
+            ledger_path,
+            complete_path,
+            inventory_path,
+            summary_path,
+        )
+    ):
+        raise Phase11KVQuantDriverError(
+            "Decision 0029 CUDA evidence controls are incomplete"
+        )
+    assert ledger_path is not None
+    assert complete_path is not None
+    assert inventory_path is not None
+    assert summary_path is not None
+    if sha256_file(ledger_path) != _Q23_EVIDENCE_ROOT_SHA256:
+        raise Phase11KVQuantDriverError(
+            "Decision 0029 CUDA evidence root differs"
+        )
+
+    ledger: dict[str, str] = {}
+    try:
+        lines = ledger_path.read_text(encoding="utf-8").splitlines()
+    except (OSError, UnicodeError) as error:
+        raise Phase11KVQuantDriverError(
+            "Decision 0029 checksum ledger is unreadable"
+        ) from error
+    for line in lines:
+        match = re.fullmatch(r"([0-9a-f]{64})  ([^\r\n]+)", line)
+        if match is None:
+            raise Phase11KVQuantDriverError(
+                "Decision 0029 checksum ledger is malformed"
+            )
+        digest, relative = match.groups()
+        if (
+            relative in ledger
+            or relative not in files
+            or relative in {"COMPLETE", "checksums.sha256"}
+        ):
+            raise Phase11KVQuantDriverError(
+                "Decision 0029 checksum ledger membership differs"
+            )
+        ledger[relative] = digest
+    expected_ledger_paths = set(files) - {"COMPLETE", "checksums.sha256"}
+    if (
+        set(ledger) != expected_ledger_paths
+        or any(sha256_file(files[path]) != digest for path, digest in ledger.items())
+    ):
+        raise Phase11KVQuantDriverError(
+            "Decision 0029 checksum ledger replay failed"
+        )
+
+    inventory = _strict_json(inventory_path)
+    inventory_files = inventory.get("files")
+    if (
+        set(inventory)
+        != {"schema_version", "excluded_control_files", "files"}
+        or inventory.get("schema_version")
+        != "kvbench-artifact-inventory-1.0.0"
+        or inventory.get("excluded_control_files")
+        != ["COMPLETE", "artifact_inventory.json", "checksums.sha256"]
+        or not isinstance(inventory_files, list)
+    ):
+        raise Phase11KVQuantDriverError(
+            "Decision 0029 artifact inventory differs"
+        )
+    expected_inventory_paths = expected_ledger_paths - {
+        "artifact_inventory.json"
+    }
+    observed_inventory: dict[str, tuple[str, int]] = {}
+    for record in inventory_files:
+        if (
+            not isinstance(record, Mapping)
+            or set(record) != {"path", "sha256", "size_bytes"}
+            or not isinstance(record.get("path"), str)
+            or not isinstance(record.get("sha256"), str)
+            or not isinstance(record.get("size_bytes"), int)
+            or record["path"] in observed_inventory
+        ):
+            raise Phase11KVQuantDriverError(
+                "Decision 0029 artifact inventory record differs"
+            )
+        observed_inventory[str(record["path"])] = (
+            str(record["sha256"]),
+            int(record["size_bytes"]),
+        )
+    if set(observed_inventory) != expected_inventory_paths or any(
+        observed_inventory[relative]
+        != (sha256_file(files[relative]), files[relative].stat().st_size)
+        for relative in expected_inventory_paths
+    ):
+        raise Phase11KVQuantDriverError(
+            "Decision 0029 artifact inventory replay failed"
+        )
+
+    complete = _strict_json(complete_path)
+    if complete != {
+        "artifact_inventory_sha256": sha256_file(inventory_path),
+        "checksum_ledger_sha256": _Q23_EVIDENCE_ROOT_SHA256,
+        "schema_version": "kvbench-completion-1.0.0",
+        "status": "completed",
+        "written_last": True,
+    }:
+        raise Phase11KVQuantDriverError(
+            "Decision 0029 COMPLETE marker differs"
+        )
+    summary = _strict_json(summary_path)
+    determinism = summary.get("determinism")
+    graph = summary.get("graph")
+    sanitizer = summary.get("sanitizer")
+    fixtures = summary.get("fixtures")
+    source = summary.get("source")
+    if (
+        summary.get("admission_grid_run") is not False
+        or summary.get("method_admission_report_published") is not False
+        or not isinstance(determinism, Mapping)
+        or not isinstance(graph, Mapping)
+        or not isinstance(sanitizer, Mapping)
+        or not isinstance(fixtures, Mapping)
+        or not isinstance(source, Mapping)
+        or determinism.get("passed") is not True
+        or tuple(
+            (
+                item.get("bits"),
+                item.get("repetitions"),
+                item.get("unique_output_sha256_count"),
+                item.get("all_finite"),
+            )
+            for item in determinism.get("cases", ())
+            if isinstance(item, Mapping)
+        )
+        != ((3, 100, 1, True), (2, 100, 1, True))
+        or graph.get("capture") != "PASS"
+        or graph.get("replay") != "PASS"
+        or not isinstance(graph.get("replay_allocation"), Mapping)
+        or graph["replay_allocation"].get("allocation_event_count") != 0
+        or graph["replay_allocation"].get("allocated_delta") != 0
+        or graph["replay_allocation"].get("reserved_delta") != 0
+        or sanitizer.get("passed") is not True
+        or tuple(
+            (
+                record.get("tool"),
+                record.get("passed"),
+                record.get("zero_error_and_leak_summary"),
+            )
+            for record in sanitizer.get("records", ())
+            if isinstance(record, Mapping)
+        )
+        != (
+            ("memcheck", True, True),
+            ("initcheck", True, True),
+        )
+        or fixtures.get("passed") is not True
+        or fixtures.get("cases") != 9
+        or source.get("patched_commit") != PHASE11Q23_CORRECTED_COMMIT
+        or source.get("patched_tree") != PHASE11Q23_CORRECTED_TREE
+        or source.get("aggregate_patch_sha256")
+        != PHASE11Q23_AGGREGATE_PATCH_SHA256
+    ):
+        raise Phase11KVQuantDriverError(
+            "Decision 0029 CUDA evidence semantics differ"
+        )
+    if (
+        not _Q23_TRACKED_EVIDENCE_PATH.is_file()
+        or _Q23_TRACKED_EVIDENCE_PATH.is_symlink()
+        or sha256_file(_Q23_TRACKED_EVIDENCE_PATH)
+        != _Q23_TRACKED_EVIDENCE_SHA256
+    ):
+        raise Phase11KVQuantDriverError(
+            "tracked Decision 0029 CUDA summary differs"
+        )
+    tracked = _strict_json(_Q23_TRACKED_EVIDENCE_PATH)
+    if tracked.get("artifact") != {
+        "local_root": "artifacts/phase11/phase11dq23-launch.ssAO5M",
+        "evidence_root_sha256": _Q23_EVIDENCE_ROOT_SHA256,
+        "artifact_inventory_sha256": sha256_file(inventory_path),
+        "checksum_ledger_sha256": _Q23_EVIDENCE_ROOT_SHA256,
+        "complete_sha256": sha256_file(complete_path),
+        "summary_sha256": sha256_file(summary_path),
+        "object_count": _Q23_EVIDENCE_OBJECT_COUNT,
+        "complete_last": True,
+        "checksum_validation": "PASS",
+    }:
+        raise Phase11KVQuantDriverError(
+            "tracked Decision 0029 evidence binding differs"
+        )
+    _reject_secret_keys(summary)
+    _reject_secret_keys(tracked)
+    return {
+        "schema_version": (
+            "kvbench-phase11rq23-q23-evidence-binding-1.0.0"
+        ),
+        "source_profile": _AUTHORITY_PROFILE_DECISION_0029,
+        "source_commit": PHASE11Q23_CORRECTED_COMMIT,
+        "source_tree": PHASE11Q23_CORRECTED_TREE,
+        "aggregate_patch_sha256": PHASE11Q23_AGGREGATE_PATCH_SHA256,
+        "extension_sha256": PHASE11Q23_EXTENSION_SHA256,
+        "evidence_root_sha256": _Q23_EVIDENCE_ROOT_SHA256,
+        "object_count": _Q23_EVIDENCE_OBJECT_COUNT,
+        "tracked_evidence_path": str(
+            _Q23_TRACKED_EVIDENCE_PATH.relative_to(REPOSITORY_ROOT)
+        ),
+        "tracked_evidence_sha256": _Q23_TRACKED_EVIDENCE_SHA256,
+        "complete_last": True,
+        "checksums_valid": True,
+        "fixtures_preserved": True,
+        "q3_deterministic": True,
+        "q2_deterministic": True,
+        "graph_passed": True,
+        "zero_replay_allocation": True,
+        "sanitizer_memcheck_passed": True,
+        "sanitizer_initcheck_passed": True,
+        "admission_grid_run": False,
+        "method_admission_report_published": False,
+    }
+
+
+def _copy_q23_evidence(run: ArtifactRun) -> dict[str, Any]:
+    raw = os.environ.get("KVBENCH_PHASE11DQ23_EVIDENCE_ROOT")
+    if raw != str(_Q23_EVIDENCE_MOUNT):
+        raise Phase11KVQuantDriverError(
+            "exact Decision 0029 CUDA evidence mount path is required"
+        )
+    binding = _validate_q23_evidence_bundle(_Q23_EVIDENCE_MOUNT)
+    for path in sorted(_Q23_EVIDENCE_MOUNT.rglob("*")):
+        if path.is_file():
+            relative = path.relative_to(_Q23_EVIDENCE_MOUNT).as_posix()
+            run.write_bytes(f"authority/q23-evidence/{relative}", path.read_bytes())
+    run.write_json("config/q23-validation-binding.json", binding)
+    return binding
+
+
 def _expected_execution_changed_paths() -> tuple[str, ...]:
     manifest = _strict_json(_EXECUTION_PATCH_MANIFEST_PATH)
     records = manifest.get("patched_files")
@@ -1668,12 +2117,12 @@ def _expected_execution_changed_paths() -> tuple[str, ...]:
         )
     ):
         raise Phase11KVQuantDriverError(
-            "Decision 0027 changed-file authority differs"
+            "selected execution-source changed-file authority differs"
         )
     paths = tuple(str(record["path"]) for record in records)
     if len(set(paths)) != len(paths):
         raise Phase11KVQuantDriverError(
-            "Decision 0027 changed-file authority contains duplicates"
+            "selected execution-source authority contains duplicate paths"
         )
     return paths
 
@@ -1832,11 +2281,7 @@ def _validate_authority_environment_and_gqa(
         )
         != PHASE11_EXTENSION_SHA256
         or source.get("status") != "PASS"
-        or source.get("decision")
-        != (
-            "docs/decisions/"
-            "0027-kvquant-deterministic-long-context-value-decode.md"
-        )
+        or source.get("decision") != _SOURCE_DECISION_PATH
         or source.get("decision_status") != "Accepted"
         or source.get("patched_commit") != PHASE11_CORRECTED_COMMIT
         or source.get("patched_tree") != PHASE11_CORRECTED_TREE
@@ -1845,10 +2290,8 @@ def _validate_authority_environment_and_gqa(
         or tuple(aggregate_paths or ())
         != _expected_execution_changed_paths()
         or source.get("source_contract") != "PASS"
-        or source.get("parent_commit")
-        != "0d9df350bd1788284e1ce76a8bf6e886beca5efa"
-        or source.get("parent_tree")
-        != "a85cf7bf093982a4bf89c33d4e6794d9a85f846d"
+        or source.get("parent_commit") != _SOURCE_PARENT_COMMIT
+        or source.get("parent_tree") != _SOURCE_PARENT_TREE
         or parent_paths
         != [
             "deployment/kvquant/quant_cuda.cpp",
@@ -2678,6 +3121,24 @@ def _validate_inner_records(bundle: Path) -> dict[str, Any]:
         or sanitizer.cases != PHASE11_SANITIZER_CASES
     ):
         raise Phase11KVQuantDriverError("Phase 11 evidence set differs")
+    q23_binding: dict[str, Any] | None = None
+    q23_root = bundle / "authority/q23-evidence"
+    q23_binding_path = bundle / "config/q23-validation-binding.json"
+    if _ACTIVE_AUTHORITY_PROFILE == _AUTHORITY_PROFILE_DECISION_0029:
+        if not q23_binding_path.is_file() or q23_binding_path.is_symlink():
+            raise Phase11KVQuantDriverError(
+                "Decision 0029 evidence binding is absent"
+            )
+        q23_binding = _strict_json(q23_binding_path)
+        if q23_binding != _validate_q23_evidence_bundle(q23_root):
+            raise Phase11KVQuantDriverError(
+                "Decision 0029 evidence binding differs"
+            )
+    elif q23_binding_path.exists() or q23_root.exists():
+        raise Phase11KVQuantDriverError(
+            "legacy Phase 11 bundle contains Decision 0029 evidence"
+        )
+
     candidate = _strict_json(bundle / "validation/admission-candidate.json")
     expected_candidate_keys = {
         "schema_version",
@@ -2766,6 +3227,7 @@ def _validate_inner_records(bundle: Path) -> dict[str, Any]:
         "method_fingerprints": dict(method_fingerprints),
         "cache_layout_fingerprints": dict(cache_layout_fingerprints),
         "candidate": candidate,
+        "q23_binding": q23_binding,
     }
 
 
@@ -2879,6 +3341,42 @@ _PHASE11_CHECK_EVIDENCE = {
 }
 
 
+def _active_report_evidence_paths() -> tuple[tuple[str, str], ...]:
+    if _ACTIVE_AUTHORITY_PROFILE != _AUTHORITY_PROFILE_DECISION_0029:
+        return _PHASE11_REPORT_EVIDENCE_PATHS
+    return (
+        *_PHASE11_REPORT_EVIDENCE_PATHS,
+        ("q23_binding", "config/q23-validation-binding.json"),
+        ("q23_complete", "authority/q23-evidence/COMPLETE"),
+        (
+            "q23_checksum_ledger",
+            "authority/q23-evidence/checksums.sha256",
+        ),
+        ("q23_summary", "authority/q23-evidence/summary.json"),
+    )
+
+
+def _active_check_evidence() -> dict[str, tuple[str, ...]]:
+    if _ACTIVE_AUTHORITY_PROFILE != _AUTHORITY_PROFILE_DECISION_0029:
+        return _PHASE11_CHECK_EVIDENCE
+    q23 = {
+        key: tuple(value)
+        for key, value in _PHASE11_CHECK_EVIDENCE.items()
+    }
+    q23["fixture_conformance"] += ("q23_binding", "q23_summary")
+    q23["direct_compressed_decode"] += ("q23_binding", "q23_summary")
+    q23["execution_path"] += ("q23_binding",)
+    q23["graph_capture_replay"] += ("q23_summary",)
+    q23["graph_zero_replay_allocation"] += ("q23_summary",)
+    q23["compute_sanitizer"] += ("q23_summary",)
+    q23["immutable_checksums"] += (
+        "q23_binding",
+        "q23_complete",
+        "q23_checksum_ledger",
+    )
+    return q23
+
+
 def derive_phase11_method_admission_report(
     *,
     bundle_path: Path,
@@ -2888,10 +3386,10 @@ def derive_phase11_method_admission_report(
 ) -> Phase11MethodAdmissionReport:
     """Derive the complete PASS report only from validated immutable evidence."""
 
-    from scripts.phase11_r2_outer_bundle import (
-        INNER_RECEIPT_RELATIVE,
-        validate_inner_publication_receipt,
-    )
+    from scripts import phase11_r2_outer_bundle as outer
+
+    outer._activate_profile(_ACTIVE_AUTHORITY_PROFILE)
+    inner_receipt_relative = outer.INNER_RECEIPT_RELATIVE
 
     repository = repository_root.resolve(strict=True)
     if bundle_path.is_symlink() or publication_receipt_path.is_symlink():
@@ -2900,7 +3398,7 @@ def derive_phase11_method_admission_report(
         )
     bundle = bundle_path.resolve(strict=True)
     receipt = publication_receipt_path.resolve(strict=True)
-    expected_receipt = (repository / INNER_RECEIPT_RELATIVE).resolve(
+    expected_receipt = (repository / inner_receipt_relative).resolve(
         strict=True
     )
     if receipt != expected_receipt:
@@ -2921,7 +3419,7 @@ def derive_phase11_method_admission_report(
     artifact = validate_local_artifact(bundle)
     records = _validate_inner_records(bundle)
     manifest: Phase11RunManifest = records["manifest"]
-    lock_identity = validate_inner_publication_receipt(
+    lock_identity = outer.validate_inner_publication_receipt(
         bundle,
         receipt_path=receipt,
         source_run_id=manifest.run_id,
@@ -2930,7 +3428,8 @@ def derive_phase11_method_admission_report(
     )
 
     references: list[MethodAdmissionEvidenceReference] = []
-    for evidence_id, inner_relative in _PHASE11_REPORT_EVIDENCE_PATHS:
+    report_evidence_paths = _active_report_evidence_paths()
+    for evidence_id, inner_relative in report_evidence_paths:
         path = bundle / inner_relative
         if (
             not path.is_file()
@@ -2953,11 +3452,12 @@ def derive_phase11_method_admission_report(
     references.append(
         MethodAdmissionEvidenceReference(
             evidence_id="inner_publication",
-            path=INNER_RECEIPT_RELATIVE.as_posix(),
+            path=inner_receipt_relative.as_posix(),
             sha256=sha256_file(receipt),
         )
     )
-    if tuple(_PHASE11_CHECK_EVIDENCE) != PHASE11_ADMISSION_CHECK_IDS:
+    check_evidence = _active_check_evidence()
+    if tuple(check_evidence) != PHASE11_ADMISSION_CHECK_IDS:
         raise Phase11KVQuantDriverError(
             "Phase 11 report check derivation order differs"
         )
@@ -2966,7 +3466,7 @@ def derive_phase11_method_admission_report(
             check_id=check_id,
             status=GateDisposition.PASS,
             summary=f"{check_id.replace('_', ' ')} passed",
-            evidence_ids=_PHASE11_CHECK_EVIDENCE[check_id],
+            evidence_ids=check_evidence[check_id],
         )
         for check_id in PHASE11_ADMISSION_CHECK_IDS
     )
@@ -3054,14 +3554,17 @@ def write_phase11_method_admission_report(
     """Exclusively write the report and checksum derived from inner evidence."""
 
     from preflight.run_preflight import json_bytes, write_exclusive
-    from scripts.phase11_r2_outer_bundle import (
-        METHOD_ADMISSION_CHECKSUM_RELATIVE,
-        METHOD_ADMISSION_RELATIVE,
+    from scripts import phase11_r2_outer_bundle as outer
+
+    outer._activate_profile(_ACTIVE_AUTHORITY_PROFILE)
+    method_admission_relative = outer.METHOD_ADMISSION_RELATIVE
+    method_admission_checksum_relative = (
+        outer.METHOD_ADMISSION_CHECKSUM_RELATIVE
     )
 
     repository = repository_root.resolve(strict=True)
-    expected_report = repository / METHOD_ADMISSION_RELATIVE
-    expected_checksum = repository / METHOD_ADMISSION_CHECKSUM_RELATIVE
+    expected_report = repository / method_admission_relative
+    expected_checksum = repository / method_admission_checksum_relative
     try:
         observed_report = report_path.parent.resolve(strict=True) / report_path.name
         observed_checksum = (
@@ -3093,7 +3596,7 @@ def write_phase11_method_admission_report(
     report_bytes = json_bytes(report.to_dict())
     report_sha256 = hashlib.sha256(report_bytes).hexdigest()
     checksum_bytes = (
-        f"{report_sha256}  {METHOD_ADMISSION_RELATIVE.name}\n"
+        f"{report_sha256}  {method_admission_relative.name}\n"
     ).encode("utf-8")
     write_exclusive(expected_report, report_bytes)
     write_exclusive(expected_checksum, checksum_bytes)
@@ -3137,18 +3640,20 @@ def validate_final_admission(
 ) -> dict[str, Any]:
     """Join immutable local evidence to one final PASS report and R2 receipt."""
 
-    from scripts.phase11_r2_outer_bundle import (
-        METHOD_ADMISSION_RELATIVE,
-        OUTER_RECEIPT_RELATIVE,
-        validate_outer_publication_receipt,
-    )
+    from scripts import phase11_r2_outer_bundle as outer
+
+    outer._activate_profile(_ACTIVE_AUTHORITY_PROFILE)
 
     local = validate_local_admission(bundle_path)
     inner_artifact = validate_local_artifact(bundle_path)
-    expected_report = (REPOSITORY_ROOT / METHOD_ADMISSION_RELATIVE).resolve(
+    expected_report = (
+        REPOSITORY_ROOT / outer.METHOD_ADMISSION_RELATIVE
+    ).resolve(
         strict=True
     )
-    expected_receipt = (REPOSITORY_ROOT / OUTER_RECEIPT_RELATIVE).resolve(
+    expected_receipt = (
+        REPOSITORY_ROOT / outer.OUTER_RECEIPT_RELATIVE
+    ).resolve(
         strict=True
     )
     if (
@@ -3165,7 +3670,7 @@ def validate_final_admission(
         bundle_path=bundle_path,
         publication_receipt_path=(
             REPOSITORY_ROOT
-            / "docs/evidence/phase11/r2-admission-publication.json"
+            / outer.INNER_RECEIPT_RELATIVE
         ),
         created_at_utc=report.created_at_utc,
         repository_root=REPOSITORY_ROOT,
@@ -3176,7 +3681,7 @@ def validate_final_admission(
         )
     receipt = _strict_json(receipt_path)
     _reject_secret_keys(receipt)
-    publication = validate_outer_publication_receipt(
+    publication = outer.validate_outer_publication_receipt(
         outer_artifact_path,
         receipt_path=receipt_path,
         repository_root=REPOSITORY_ROOT,
@@ -3324,6 +3829,9 @@ def run_admission() -> dict[str, Any]:
                 "fresh_build_code_objects": code_objects,
             },
         )
+        if _ACTIVE_AUTHORITY_PROFILE == _AUTHORITY_PROFILE_DECISION_0029:
+            stage = "decision_0029_evidence_binding"
+            _copy_q23_evidence(run)
         stage = "fixture_conformance"
         fixture_test = _run_exact_test(
             run,
@@ -3683,6 +4191,12 @@ def run_admission() -> dict[str, Any]:
 def _parse_args(argv: Sequence[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
+        "--authority-profile",
+        choices=_AUTHORITY_PROFILES,
+        default=_AUTHORITY_PROFILE_DECISION_0027,
+        help="select the exact execution-source authority profile",
+    )
+    parser.add_argument(
         "--validate-only",
         action="store_true",
         help="validate one explicit finalized inner admission bundle",
@@ -3704,6 +4218,7 @@ def _parse_args(argv: Sequence[str]) -> argparse.Namespace:
 def main(argv: Sequence[str] | None = None) -> int:
     arguments = _parse_args(sys.argv[1:] if argv is None else argv)
     try:
+        _activate_authority_profile(arguments.authority_profile)
         if arguments.validate_only and arguments.derive_report:
             raise Phase11KVQuantDriverError(
                 "validation and report derivation are mutually exclusive"
