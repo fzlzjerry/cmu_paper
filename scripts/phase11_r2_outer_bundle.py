@@ -281,7 +281,7 @@ class _InnerClosure:
     cache_layout_fingerprints: dict[str, str]
 
 
-def _strict_json(path: Path, label: str) -> dict[str, Any]:
+def _strict_json_value(path: Path, label: str) -> object:
     def reject_pairs(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
         result: dict[str, Any] = {}
         for key, value in pairs:
@@ -300,6 +300,11 @@ def _strict_json(path: Path, label: str) -> dict[str, Any]:
         )
     except (OSError, UnicodeError, ValueError) as error:
         raise Phase11OuterBundleError(f"{label} is invalid") from error
+    return payload
+
+
+def _strict_json(path: Path, label: str) -> dict[str, Any]:
+    payload = _strict_json_value(path, label)
     if not isinstance(payload, dict):
         raise Phase11OuterBundleError(f"{label} is invalid")
     return payload
@@ -613,7 +618,7 @@ def _validate_inner_bundle(source: Path) -> _InnerClosure:
     ]
     for path in source_json_paths:
         _reject_governance_drift(
-            _strict_json(path, "Phase 11 inner JSON evidence")
+            _strict_json_value(path, "Phase 11 inner JSON evidence")
         )
     return _InnerClosure(
         artifact=artifact,

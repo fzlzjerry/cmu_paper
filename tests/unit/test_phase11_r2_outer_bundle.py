@@ -223,13 +223,14 @@ def _make_inner_bundle(
             raw_hashes: dict[str, str] = {}
             for raw_index in range(9):
                 basename = f"raw-{raw_index:02d}.json"
+                raw_payload = {
+                    "schema_version": "phase11-test-raw-allocation-1.0.0",
+                    "point": run_id,
+                    "step": step,
+                    "index": raw_index,
+                }
                 data = json_bytes(
-                    {
-                        "schema_version": "phase11-test-raw-allocation-1.0.0",
-                        "point": run_id,
-                        "step": step,
-                        "index": raw_index,
-                    }
+                    [raw_payload] if raw_index == 0 else raw_payload
                 )
                 run.write_bytes(f"{evidence_root}/{basename}", data)
                 raw_hashes[basename] = hashlib.sha256(data).hexdigest()
@@ -914,6 +915,12 @@ class Phase11R2OuterBundleTests(unittest.TestCase):
             PASS_REPORT_RELATIVE.as_posix(),
             "docs/phase_reports/phase11-kvquant-measurement-adapter.md",
         )
+
+    def test_inner_governance_scan_accepts_list_shaped_allocator_trace(
+        self,
+    ) -> None:
+        closure = _validate_inner_bundle(self.source)
+        self.assertEqual(len(closure.points), 9)
 
     def test_report_writer_is_derived_and_refuses_overwrite(self) -> None:
         repository = self.repository / "writer-repository"
