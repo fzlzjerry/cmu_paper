@@ -258,6 +258,28 @@ class Phase11RQ23OuterProfileTests(unittest.TestCase):
         with self.assertRaises(outer.Phase11OuterBundleError):
             outer._activate_profile("decision0028")
 
+    def test_q23_summary_nonexecution_flag_is_narrowly_accepted(
+        self,
+    ) -> None:
+        payload = {
+            "quality_execution": False,
+            "nested": [{"quality_execution": False}],
+        }
+
+        with self.assertRaises(outer.Phase11OuterBundleError):
+            outer._reject_governance_drift(payload)
+        outer._reject_governance_drift(
+            payload,
+            allow_quality_execution_false=True,
+        )
+        for drifted in (True, "OPEN", None):
+            with self.subTest(drifted=drifted):
+                with self.assertRaises(outer.Phase11OuterBundleError):
+                    outer._reject_governance_drift(
+                        {"quality_execution": drifted},
+                        allow_quality_execution_false=True,
+                    )
+
     def test_q23_report_heading_and_authority_fail_closed(self) -> None:
         outer._activate_profile(outer.AUTHORITY_PROFILE_DECISION0029)
         report_sha256 = "a" * 64

@@ -556,7 +556,11 @@ def _strict_json(path: Path, label: str) -> dict[str, Any]:
     return payload
 
 
-def _reject_governance_drift(value: object) -> None:
+def _reject_governance_drift(
+    value: object,
+    *,
+    allow_quality_execution_false: bool = False,
+) -> None:
     if isinstance(value, Mapping):
         for key, nested in value.items():
             normalized = str(key).casefold()
@@ -605,6 +609,10 @@ def _reject_governance_drift(value: object) -> None:
                 )
             if (
                 normalized == "quality_execution"
+                and not (
+                    allow_quality_execution_false
+                    and nested is False
+                )
                 and str(nested).upper() != "LOCKED"
             ):
                 raise Phase11OuterBundleError(
@@ -621,10 +629,20 @@ def _reject_governance_drift(value: object) -> None:
                 raise Phase11OuterBundleError(
                     "Phase 12 must remain unstarted"
                 )
-            _reject_governance_drift(nested)
+            _reject_governance_drift(
+                nested,
+                allow_quality_execution_false=(
+                    allow_quality_execution_false
+                ),
+            )
     elif isinstance(value, list):
         for nested in value:
-            _reject_governance_drift(nested)
+            _reject_governance_drift(
+                nested,
+                allow_quality_execution_false=(
+                    allow_quality_execution_false
+                ),
+            )
 
 
 def _repository_relative(path: Path, repository_root: Path) -> str:
@@ -863,8 +881,13 @@ def _validate_inner_bundle(source: Path) -> _InnerClosure:
         if record.relative_path.endswith(".json")
     ]
     for path in source_json_paths:
+        relative = path.relative_to(source).as_posix()
         _reject_governance_drift(
-            _strict_json_value(path, "Phase 11 inner JSON evidence")
+            _strict_json_value(path, "Phase 11 inner JSON evidence"),
+            allow_quality_execution_false=(
+                AUTHORITY_PROFILE == AUTHORITY_PROFILE_DECISION0029
+                and relative == "authority/q23-evidence/summary.json"
+            ),
         )
     return _InnerClosure(
         artifact=artifact,
