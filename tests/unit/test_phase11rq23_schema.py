@@ -10,6 +10,7 @@ from pathlib import Path
 import unittest
 
 from kvbench.errors import SchemaValidationError
+from kvbench.runtime.artifacts import _validate_manifest
 from kvbench.schema.phase11 import (
     PHASE11_AGGREGATE_PATCH_SHA256,
     PHASE11_AUTHORIZED_CONTAINER_DIGEST,
@@ -100,6 +101,39 @@ def _q23_report_payload() -> dict[str, object]:
     return payload
 
 
+def _q23_manifest_payload() -> dict[str, object]:
+    return {
+        "schema_version": Phase11RQ23RunManifest.SCHEMA_VERSION,
+        "artifact_schema_version": (
+            Phase11RQ23RunManifest.ARTIFACT_SCHEMA_VERSION
+        ),
+        "run_id": "phase11rq23-schema-test",
+        "status": "created",
+        "created_at_utc": "2026-07-30T00:00:00Z",
+        "started_at_utc": None,
+        "finished_at_utc": None,
+        "run_kind": "phase11_admission",
+        "git_sha": PHASE11Q23_CORRECTED_COMMIT,
+        "git_dirty": False,
+        "authority": _q23_authority_payload(),
+        "bounded_point_count": 9,
+        "measurement_scope": "measurement_container_admission",
+        "quality_status": "unvalidated",
+        "claim_eligibility": "performance_only",
+        "quality_execution": "locked",
+        "performance_claim_eligible": False,
+        "performance_data_frozen": False,
+        "quality_benchmark_executed": False,
+        "speedup_calculated": False,
+        "r_hbm": None,
+        "full_scan_state": "CLOSED",
+        "g2_kvq_state": "NOT_EVALUATED_PUBLICATION_PENDING",
+        "global_g2_g5_state": "NOT_EVALUATED",
+        "inventory_path": None,
+        "failure_reason": None,
+    }
+
+
 class Phase11RQ23SchemaTests(unittest.TestCase):
     def test_historical_report_and_canonical_hash_remain_unchanged(self) -> None:
         raw = HISTORICAL_REPORT.read_bytes()
@@ -121,36 +155,7 @@ class Phase11RQ23SchemaTests(unittest.TestCase):
             PHASE11Q23_AGGREGATE_PATCH_SHA256,
         )
         manifest = Phase11RQ23RunManifest.from_dict(
-            {
-                "schema_version": Phase11RQ23RunManifest.SCHEMA_VERSION,
-                "artifact_schema_version": (
-                    Phase11RQ23RunManifest.ARTIFACT_SCHEMA_VERSION
-                ),
-                "run_id": "phase11rq23-schema-test",
-                "status": "created",
-                "created_at_utc": "2026-07-30T00:00:00Z",
-                "started_at_utc": None,
-                "finished_at_utc": None,
-                "run_kind": "phase11_admission",
-                "git_sha": PHASE11Q23_CORRECTED_COMMIT,
-                "git_dirty": False,
-                "authority": _q23_authority_payload(),
-                "bounded_point_count": 9,
-                "measurement_scope": "measurement_container_admission",
-                "quality_status": "unvalidated",
-                "claim_eligibility": "performance_only",
-                "quality_execution": "locked",
-                "performance_claim_eligible": False,
-                "performance_data_frozen": False,
-                "quality_benchmark_executed": False,
-                "speedup_calculated": False,
-                "r_hbm": None,
-                "full_scan_state": "CLOSED",
-                "g2_kvq_state": "NOT_EVALUATED_PUBLICATION_PENDING",
-                "global_g2_g5_state": "NOT_EVALUATED",
-                "inventory_path": None,
-                "failure_reason": None,
-            }
+            _q23_manifest_payload()
         )
         self.assertEqual(
             manifest.authority.corrected_tree,
@@ -178,6 +183,12 @@ class Phase11RQ23SchemaTests(unittest.TestCase):
                 field.name for field in dataclasses.fields(Phase11RunManifest)
             ),
         )
+
+    def test_q23_run_manifest_is_registered_with_artifact_lifecycle(
+        self,
+    ) -> None:
+        parsed = _validate_manifest(_q23_manifest_payload())
+        self.assertIsInstance(parsed, Phase11RQ23RunManifest)
 
     def test_mixed_or_tampered_authority_is_rejected(self) -> None:
         mixed = _q23_authority_payload()

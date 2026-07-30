@@ -274,8 +274,13 @@ def _validate_manifest(payload: Mapping[str, Any]) -> object:
         from kvbench.schema import Phase6RunManifest, parse_run_manifest
         from kvbench.schema.phase8 import Phase8RunManifest
         from kvbench.schema.phase9 import Phase9CalibrationManifest
-        from kvbench.schema.phase11 import Phase11RunManifest
+        from kvbench.schema.phase11 import (
+            Phase11RQ23RunManifest,
+            Phase11RunManifest,
+        )
 
+        if payload.get("schema_version") == Phase11RQ23RunManifest.SCHEMA_VERSION:
+            return Phase11RQ23RunManifest.from_dict(dict(payload))
         if payload.get("schema_version") == Phase11RunManifest.SCHEMA_VERSION:
             return Phase11RunManifest.from_dict(dict(payload))
         if payload.get("schema_version") == Phase9CalibrationManifest.SCHEMA_VERSION:

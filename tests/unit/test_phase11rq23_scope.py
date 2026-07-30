@@ -81,6 +81,7 @@ class Phase11RQ23ScopeTests(unittest.TestCase):
             "scripts/validate_phase2.py",
             "src/kvbench/schema/__init__.py",
             "src/kvbench/schema/phase11.py",
+            "src/kvbench/runtime/artifacts.py",
             "tests/unit/test_phase11rq23_kvquant_admission.py",
             "tests/unit/test_phase11rq23_kvquant_admission_driver.py",
             "tests/unit/test_phase11rq23_make_targets.py",
