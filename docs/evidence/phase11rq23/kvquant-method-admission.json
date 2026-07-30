@@ -1,0 +1,1296 @@
+{
+  "adapter_source_sha256": "6fd5f73f7af3ef5c6d5accd16bc241780b7d679bdf5b98d1396a85d26965af18",
+  "adapter_version": "kvbench-kvquant-method-adapter-1.2.0",
+  "admitted_configurations": [
+    "kvq4",
+    "kvq3",
+    "kvq2"
+  ],
+  "allocation_evidence": [
+    {
+      "audited_contexts": [
+        128,
+        4096,
+        17
+      ],
+      "cache_growth_bytes": 0,
+      "configuration": "kvq4",
+      "dense_pointer_stable": true,
+      "dynamic_sparse_allocation_bytes": 0,
+      "full_prefix_allocation_bytes": 0,
+      "gqa_expanded_allocation_bytes": 0,
+      "metadata_pointer_stable": true,
+      "persistent_allocated_delta": 0,
+      "persistent_reserved_delta": 0,
+      "sink_pointer_stable": true,
+      "sparse_pointer_stable": true,
+      "staging_pointer_stable": true,
+      "unknown_allocation_bytes": 0,
+      "workspace_pointer_stable": true
+    },
+    {
+      "audited_contexts": [
+        128
+      ],
+      "cache_growth_bytes": 0,
+      "configuration": "kvq3",
+      "dense_pointer_stable": true,
+      "dynamic_sparse_allocation_bytes": 0,
+      "full_prefix_allocation_bytes": 0,
+      "gqa_expanded_allocation_bytes": 0,
+      "metadata_pointer_stable": true,
+      "persistent_allocated_delta": 0,
+      "persistent_reserved_delta": 0,
+      "sink_pointer_stable": true,
+      "sparse_pointer_stable": true,
+      "staging_pointer_stable": true,
+      "unknown_allocation_bytes": 0,
+      "workspace_pointer_stable": true
+    },
+    {
+      "audited_contexts": [
+        128
+      ],
+      "cache_growth_bytes": 0,
+      "configuration": "kvq2",
+      "dense_pointer_stable": true,
+      "dynamic_sparse_allocation_bytes": 0,
+      "full_prefix_allocation_bytes": 0,
+      "gqa_expanded_allocation_bytes": 0,
+      "metadata_pointer_stable": true,
+      "persistent_allocated_delta": 0,
+      "persistent_reserved_delta": 0,
+      "sink_pointer_stable": true,
+      "sparse_pointer_stable": true,
+      "staging_pointer_stable": true,
+      "unknown_allocation_bytes": 0,
+      "workspace_pointer_stable": true
+    }
+  ],
+  "authority": {
+    "aggregate_patch_sha256": "7b9d3cc6773e8ef37697601c885f2c5ec581dffd57cf59424d03e68f147bd55a",
+    "authorized_container_digest": "sha256:059bc9be89387369d7de9e3e9b26d85b6e9902c41e7dbf002ebc45edd188fb7e",
+    "calibration_id": "kvqcal-cdb724c806d64d095c040d2673a987a3",
+    "calibration_root": "8148306d08205af376994b022f189a0d6837915cd279ca8af6b104e1f4b46ccf",
+    "corrected_commit": "34b0bdfa83082e1f30387d9ac5cca369006e089c",
+    "corrected_cuda_sha256": "457a1d8d7bd07ba2e7e8420cbe3b722b52471f131ecc88f7f5442584a8b212f9",
+    "corrected_tree": "1f85af65fe03061583ffe8bd91e47d7ecffdd312",
+    "decision_0021_patch_sha256": "db3b6fb7ec0a72e25001e1c83a5158d86512248db5c3a06c61895598d1d482d6",
+    "decisions": [
+      "0021",
+      "0023",
+      "0024",
+      "0025",
+      "0026",
+      "0027",
+      "0029"
+    ],
+    "execution_source_identifier": "kvquant_gqa_longctx_deterministic_q23_v4",
+    "extension_sha256": "b3c33badb8e55b19d6b2ce535182e964ce51e5102d8413b29701dd3d817ad73d",
+    "fixture_id": "kvqref-2e0a0e9022c50cbc6fb497d88cae973e",
+    "fixture_root": "c28682d58706b58812dc1db69ba5eb4982339ba13f39bf67f751794cdaabfdec",
+    "historical_fixture_id": "kvqref-a50af6511c314b6394e58a7f81ceefb8",
+    "historical_fixture_root": "32cdf465a361dd6695b66ccbea0a462bddc075fd9778d0aa8cdaa3f94e6f63ab",
+    "method_identifier": "kvquant_gqa_upstream_patch_v1",
+    "upstream_base_commit": "57a238357f0ffe50084670fcd5781c9848f80ea2",
+    "upstream_base_tree": "094e0f736f77ee327e5350cbd1eefb1c936aa77b"
+  },
+  "blockers": [],
+  "bounded_runs": [
+    {
+      "batch_size": 1,
+      "claim_eligibility": "performance_only",
+      "configuration": "kvq4",
+      "context_length": 128,
+      "graph_mode": "eager",
+      "manifest_sha256": "fcd8b94c4ba902013410097dbddd36c7a700f555287e95ac23d5f8c480ca237b",
+      "measurement_scope": "measurement_container_admission",
+      "output_steps": 1,
+      "performance_claim_eligible": false,
+      "quality_status": "unvalidated",
+      "run_id": "phase11rq23-20260730t152550624z-8a708407-685bb7-kvquant-p00-kvq4-fixed-l128-eager",
+      "runner_kind": "fixed_l",
+      "speedup_calculated": false,
+      "status": "completed"
+    },
+    {
+      "batch_size": 1,
+      "claim_eligibility": "performance_only",
+      "configuration": "kvq4",
+      "context_length": 128,
+      "graph_mode": "cuda_graph",
+      "manifest_sha256": "7d7861575cbf6274e008b469302e2b955329df332c94be23fb2167973d3dcda6",
+      "measurement_scope": "measurement_container_admission",
+      "output_steps": 1,
+      "performance_claim_eligible": false,
+      "quality_status": "unvalidated",
+      "run_id": "phase11rq23-20260730t152550624z-8a708407-685bb7-kvquant-p01-kvq4-fixed-l128-graph",
+      "runner_kind": "fixed_l",
+      "speedup_calculated": false,
+      "status": "completed"
+    },
+    {
+      "batch_size": 1,
+      "claim_eligibility": "performance_only",
+      "configuration": "kvq3",
+      "context_length": 128,
+      "graph_mode": "eager",
+      "manifest_sha256": "b121e57599b9869c2da1b74e507cbad3a0dd41acb8d25f06df907fa3c2ed227e",
+      "measurement_scope": "measurement_container_admission",
+      "output_steps": 1,
+      "performance_claim_eligible": false,
+      "quality_status": "unvalidated",
+      "run_id": "phase11rq23-20260730t152550624z-8a708407-685bb7-kvquant-p02-kvq3-fixed-l128-eager",
+      "runner_kind": "fixed_l",
+      "speedup_calculated": false,
+      "status": "completed"
+    },
+    {
+      "batch_size": 1,
+      "claim_eligibility": "performance_only",
+      "configuration": "kvq3",
+      "context_length": 128,
+      "graph_mode": "cuda_graph",
+      "manifest_sha256": "39ec1003b60ba95e89024119f1181f487e895eebadf0f505555860ea089683d1",
+      "measurement_scope": "measurement_container_admission",
+      "output_steps": 1,
+      "performance_claim_eligible": false,
+      "quality_status": "unvalidated",
+      "run_id": "phase11rq23-20260730t152550624z-8a708407-685bb7-kvquant-p03-kvq3-fixed-l128-graph",
+      "runner_kind": "fixed_l",
+      "speedup_calculated": false,
+      "status": "completed"
+    },
+    {
+      "batch_size": 1,
+      "claim_eligibility": "performance_only",
+      "configuration": "kvq2",
+      "context_length": 128,
+      "graph_mode": "eager",
+      "manifest_sha256": "cb24aa895887c94537946822a06a94c02d852d06dea3621e4596ebd0db64bab6",
+      "measurement_scope": "measurement_container_admission",
+      "output_steps": 1,
+      "performance_claim_eligible": false,
+      "quality_status": "unvalidated",
+      "run_id": "phase11rq23-20260730t152550624z-8a708407-685bb7-kvquant-p04-kvq2-fixed-l128-eager",
+      "runner_kind": "fixed_l",
+      "speedup_calculated": false,
+      "status": "completed"
+    },
+    {
+      "batch_size": 1,
+      "claim_eligibility": "performance_only",
+      "configuration": "kvq2",
+      "context_length": 128,
+      "graph_mode": "cuda_graph",
+      "manifest_sha256": "29b4391c0eaafeaacac70a20437f568763117b5e0ba1957887b12c6dc5284418",
+      "measurement_scope": "measurement_container_admission",
+      "output_steps": 1,
+      "performance_claim_eligible": false,
+      "quality_status": "unvalidated",
+      "run_id": "phase11rq23-20260730t152550624z-8a708407-685bb7-kvquant-p05-kvq2-fixed-l128-graph",
+      "runner_kind": "fixed_l",
+      "speedup_calculated": false,
+      "status": "completed"
+    },
+    {
+      "batch_size": 1,
+      "claim_eligibility": "performance_only",
+      "configuration": "kvq4",
+      "context_length": 4096,
+      "graph_mode": "eager",
+      "manifest_sha256": "452221cce74257fcab6a2811955c68a1720dca30d08994352e2c6931b44fe0cf",
+      "measurement_scope": "measurement_container_admission",
+      "output_steps": 1,
+      "performance_claim_eligible": false,
+      "quality_status": "unvalidated",
+      "run_id": "phase11rq23-20260730t152550624z-8a708407-685bb7-kvquant-p06-kvq4-fixed-l4096-eager",
+      "runner_kind": "fixed_l",
+      "speedup_calculated": false,
+      "status": "completed"
+    },
+    {
+      "batch_size": 1,
+      "claim_eligibility": "performance_only",
+      "configuration": "kvq4",
+      "context_length": 4096,
+      "graph_mode": "cuda_graph",
+      "manifest_sha256": "6e345f2c768b4a93c61ce1e34829ca7b02d4253c0e33d859c009fc5b818a402e",
+      "measurement_scope": "measurement_container_admission",
+      "output_steps": 1,
+      "performance_claim_eligible": false,
+      "quality_status": "unvalidated",
+      "run_id": "phase11rq23-20260730t152550624z-8a708407-685bb7-kvquant-p07-kvq4-fixed-l4096-graph",
+      "runner_kind": "fixed_l",
+      "speedup_calculated": false,
+      "status": "completed"
+    },
+    {
+      "batch_size": 1,
+      "claim_eligibility": "performance_only",
+      "configuration": "kvq4",
+      "context_length": 17,
+      "graph_mode": "eager",
+      "manifest_sha256": "f2fc191011414db989e9fde7e092050c6e152dde607fe47765baad38f1e6afd7",
+      "measurement_scope": "measurement_container_admission",
+      "output_steps": 4,
+      "performance_claim_eligible": false,
+      "quality_status": "unvalidated",
+      "run_id": "phase11rq23-20260730t152550624z-8a708407-685bb7-kvquant-p08-kvq4-growing-l17-eager",
+      "runner_kind": "growing_context",
+      "speedup_calculated": false,
+      "status": "completed"
+    }
+  ],
+  "bucket_lock_identity": "kvbench-evidence-indefinite",
+  "byte_accounting": [
+    {
+      "active_context": 5,
+      "active_storage_bytes": 3150085,
+      "allocated_bytes": 4187778,
+      "breakdown": {
+        "active_count_mask": 1285,
+        "dense_k_payload": 81920,
+        "dense_v_payload": 81920,
+        "key_metadata": 2492672,
+        "key_sparse_indices": 7680,
+        "key_sparse_values": 7680,
+        "padding_alignment": 0,
+        "persistent_workspace": 599936,
+        "sink_k": 327680,
+        "sink_v": 327680,
+        "staging": 231677,
+        "value_metadata": 12288,
+        "value_sparse_indices": 7680,
+        "value_sparse_values": 7680
+      },
+      "capacity": 5,
+      "configuration": "kvq4",
+      "logical_bf16_active_bytes": 655360,
+      "logical_bf16_allocated_bytes": 655360,
+      "predicted_allocated_bytes": 4187778,
+      "predicted_relative_error": 0.0,
+      "r_alloc": 0.15649349129777176,
+      "r_hbm": null,
+      "rho_alloc": 6.390042114257812,
+      "temporary_peak_bytes": 0
+    },
+    {
+      "active_context": 17,
+      "active_storage_bytes": 3607825,
+      "allocated_bytes": 4686318,
+      "breakdown": {
+        "active_count_mask": 4369,
+        "dense_k_payload": 278528,
+        "dense_v_payload": 278528,
+        "key_metadata": 2492672,
+        "key_sparse_indices": 26112,
+        "key_sparse_values": 26112,
+        "padding_alignment": 0,
+        "persistent_workspace": 603776,
+        "sink_k": 327680,
+        "sink_v": 327680,
+        "staging": 231773,
+        "value_metadata": 36864,
+        "value_sparse_indices": 26112,
+        "value_sparse_values": 26112
+      },
+      "capacity": 17,
+      "configuration": "kvq4",
+      "logical_bf16_active_bytes": 2228224,
+      "logical_bf16_allocated_bytes": 2228224,
+      "predicted_allocated_bytes": 4686318,
+      "predicted_relative_error": 0.0,
+      "r_alloc": 0.4754743489451633,
+      "r_hbm": null,
+      "rho_alloc": 2.103162877699908,
+      "temporary_peak_bytes": 0
+    },
+    {
+      "active_context": 18,
+      "active_storage_bytes": 3645970,
+      "allocated_bytes": 4727863,
+      "breakdown": {
+        "active_count_mask": 4626,
+        "dense_k_payload": 294912,
+        "dense_v_payload": 294912,
+        "key_metadata": 2492672,
+        "key_sparse_indices": 27648,
+        "key_sparse_values": 27648,
+        "padding_alignment": 0,
+        "persistent_workspace": 604096,
+        "sink_k": 327680,
+        "sink_v": 327680,
+        "staging": 231781,
+        "value_metadata": 38912,
+        "value_sparse_indices": 27648,
+        "value_sparse_values": 27648
+      },
+      "capacity": 18,
+      "configuration": "kvq4",
+      "logical_bf16_active_bytes": 2359296,
+      "logical_bf16_allocated_bytes": 2359296,
+      "predicted_allocated_bytes": 4727863,
+      "predicted_relative_error": 0.0,
+      "r_alloc": 0.499019535887567,
+      "r_hbm": null,
+      "rho_alloc": 2.0039295620388455,
+      "temporary_peak_bytes": 0
+    },
+    {
+      "active_context": 128,
+      "active_storage_bytes": 7841920,
+      "allocated_bytes": 9297813,
+      "breakdown": {
+        "active_count_mask": 32896,
+        "dense_k_payload": 2097152,
+        "dense_v_payload": 2097152,
+        "key_metadata": 2492672,
+        "key_sparse_indices": 196608,
+        "key_sparse_values": 196608,
+        "padding_alignment": 0,
+        "persistent_workspace": 639296,
+        "sink_k": 327680,
+        "sink_v": 327680,
+        "staging": 232661,
+        "value_metadata": 264192,
+        "value_sparse_indices": 196608,
+        "value_sparse_values": 196608
+      },
+      "capacity": 128,
+      "configuration": "kvq4",
+      "logical_bf16_active_bytes": 16777216,
+      "logical_bf16_allocated_bytes": 16777216,
+      "predicted_allocated_bytes": 9297813,
+      "predicted_relative_error": 0.0,
+      "r_alloc": 1.8044260515886907,
+      "r_hbm": null,
+      "rho_alloc": 0.554192841053009,
+      "temporary_peak_bytes": 0
+    },
+    {
+      "active_context": 4096,
+      "active_storage_bytes": 159201280,
+      "allocated_bytes": 174148373,
+      "breakdown": {
+        "active_count_mask": 1052672,
+        "dense_k_payload": 67108864,
+        "dense_v_payload": 67108864,
+        "key_metadata": 2492672,
+        "key_sparse_indices": 6291456,
+        "key_sparse_values": 6291456,
+        "padding_alignment": 0,
+        "persistent_workspace": 1909056,
+        "sink_k": 327680,
+        "sink_v": 327680,
+        "staging": 264405,
+        "value_metadata": 8390656,
+        "value_sparse_indices": 6291456,
+        "value_sparse_values": 6291456
+      },
+      "capacity": 4096,
+      "configuration": "kvq4",
+      "logical_bf16_active_bytes": 536870912,
+      "logical_bf16_allocated_bytes": 536870912,
+      "predicted_allocated_bytes": 174148373,
+      "predicted_relative_error": 0.0,
+      "r_alloc": 3.082836220353319,
+      "r_hbm": null,
+      "rho_alloc": 0.32437662221491337,
+      "temporary_peak_bytes": 0
+    },
+    {
+      "active_context": 5,
+      "active_storage_bytes": 2099461,
+      "allocated_bytes": 2566754,
+      "breakdown": {
+        "active_count_mask": 1285,
+        "dense_k_payload": 61440,
+        "dense_v_payload": 61440,
+        "key_metadata": 1443072,
+        "key_sparse_indices": 7680,
+        "key_sparse_values": 7680,
+        "padding_alignment": 0,
+        "persistent_workspace": 75648,
+        "sink_k": 327680,
+        "sink_v": 327680,
+        "staging": 231645,
+        "value_metadata": 6144,
+        "value_sparse_indices": 7680,
+        "value_sparse_values": 7680
+      },
+      "capacity": 5,
+      "configuration": "kvq3",
+      "logical_bf16_active_bytes": 655360,
+      "logical_bf16_allocated_bytes": 655360,
+      "predicted_allocated_bytes": 2566754,
+      "predicted_relative_error": 0.0,
+      "r_alloc": 0.25532637720638596,
+      "r_hbm": null,
+      "rho_alloc": 3.9165557861328124,
+      "temporary_peak_bytes": 0
+    },
+    {
+      "active_context": 17,
+      "active_storage_bytes": 2446609,
+      "allocated_bytes": 2954702,
+      "breakdown": {
+        "active_count_mask": 4369,
+        "dense_k_payload": 208896,
+        "dense_v_payload": 208896,
+        "key_metadata": 1443072,
+        "key_sparse_indices": 26112,
+        "key_sparse_values": 26112,
+        "padding_alignment": 0,
+        "persistent_workspace": 79488,
+        "sink_k": 327680,
+        "sink_v": 327680,
+        "staging": 231741,
+        "value_metadata": 18432,
+        "value_sparse_indices": 26112,
+        "value_sparse_values": 26112
+      },
+      "capacity": 17,
+      "configuration": "kvq3",
+      "logical_bf16_active_bytes": 2228224,
+      "logical_bf16_allocated_bytes": 2228224,
+      "predicted_allocated_bytes": 2954702,
+      "predicted_relative_error": 0.0,
+      "r_alloc": 0.7541281658861029,
+      "r_hbm": null,
+      "rho_alloc": 1.3260345458984375,
+      "temporary_peak_bytes": 0
+    },
+    {
+      "active_context": 18,
+      "active_storage_bytes": 2475538,
+      "allocated_bytes": 2987031,
+      "breakdown": {
+        "active_count_mask": 4626,
+        "dense_k_payload": 221184,
+        "dense_v_payload": 221184,
+        "key_metadata": 1443072,
+        "key_sparse_indices": 27648,
+        "key_sparse_values": 27648,
+        "padding_alignment": 0,
+        "persistent_workspace": 79808,
+        "sink_k": 327680,
+        "sink_v": 327680,
+        "staging": 231749,
+        "value_metadata": 19456,
+        "value_sparse_indices": 27648,
+        "value_sparse_values": 27648
+      },
+      "capacity": 18,
+      "configuration": "kvq3",
+      "logical_bf16_active_bytes": 2359296,
+      "logical_bf16_allocated_bytes": 2359296,
+      "predicted_allocated_bytes": 2987031,
+      "predicted_relative_error": 0.0,
+      "r_alloc": 0.789846506447372,
+      "r_hbm": null,
+      "rho_alloc": 1.2660687764485676,
+      "temporary_peak_bytes": 0
+    },
+    {
+      "active_context": 128,
+      "active_storage_bytes": 5657728,
+      "allocated_bytes": 6543221,
+      "breakdown": {
+        "active_count_mask": 32896,
+        "dense_k_payload": 1572864,
+        "dense_v_payload": 1572864,
+        "key_metadata": 1443072,
+        "key_sparse_indices": 196608,
+        "key_sparse_values": 196608,
+        "padding_alignment": 0,
+        "persistent_workspace": 115008,
+        "sink_k": 327680,
+        "sink_v": 327680,
+        "staging": 232629,
+        "value_metadata": 132096,
+        "value_sparse_indices": 196608,
+        "value_sparse_values": 196608
+      },
+      "capacity": 128,
+      "configuration": "kvq3",
+      "logical_bf16_active_bytes": 16777216,
+      "logical_bf16_allocated_bytes": 16777216,
+      "predicted_allocated_bytes": 6543221,
+      "predicted_relative_error": 0.0,
+      "r_alloc": 2.5640607278892156,
+      "r_hbm": null,
+      "rho_alloc": 0.3900063633918762,
+      "temporary_peak_bytes": 0
+    },
+    {
+      "active_context": 4096,
+      "active_storage_bytes": 120448000,
+      "allocated_bytes": 134824693,
+      "breakdown": {
+        "active_count_mask": 1052672,
+        "dense_k_payload": 50331648,
+        "dense_v_payload": 50331648,
+        "key_metadata": 1443072,
+        "key_sparse_indices": 6291456,
+        "key_sparse_values": 6291456,
+        "padding_alignment": 0,
+        "persistent_workspace": 1384768,
+        "sink_k": 327680,
+        "sink_v": 327680,
+        "staging": 264373,
+        "value_metadata": 4195328,
+        "value_sparse_indices": 6291456,
+        "value_sparse_values": 6291456
+      },
+      "capacity": 4096,
+      "configuration": "kvq3",
+      "logical_bf16_active_bytes": 536870912,
+      "logical_bf16_allocated_bytes": 536870912,
+      "predicted_allocated_bytes": 134824693,
+      "predicted_relative_error": 0.0,
+      "r_alloc": 3.9819924678040985,
+      "r_hbm": null,
+      "rho_alloc": 0.25113056041300297,
+      "temporary_peak_bytes": 0
+    },
+    {
+      "active_context": 5,
+      "active_storage_bytes": 1574149,
+      "allocated_bytes": 1997906,
+      "breakdown": {
+        "active_count_mask": 1285,
+        "dense_k_payload": 40960,
+        "dense_v_payload": 40960,
+        "key_metadata": 918272,
+        "key_sparse_indices": 7680,
+        "key_sparse_values": 7680,
+        "padding_alignment": 0,
+        "persistent_workspace": 75648,
+        "sink_k": 327680,
+        "sink_v": 327680,
+        "staging": 231629,
+        "value_metadata": 3072,
+        "value_sparse_indices": 7680,
+        "value_sparse_values": 7680
+      },
+      "capacity": 5,
+      "configuration": "kvq2",
+      "logical_bf16_active_bytes": 655360,
+      "logical_bf16_allocated_bytes": 655360,
+      "predicted_allocated_bytes": 1997906,
+      "predicted_relative_error": 0.0,
+      "r_alloc": 0.32802344054224775,
+      "r_hbm": null,
+      "rho_alloc": 3.0485626220703126,
+      "temporary_peak_bytes": 0
+    },
+    {
+      "active_context": 17,
+      "active_storage_bytes": 1816849,
+      "allocated_bytes": 2281406,
+      "breakdown": {
+        "active_count_mask": 4369,
+        "dense_k_payload": 139264,
+        "dense_v_payload": 139264,
+        "key_metadata": 918272,
+        "key_sparse_indices": 26112,
+        "key_sparse_values": 26112,
+        "padding_alignment": 0,
+        "persistent_workspace": 79488,
+        "sink_k": 327680,
+        "sink_v": 327680,
+        "staging": 231725,
+        "value_metadata": 9216,
+        "value_sparse_indices": 26112,
+        "value_sparse_values": 26112
+      },
+      "capacity": 17,
+      "configuration": "kvq2",
+      "logical_bf16_active_bytes": 2228224,
+      "logical_bf16_allocated_bytes": 2228224,
+      "predicted_allocated_bytes": 2281406,
+      "predicted_relative_error": 0.0,
+      "r_alloc": 0.9766889365592972,
+      "r_hbm": null,
+      "rho_alloc": 1.0238674388212317,
+      "temporary_peak_bytes": 0
+    },
+    {
+      "active_context": 18,
+      "active_storage_bytes": 1837074,
+      "allocated_bytes": 2305031,
+      "breakdown": {
+        "active_count_mask": 4626,
+        "dense_k_payload": 147456,
+        "dense_v_payload": 147456,
+        "key_metadata": 918272,
+        "key_sparse_indices": 27648,
+        "key_sparse_values": 27648,
+        "padding_alignment": 0,
+        "persistent_workspace": 79808,
+        "sink_k": 327680,
+        "sink_v": 327680,
+        "staging": 231733,
+        "value_metadata": 9728,
+        "value_sparse_indices": 27648,
+        "value_sparse_values": 27648
+      },
+      "capacity": 18,
+      "configuration": "kvq2",
+      "logical_bf16_active_bytes": 2359296,
+      "logical_bf16_allocated_bytes": 2359296,
+      "predicted_allocated_bytes": 2305031,
+      "predicted_relative_error": 0.0,
+      "r_alloc": 1.0235419827325534,
+      "r_hbm": null,
+      "rho_alloc": 0.97699949476454,
+      "temporary_peak_bytes": 0
+    },
+    {
+      "active_context": 128,
+      "active_storage_bytes": 4061824,
+      "allocated_bytes": 4903781,
+      "breakdown": {
+        "active_count_mask": 32896,
+        "dense_k_payload": 1048576,
+        "dense_v_payload": 1048576,
+        "key_metadata": 918272,
+        "key_sparse_indices": 196608,
+        "key_sparse_values": 196608,
+        "padding_alignment": 0,
+        "persistent_workspace": 115008,
+        "sink_k": 327680,
+        "sink_v": 327680,
+        "staging": 232613,
+        "value_metadata": 66048,
+        "value_sparse_indices": 196608,
+        "value_sparse_values": 196608
+      },
+      "capacity": 128,
+      "configuration": "kvq2",
+      "logical_bf16_active_bytes": 16777216,
+      "logical_bf16_allocated_bytes": 16777216,
+      "predicted_allocated_bytes": 4903781,
+      "predicted_relative_error": 0.0,
+      "r_alloc": 3.4212816600088787,
+      "r_hbm": null,
+      "rho_alloc": 0.2922881245613098,
+      "temporary_peak_bytes": 0
+    },
+    {
+      "active_context": 4096,
+      "active_storage_bytes": 84314624,
+      "allocated_bytes": 98647781,
+      "breakdown": {
+        "active_count_mask": 1052672,
+        "dense_k_payload": 33554432,
+        "dense_v_payload": 33554432,
+        "key_metadata": 918272,
+        "key_sparse_indices": 6291456,
+        "key_sparse_values": 6291456,
+        "padding_alignment": 0,
+        "persistent_workspace": 1384768,
+        "sink_k": 327680,
+        "sink_v": 327680,
+        "staging": 264357,
+        "value_metadata": 2097664,
+        "value_sparse_indices": 6291456,
+        "value_sparse_values": 6291456
+      },
+      "capacity": 4096,
+      "configuration": "kvq2",
+      "logical_bf16_active_bytes": 536870912,
+      "logical_bf16_allocated_bytes": 536870912,
+      "predicted_allocated_bytes": 98647781,
+      "predicted_relative_error": 0.0,
+      "r_alloc": 5.4423009474485795,
+      "r_hbm": null,
+      "rho_alloc": 0.18374581076204777,
+      "temporary_peak_bytes": 0
+    }
+  ],
+  "cache_layout_fingerprints": {
+    "kvq2": "b713f0647d17b00c0b8d0ac8936582345606979b56b031174f1da9c9e2805bb2",
+    "kvq3": "4b2e83ebed4f72ea6b7d723ec3a9c95d86dcf367b44c153719f4721dbd3b748a",
+    "kvq4": "1401c473d4ffda27d903ebffed2401e12a6fce3546a75858a89e9fe4c5e755db"
+  },
+  "checks": [
+    {
+      "check_id": "fixture_conformance",
+      "evidence_ids": [
+        "fixture",
+        "fixture_exact_test",
+        "q23_binding",
+        "q23_summary"
+      ],
+      "status": "PASS",
+      "summary": "fixture conformance passed"
+    },
+    {
+      "check_id": "byte_accounting",
+      "evidence_ids": [
+        "accounting"
+      ],
+      "status": "PASS",
+      "summary": "byte accounting passed"
+    },
+    {
+      "check_id": "sparse_contract",
+      "evidence_ids": [
+        "fixture",
+        "execution_path"
+      ],
+      "status": "PASS",
+      "summary": "sparse contract passed"
+    },
+    {
+      "check_id": "sink_storage",
+      "evidence_ids": [
+        "fixture",
+        "gqa"
+      ],
+      "status": "PASS",
+      "summary": "sink storage passed"
+    },
+    {
+      "check_id": "store_append_correctness",
+      "evidence_ids": [
+        "fixture"
+      ],
+      "status": "PASS",
+      "summary": "store append correctness passed"
+    },
+    {
+      "check_id": "direct_compressed_decode",
+      "evidence_ids": [
+        "fixture",
+        "execution_path",
+        "q23_binding",
+        "q23_summary"
+      ],
+      "status": "PASS",
+      "summary": "direct compressed decode passed"
+    },
+    {
+      "check_id": "native_gqa",
+      "evidence_ids": [
+        "gqa",
+        "execution_path"
+      ],
+      "status": "PASS",
+      "summary": "native gqa passed"
+    },
+    {
+      "check_id": "execution_path",
+      "evidence_ids": [
+        "execution_path",
+        "environment",
+        "q23_binding"
+      ],
+      "status": "PASS",
+      "summary": "execution path passed"
+    },
+    {
+      "check_id": "no_dynamic_or_unknown_allocation",
+      "evidence_ids": [
+        "allocation",
+        "execution_path"
+      ],
+      "status": "PASS",
+      "summary": "no dynamic or unknown allocation passed"
+    },
+    {
+      "check_id": "no_host_synchronization",
+      "evidence_ids": [
+        "execution_path"
+      ],
+      "status": "PASS",
+      "summary": "no host synchronization passed"
+    },
+    {
+      "check_id": "graph_capture_replay",
+      "evidence_ids": [
+        "graph",
+        "graph_exact_test",
+        "q23_summary"
+      ],
+      "status": "PASS",
+      "summary": "graph capture replay passed"
+    },
+    {
+      "check_id": "graph_zero_replay_allocation",
+      "evidence_ids": [
+        "graph",
+        "allocation",
+        "q23_summary"
+      ],
+      "status": "PASS",
+      "summary": "graph zero replay allocation passed"
+    },
+    {
+      "check_id": "compute_sanitizer",
+      "evidence_ids": [
+        "sanitizer",
+        "sanitizer_runs",
+        "q23_summary"
+      ],
+      "status": "PASS",
+      "summary": "compute sanitizer passed"
+    },
+    {
+      "check_id": "bounded_admission_grid",
+      "evidence_ids": [
+        "bounded_grid"
+      ],
+      "status": "PASS",
+      "summary": "bounded admission grid passed"
+    },
+    {
+      "check_id": "immutable_checksums",
+      "evidence_ids": [
+        "manifest",
+        "inventory",
+        "checksum_ledger",
+        "complete",
+        "authority",
+        "candidate",
+        "q23_binding",
+        "q23_complete",
+        "q23_checksum_ledger"
+      ],
+      "status": "PASS",
+      "summary": "immutable checksums passed"
+    },
+    {
+      "check_id": "durable_publication",
+      "evidence_ids": [
+        "inner_publication"
+      ],
+      "status": "PASS",
+      "summary": "durable publication passed"
+    },
+    {
+      "check_id": "clean_retrieval",
+      "evidence_ids": [
+        "inner_publication"
+      ],
+      "status": "PASS",
+      "summary": "clean retrieval passed"
+    }
+  ],
+  "checksums_valid": true,
+  "claim_eligibility": "performance_only",
+  "clean_retrieval": true,
+  "complete_last": true,
+  "configurations": [
+    {
+      "batch_size": 1,
+      "bit_width": 4,
+      "configuration": "kvq4",
+      "groups": 4,
+      "head_dim": 128,
+      "interface_dtype": "bfloat16",
+      "key_cap": 12,
+      "key_semantics": "pre_rope",
+      "kv_heads": 8,
+      "layers": 32,
+      "query_heads": 32,
+      "query_to_kv_mapping": "query_head//4",
+      "sink_key_semantics": "attention_ready",
+      "sink_tokens": 5,
+      "sparse_index_dtype": "int32",
+      "sparse_value_dtype": "float32",
+      "value_cap": 12
+    },
+    {
+      "batch_size": 1,
+      "bit_width": 3,
+      "configuration": "kvq3",
+      "groups": 4,
+      "head_dim": 128,
+      "interface_dtype": "bfloat16",
+      "key_cap": 12,
+      "key_semantics": "pre_rope",
+      "kv_heads": 8,
+      "layers": 32,
+      "query_heads": 32,
+      "query_to_kv_mapping": "query_head//4",
+      "sink_key_semantics": "attention_ready",
+      "sink_tokens": 5,
+      "sparse_index_dtype": "int32",
+      "sparse_value_dtype": "float32",
+      "value_cap": 12
+    },
+    {
+      "batch_size": 1,
+      "bit_width": 2,
+      "configuration": "kvq2",
+      "groups": 4,
+      "head_dim": 128,
+      "interface_dtype": "bfloat16",
+      "key_cap": 12,
+      "key_semantics": "pre_rope",
+      "kv_heads": 8,
+      "layers": 32,
+      "query_heads": 32,
+      "query_to_kv_mapping": "query_head//4",
+      "sink_key_semantics": "attention_ready",
+      "sink_tokens": 5,
+      "sparse_index_dtype": "int32",
+      "sparse_value_dtype": "float32",
+      "value_cap": 12
+    }
+  ],
+  "created_at_utc": "2026-07-30T17:18:12Z",
+  "creation_git_sha": "8a708407825d5f3f3eaa0af476a55631ad546059",
+  "evidence_references": [
+    {
+      "evidence_id": "authority",
+      "path": "artifacts/phase11/phase11rq23-launch.QEMQIm/phase11rq23-20260730t152550624z-8a708407-685bb7-kvquant/config/authority.json",
+      "sha256": "aaace8f14cf0c024d98bf13578bf848b8d2d78f0329d2180a97ffdb02c4d7e2d"
+    },
+    {
+      "evidence_id": "environment",
+      "path": "artifacts/phase11/phase11rq23-launch.QEMQIm/phase11rq23-20260730t152550624z-8a708407-685bb7-kvquant/environment/container_identity.json",
+      "sha256": "f46909dccc06fb0738bcc79b4e100c1754a3a5c7899f822f3914af35585fa63d"
+    },
+    {
+      "evidence_id": "fixture",
+      "path": "artifacts/phase11/phase11rq23-launch.QEMQIm/phase11rq23-20260730t152550624z-8a708407-685bb7-kvquant/numerical/fixture-conformance.json",
+      "sha256": "5c4ef27afe3df74dc9a6ce9102da1a368aeb84caa22dc94ddc5744bf2ee78e4b"
+    },
+    {
+      "evidence_id": "fixture_exact_test",
+      "path": "artifacts/phase11/phase11rq23-launch.QEMQIm/phase11rq23-20260730t152550624z-8a708407-685bb7-kvquant/validation/checks/fixture-conformance.json",
+      "sha256": "37aae21f589680a639946004b31951eb7baad98d1104ef05d715f5947d1499fc"
+    },
+    {
+      "evidence_id": "accounting",
+      "path": "artifacts/phase11/phase11rq23-launch.QEMQIm/phase11rq23-20260730t152550624z-8a708407-685bb7-kvquant/accounting/contexts.json",
+      "sha256": "efcd079e4440239fecf2142244b754ad7e7f51c58d256915c8b59d2eb3cc7124"
+    },
+    {
+      "evidence_id": "execution_path",
+      "path": "artifacts/phase11/phase11rq23-launch.QEMQIm/phase11rq23-20260730t152550624z-8a708407-685bb7-kvquant/execution-path/audit.json",
+      "sha256": "7e1a5502c48f3a492ad82e5c46976771e005bb484f8b9e13f2fa12c500505738"
+    },
+    {
+      "evidence_id": "allocation",
+      "path": "artifacts/phase11/phase11rq23-launch.QEMQIm/phase11rq23-20260730t152550624z-8a708407-685bb7-kvquant/allocation/audit.json",
+      "sha256": "714c7d7a336166d3371b9431f4290d77208fd8bd263ae548af1d86dc26dfe590"
+    },
+    {
+      "evidence_id": "graph",
+      "path": "artifacts/phase11/phase11rq23-launch.QEMQIm/phase11rq23-20260730t152550624z-8a708407-685bb7-kvquant/validation/cuda-graph.json",
+      "sha256": "d90dd346f6eb891542348107bfd19e3e1b8951acda991765fc8d9db53d156eea"
+    },
+    {
+      "evidence_id": "graph_exact_test",
+      "path": "artifacts/phase11/phase11rq23-launch.QEMQIm/phase11rq23-20260730t152550624z-8a708407-685bb7-kvquant/validation/checks/cuda-graph.json",
+      "sha256": "4a5d1bf2f236431f9e87be0125d0b69696bd828395e998638530ae4ff36b6d4f"
+    },
+    {
+      "evidence_id": "gqa",
+      "path": "artifacts/phase11/phase11rq23-launch.QEMQIm/phase11rq23-20260730t152550624z-8a708407-685bb7-kvquant/gqa/audit.json",
+      "sha256": "17ff202cefd477712b8cffcce47dbaac717e9fe0e60ebc379b07a7a7c6fd8b45"
+    },
+    {
+      "evidence_id": "sanitizer",
+      "path": "artifacts/phase11/phase11rq23-launch.QEMQIm/phase11rq23-20260730t152550624z-8a708407-685bb7-kvquant/validation/sanitizer.json",
+      "sha256": "eb58c14e0b9f8ce484c77a0b85a0a37c3e2bd606e2f07de27091feb53b7a8858"
+    },
+    {
+      "evidence_id": "sanitizer_runs",
+      "path": "artifacts/phase11/phase11rq23-launch.QEMQIm/phase11rq23-20260730t152550624z-8a708407-685bb7-kvquant/validation/sanitizer-runs.json",
+      "sha256": "a16b1ce0721999f7a3b9255401c5a38b44d21e8a48eaa4c5c64e136cd3297a59"
+    },
+    {
+      "evidence_id": "bounded_grid",
+      "path": "artifacts/phase11/phase11rq23-launch.QEMQIm/phase11rq23-20260730t152550624z-8a708407-685bb7-kvquant/validation/bounded-grid.json",
+      "sha256": "bf03e3addbdbe240337be6a4c51503c0d7652630f97ccd0df3c8ff29fdf6d899"
+    },
+    {
+      "evidence_id": "candidate",
+      "path": "artifacts/phase11/phase11rq23-launch.QEMQIm/phase11rq23-20260730t152550624z-8a708407-685bb7-kvquant/validation/admission-candidate.json",
+      "sha256": "6bf44d1014caaeebaa1cde085ccf9266a54601ea78b31eacbff6d8040c61f4a3"
+    },
+    {
+      "evidence_id": "manifest",
+      "path": "artifacts/phase11/phase11rq23-launch.QEMQIm/phase11rq23-20260730t152550624z-8a708407-685bb7-kvquant/manifest.json",
+      "sha256": "78c628296a70b0b8ab8104f05d24aa0078d537739dc488150211eb081c9675a8"
+    },
+    {
+      "evidence_id": "inventory",
+      "path": "artifacts/phase11/phase11rq23-launch.QEMQIm/phase11rq23-20260730t152550624z-8a708407-685bb7-kvquant/artifact_inventory.json",
+      "sha256": "75595ceecd0c78349bd17411ab88b0b1ebc07dae04e78ec6ab7bbf890700bcad"
+    },
+    {
+      "evidence_id": "checksum_ledger",
+      "path": "artifacts/phase11/phase11rq23-launch.QEMQIm/phase11rq23-20260730t152550624z-8a708407-685bb7-kvquant/checksums.sha256",
+      "sha256": "d4075e4ffe097cfef9e07de6a7c805a8be5c612a69b32818eb064df0c65ef3c2"
+    },
+    {
+      "evidence_id": "complete",
+      "path": "artifacts/phase11/phase11rq23-launch.QEMQIm/phase11rq23-20260730t152550624z-8a708407-685bb7-kvquant/COMPLETE",
+      "sha256": "3e132e3d6d1bfa7a2fcd43507f4cb6a2573ee319287f542c574ce38338d53c9b"
+    },
+    {
+      "evidence_id": "q23_binding",
+      "path": "artifacts/phase11/phase11rq23-launch.QEMQIm/phase11rq23-20260730t152550624z-8a708407-685bb7-kvquant/config/q23-validation-binding.json",
+      "sha256": "ad3d51055bb9ddd6f622e43115332e7eda4cd0672f1ac771b0a2ae29e20f1b12"
+    },
+    {
+      "evidence_id": "q23_complete",
+      "path": "artifacts/phase11/phase11rq23-launch.QEMQIm/phase11rq23-20260730t152550624z-8a708407-685bb7-kvquant/authority/q23-evidence/COMPLETE",
+      "sha256": "0e3f0ffd4e77856f21bf7a1350b54de6b12216230884b4e4e904c4d8a7c1a504"
+    },
+    {
+      "evidence_id": "q23_checksum_ledger",
+      "path": "artifacts/phase11/phase11rq23-launch.QEMQIm/phase11rq23-20260730t152550624z-8a708407-685bb7-kvquant/authority/q23-evidence/checksums.sha256",
+      "sha256": "8b65112ea2d49b58ee07c1533b429fac1a8af7466e09adad073d9a22ae2ec790"
+    },
+    {
+      "evidence_id": "q23_summary",
+      "path": "artifacts/phase11/phase11rq23-launch.QEMQIm/phase11rq23-20260730t152550624z-8a708407-685bb7-kvquant/authority/q23-evidence/summary.json",
+      "sha256": "686c6dd06f65a952c567aa293f4b1ea0a756f5f1c543cc00c90e27953bb641ac"
+    },
+    {
+      "evidence_id": "inner_publication",
+      "path": "docs/evidence/phase11rq23/r2-admission-publication.json",
+      "sha256": "d1cbf3a2421079d154bd862796e818eb3bb03891b20790164c74f573f6bb1c18"
+    }
+  ],
+  "execution_path_evidence": [
+    {
+      "caller_owned_outputs": true,
+      "caller_owned_q4_value_workspace": true,
+      "configuration": "kvq4",
+      "corrected_kvq3_pack": true,
+      "current_cuda_stream": true,
+      "deterministic_q4_value_decode": true,
+      "device_resident_value_parameters": true,
+      "direct_compressed_decode": true,
+      "fixed_order_q4_value_reduction": true,
+      "native_gqa": true,
+      "no_backend_fallback": true,
+      "no_complete_prefix_materialization": true,
+      "no_cpu_topk": true,
+      "no_dynamic_sparse_allocation": true,
+      "no_gqa_expansion": true,
+      "no_host_synchronization": true,
+      "no_measured_torch_cat": true,
+      "no_query_head_sized_cache": true,
+      "no_repeat_interleave": true,
+      "no_repeat_kv": true,
+      "no_tensor_to_host": true,
+      "stable_kernel_path": true,
+      "value_fixed_12": true
+    },
+    {
+      "caller_owned_outputs": true,
+      "caller_owned_q4_value_workspace": true,
+      "configuration": "kvq3",
+      "corrected_kvq3_pack": true,
+      "current_cuda_stream": true,
+      "deterministic_q4_value_decode": true,
+      "device_resident_value_parameters": true,
+      "direct_compressed_decode": true,
+      "fixed_order_q4_value_reduction": true,
+      "native_gqa": true,
+      "no_backend_fallback": true,
+      "no_complete_prefix_materialization": true,
+      "no_cpu_topk": true,
+      "no_dynamic_sparse_allocation": true,
+      "no_gqa_expansion": true,
+      "no_host_synchronization": true,
+      "no_measured_torch_cat": true,
+      "no_query_head_sized_cache": true,
+      "no_repeat_interleave": true,
+      "no_repeat_kv": true,
+      "no_tensor_to_host": true,
+      "stable_kernel_path": true,
+      "value_fixed_12": true
+    },
+    {
+      "caller_owned_outputs": true,
+      "caller_owned_q4_value_workspace": true,
+      "configuration": "kvq2",
+      "corrected_kvq3_pack": true,
+      "current_cuda_stream": true,
+      "deterministic_q4_value_decode": true,
+      "device_resident_value_parameters": true,
+      "direct_compressed_decode": true,
+      "fixed_order_q4_value_reduction": true,
+      "native_gqa": true,
+      "no_backend_fallback": true,
+      "no_complete_prefix_materialization": true,
+      "no_cpu_topk": true,
+      "no_dynamic_sparse_allocation": true,
+      "no_gqa_expansion": true,
+      "no_host_synchronization": true,
+      "no_measured_torch_cat": true,
+      "no_query_head_sized_cache": true,
+      "no_repeat_interleave": true,
+      "no_repeat_kv": true,
+      "no_tensor_to_host": true,
+      "stable_kernel_path": true,
+      "value_fixed_12": true
+    }
+  ],
+  "existing_methods_unchanged": true,
+  "fixture_evidence": {
+    "append_exact": true,
+    "byte_breakdown_exact": true,
+    "cases": [
+      "kvq4/key_zero_value_fixed12",
+      "kvq4/key_few_value_fixed12",
+      "kvq4/key_cap_value_fixed12",
+      "kvq3/key_zero_value_fixed12",
+      "kvq3/key_few_value_fixed12",
+      "kvq3/key_cap_value_fixed12",
+      "kvq2/key_zero_value_fixed12",
+      "kvq2/key_few_value_fixed12",
+      "kvq2/key_cap_value_fixed12"
+    ],
+    "decode_atol": 0.01,
+    "decode_rtol": 0.01,
+    "decode_within_tolerance": true,
+    "dense_payload_exact": true,
+    "finite_output": true,
+    "fixture_id": "kvqref-2e0a0e9022c50cbc6fb497d88cae973e",
+    "fixture_root": "c28682d58706b58812dc1db69ba5eb4982339ba13f39bf67f751794cdaabfdec",
+    "input_and_pre_rope_exact": true,
+    "kvq2_phase10_byte_identical": true,
+    "kvq3_decision_0025_corrected": true,
+    "kvq4_phase10_byte_identical": true,
+    "metadata_exact": true,
+    "reuse_proof_valid": true,
+    "sink_exact": true,
+    "sparse_values_indices_counts_exact": true,
+    "store_exact": true,
+    "unused_slots_exact": true
+  },
+  "gates": {
+    "full_scan_state": "CLOSED",
+    "g0": "PASS",
+    "g1": "PASS",
+    "g2_kivi": "PASS",
+    "g2_kvq": "PASS",
+    "g2_tq": "PASS",
+    "g3": "NOT_EVALUATED",
+    "g4": "NOT_EVALUATED",
+    "g5": "NOT_EVALUATED",
+    "global_g2": "NOT_EVALUATED"
+  },
+  "graph_evidence": [
+    {
+      "capture_passed": true,
+      "configuration": "kvq4",
+      "context_length": 128,
+      "eager_fallback": false,
+      "eager_graph_agreement": true,
+      "persistent_allocated_delta": 0,
+      "persistent_reserved_delta": 0,
+      "pointer_stable": true,
+      "repeated_replay_stable": true,
+      "replay_allocation_events": 0,
+      "replay_passed": true
+    },
+    {
+      "capture_passed": true,
+      "configuration": "kvq3",
+      "context_length": 128,
+      "eager_fallback": false,
+      "eager_graph_agreement": true,
+      "persistent_allocated_delta": 0,
+      "persistent_reserved_delta": 0,
+      "pointer_stable": true,
+      "repeated_replay_stable": true,
+      "replay_allocation_events": 0,
+      "replay_passed": true
+    },
+    {
+      "capture_passed": true,
+      "configuration": "kvq2",
+      "context_length": 128,
+      "eager_fallback": false,
+      "eager_graph_agreement": true,
+      "persistent_allocated_delta": 0,
+      "persistent_reserved_delta": 0,
+      "pointer_stable": true,
+      "repeated_replay_stable": true,
+      "replay_allocation_events": 0,
+      "replay_passed": true
+    },
+    {
+      "capture_passed": true,
+      "configuration": "kvq4",
+      "context_length": 4096,
+      "eager_fallback": false,
+      "eager_graph_agreement": true,
+      "persistent_allocated_delta": 0,
+      "persistent_reserved_delta": 0,
+      "pointer_stable": true,
+      "repeated_replay_stable": true,
+      "replay_allocation_events": 0,
+      "replay_passed": true
+    }
+  ],
+  "historical_evidence_unchanged": true,
+  "local_root_digest": "8ea533b9544e99140aec04b4cb9b1ad26f271273206d170e7abefa195c0581aa",
+  "measurement_container_unchanged": true,
+  "measurement_scope": "measurement_container_admission",
+  "method_fingerprints": {
+    "kvq2": "eb75d6cbf8ff27365cd2799c4e0232649c94d6f094cb4d041bbe8c3ac1cda5ee",
+    "kvq3": "2f0d1a99db2e6884745b6cd54c50eedfa17744b89a3e8b2ffd840986126bd802",
+    "kvq4": "8f3ea4f49056a5c4ada715a853ec506de4b6bcab262cfd88dc5796bacc032fa0"
+  },
+  "method_name": "kvquant",
+  "performance_claim_eligible": false,
+  "performance_data_frozen": false,
+  "quality_benchmark_executed": false,
+  "quality_execution": "locked",
+  "quality_status": "unvalidated",
+  "r2_uri": "r2://kvbench-artifacts/kvbench/sha256/8ea533b9544e99140aec04b4cb9b1ad26f271273206d170e7abefa195c0581aa/",
+  "r_hbm": null,
+  "sanitizer_evidence": {
+    "cases": [
+      "kvq4_cap_sparse",
+      "kvq3_corrected",
+      "kvq2",
+      "sink",
+      "native_32q_8kv_decode",
+      "fixed_l_overwrite",
+      "graph_replay"
+    ],
+    "command_argv": [
+      "memcheck",
+      "kvq4-cap",
+      "memcheck",
+      "kvq3-distinct",
+      "memcheck",
+      "kvq2",
+      "memcheck",
+      "sink-gqa-fixed",
+      "memcheck",
+      "graph-replay",
+      "initcheck",
+      "kvq4-cap",
+      "initcheck",
+      "kvq3-distinct"
+    ],
+    "container_digest": "sha256:059bc9be89387369d7de9e3e9b26d85b6e9902c41e7dbf002ebc45edd188fb7e",
+    "corrected_tree": "1f85af65fe03061583ffe8bd91e47d7ecffdd312",
+    "extension_sha256": "b3c33badb8e55b19d6b2ce535182e964ce51e5102d8413b29701dd3d817ad73d",
+    "leaked_allocations": 0,
+    "memory_errors": 0,
+    "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "stdout_sha256": "ba53aa0b0163e4bdee5009a8f4ded586c6943b7975ff46548c4e51c1ffbe31a7",
+    "tool_version": "NVIDIA (R) Compute Sanitizer Copyright (c) 2020-2025 NVIDIA Corporation Version 2025.3.1.0 (build 36400806) (public-release)",
+    "unsupported_architecture_fallback": false
+  },
+  "schema_version": "kvbench-phase11rq23-kvquant-admission-report-1.0.0",
+  "speedup_calculated": false,
+  "status": "PASS"
+}

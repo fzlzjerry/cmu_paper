@@ -1,0 +1,105 @@
+{
+  "admission_status": "PASS",
+  "artifact_status": "completed",
+  "bucket_lock": {
+    "bucket": "kvbench-artifacts",
+    "bucket_exists": true,
+    "bucket_public": false,
+    "covered_prefix": "kvbench/sha256/",
+    "custom_domain_count": 0,
+    "enabled": true,
+    "enabled_custom_domain_count": 0,
+    "endpoint": "https://<R2_ACCOUNT_ID>.r2.cloudflarestorage.com",
+    "endpoint_class": "cloudflare_r2_s3",
+    "lock_prefix": "kvbench/sha256/",
+    "lock_rule_id": "kvbench-evidence-indefinite",
+    "lock_rule_name": null,
+    "lock_scope": "exact",
+    "managed_r2_dev_enabled": false,
+    "provider": "cloudflare_r2",
+    "public_custom_domain": false,
+    "public_r2_dev": false,
+    "public_state_result": "PASS",
+    "retention_condition": "Indefinite",
+    "retention_type": "Indefinite",
+    "verification_result": "PASS",
+    "verified_at_utc": "2026-07-30T17:10:44.744767Z"
+  },
+  "clean_retrieval": {
+    "bundle_validation_valid": true,
+    "checksum_ledger_valid": true,
+    "complete_marker_valid": true,
+    "destination_initially_empty": true,
+    "inventory_valid": true,
+    "object_count": 212,
+    "provider": "cloudflare_r2",
+    "result": "PASS",
+    "retrieved_at_utc": "2026-07-30T17:17:48.853911Z",
+    "root_digest_valid": true,
+    "root_sha256": "8ea533b9544e99140aec04b4cb9b1ad26f271273206d170e7abefa195c0581aa",
+    "unexpected_objects": false,
+    "uri": "r2://kvbench-artifacts/kvbench/sha256/8ea533b9544e99140aec04b4cb9b1ad26f271273206d170e7abefa195c0581aa/"
+  },
+  "credential_values_recorded": false,
+  "env_file_read": false,
+  "local_validation": {
+    "bundle_validation_valid": true,
+    "checksum_ledger_valid": true,
+    "complete": true,
+    "complete_marker_valid": true,
+    "inventory_valid": true,
+    "object_count": 212,
+    "root_digest_valid": true,
+    "root_sha256": "8ea533b9544e99140aec04b4cb9b1ad26f271273206d170e7abefa195c0581aa",
+    "status": "completed",
+    "valid": true
+  },
+  "publication": {
+    "complete_last": true,
+    "conditional_writes": true,
+    "content_addressed": true,
+    "object_count": 212,
+    "provider": "cloudflare_r2",
+    "publication_order_sha256": "766d21630ae7634348fdd728d40ce73163875127d5a1eaea7164825c53697ca5",
+    "published_at_utc": "2026-07-30T17:15:45.237657Z",
+    "result": "PASS",
+    "root_sha256": "8ea533b9544e99140aec04b4cb9b1ad26f271273206d170e7abefa195c0581aa",
+    "uploaded_count": 113,
+    "uri": "r2://kvbench-artifacts/kvbench/sha256/8ea533b9544e99140aec04b4cb9b1ad26f271273206d170e7abefa195c0581aa/",
+    "verified_existing_count": 99
+  },
+  "raw_tool_evidence": {
+    "publish": {
+      "command_argv": [
+        ".venv/bin/python",
+        "scripts/r2_artifact.py",
+        "publish",
+        "artifacts/phase11/phase11rq23-launch.QEMQIm/phase11rq23-20260730t152550624z-8a708407-685bb7-kvquant"
+      ],
+      "returncode": 0,
+      "stderr_path": "docs/evidence/phase11rq23/r2-admission-publish.stderr.txt",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stdout_path": "docs/evidence/phase11rq23/r2-admission-publish.stdout.json",
+      "stdout_sha256": "6cc0e42cca03a0052e61d147cb7c793d8e8a7bea0af25848b8a25667b19ff2b9",
+      "working_directory": "."
+    },
+    "verify": {
+      "command_argv": [
+        ".venv/bin/python",
+        "scripts/r2_artifact.py",
+        "verify",
+        "8ea533b9544e99140aec04b4cb9b1ad26f271273206d170e7abefa195c0581aa"
+      ],
+      "returncode": 0,
+      "stderr_path": "docs/evidence/phase11rq23/r2-admission-verify.stderr.txt",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stdout_path": "docs/evidence/phase11rq23/r2-admission-verify.stdout.json",
+      "stdout_sha256": "5e4d4336c8d1abaeefd64dc36b30f27901d181d18c694d81337600a1be929146",
+      "working_directory": "."
+    }
+  },
+  "recorded_at_utc": "2026-07-30T17:18:01.473987Z",
+  "schema_version": "kvbench-phase11rq23-kvquant-admission-r2-publication-1.0.0",
+  "source_git_sha": "8a708407825d5f3f3eaa0af476a55631ad546059",
+  "source_run_id": "phase11rq23-20260730t152550624z-8a708407-685bb7-kvquant"
+}

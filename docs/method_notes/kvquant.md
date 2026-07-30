@@ -1,8 +1,8 @@
 # KVQuant source note
 
 Status: Phase 9P patched-upstream compatibility, Phase 9 calibration, Phase 10
-reference, and Phase 11R method-specific G2-KVQ admission PASS. Global G2-G5
-remain NOT EVALUATED.
+reference, Phase 11R method-specific admission, and Phase 11R-Q23 current-source
+G2-KVQ re-admission PASS. Global G2-G5 remain NOT EVALUATED.
 
 ## Paper and source
 
@@ -265,3 +265,38 @@ SHA-256 is
 G2-KVQ is PASS only for this exact method/source/container/calibration/oracle
 and bounded admission contract. Global G2-G5 remain NOT EVALUATED; no
 performance, speedup, HBM, capacity, or quality conclusion follows.
+
+## Phase 11R-Q23 current-source re-admission
+
+Decision 0029 binds current execution source
+`kvquant_gqa_longctx_deterministic_q23_v4`, corrected commit/tree
+`34b0bdfa83082e1f30387d9ac5cca369006e089c` /
+`1f85af65fe03061583ffe8bd91e47d7ecffdd312`, aggregate patch SHA-256
+`7b9d3cc6773e8ef37697601c885f2c5ec581dffd57cf59424d03e68f147bd55a`,
+and extension SHA-256
+`b3c33badb8e55b19d6b2ce535182e964ce51e5102d8413b29701dd3d817ad73d`.
+Its checksum-bound q3/q2 deterministic long-context evidence root is
+`8b65112ea2d49b58ee07c1533b429fac1a8af7466e09adad073d9a22ae2ec790`.
+The calibration root and corrected nine-fixture oracle remain
+`8148306d08205af376994b022f189a0d6837915cd279ca8af6b104e1f4b46ccf`
+and
+`c28682d58706b58812dc1db69ba5eb4982339ba13f39bf67f751794cdaabfdec`,
+respectively.
+
+Phase 11R-Q23 changes no Adapter behavior, cache/session layout, runner,
+calibration, fixture, numerical tolerance, existing method, CUDA source, or
+Measurement Container. All nine corrected fixtures, the fresh nine-point
+bounded admission grid, path/allocation/GQA controls, fixed-L CUDA Graph,
+pointer stability, and Compute Sanitizer pass for the current source.
+Successor MethodAdmissionReport SHA-256
+`9cfed618cee9514a1071392d0a2dca327dcf6acd33d81ac72cc477c7880c09e2`
+binds the 212-object inner admission root
+`8ea533b9544e99140aec04b4cb9b1ad26f271273206d170e7abefa195c0581aa`,
+which was published COMPLETE-last and cleanly retrieved. The historical
+Decision 0027 MethodAdmissionReport and its admission root remain unchanged.
+
+G2-KVQ remains PASS only for the exact current
+method/source/extension/Adapter/cache/session/container/calibration/oracle
+binding and bounded admission contract. Global G2-G5 remain NOT EVALUATED;
+Phase 12 has not started. No performance, speedup, physical-HBM, knee,
+capacity, or quality conclusion follows.

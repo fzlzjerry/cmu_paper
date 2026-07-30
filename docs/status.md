@@ -1,6 +1,6 @@
 # Project status
 
-Last updated: 2026-07-30
+Last updated: 2026-07-31
 Authoritative contracts: CODEX_WORKFLOW.md for active performance engineering;
 CODEX_POST_PERFORMANCE_QUALITY_VALIDATION.md for post-performance quality
 scheduling; CODEX_QUALITY_EVALUATION_ADDENDUM.md for non-conflicting quality
@@ -8,11 +8,11 @@ requirements; and AGENTS.md. Decision 0005 records precedence.
 
 ## Current state
 
-- Latest completed scoped phase: Phase 11R KVQuant Measurement Adapter PASS.
-  The Adapter uses the authorized Measurement Container and the immutable
-  Phase 9 calibration plus corrected Phase 11P-R numerical oracle; it does not
-  change either bundle. The unchanged Measurement Container Docker image ID /
-  OCI image-index digest remains
+- Latest completed scoped phase: Phase 11R-Q23 KVQuant current-source
+  re-admission PASS. The unchanged Adapter uses the authorized Measurement
+  Container and the immutable Phase 9 calibration plus corrected Phase 11P-R
+  numerical oracle; it does not change either bundle. The unchanged
+  Measurement Container Docker image ID / OCI image-index digest remains
   `sha256:059bc9be89387369d7de9e3e9b26d85b6e9902c41e7dbf002ebc45edd188fb7e`;
   container G0 and both BF16 parity smokes pass, and Decision 0016 binds
   Measurement Lane CUDA execution to that digest only. G2-TQ, G2-KIVI, and
@@ -108,6 +108,22 @@ requirements; and AGENTS.md. Decision 0005 records precedence.
   `59ef5bfc581a68cdc4d21c4c0a840f046e698633f7475f79906063c6e333ae6a`.
   The earlier BLOCKED report, failed 100-object bundle, and diagnostic remain
   immutable. G2-KVQ is PASS.
+- Phase 11R-Q23 status: PASS for current Decision 0029 execution source
+  `kvquant_gqa_longctx_deterministic_q23_v4`, commit/tree
+  `34b0bdfa83082e1f30387d9ac5cca369006e089c` /
+  `1f85af65fe03061583ffe8bd91e47d7ecffdd312`, aggregate patch SHA-256
+  `7b9d3cc6773e8ef37697601c885f2c5ec581dffd57cf59424d03e68f147bd55a`,
+  and extension SHA-256
+  `b3c33badb8e55b19d6b2ce535182e964ce51e5102d8413b29701dd3d817ad73d`.
+  All nine corrected fixtures and the fresh bounded grid pass 9/9 together
+  with path, byte, allocation, GQA, Graph, and sanitizer controls. Successor
+  MethodAdmissionReport SHA-256 is
+  `9cfed618cee9514a1071392d0a2dca327dcf6acd33d81ac72cc477c7880c09e2`;
+  its bound 212-object inner admission root
+  `8ea533b9544e99140aec04b4cb9b1ad26f271273206d170e7abefa195c0581aa`
+  is COMPLETE-last and cleanly retrieved. The historical Decision 0027
+  MethodAdmissionReport remains unchanged. G2-KVQ remains PASS; Global G2-G5
+  remain NOT EVALUATED.
 - Active admission gate: native-host G0 PASS; authorized-container G0 PASS;
   native-host BF16 G1 PASS; G2-TQ PASS; G2-KIVI PASS; G2-KVQ PASS
 - Benchmark implementation changes: exact BF16 static cache, fixed-L and
@@ -124,7 +140,9 @@ requirements; and AGENTS.md. Decision 0005 records precedence.
   scripts. Phase 10 adds one isolated KVQuant reference runner and compact
   numerical fixtures only. Phase 11R admits one static KVQuant Adapter through
   the same common runners after binding Decision 0027's deterministic q4
-  decode API; no new framework or runner was introduced.
+  decode API. Phase 11R-Q23 re-admits that unchanged Adapter against Decision
+  0029's current execution source through evidence binding only; no new
+  framework or runner was introduced.
 - CUDA builds or executions: the new formal E00 run passed extension build,
   native execution, forced PTX/JIT, numerical golden, CUDA Graph, allocation,
   SASS/PTX inspection, and all required Compute Sanitizer lanes
@@ -159,7 +177,9 @@ requirements; and AGENTS.md. Decision 0005 records precedence.
   Graph, sanitizer, and nine bounded-admission points. The earlier L=4096
   failure and untimed determinism control remain non-claim evidence; no
   speedup, comparative latency, profiler, HBM, capacity, or quality result was
-  produced.
+  produced. Phase 11R-Q23 adds only current-source correctness, allocation,
+  Graph, sanitizer, and bounded-admission evidence; it produces no speedup,
+  comparative-latency, profiler, HBM, capacity, or quality result.
 - Scientific performance claims: none
 - Quality protocol: preregistered by Decision 0005 before any performance or
   quality result
@@ -721,7 +741,8 @@ reference execution is recorded separately above.
 | Phase 9 KVQuant calibration | PASS | Exact Decision 0021 patched source; isolated image; frozen 16 x 2048 train tokens; 32 K plus 32 V Fisher artifacts; three complete quantizer families; reproducibility; 68-object COMPLETE-last R2 root and clean retrieval. |
 | Phase 10 KVQuant reference lane | PASS | Decisions 0021/0023; exact calibration binding; nine source-faithful dense/sparse/sink/store/append/decode fixtures; SM120/PTX/JIT/sanitizer PASS; 113-object root `32cdf465a361dd6695b66ccbea0a462bddc075fd9778d0aa8cdaa3f94e6f63ab` COMPLETE-last and cleanly retrieved. |
 | Phase 11 KVQuant measurement adapter | PASS | Decision 0027 q4 deterministic decode binding; all nine corrected fixtures; exact byte/path/allocation/GQA controls; fixed-L Graph; zero-error sanitizer; bounded grid 9/9 PASS; 165-object inner root `0834410509ea7324a41715e0e84e09617bf9b188b10394a234f9a57e804dd1f2` COMPLETE-last and cleanly retrieved. |
-| G2-KVQ | PASS | All three bit widths satisfy the method-specific admission criteria; MethodAdmissionReport SHA-256 `59ef5bfc581a68cdc4d21c4c0a840f046e698633f7475f79906063c6e333ae6a`. Global G2 remains NOT EVALUATED. |
+| Phase 11R-Q23 KVQuant current-source re-admission | PASS | Decision 0029 source and extension binding; unchanged Adapter/cache/session; all nine corrected fixtures; fresh bounded grid 9/9; path/allocation/GQA/Graph/sanitizer PASS; successor MethodAdmissionReport SHA-256 `9cfed618cee9514a1071392d0a2dca327dcf6acd33d81ac72cc477c7880c09e2`; 212-object inner root `8ea533b9544e99140aec04b4cb9b1ad26f271273206d170e7abefa195c0581aa` COMPLETE-last and cleanly retrieved. |
+| G2-KVQ | PASS | All three bit widths satisfy the current Decision 0029 method-specific admission criteria. The successor MethodAdmissionReport SHA-256 is `9cfed618cee9514a1071392d0a2dca327dcf6acd33d81ac72cc477c7880c09e2`; historical Decision 0027 report SHA-256 `59ef5bfc581a68cdc4d21c4c0a840f046e698633f7475f79906063c6e333ae6a` remains unchanged. Global G2 remains NOT EVALUATED. |
 | G1-G5 unified admission | NOT EVALUATED | requires E12 |
 | Pilot/full-scan gates | CLOSED / NOT EVALUATED | Method-specific G2-TQ, G2-KIVI, and G2-KVQ admission do not authorize Pilot or Full Scan |
 | Post-performance quality validation | LOCKED | Decision 0005; `PERFORMANCE_DATA_FROZEN` absent |
@@ -763,5 +784,12 @@ Value-decode API and caller-owned FP32 workspace; all nine corrected fixtures,
 the nine-point bounded grid, allocation/path/GQA/Graph controls, sanitizer,
 durable publication, and clean retrieval pass. G2-KVQ is PASS while Global
 G2-G5 remain NOT EVALUATED.
+Phase 11R-Q23 is PASS under Decision 0029 for the current q4/q3/q2
+deterministic long-context source. The unchanged Adapter passes all nine
+corrected fixtures, the fresh nine-point bounded grid, and the required
+allocation/path/GQA/Graph/sanitizer controls. Its successor report binds the
+COMPLETE-last, cleanly retrieved inner root
+`8ea533b9544e99140aec04b4cb9b1ad26f271273206d170e7abefa195c0581aa`.
+G2-KVQ remains method-specific PASS; Global G2-G5 remain NOT EVALUATED.
 Phase 12, Pilot, profiling, fitting, figures, Full Scan, performance
 execution, and quality execution have not started.
