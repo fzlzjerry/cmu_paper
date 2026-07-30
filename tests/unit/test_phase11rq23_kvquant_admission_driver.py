@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import runpy
 import shutil
 from pathlib import Path
 import tempfile
@@ -59,6 +60,23 @@ class Phase11RQ23AdmissionDriverTests(unittest.TestCase):
         self.assertTrue(all(record.no_dynamic_sparse_allocation for record in records))
         self.assertTrue(all(record.no_host_synchronization for record in records))
         self.assertTrue(all(record.no_backend_fallback for record in records))
+
+    def test_sanitizer_probe_binds_current_q23_authority(self) -> None:
+        namespace = runpy.run_path(
+            str(
+                REPOSITORY_ROOT
+                / "tests/cuda/phase11_kvquant_sanitizer_probe.py"
+            )
+        )
+        namespace["_require_exact_authority"]()
+        self.assertEqual(
+            namespace["_AUTHORITY"]["aggregate_patch_sha256"],
+            "7b9d3cc6773e8ef37697601c885f2c5ec581dffd57cf59424d03e68f147bd55a",
+        )
+        self.assertEqual(
+            namespace["_AUTHORITY"]["extension_sha256"],
+            "b3c33badb8e55b19d6b2ce535182e964ce51e5102d8413b29701dd3d817ad73d",
+        )
 
     def test_q23_evidence_replays_and_tamper_fails(self) -> None:
         admission._activate_authority_profile("decision0029")

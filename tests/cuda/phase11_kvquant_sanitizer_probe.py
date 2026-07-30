@@ -60,12 +60,12 @@ MODE_CASES = {
 }
 _AUTHORITY = {
     "aggregate_patch_sha256": (
-        "bae63bced549479709b10d7f6a8ee35a8f21ec18cc040a7424591cee47c1b0a6"
+        "7b9d3cc6773e8ef37697601c885f2c5ec581dffd57cf59424d03e68f147bd55a"
     ),
-    "corrected_commit": "4b8533b29b04f8c4bf55f688a41fefe20487637b",
-    "corrected_tree": "46f2149a0369d5c97d9a6bc77d57b5f3a5a5fb3b",
+    "corrected_commit": "34b0bdfa83082e1f30387d9ac5cca369006e089c",
+    "corrected_tree": "1f85af65fe03061583ffe8bd91e47d7ecffdd312",
     "extension_sha256": (
-        "a79644923ba131e56abe95029e669346dbbb11fd210d2b9f8b2086819ffeaad1"
+        "b3c33badb8e55b19d6b2ce535182e964ce51e5102d8413b29701dd3d817ad73d"
     ),
     "fixture_id": "kvqref-2e0a0e9022c50cbc6fb497d88cae973e",
     "fixture_root_sha256": (

@@ -995,6 +995,7 @@ PHASE11RQ23_ALLOWED_PATHS = frozenset(
         "src/kvbench/schema/__init__.py",
         "src/kvbench/schema/phase11.py",
         "src/kvbench/runtime/artifacts.py",
+        "tests/cuda/phase11_kvquant_sanitizer_probe.py",
         "tests/unit/test_phase11rq23_kvquant_admission.py",
         "tests/unit/test_phase11rq23_kvquant_admission_driver.py",
         "tests/unit/test_phase11rq23_make_targets.py",
