@@ -44,6 +44,14 @@ class Phase11DScopeTests(unittest.TestCase):
             '/usr/bin/strip --strip-unneeded "$$extension"',
             makefile,
         )
+        self.assertIn(
+            '"$$task_root/repository/reference/kvquant_phase11pr/fixtures"',
+            makefile,
+        )
+        self.assertIn(
+            'find "$$fixture_root" -type f -exec chmod 0444 {} +',
+            makefile,
+        )
 
     def test_multiline_source_validator_json_is_parsed(self) -> None:
         payload = b'{\n  "status": "PASS",\n  "value": 1\n}\n'

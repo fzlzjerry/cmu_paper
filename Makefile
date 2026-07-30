@@ -219,6 +219,13 @@ validate-kvquant-phase11d: verify-measurement-container
 		git clone --quiet --no-local --no-checkout "$(CURDIR)" "$$task_root/repository"; \
 		git -C "$$task_root/repository" checkout --quiet --detach "$$(git rev-parse HEAD)"; \
 		git -C "$$task_root/repository" remote remove origin; \
+		for fixture_root in \
+			"$$task_root/repository/reference/kvquant/fixtures" \
+			"$$task_root/repository/reference/kvquant_phase11pr/fixtures"; do \
+			test -d "$$fixture_root"; \
+			find "$$fixture_root" -type d -exec chmod 0555 {} +; \
+			find "$$fixture_root" -type f -exec chmod 0444 {} +; \
+		done; \
 		test -z "$$(git -C "$$task_root/repository" status --porcelain=v1 --untracked-files=all)"; \
 		test ! -e "$$task_root/repository/.env"; \
 		git clone --quiet --no-local --no-checkout "$(PHASE11D_KVQUANT_SOURCE_ROOT)" "$$task_root/kvquant-source"; \
