@@ -24,6 +24,8 @@ from kvbench.runtime.kivi_admission import (
     KIVIAdmissionError,
     OFFICIAL_KIVI_HOST_STUB_OFFSETS,
     PHASE8_ADMISSION_GRID,
+    PHASE8_DECISION_0026_ENDPOINT_COMMIT,
+    Phase8HistoricalSourceAuthority,
     audit_kivi_execution_path,
     build_phase8_method_admission_report,
     derive_phase8_admission_evidence,
@@ -73,6 +75,31 @@ from kvbench.schema.phase8 import (
 )
 from scripts.r2_artifact import validate_local_artifact
 from scripts.phase8_kivi_admission import validate_local_admission
+
+
+def _synthetic_historical_source_authority(
+    *,
+    repository_root: Path,
+    execution_git_sha: str,
+    manifest_adapter_sha256: str,
+) -> Phase8HistoricalSourceAuthority:
+    adapter = sha256_file(
+        repository_root / "src/kvbench/adapters/kivi.py"
+    )
+    if adapter != manifest_adapter_sha256:
+        raise KIVIAdmissionError("synthetic adapter authority differs")
+    return Phase8HistoricalSourceAuthority(
+        execution_git_sha=execution_git_sha,
+        current_git_sha=execution_git_sha,
+        adapter_source_sha256=adapter,
+        cache_source_sha256=sha256_file(
+            repository_root / "src/kvbench/runtime/kivi_cache.py"
+        ),
+        endpoint_source_sha256=sha256_file(
+            repository_root / "src/kvbench/runtime/bf16_endpoint.py"
+        ),
+        endpoint_transition_commit=PHASE8_DECISION_0026_ENDPOINT_COMMIT,
+    )
 
 
 def _breakdown() -> Phase8ByteBreakdown:
@@ -1399,6 +1426,15 @@ def _make_writable(root: Path) -> None:
 
 
 class Phase8KIVIAdmissionTests(unittest.TestCase):
+    def setUp(self) -> None:
+        patcher = mock.patch(
+            "kvbench.runtime.kivi_admission."
+            "resolve_phase8_historical_source_authority",
+            side_effect=_synthetic_historical_source_authority,
+        )
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
     def test_local_validation_explicitly_selects_bundle_and_records_history(
         self,
     ) -> None:

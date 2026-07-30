@@ -113,6 +113,7 @@ KIVI_REFERENCE_BUILD_REVISION := 3417ea0e7f322369eed21bb787a9a9a19b0a69bd
 .PHONY: reference-kvquant validate-reference-kvquant
 .PHONY: validate-reference-kvquant-phase11pr
 .PHONY: admit-kvquant validate-admission-kvquant
+.PHONY: validate-phase12e-kivi-history
 
 preflight:
 	@/usr/bin/env -i PATH=/usr/bin:/bin LC_ALL=C LANG=C TZ=UTC \
@@ -179,8 +180,12 @@ test: checks
 	@$(PHASE3_ENV) $(PHASE3_PYTHON) -m unittest discover -s tests/unit -p 'test_phase9_*.py' -v
 	@$(PHASE3_ENV) $(PHASE3_PYTHON) -m unittest discover -s tests/unit -p 'test_phase10_*.py' -v
 	@$(PHASE3_ENV) $(PHASE3_PYTHON) -m unittest discover -s tests/unit -p 'test_phase11pr_*.py' -v
+	@$(PHASE3_ENV) $(PHASE3_PYTHON) -m unittest discover -s tests/unit -p 'test_phase12e_*.py' -v
 	@$(PHASE3_ENV) $(PHASE3_PYTHON) -m unittest tests.unit.test_measurement_container tests.unit.test_phase6a_bf16_parity tests.unit.test_phase6a_governance tests.unit.test_preflight_unit tests.unit.test_r2_artifact -v
 	@$(PHASE2_VALIDATE) immutable
+
+validate-phase12e-kivi-history:
+	@$(PHASE3_ENV) KVBENCH_PHASE12E_REQUIRE_LOCAL_EVIDENCE=1 $(PHASE3_PYTHON) -m unittest tests.unit.test_phase12e_kivi_historical_authority -v
 
 test-cuda: phase3-package-lock-check immutable-check
 	@set +e; $(PHASE3_ENV) $(PHASE3_PYTHON) -m unittest discover -s tests/cuda -p 'test_phase*_*.py' -v; test_status=$$?; $(PHASE2_VALIDATE) immutable; immutable_status=$$?; if (( test_status != 0 )); then exit $$test_status; fi; exit $$immutable_status

@@ -16,6 +16,7 @@ import math
 import os
 from pathlib import Path
 import stat
+import subprocess
 from typing import Any
 
 from kvbench.adapters.kivi import (
@@ -37,6 +38,7 @@ from kvbench.runtime.turboquant_admission import (
     require_authorized_cuda_environment,
 )
 from kvbench.runtime.artifacts import sha256_file, validate_run_directory
+from kvbench.runtime.backend import BACKEND_IDENTITY
 from kvbench.runtime.kivi_allocation import (
     KIVIAllocationBinding,
     KIVIAllocationError,
@@ -44,7 +46,6 @@ from kvbench.runtime.kivi_allocation import (
 )
 from kvbench.runtime.kivi_session import (
     build_kivi_operation_keys,
-    phase8_kivi_backend_fingerprint,
 )
 from kvbench.runtime.kivi_cache import KIVIStaticCache
 from kvbench.schema import (
@@ -103,6 +104,24 @@ PHASE8_SANITIZER_PROBE_PATH = (
 PHASE8_ADAPTER_PATH = "src/kvbench/adapters/kivi.py"
 PHASE8_CACHE_PATH = "src/kvbench/runtime/kivi_cache.py"
 PHASE8_ENDPOINT_PATH = "src/kvbench/runtime/bf16_endpoint.py"
+PHASE8_EXECUTION_GIT_SHA = (
+    "462325e9df809d3bcf24a06361bf004bc7383d73"
+)
+PHASE8_HISTORICAL_ADAPTER_SHA256 = (
+    "d47efdb9a9b6e34aaf3f8465a33b6f2bc550680ad369cfb1a3e4d6f0222bccc8"
+)
+PHASE8_HISTORICAL_CACHE_SHA256 = (
+    "0c99bb6b6bf9e84074f5e087d545988912285d4c5621c10ee8e7920cac0844a5"
+)
+PHASE8_HISTORICAL_ENDPOINT_SHA256 = (
+    "8aa48ec285fb9c7853bc19ae10bd8afc07a04d1d6f522f53e67e705a424a27b9"
+)
+PHASE8_DECISION_0026_ENDPOINT_COMMIT = (
+    "781b416748e2bddca8ea5c23cd0f51a63a066276"
+)
+PHASE8_DECISION_0026_ENDPOINT_SHA256 = (
+    "9095e9a2a9c01e1ea6afb2f1cefcee46a964a82caae7b819a125757b59244a9b"
+)
 PHASE8_METHOD_CONFIG_PATH = "configs/methods/kivi.yaml"
 PHASE8_BOUNDED_GRID_SCHEMA = (
     "kvbench-phase8-kivi-bounded-grid-1.0.0"
@@ -135,6 +154,340 @@ _FORBIDDEN_INNER_REPORT_VALIDATION_KEYS = frozenset(
 
 class KIVIAdmissionError(RuntimeError):
     """Phase 8 evidence is absent, inconsistent, or outside authority."""
+
+
+@dataclass(frozen=True, slots=True)
+class Phase8HistoricalSourceAuthority:
+    """Execution-time source blobs plus the accepted endpoint transition."""
+
+    execution_git_sha: str
+    current_git_sha: str
+    adapter_source_sha256: str
+    cache_source_sha256: str
+    endpoint_source_sha256: str
+    endpoint_transition_commit: str
+
+
+def _phase8_git(
+    repository_root: Path,
+    *arguments: str,
+    binary: bool = False,
+) -> bytes | str:
+    """Run one non-interactive Git object query in a scrubbed environment."""
+
+    environment = {
+        "GIT_CONFIG_NOSYSTEM": "1",
+        "GIT_CONFIG_GLOBAL": "/dev/null",
+        "GIT_NO_REPLACE_OBJECTS": "1",
+        "GIT_TERMINAL_PROMPT": "0",
+        "LC_ALL": "C",
+        "LANG": "C",
+        "PATH": "/usr/bin:/bin",
+    }
+    try:
+        result = subprocess.run(
+            ("/usr/bin/git", *arguments),
+            cwd=repository_root,
+            env=environment,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
+            shell=False,
+            timeout=30,
+        )
+    except (OSError, subprocess.SubprocessError) as error:
+        raise KIVIAdmissionError(
+            "historical KIVI Git object query failed"
+        ) from error
+    if result.returncode != 0:
+        raise KIVIAdmissionError(
+            "historical KIVI Git object query failed"
+        )
+    if binary:
+        return result.stdout
+    try:
+        return result.stdout.decode("ascii", errors="strict").strip()
+    except UnicodeDecodeError as error:
+        raise KIVIAdmissionError(
+            "historical KIVI Git identity is not ASCII"
+        ) from error
+
+
+def _phase8_git_blob_sha256(
+    repository_root: Path,
+    *,
+    revision: str,
+    relative_path: str,
+) -> str:
+    payload = _phase8_git(
+        repository_root,
+        "cat-file",
+        "blob",
+        f"{revision}:{relative_path}",
+        binary=True,
+    )
+    if not isinstance(payload, bytes):
+        raise KIVIAdmissionError("historical KIVI Git blob is invalid")
+    return hashlib.sha256(payload).hexdigest()
+
+
+def _phase8_git_path_history(
+    repository_root: Path,
+    *,
+    start_commit: str,
+    end_commit: str,
+    relative_paths: tuple[str, ...],
+) -> str:
+    """Return full path history, including changes discarded by merges."""
+
+    history = _phase8_git(
+        repository_root,
+        "rev-list",
+        "--full-history",
+        "--reverse",
+        f"{start_commit}..{end_commit}",
+        "--",
+        *relative_paths,
+    )
+    if not isinstance(history, str):
+        raise KIVIAdmissionError(
+            "historical KIVI Git path history is invalid"
+        )
+    return history
+
+
+def _phase8_regular_source_sha256(
+    repository_root: Path,
+    relative_path: str,
+) -> str:
+    path = repository_root / relative_path
+    try:
+        metadata = path.lstat()
+        resolved = path.resolve(strict=True)
+    except OSError as error:
+        raise KIVIAdmissionError(
+            f"current KIVI source is absent: {relative_path}"
+        ) from error
+    if (
+        stat.S_ISLNK(metadata.st_mode)
+        or not stat.S_ISREG(metadata.st_mode)
+        or metadata.st_nlink != 1
+        or resolved != path
+    ):
+        raise KIVIAdmissionError(
+            f"current KIVI source is unsafe: {relative_path}"
+        )
+    try:
+        return hashlib.sha256(path.read_bytes()).hexdigest()
+    except OSError as error:
+        raise KIVIAdmissionError(
+            f"current KIVI source is unreadable: {relative_path}"
+        ) from error
+
+
+def resolve_phase8_historical_source_authority(
+    *,
+    repository_root: Path,
+    execution_git_sha: str,
+    manifest_adapter_sha256: str,
+) -> Phase8HistoricalSourceAuthority:
+    """Bind Phase 8 replay to its commit and Decision 0026's sole transition."""
+
+    try:
+        require_git_sha(execution_git_sha)
+        require_sha256(manifest_adapter_sha256)
+    except ValueError as error:
+        raise KIVIAdmissionError(
+            "historical KIVI source identity is invalid"
+        ) from error
+    if execution_git_sha != PHASE8_EXECUTION_GIT_SHA:
+        raise KIVIAdmissionError(
+            "historical KIVI execution commit differs from Phase 8 authority"
+        )
+    resolved_execution = _phase8_git(
+        repository_root,
+        "rev-parse",
+        "--verify",
+        f"{execution_git_sha}^{{commit}}",
+    )
+    current_git_sha = _phase8_git(
+        repository_root,
+        "rev-parse",
+        "--verify",
+        "HEAD^{commit}",
+    )
+    try:
+        if not isinstance(current_git_sha, str):
+            raise ValueError("current Git SHA is not text")
+        require_git_sha(current_git_sha)
+    except ValueError as error:
+        raise KIVIAdmissionError(
+            "current KIVI Git identity is invalid"
+        ) from error
+    if (
+        resolved_execution != execution_git_sha
+    ):
+        raise KIVIAdmissionError(
+            "historical KIVI execution commit did not resolve exactly"
+        )
+    ancestry = _phase8_git(
+        repository_root,
+        "merge-base",
+        "--is-ancestor",
+        execution_git_sha,
+        current_git_sha,
+    )
+    if ancestry != "":
+        raise KIVIAdmissionError(
+            "historical KIVI execution commit is not a current ancestor"
+        )
+    endpoint_commits = _phase8_git_path_history(
+        repository_root,
+        start_commit=execution_git_sha,
+        end_commit=current_git_sha,
+        relative_paths=(PHASE8_ENDPOINT_PATH,),
+    )
+    if endpoint_commits != PHASE8_DECISION_0026_ENDPOINT_COMMIT:
+        raise KIVIAdmissionError(
+            "KIVI endpoint transition is not the exact Decision 0026 commit"
+        )
+    kivi_source_commits = _phase8_git_path_history(
+        repository_root,
+        start_commit=execution_git_sha,
+        end_commit=current_git_sha,
+        relative_paths=(PHASE8_ADAPTER_PATH, PHASE8_CACHE_PATH),
+    )
+    if kivi_source_commits != "":
+        raise KIVIAdmissionError(
+            "KIVI adapter or cache changed after Phase 8"
+        )
+
+    historical_adapter = _phase8_git_blob_sha256(
+        repository_root,
+        revision=execution_git_sha,
+        relative_path=PHASE8_ADAPTER_PATH,
+    )
+    historical_cache = _phase8_git_blob_sha256(
+        repository_root,
+        revision=execution_git_sha,
+        relative_path=PHASE8_CACHE_PATH,
+    )
+    historical_endpoint = _phase8_git_blob_sha256(
+        repository_root,
+        revision=execution_git_sha,
+        relative_path=PHASE8_ENDPOINT_PATH,
+    )
+    transition_parent_endpoint = _phase8_git_blob_sha256(
+        repository_root,
+        revision=f"{PHASE8_DECISION_0026_ENDPOINT_COMMIT}^",
+        relative_path=PHASE8_ENDPOINT_PATH,
+    )
+    transition_endpoint = _phase8_git_blob_sha256(
+        repository_root,
+        revision=PHASE8_DECISION_0026_ENDPOINT_COMMIT,
+        relative_path=PHASE8_ENDPOINT_PATH,
+    )
+    current_head_adapter = _phase8_git_blob_sha256(
+        repository_root,
+        revision=current_git_sha,
+        relative_path=PHASE8_ADAPTER_PATH,
+    )
+    current_head_cache = _phase8_git_blob_sha256(
+        repository_root,
+        revision=current_git_sha,
+        relative_path=PHASE8_CACHE_PATH,
+    )
+    current_head_endpoint = _phase8_git_blob_sha256(
+        repository_root,
+        revision=current_git_sha,
+        relative_path=PHASE8_ENDPOINT_PATH,
+    )
+    current_adapter = _phase8_regular_source_sha256(
+        repository_root,
+        PHASE8_ADAPTER_PATH,
+    )
+    current_cache = _phase8_regular_source_sha256(
+        repository_root,
+        PHASE8_CACHE_PATH,
+    )
+    current_endpoint = _phase8_regular_source_sha256(
+        repository_root,
+        PHASE8_ENDPOINT_PATH,
+    )
+    if (
+        historical_adapter != PHASE8_HISTORICAL_ADAPTER_SHA256
+        or manifest_adapter_sha256 != PHASE8_HISTORICAL_ADAPTER_SHA256
+        or current_head_adapter != PHASE8_HISTORICAL_ADAPTER_SHA256
+        or current_adapter != PHASE8_HISTORICAL_ADAPTER_SHA256
+    ):
+        raise KIVIAdmissionError(
+            "KIVI adapter authority changed after Phase 8"
+        )
+    if (
+        historical_cache != PHASE8_HISTORICAL_CACHE_SHA256
+        or current_head_cache != PHASE8_HISTORICAL_CACHE_SHA256
+        or current_cache != PHASE8_HISTORICAL_CACHE_SHA256
+    ):
+        raise KIVIAdmissionError(
+            "KIVI cache authority changed after Phase 8"
+        )
+    if (
+        historical_endpoint != PHASE8_HISTORICAL_ENDPOINT_SHA256
+        or transition_parent_endpoint
+        != PHASE8_HISTORICAL_ENDPOINT_SHA256
+        or transition_endpoint != PHASE8_DECISION_0026_ENDPOINT_SHA256
+        or current_head_endpoint != PHASE8_DECISION_0026_ENDPOINT_SHA256
+        or current_endpoint != PHASE8_DECISION_0026_ENDPOINT_SHA256
+    ):
+        raise KIVIAdmissionError(
+            "KIVI endpoint blobs do not match the exact historical transition"
+        )
+    return Phase8HistoricalSourceAuthority(
+        execution_git_sha=execution_git_sha,
+        current_git_sha=current_git_sha,
+        adapter_source_sha256=historical_adapter,
+        cache_source_sha256=historical_cache,
+        endpoint_source_sha256=historical_endpoint,
+        endpoint_transition_commit=PHASE8_DECISION_0026_ENDPOINT_COMMIT,
+    )
+
+
+def _phase8_historical_backend_fingerprint(
+    source_authority: Phase8HistoricalSourceAuthority,
+) -> str:
+    payload = {
+        "schema_version": "kvbench-phase8-kivi-backend-fingerprint-1.0.0",
+        "prefill_backend": BACKEND_IDENTITY,
+        "decode_backend": {
+            "implementation": (
+                "patched_official_kivi_direct_compressed_decode"
+            ),
+            "official_commit": KIVI_OFFICIAL_COMMIT,
+            "official_base_tree": KIVI_OFFICIAL_BASE_TREE,
+            "patched_tree": KIVI_PATCHED_TREE,
+            "decision_0018_patch_sha256": (
+                KIVI_DECISION_0018_PATCH_SHA256
+            ),
+            "extension_sha256": KIVI_EXTENSION_SHA256,
+            "new_pack_sha256": KIVI_NEW_PACK_SHA256,
+            "fixture_root_sha256": KIVI_FIXTURE_ROOT_SHA256,
+            "cuda_abi": "float16",
+            "model_boundary": "bfloat16_to_float16_to_bfloat16",
+            "kernel_families": [
+                "bgemv2_kernel_outer_dim",
+                "bgemv4_kernel_outer_dim",
+            ],
+        },
+        "local_sources": {
+            "adapters/kivi.py": source_authority.adapter_source_sha256,
+            "runtime/bf16_endpoint.py": (
+                source_authority.endpoint_source_sha256
+            ),
+            "runtime/kivi_cache.py": source_authority.cache_source_sha256,
+        },
+    }
+    return sha256_hex(canonical_json_bytes(payload))
 
 
 @dataclass(frozen=True, slots=True)
@@ -1665,16 +2018,14 @@ def _validate_allocation_record(
         or allocation.get("pointers_stable") is not True
     ):
         raise KIVIAdmissionError("point allocation summary did not pass")
-    adapter_sha256 = sha256_file(
-        repository_root / PHASE8_ADAPTER_PATH
+    source_authority = resolve_phase8_historical_source_authority(
+        repository_root=repository_root,
+        execution_git_sha=manifest.git_sha,
+        manifest_adapter_sha256=manifest.adapter_source_sha256,
     )
-    if adapter_sha256 != manifest.adapter_source_sha256:
-        raise KIVIAdmissionError(
-            "allocation adapter source differs from the manifest"
-        )
-    cache_sha256 = sha256_file(repository_root / PHASE8_CACHE_PATH)
-    endpoint_sha256 = sha256_file(repository_root / PHASE8_ENDPOINT_PATH)
-    backend_identity = phase8_kivi_backend_fingerprint()
+    backend_identity = _phase8_historical_backend_fingerprint(
+        source_authority
+    )
     for step, (operation, operation_key) in enumerate(
         zip(operations, operation_keys, strict=True)
     ):
@@ -1703,9 +2054,13 @@ def _validate_allocation_record(
             ),
             method_fingerprint=manifest.method_fingerprint,
             backend_identity=backend_identity,
-            adapter_source_sha256=adapter_sha256,
-            cache_source_sha256=cache_sha256,
-            endpoint_source_sha256=endpoint_sha256,
+            adapter_source_sha256=(
+                source_authority.adapter_source_sha256
+            ),
+            cache_source_sha256=source_authority.cache_source_sha256,
+            endpoint_source_sha256=(
+                source_authority.endpoint_source_sha256
+            ),
             authorized_container_digest=(
                 PHASE8_AUTHORIZED_CONTAINER_DIGEST
             ),

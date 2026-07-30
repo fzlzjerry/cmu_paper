@@ -45,6 +45,7 @@ PHASE11PR_ENTRY_COMMIT = "1cb2c95be61a328f88a031ae4ce91784dddec736"
 PHASE11_ENTRY_COMMIT = "72f1897af78b738cc8c74fd335a8957a8e8f5d6c"
 PHASE11D_ENTRY_COMMIT = "69e99389b548e82e65e027cc0ea7b86c9fbe43dd"
 PHASE11R_ENTRY_COMMIT = "f0f02364a556da70e67b3107a0c0afad5f75eae9"
+PHASE12E_ENTRY_COMMIT = "7c7af7cd1efe4a8befa36ceaedb11e2b47733276"
 QUALITY_COMMIT = "a7b8285dd8ed2fb598efbb3312e9f55064a0ee64"
 ENVIRONMENT_COMMIT = "ea176994921c793789ebbd9d42515ce20ae4baee"
 EVIDENCE_COMMIT = "fb164b5ea96031ca40b21f4b8436a49a3bb5b8d2"
@@ -889,6 +890,23 @@ PHASE11R_ALLOWED_PATHS = frozenset(
         "tests/unit/test_phase11r_scope.py",
     }
 )
+PHASE12E_ALLOWED_PATHS = frozenset(
+    {
+        "Makefile",
+        (
+            "docs/decisions/"
+            "0028-phase12e-kivi-historical-source-validation.md"
+        ),
+        "scripts/validate_phase2.py",
+        "src/kvbench/runtime/kivi_admission.py",
+        "tests/unit/test_phase8_kivi_admission.py",
+        (
+            "tests/unit/"
+            "test_phase12e_kivi_historical_authority.py"
+        ),
+        "tests/unit/test_phase12e_scope.py",
+    }
+)
 
 
 RAW_RESULT_SUFFIXES = {
@@ -1342,11 +1360,32 @@ def current_phase11d_paths() -> set[str]:
     return historical_phase11d_paths()
 
 
+def historical_phase11r_paths() -> set[str]:
+    """Return the completed Phase 11R admission-rerun segment."""
+
+    return git_paths(
+        (
+            "diff",
+            "--name-only",
+            "-z",
+            PHASE11R_ENTRY_COMMIT,
+            PHASE12E_ENTRY_COMMIT,
+            "--",
+        )
+    )
+
+
 def current_phase11r_paths() -> set[str]:
-    """Return tracked and untracked changes in the narrow Phase 11R segment."""
+    """Compatibility view of the completed, frozen Phase 11R segment."""
+
+    return historical_phase11r_paths()
+
+
+def current_phase12e_paths() -> set[str]:
+    """Return tracked and untracked changes in the narrow Phase 12E segment."""
 
     changed = git_paths(
-        ("diff", "--name-only", "-z", PHASE11R_ENTRY_COMMIT, "--")
+        ("diff", "--name-only", "-z", PHASE12E_ENTRY_COMMIT, "--")
     )
     untracked = git_paths(
         ("ls-files", "--others", "--exclude-standard", "-z", "--")
@@ -1401,7 +1440,7 @@ def current_phase5_paths() -> set[str]:
 
 
 def changed_paths() -> set[str]:
-    return current_phase11r_paths()
+    return current_phase12e_paths()
 
 
 def repository_python_paths() -> list[Path]:
@@ -1446,6 +1485,7 @@ def repository_python_paths() -> list[Path]:
         paths.update(unit_tests.glob("test_phase11_*.py"))
         paths.add(unit_tests / "test_phase11d_scope.py")
         paths.add(unit_tests / "test_phase11r_scope.py")
+        paths.update(unit_tests.glob("test_phase12e_*.py"))
         paths.update(
             unit_tests / name
             for name in (
@@ -2640,6 +2680,10 @@ def check_scope() -> int:
         errors.append(
             "the accepted Phase 11R entry commit is not an ancestor of HEAD"
         )
+    if not commit_is_ancestor(PHASE12E_ENTRY_COMMIT):
+        errors.append(
+            "the accepted Phase 12E entry commit is not an ancestor of HEAD"
+        )
     phase5 = historical_phase5_paths()
     phase5_unexpected = sorted(phase5 - PHASE5_ALLOWED_PATHS)
     if phase5_unexpected:
@@ -2729,26 +2773,34 @@ def check_scope() -> int:
             "remediation plan: "
             f"{phase11d_unexpected!r}"
         )
-    changed = current_phase11r_paths()
-    phase11r_unexpected = sorted(changed - PHASE11R_ALLOWED_PATHS)
+    phase11r = historical_phase11r_paths()
+    phase11r_unexpected = sorted(phase11r - PHASE11R_ALLOWED_PATHS)
     if phase11r_unexpected:
         errors.append(
-            "files outside the approved Phase 11R admission-rerun plan: "
+            "historical files outside the approved Phase 11R "
+            "admission-rerun plan: "
             f"{phase11r_unexpected!r}"
+        )
+    changed = current_phase12e_paths()
+    phase12e_unexpected = sorted(changed - PHASE12E_ALLOWED_PATHS)
+    if phase12e_unexpected:
+        errors.append(
+            "files outside the approved Phase 12E historical-authority "
+            f"remediation plan: {phase12e_unexpected!r}"
         )
     for relative in sorted(changed):
         if relative.startswith("docs/evidence/e00/"):
             errors.append(f"immutable E00 evidence changed: {relative}")
         if relative in QUALITY_PROTOCOL_HASHES:
             errors.append(
-                f"quality protocol changed during Phase 11R: {relative}"
+                f"quality protocol changed during Phase 12E: {relative}"
             )
         if (
             Path(relative).suffix in RAW_RESULT_SUFFIXES
         ):
             errors.append(
                 f"forbidden binary, kernel, model, or profiler artifact "
-                f"in Phase 11R Git scope: {relative}"
+                f"in Phase 12E Git scope: {relative}"
             )
         if relative.startswith(
             (
@@ -2760,7 +2812,7 @@ def check_scope() -> int:
             )
         ):
             errors.append(
-                f"forbidden result tree in Phase 11R scope: {relative}"
+                f"forbidden result tree in Phase 12E scope: {relative}"
             )
     e00_changes = git_paths(
         (
