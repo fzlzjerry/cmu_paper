@@ -75,6 +75,12 @@ PHASE11_KVQUANT_OUTER_ARTIFACT ?=
 override PHASE11_KVQUANT_METHOD_ADMISSION_REPORT := docs/evidence/phase11/kvquant-method-admission.json
 override PHASE11_KVQUANT_METHOD_ADMISSION_CHECKSUM := docs/evidence/phase11/kvquant-method-admission.sha256
 override PHASE11_KVQUANT_PUBLICATION_RECEIPT := docs/evidence/phase11/r2-admission-outer-publication.json
+override PHASE11D_KVQUANT_AUTHORIZED_IMAGE_CONFIG_DIGEST := sha256:059bc9be89387369d7de9e3e9b26d85b6e9902c41e7dbf002ebc45edd188fb7e
+override PHASE11D_KVQUANT_COMMIT := 4b8533b29b04f8c4bf55f688a41fefe20487637b
+override PHASE11D_KVQUANT_TREE := 46f2149a0369d5c97d9a6bc77d57b5f3a5a5fb3b
+override PHASE11D_KVQUANT_PATCH_SHA256 := bae63bced549479709b10d7f6a8ee35a8f21ec18cc040a7424591cee47c1b0a6
+override PHASE11D_KVQUANT_EXTENSION_SHA256 := 76f346eddcdfcc19ebc53034445bfb8e002cc35e9112b9dac0fa37013ab536af
+PHASE11D_KVQUANT_SOURCE_ROOT ?= /home/rockrock/third_party_worktrees/kvquant-gqa
 KIVI_REFERENCE_IMAGE := kvbench-reference-kivi:phase7
 KIVI_REFERENCE_PARENT_CONFIG := sha256:059bc9be89387369d7de9e3e9b26d85b6e9902c41e7dbf002ebc45edd188fb7e
 KIVI_REFERENCE_IMAGE_MANIFEST := sha256:f27e4cdef6bd15f18ab76b1fe0e4413ede004b42538c74e3dd90d04172406f75
@@ -101,6 +107,7 @@ KIVI_REFERENCE_BUILD_REVISION := 3417ea0e7f322369eed21bb787a9a9a19b0a69bd
 .PHONY: validate-kivi-b019-patch
 .PHONY: validate-kvquant-gqa-patch
 .PHONY: validate-kvquant-graphsafe-patch
+.PHONY: validate-kvquant-long-context-patch validate-kvquant-phase11d
 .PHONY: calibrate-kvquant validate-calibration-kvquant reference-kivi validate-reference-kivi
 .PHONY: reference-kvquant validate-reference-kvquant
 .PHONY: validate-reference-kvquant-phase11pr
@@ -198,6 +205,71 @@ validate-kvquant-gqa-patch:
 
 validate-kvquant-graphsafe-patch:
 	@$(PHASE2_ENV) $(PHASE2_PYTHON) -m scripts.validate_kvquant_graphsafe_patch --source-root "$(KVQUANT_GRAPHSAFE_SOURCE_ROOT)"
+
+validate-kvquant-long-context-patch:
+	@$(PHASE2_ENV) $(PHASE2_PYTHON) -m scripts.validate_kvquant_long_context_patch --source-root "$(PHASE11D_KVQUANT_SOURCE_ROOT)"
+
+validate-kvquant-phase11d: override MEASUREMENT_IMAGE_CONFIG_DIGEST := $(PHASE11D_KVQUANT_AUTHORIZED_IMAGE_CONFIG_DIGEST)
+validate-kvquant-phase11d: verify-measurement-container
+	@test "$(MEASUREMENT_IMAGE_CONFIG_DIGEST)" = "$(PHASE11D_KVQUANT_AUTHORIZED_IMAGE_CONFIG_DIGEST)" || { echo '{"status":"BLOCKED","reason":"authorized_phase11d_image_digest_required"}' >&2; exit 2; }
+	@test -z "$$(git status --porcelain=v1 --untracked-files=all)" || { echo '{"status":"BLOCKED","reason":"clean_phase11d_worktree_required"}' >&2; exit 2; }
+	@task_root="$$(mktemp -d /tmp/kvbench-phase11d.XXXXXX)"; \
+		cid=""; \
+		trap 'status=$$?; if test -n "$$cid"; then docker rm -f "$$cid" >/dev/null 2>&1 || true; fi; rm -rf -- "$$task_root"; exit $$status' EXIT; \
+		git clone --quiet --no-local --no-checkout "$(CURDIR)" "$$task_root/repository"; \
+		git -C "$$task_root/repository" checkout --quiet --detach "$$(git rev-parse HEAD)"; \
+		git -C "$$task_root/repository" remote remove origin; \
+		test -z "$$(git -C "$$task_root/repository" status --porcelain=v1 --untracked-files=all)"; \
+		test ! -e "$$task_root/repository/.env"; \
+		git clone --quiet --no-local --no-checkout "$(PHASE11D_KVQUANT_SOURCE_ROOT)" "$$task_root/kvquant-source"; \
+		git -C "$$task_root/kvquant-source" checkout --quiet --detach "$(PHASE11D_KVQUANT_COMMIT)"; \
+		git -C "$$task_root/kvquant-source" remote remove origin; \
+		test "$$(git -C "$$task_root/kvquant-source" rev-parse HEAD)" = "$(PHASE11D_KVQUANT_COMMIT)"; \
+		test "$$(git -C "$$task_root/kvquant-source" rev-parse HEAD^{tree})" = "$(PHASE11D_KVQUANT_TREE)"; \
+		test -z "$$(git -C "$$task_root/kvquant-source" status --porcelain=v1 --untracked-files=all)"; \
+		(cd "$$task_root/repository" && \
+			PYTHONDONTWRITEBYTECODE=1 PYTHONNOUSERSITE=1 PYTHONPATH="$$task_root/repository/src:$$task_root/repository" \
+				/usr/bin/python3 -m scripts.validate_kvquant_long_context_patch \
+					--source-root "$$task_root/kvquant-source" \
+					>"$$task_root/source-validation.json"); \
+		test "$$(/usr/bin/python3 -c 'import json,sys; print(json.load(open(sys.argv[1], encoding="utf-8"))["aggregate_patch_sha256"])' "$$task_root/source-validation.json")" = "$(PHASE11D_KVQUANT_PATCH_SHA256)"; \
+		mkdir "$$task_root/kvquant-build"; \
+		for file in setup_cuda.py quant_cuda.cpp quant_cuda_kernel.cu measurement_cuda_kernel.cu; do \
+			source="$$task_root/kvquant-source/deployment/kvquant/$$file"; \
+			test -f "$$source" && test ! -L "$$source"; \
+			cp -- "$$source" "$$task_root/kvquant-build/$$file"; \
+		done; \
+		mkdir -p "$(CURDIR)/artifacts/phase11"; \
+		artifact_root="$$(mktemp -d "$(CURDIR)/artifacts/phase11/phase11d-launch.XXXXXX")"; \
+		test -z "$$(find "$$artifact_root" -mindepth 1 -maxdepth 1 -print -quit)"; \
+		cid="$$(docker create --read-only --network=none \
+			--gpus "device=$(MEASUREMENT_GPU_UUID)" \
+			--tmpfs /tmp:rw,exec,nosuid,nodev,size=16g \
+			--tmpfs /root:rw,exec,nosuid,nodev,size=8g \
+			--mount "type=bind,src=$$task_root/repository,dst=/home/rockrock/cmu_paper,readonly" \
+			--mount "type=bind,src=$$task_root/kvquant-source,dst=/opt/kvquant-source,readonly" \
+			--mount "type=bind,src=$$task_root/kvquant-build,dst=/opt/kvquant-build" \
+			--mount "type=bind,src=$$artifact_root,dst=/opt/phase11d-evidence" \
+			--env PYTHONDONTWRITEBYTECODE=1 \
+			--env PYTHONNOUSERSITE=1 \
+			--env PYTHONPATH=/opt/kvbench/.phase3/site-packages:/home/rockrock/cmu_paper/src:/home/rockrock/cmu_paper \
+			--env CUBLAS_WORKSPACE_CONFIG=:4096:8 \
+			--env TORCH_CUDA_ARCH_LIST=12.0+PTX \
+			--env KVBENCH_AUTHORIZED_IMAGE_DIGEST="$(PHASE11D_KVQUANT_AUTHORIZED_IMAGE_CONFIG_DIGEST)" \
+			--env KVBENCH_EXECUTION_ENVIRONMENT=measurement_container \
+			--workdir /home/rockrock/cmu_paper \
+			--entrypoint /usr/bin/bash "$(MEASUREMENT_IMAGE_CONFIG_DIGEST)" \
+			--noprofile --norc -eu -o pipefail -c \
+			'cd /opt/kvquant-build && /opt/kvbench/.venv/bin/python setup_cuda.py build_ext --inplace && extension="$$(find /opt/kvquant-build -maxdepth 1 -type f -name "quant_cuda.*.so" -print -quit)" && test -n "$$extension" && test "$$(sha256sum "$$extension" | cut -d " " -f 1)" = "$(PHASE11D_KVQUANT_EXTENSION_SHA256)" && cd /home/rockrock/cmu_paper && /opt/kvbench/.venv/bin/python scripts/phase11d_kvquant_validation.py --repository-root /home/rockrock/cmu_paper --source-root /opt/kvquant-source --extension "$$extension" --fixture-root /home/rockrock/cmu_paper/reference/kvquant_phase11pr/fixtures --output-root /opt/phase11d-evidence' \
+		)"; \
+		[[ "$$cid" =~ ^[0-9a-f]{64}$$ ]]; \
+		docker start --attach "$$cid"; \
+		docker rm -f "$$cid" >/dev/null; \
+		cid=""; \
+		test -f "$$artifact_root/COMPLETE"; \
+		(cd "$$artifact_root" && sha256sum --check --strict checksums.sha256 >/dev/null); \
+		printf 'PHASE11D_ARTIFACT=%s\n' "$$artifact_root"; \
+		printf 'PHASE11D_EVIDENCE_ROOT=%s\n' "$$(/usr/bin/python3 -c 'import json,sys; print(json.load(open(sys.argv[1], encoding="utf-8"))["checksum_ledger_sha256"])' "$$artifact_root/COMPLETE")"
 
 calibrate-kvquant: package-lock-check
 	@$(MAKE) KVQUANT_GQA_SOURCE_ROOT="$(KVQUANT_CALIBRATION_SOURCE_ROOT)" validate-kvquant-gqa-patch

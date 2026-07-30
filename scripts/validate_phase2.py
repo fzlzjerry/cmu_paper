@@ -43,6 +43,7 @@ PHASE9_ENTRY_COMMIT = "b4d253724717076188a38032d6d6204fdf15e191"
 PHASE10_ENTRY_COMMIT = "a873fc93754fa86bfb757fce476388897bee8dca"
 PHASE11PR_ENTRY_COMMIT = "1cb2c95be61a328f88a031ae4ce91784dddec736"
 PHASE11_ENTRY_COMMIT = "72f1897af78b738cc8c74fd335a8957a8e8f5d6c"
+PHASE11D_ENTRY_COMMIT = "69e99389b548e82e65e027cc0ea7b86c9fbe43dd"
 QUALITY_COMMIT = "a7b8285dd8ed2fb598efbb3312e9f55064a0ee64"
 ENVIRONMENT_COMMIT = "ea176994921c793789ebbd9d42515ce20ae4baee"
 EVIDENCE_COMMIT = "fb164b5ea96031ca40b21f4b8436a49a3bb5b8d2"
@@ -810,6 +811,37 @@ PHASE11_ALLOWED_PATHS = frozenset(
         "tests/unit/test_phase11pr_scope.py",
     }
 )
+PHASE11D_ALLOWED_PATHS = frozenset(
+    {
+        "Makefile",
+        (
+            "docs/decisions/"
+            "0027-kvquant-deterministic-long-context-value-decode.md"
+        ),
+        "docs/evidence/phase11d/cuda-validation.json",
+        (
+            "docs/phase_reports/"
+            "phase11d-kvquant-deterministic-long-context-cuda.md"
+        ),
+        "scripts/phase11d_kvquant_validation.py",
+        "scripts/validate_kvquant_long_context_patch.py",
+        "scripts/validate_phase2.py",
+        (
+            "tests/cuda/"
+            "phase11d_kvquant_long_context_validation.py"
+        ),
+        "tests/unit/test_phase11d_scope.py",
+        "tests/unit/test_phase9p_patch_custody.py",
+        (
+            "third_party/patches/kvquant/"
+            "0003-deterministic-long-context-value-decode.patch"
+        ),
+        (
+            "third_party/patches/kvquant/"
+            "deterministic-long-context-manifest.json"
+        ),
+    }
+)
 
 
 RAW_RESULT_SUFFIXES = {
@@ -1221,9 +1253,32 @@ def current_phase11pr_paths() -> set[str]:
     return historical_phase11pr_paths()
 
 
+def historical_phase11_paths() -> set[str]:
+    """Return the completed Phase 11 Adapter implementation segment."""
+
+    return git_paths(
+        (
+            "diff",
+            "--name-only",
+            "-z",
+            PHASE11_ENTRY_COMMIT,
+            PHASE11D_ENTRY_COMMIT,
+            "--",
+        )
+    )
+
+
 def current_phase11_paths() -> set[str]:
+    """Compatibility view of the completed Phase 11 Adapter segment."""
+
+    return historical_phase11_paths()
+
+
+def current_phase11d_paths() -> set[str]:
+    """Return tracked and untracked changes in the narrow Phase 11D segment."""
+
     changed = git_paths(
-        ("diff", "--name-only", "-z", PHASE11_ENTRY_COMMIT, "--")
+        ("diff", "--name-only", "-z", PHASE11D_ENTRY_COMMIT, "--")
     )
     untracked = git_paths(
         ("ls-files", "--others", "--exclude-standard", "-z", "--")
@@ -1278,7 +1333,7 @@ def current_phase5_paths() -> set[str]:
 
 
 def changed_paths() -> set[str]:
-    return current_phase11_paths()
+    return current_phase11d_paths()
 
 
 def repository_python_paths() -> list[Path]:
@@ -1293,6 +1348,8 @@ def repository_python_paths() -> list[Path]:
     paths.add(ROOT / "scripts" / "phase8_r2_outer_bundle.py")
     paths.add(ROOT / "scripts" / "validate_kvquant_gqa_patch.py")
     paths.add(ROOT / "scripts" / "validate_kvquant_graphsafe_patch.py")
+    paths.add(ROOT / "scripts" / "phase11d_kvquant_validation.py")
+    paths.add(ROOT / "scripts" / "validate_kvquant_long_context_patch.py")
     paths.add(ROOT / "scripts" / "phase9_kvquant_calibration.py")
     paths.add(ROOT / "scripts" / "phase9_kvquant_worker.py")
     phase10_reference = ROOT / "reference" / "kvquant"
@@ -1319,6 +1376,7 @@ def repository_python_paths() -> list[Path]:
         paths.update(unit_tests.glob("test_phase10_*.py"))
         paths.update(unit_tests.glob("test_phase11pr_*.py"))
         paths.update(unit_tests.glob("test_phase11_*.py"))
+        paths.add(unit_tests / "test_phase11d_scope.py")
         paths.update(
             unit_tests / name
             for name in (
@@ -1358,6 +1416,11 @@ def repository_python_paths() -> list[Path]:
         )
         if phase11_sanitizer_probe.is_file():
             paths.add(phase11_sanitizer_probe)
+        phase11d_validation = (
+            cuda_tests / "phase11d_kvquant_long_context_validation.py"
+        )
+        if phase11d_validation.is_file():
+            paths.add(phase11d_validation)
     graph_tests = ROOT / "tests" / "graph"
     if graph_tests.is_dir():
         paths.update(graph_tests.glob("test_phase3_*.py"))
@@ -2500,6 +2563,10 @@ def check_scope() -> int:
         errors.append(
             "the accepted Phase 11 entry commit is not an ancestor of HEAD"
         )
+    if not commit_is_ancestor(PHASE11D_ENTRY_COMMIT):
+        errors.append(
+            "the accepted Phase 11D entry commit is not an ancestor of HEAD"
+        )
     phase5 = historical_phase5_paths()
     phase5_unexpected = sorted(phase5 - PHASE5_ALLOWED_PATHS)
     if phase5_unexpected:
@@ -2574,26 +2641,33 @@ def check_scope() -> int:
             "files outside the approved Phase 11P-R correction plan: "
             f"{phase11pr_unexpected!r}"
         )
-    changed = current_phase11_paths()
-    phase11_unexpected = sorted(changed - PHASE11_ALLOWED_PATHS)
+    phase11 = historical_phase11_paths()
+    phase11_unexpected = sorted(phase11 - PHASE11_ALLOWED_PATHS)
     if phase11_unexpected:
         errors.append(
-            "files outside the approved Phase 11 adapter plan: "
+            "historical files outside the approved Phase 11 adapter plan: "
             f"{phase11_unexpected!r}"
+        )
+    changed = current_phase11d_paths()
+    phase11d_unexpected = sorted(changed - PHASE11D_ALLOWED_PATHS)
+    if phase11d_unexpected:
+        errors.append(
+            "files outside the approved Phase 11D CUDA remediation plan: "
+            f"{phase11d_unexpected!r}"
         )
     for relative in sorted(changed):
         if relative.startswith("docs/evidence/e00/"):
             errors.append(f"immutable E00 evidence changed: {relative}")
         if relative in QUALITY_PROTOCOL_HASHES:
             errors.append(
-                f"quality protocol changed during Phase 11: {relative}"
+                f"quality protocol changed during Phase 11D: {relative}"
             )
         if (
             Path(relative).suffix in RAW_RESULT_SUFFIXES
         ):
             errors.append(
                 f"forbidden binary, kernel, model, or profiler artifact "
-                f"in Phase 11 Git scope: {relative}"
+                f"in Phase 11D Git scope: {relative}"
             )
         if relative.startswith(
             (
@@ -2605,7 +2679,7 @@ def check_scope() -> int:
             )
         ):
             errors.append(
-                f"forbidden result tree in Phase 11 scope: {relative}"
+                f"forbidden result tree in Phase 11D scope: {relative}"
             )
     e00_changes = git_paths(
         (
