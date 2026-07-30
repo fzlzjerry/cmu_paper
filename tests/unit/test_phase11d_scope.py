@@ -7,12 +7,20 @@ import subprocess
 import unittest
 
 from scripts import validate_phase2
+from scripts import phase11d_kvquant_validation
 
 
 ROOT = Path(__file__).resolve().parents[2]
 
 
 class Phase11DScopeTests(unittest.TestCase):
+    def test_multiline_source_validator_json_is_parsed(self) -> None:
+        payload = b'{\n  "status": "PASS",\n  "value": 1\n}\n'
+        self.assertEqual(
+            phase11d_kvquant_validation._last_json(payload),
+            {"status": "PASS", "value": 1},
+        )
+
     def test_entry_and_historical_phase11_segment_are_frozen(self) -> None:
         self.assertEqual(
             validate_phase2.PHASE11D_ENTRY_COMMIT,

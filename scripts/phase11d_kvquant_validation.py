@@ -73,7 +73,14 @@ def _write_exclusive(root: Path, relative: str, payload: bytes) -> Path:
 
 
 def _last_json(stdout: bytes) -> dict[str, Any] | None:
-    for line in reversed(stdout.decode("utf-8", errors="replace").splitlines()):
+    text = stdout.decode("utf-8", errors="replace")
+    try:
+        payload = json.loads(text)
+    except json.JSONDecodeError:
+        payload = None
+    if isinstance(payload, dict):
+        return payload
+    for line in reversed(text.splitlines()):
         try:
             payload = json.loads(line)
         except json.JSONDecodeError:
