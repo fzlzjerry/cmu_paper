@@ -165,6 +165,14 @@ class Phase11DQ23ScopeTests(unittest.TestCase):
             "scripts/phase11dq23_kvquant_validation.py",
             makefile,
         )
+        self.assertIn(
+            "dst=/opt/kvquant-calibration,readonly",
+            makefile,
+        )
+        self.assertIn(
+            "--calibration-root /opt/kvquant-calibration",
+            makefile,
+        )
 
     def test_multiline_source_validator_json_is_parsed(self) -> None:
         payload = b'{\n  "status": "PASS",\n  "value": 1\n}\n'

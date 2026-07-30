@@ -318,6 +318,7 @@ validate-kvquant-phase11dq23: verify-measurement-container
 			find "$$fixture_root" -type d -exec chmod 0555 {} +; \
 			find "$$fixture_root" -type f -exec chmod 0444 {} +; \
 		done; \
+		test -d "$(PHASE11_KVQUANT_CALIBRATION)"; \
 		test -z "$$(git -C "$$task_root/repository" status --porcelain=v1 --untracked-files=all)"; \
 		test ! -e "$$task_root/repository/.env"; \
 		git clone --quiet --no-local --no-checkout "$(PHASE11DQ23_KVQUANT_SOURCE_ROOT)" "$$task_root/kvquant-source"; \
@@ -348,6 +349,7 @@ validate-kvquant-phase11dq23: verify-measurement-container
 			--mount "type=bind,src=$$task_root/repository,dst=/home/rockrock/cmu_paper,readonly" \
 			--mount "type=bind,src=$$task_root/kvquant-source,dst=/opt/kvquant-source,readonly" \
 			--mount "type=bind,src=$$task_root/kvquant-build,dst=/opt/kvquant-build" \
+			--mount "type=bind,src=$(PHASE11_KVQUANT_CALIBRATION),dst=/opt/kvquant-calibration,readonly" \
 			--mount "type=bind,src=$$artifact_root,dst=/opt/phase11dq23-evidence" \
 			--env PYTHONDONTWRITEBYTECODE=1 \
 			--env PYTHONNOUSERSITE=1 \
@@ -359,7 +361,7 @@ validate-kvquant-phase11dq23: verify-measurement-container
 			--workdir /home/rockrock/cmu_paper \
 			--entrypoint /usr/bin/bash "$(MEASUREMENT_IMAGE_CONFIG_DIGEST)" \
 			--noprofile --norc -eu -o pipefail -c \
-			'cd /opt/kvquant-build && /opt/kvbench/.venv/bin/python setup_cuda.py build_ext --inplace && extension="$$(find /opt/kvquant-build -maxdepth 1 -type f -name "quant_cuda.*.so" -print -quit)" && test -n "$$extension" && /usr/bin/strip --strip-unneeded "$$extension" && test "$$(sha256sum "$$extension" | cut -d " " -f 1)" = "$(PHASE11DQ23_KVQUANT_EXTENSION_SHA256)" && cd /home/rockrock/cmu_paper && /opt/kvbench/.venv/bin/python scripts/phase11dq23_kvquant_validation.py --repository-root /home/rockrock/cmu_paper --source-root /opt/kvquant-source --extension "$$extension" --fixture-root /home/rockrock/cmu_paper/reference/kvquant_phase11pr/fixtures --output-root /opt/phase11dq23-evidence' \
+			'cd /opt/kvquant-build && /opt/kvbench/.venv/bin/python setup_cuda.py build_ext --inplace && extension="$$(find /opt/kvquant-build -maxdepth 1 -type f -name "quant_cuda.*.so" -print -quit)" && test -n "$$extension" && /usr/bin/strip --strip-unneeded "$$extension" && test "$$(sha256sum "$$extension" | cut -d " " -f 1)" = "$(PHASE11DQ23_KVQUANT_EXTENSION_SHA256)" && cd /home/rockrock/cmu_paper && /opt/kvbench/.venv/bin/python scripts/phase11dq23_kvquant_validation.py --repository-root /home/rockrock/cmu_paper --source-root /opt/kvquant-source --extension "$$extension" --fixture-root /home/rockrock/cmu_paper/reference/kvquant_phase11pr/fixtures --calibration-root /opt/kvquant-calibration --output-root /opt/phase11dq23-evidence' \
 		)"; \
 		[[ "$$cid" =~ ^[0-9a-f]{64}$$ ]]; \
 		docker start --attach "$$cid"; \

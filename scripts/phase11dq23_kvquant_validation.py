@@ -44,6 +44,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--source-root", type=Path, required=True)
     parser.add_argument("--extension", type=Path, required=True)
     parser.add_argument("--fixture-root", type=Path, required=True)
+    parser.add_argument("--calibration-root", type=Path, required=True)
     parser.add_argument("--output-root", type=Path, required=True)
     return parser.parse_args()
 
@@ -397,6 +398,7 @@ def main() -> int:
     source_root = arguments.source_root.resolve(strict=True)
     extension = arguments.extension.resolve(strict=True)
     fixture_root = arguments.fixture_root.resolve(strict=True)
+    calibration_root = arguments.calibration_root.resolve(strict=True)
     output_root = arguments.output_root.resolve(strict=True)
     if any(output_root.iterdir()):
         raise Phase11DQ23ValidationError("output root must start empty")
@@ -530,11 +532,7 @@ def main() -> int:
     adapter_environment.update(
         {
             "KVBENCH_KVQUANT_EXTENSION": str(extension),
-            "KVBENCH_KVQUANT_CALIBRATION_ROOT": str(
-                repository_root
-                / "calibration/kvquant/"
-                "kvqcal-cdb724c806d64d095c040d2673a987a3"
-            ),
+            "KVBENCH_KVQUANT_CALIBRATION_ROOT": str(calibration_root),
         }
     )
     adapter_command = (
