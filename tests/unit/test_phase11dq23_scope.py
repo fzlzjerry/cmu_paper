@@ -154,6 +154,10 @@ class Phase11DQ23ScopeTests(unittest.TestCase):
             manifest["extension"]["sha256"],
             "b3c33badb8e55b19d6b2ce535182e964ce51e5102d8413b29701dd3d817ad73d",
         )
+        self.assertEqual(
+            manifest["validation"]["evidence_sha256"],
+            "04759580cf6ddbd6d5108f5069058ce71994a12c0ce6b951b36093ab222b934c",
+        )
         makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
         self.assertIn("validate-kvquant-phase11dq23:", makefile)
         self.assertIn(

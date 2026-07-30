@@ -1,0 +1,187 @@
+{
+  "schema_version": "kvbench-phase11dq23-cuda-validation-1.0.0",
+  "status": "PASS",
+  "recorded_at_utc": "2026-07-30T13:23:32Z",
+  "run_kind": "phase11dq23_cuda_validation",
+  "source": {
+    "identifier": "kvquant_gqa_longctx_deterministic_q23_v4",
+    "parent_commit": "4b8533b29b04f8c4bf55f688a41fefe20487637b",
+    "parent_tree": "46f2149a0369d5c97d9a6bc77d57b5f3a5a5fb3b",
+    "patched_commit": "34b0bdfa83082e1f30387d9ac5cca369006e089c",
+    "patched_tree": "1f85af65fe03061583ffe8bd91e47d7ecffdd312",
+    "aggregate_patch_sha256": "7b9d3cc6773e8ef37697601c885f2c5ec581dffd57cf59424d03e68f147bd55a",
+    "parent_delta_sha256": "a3dc04b35371662603aaa68e00ba8bfa04f264dd63177c7c6c123e66ea08e736",
+    "changed_files": [
+      {
+        "path": "deployment/kvquant/quant_cuda.cpp",
+        "sha256": "854831d282626fa9d695f4f017ca2537c48a09072f9f0dee4f38573caed4437c"
+      },
+      {
+        "path": "deployment/kvquant/quant_cuda_kernel.cu",
+        "sha256": "457a1d8d7bd07ba2e7e8420cbe3b722b52471f131ecc88f7f5442584a8b212f9"
+      }
+    ],
+    "source_contract": "PASS",
+    "reconstruction": "PASS"
+  },
+  "build": {
+    "authorized_measurement_container": "sha256:059bc9be89387369d7de9e3e9b26d85b6e9902c41e7dbf002ebc45edd188fb7e",
+    "extension_sha256": "b3c33badb8e55b19d6b2ce535182e964ce51e5102d8413b29701dd3d817ad73d",
+    "extension_identity_scope": "post_link_stripped_extension",
+    "sm_120_cubin": true,
+    "compute_120_ptx": true,
+    "image_changed": false,
+    "packages_installed": false
+  },
+  "determinism": {
+    "quantized_context_width": 4092,
+    "reduction_order": "token_ascending_slot_ascending_then_tile_ascending",
+    "workspace_shape": [
+      1,
+      32,
+      31,
+      128
+    ],
+    "workspace_dtype": "float32",
+    "workspace_bytes": 507904,
+    "workspace_alias": "decode_logits",
+    "caller_owned_workspace": true,
+    "additional_persistent_bytes": 0,
+    "cases": [
+      {
+        "bit_width": 3,
+        "repetitions": 100,
+        "unique_output_sha256_count": 1,
+        "output_sha256": "5d8e11ec50de71b04a072fdec5b0863ab9e607122edd10006d6b5a098bdcff02",
+        "all_finite": true,
+        "independent_control": {
+          "status": "PASS",
+          "sha256": "79f3e7847933c1a79d8f123746e6865aa24fff5c6cdb91fcd52e2d451873679c",
+          "maximum_absolute_difference": 0.000396728515625,
+          "maximum_relative_difference": 0.000007245432243507821,
+          "atol": 0.01,
+          "rtol": 0.01
+        }
+      },
+      {
+        "bit_width": 2,
+        "repetitions": 100,
+        "unique_output_sha256_count": 1,
+        "output_sha256": "4a62b1e203b1861ba276855d6ed5fa5e4b35a365f266584d92b7bc3bfa69752a",
+        "all_finite": true,
+        "independent_control": {
+          "status": "PASS",
+          "sha256": "bc84dc4be77fa5552a495408774b193d5dec33428054c79d7f413bf846b6ac13",
+          "maximum_absolute_difference": 0.00048828125,
+          "maximum_relative_difference": 0.000007335605914704502,
+          "atol": 0.01,
+          "rtol": 0.01
+        }
+      }
+    ],
+    "execution_history_dependent_output": false
+  },
+  "fixture_preservation": {
+    "fixture_id": "kvqref-2e0a0e9022c50cbc6fb497d88cae973e",
+    "fixture_root_sha256": "c28682d58706b58812dc1db69ba5eb4982339ba13f39bf67f751794cdaabfdec",
+    "historical_phase10_root_sha256": "32cdf465a361dd6695b66ccbea0a462bddc075fd9778d0aa8cdaa3f94e6f63ab",
+    "passed": 9,
+    "total": 9,
+    "payload_metadata_sparse_sink_store_append": "EXACT",
+    "decode_tolerance": {
+      "atol": 0.01,
+      "rtol": 0.01
+    },
+    "fixture_files_changed": false,
+    "calibration_changed": false
+  },
+  "stream": {
+    "current_pytorch_cuda_stream": true,
+    "non_default_stream_ordering": "PASS",
+    "kvq3_output_sha256": "5d8e11ec50de71b04a072fdec5b0863ab9e607122edd10006d6b5a098bdcff02",
+    "kvq2_output_sha256": "4a62b1e203b1861ba276855d6ed5fa5e4b35a365f266584d92b7bc3bfa69752a"
+  },
+  "cuda_graph": {
+    "capture": "PASS",
+    "replay": "PASS",
+    "eager_graph_output_agreement": "PASS",
+    "caller_owned_pointers_stable": true,
+    "replay_count": 10,
+    "replay_unique_output_sha256_count": 1,
+    "replay_allocation_events": 0,
+    "replay_allocation_bytes": 0,
+    "replay_allocated_delta": 0,
+    "replay_reserved_delta": 0
+  },
+  "allocation": {
+    "eager_allocation_events": 0,
+    "eager_allocation_bytes": 0,
+    "eager_allocated_delta": 0,
+    "eager_reserved_delta": 0,
+    "graph_replay_allocation_events": 0,
+    "graph_replay_allocation_bytes": 0,
+    "graph_replay_allocated_delta": 0,
+    "graph_replay_reserved_delta": 0,
+    "dynamic_output_allocation": 0,
+    "host_synchronization_in_tested_path": 0
+  },
+  "regressions": {
+    "q4_determinism": "PASS",
+    "q4_non_default_stream": "PASS",
+    "q4_cuda_graph": "PASS",
+    "adapter_all_nine_fixtures": "PASS",
+    "adapter_cuda_graph": "PASS",
+    "existing_cuda_mha_gqa_tests": {
+      "status": "PASS",
+      "passed": 4,
+      "total": 4,
+      "stderr_sha256": "eaad57c9015c08a5cc5395ed92acfe20ff81b7c89588202fed70472dac06be4f"
+    },
+    "frozen_source_mha_gqa_control": {
+      "status": "PASS",
+      "modeling_llama_sha256": "f557acc086ce9b7abff57eec741d97286c09a85cc44c221c8cba43beb9ded308",
+      "query_key_helper_sha256": "24ccb5b065bdfba11cce7404b3427eed01f3079e3809401504aef2c2f3344411",
+      "score_value_helper_sha256": "0c34ee7e9ac3eb14935d2e22db6ad081ca961aa2700e7fd29d7a188cc513b637",
+      "gqa_mapping": "query_head//4",
+      "independent_control": "explicit_repeat_for_gqa_direct_matmul_for_mha"
+    }
+  },
+  "compute_sanitizer": {
+    "version": "2025.3.1.0 (build 36400806)",
+    "memcheck": {
+      "status": "PASS",
+      "error_count": 0,
+      "leaked_allocations": 0,
+      "leaked_bytes": 0,
+      "graph_replay": "PASS"
+    },
+    "initcheck": {
+      "status": "PASS",
+      "error_count": 0,
+      "uninitialized_read_count": 0,
+      "graph_replay": "PASS"
+    }
+  },
+  "artifact": {
+    "local_root": "artifacts/phase11/phase11dq23-launch.ssAO5M",
+    "evidence_root_sha256": "8b65112ea2d49b58ee07c1533b429fac1a8af7466e09adad073d9a22ae2ec790",
+    "artifact_inventory_sha256": "aacc0e4871d791b321a979cf9cb39f8a5b7cd1d9a82c01d5281c2bfdb1c26f99",
+    "checksum_ledger_sha256": "8b65112ea2d49b58ee07c1533b429fac1a8af7466e09adad073d9a22ae2ec790",
+    "complete_sha256": "0e3f0ffd4e77856f21bf7a1350b54de6b12216230884b4e4e904c4d8a7c1a504",
+    "summary_sha256": "686c6dd06f65a952c567aa293f4b1ea0a756f5f1c543cc00c90e27953bb641ac",
+    "object_count": 46,
+    "complete_last": true,
+    "checksum_validation": "PASS"
+  },
+  "scope": {
+    "adapter_bound_to_new_apis": true,
+    "adapter_workspace_additional_allocated_bytes": 0,
+    "measurement_container_changed": false,
+    "phase12_started": false,
+    "admission_grid_run": false,
+    "method_admission_report_published": false,
+    "performance_timing": false,
+    "quality_execution": false
+  },
+  "timing_fields_present": false
+}

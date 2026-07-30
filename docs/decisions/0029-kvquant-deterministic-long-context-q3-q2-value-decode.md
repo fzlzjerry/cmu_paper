@@ -1,6 +1,6 @@
 # Decision 0029: KVQuant deterministic q3/q2 long-context Value decode
 
-- Status: Proposed
+- Status: Accepted
 - Date: 2026-07-30
 - Scope: Phase 11D-Q23 only
 - Parent source authority: Decision 0027
@@ -65,3 +65,27 @@ q3 and q2 at Value width 4092:
 - unchanged nine-fixture conformance and passing q4/MHA/GQA regressions.
 
 Phase 12 execution is explicitly deferred.
+
+## Accepted identities and evidence
+
+- Corrected source commit:
+  `34b0bdfa83082e1f30387d9ac5cca369006e089c`
+- Corrected source tree:
+  `1f85af65fe03061583ffe8bd91e47d7ecffdd312`
+- Aggregate patch SHA-256:
+  `7b9d3cc6773e8ef37697601c885f2c5ec581dffd57cf59424d03e68f147bd55a`
+- Decision-0027-parent-relative delta SHA-256:
+  `a3dc04b35371662603aaa68e00ba8bfa04f264dd63177c7c6c123e66ea08e736`
+- Deterministically stripped extension SHA-256:
+  `b3c33badb8e55b19d6b2ce535182e964ce51e5102d8413b29701dd3d817ad73d`
+- Validation evidence SHA-256:
+  `04759580cf6ddbd6d5108f5069058ce71994a12c0ce6b951b36093ab222b934c`
+- Append-only validation root:
+  `8b65112ea2d49b58ee07c1533b429fac1a8af7466e09adad073d9a22ae2ec790`
+
+The authorized Measurement Container passed q3 and q2 width-4092
+100-execution exact-SHA checks, independent numerical controls, all nine
+fixture checks, q4 and MHA/GQA regressions, non-default-stream ordering, CUDA
+Graph capture/replay with stable pointers and zero replay allocation, and
+Compute Sanitizer memcheck/initcheck with zero errors, uninitialized reads, or
+leaked allocations.

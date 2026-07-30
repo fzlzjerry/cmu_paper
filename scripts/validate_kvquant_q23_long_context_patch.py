@@ -315,6 +315,255 @@ def _validate_manifest(manifest: dict[str, Any]) -> None:
     _validate_preservation(manifest)
 
 
+def _validate_final_evidence(
+    manifest: dict[str, Any],
+    evidence_sha256: str,
+) -> None:
+    if (
+        not EVIDENCE.is_file()
+        or base._sha256(EVIDENCE.read_bytes()) != evidence_sha256
+    ):
+        raise base.ValidationError("Phase 11D-Q23 evidence identity differs")
+    evidence = base._read_json(EVIDENCE, "Phase 11D-Q23 CUDA evidence")
+    if (
+        evidence.get("schema_version")
+        != "kvbench-phase11dq23-cuda-validation-1.0.0"
+        or evidence.get("status") != "PASS"
+        or evidence.get("timing_fields_present") is not False
+    ):
+        raise base.ValidationError("Phase 11D-Q23 evidence status differs")
+
+    source = evidence.get("source")
+    if not isinstance(source, dict):
+        raise base.ValidationError("Phase 11D-Q23 source evidence is absent")
+    expected_source = {
+        "identifier": manifest["authority"]["method_identifier"],
+        "parent_commit": manifest["source"]["parent_commit"],
+        "parent_tree": manifest["source"]["parent_tree"],
+        "patched_commit": manifest["source"]["patched_commit"],
+        "patched_tree": manifest["source"]["patched_tree"],
+        "aggregate_patch_sha256": manifest["patch"]["sha256"],
+        "parent_delta_sha256": manifest["parent_delta"]["sha256"],
+        "source_contract": "PASS",
+        "reconstruction": "PASS",
+    }
+    for name, expected in expected_source.items():
+        if source.get(name) != expected:
+            raise base.ValidationError(
+                f"Phase 11D-Q23 source evidence differs: {name}"
+            )
+    expected_changed_files = [
+        {
+            "path": record["path"],
+            "sha256": record["after_sha256"],
+        }
+        for record in manifest["parent_delta"]["changed_files"]
+    ]
+    if source.get("changed_files") != expected_changed_files:
+        raise base.ValidationError(
+            "Phase 11D-Q23 changed-file evidence differs"
+        )
+
+    build = evidence.get("build")
+    if not isinstance(build, dict):
+        raise base.ValidationError("Phase 11D-Q23 build evidence is absent")
+    if (
+        build.get("authorized_measurement_container")
+        != PRESERVED_IDENTITIES["authorized_container_digest"]
+        or build.get("extension_sha256")
+        != manifest["extension"]["sha256"]
+        or build.get("sm_120_cubin") is not True
+        or build.get("compute_120_ptx") is not True
+        or build.get("image_changed") is not False
+        or build.get("packages_installed") is not False
+    ):
+        raise base.ValidationError("Phase 11D-Q23 build evidence differs")
+
+    determinism = evidence.get("determinism")
+    if not isinstance(determinism, dict):
+        raise base.ValidationError(
+            "Phase 11D-Q23 determinism evidence is absent"
+        )
+    contract = manifest["deterministic_value_decode"]
+    expected_determinism = {
+        "quantized_context_width": contract["quantized_context"],
+        "reduction_order": contract["reduction_order"],
+        "workspace_shape": contract["workspace_shape"],
+        "workspace_dtype": contract["workspace_dtype"],
+        "workspace_bytes": contract["workspace_bytes"],
+        "workspace_alias": contract["workspace_alias"],
+        "caller_owned_workspace": True,
+        "additional_persistent_bytes": 0,
+        "execution_history_dependent_output": False,
+    }
+    for name, expected in expected_determinism.items():
+        if determinism.get(name) != expected:
+            raise base.ValidationError(
+                f"Phase 11D-Q23 determinism evidence differs: {name}"
+            )
+    cases = determinism.get("cases")
+    if not isinstance(cases, list) or [
+        case.get("bit_width") for case in cases
+    ] != [3, 2]:
+        raise base.ValidationError(
+            "Phase 11D-Q23 bit-width evidence differs"
+        )
+    for case in cases:
+        control = case.get("independent_control")
+        if (
+            case.get("repetitions") != 100
+            or case.get("unique_output_sha256_count") != 1
+            or case.get("all_finite") is not True
+            or not isinstance(control, dict)
+            or control.get("status") != "PASS"
+            or control.get("atol") != 0.01
+            or control.get("rtol") != 0.01
+        ):
+            raise base.ValidationError(
+                "Phase 11D-Q23 deterministic case failed"
+            )
+        _require_sha256(case.get("output_sha256"), "output_sha256")
+        _require_sha256(control.get("sha256"), "control.sha256")
+
+    fixtures = evidence.get("fixture_preservation")
+    if (
+        not isinstance(fixtures, dict)
+        or fixtures.get("fixture_root_sha256")
+        != PRESERVED_IDENTITIES["fixture_root_sha256"]
+        or fixtures.get("passed") != 9
+        or fixtures.get("total") != 9
+        or fixtures.get("payload_metadata_sparse_sink_store_append")
+        != "EXACT"
+        or fixtures.get("fixture_files_changed") is not False
+        or fixtures.get("calibration_changed") is not False
+    ):
+        raise base.ValidationError(
+            "Phase 11D-Q23 fixture-preservation evidence differs"
+        )
+
+    stream = evidence.get("stream")
+    graph = evidence.get("cuda_graph")
+    allocation = evidence.get("allocation")
+    if (
+        not isinstance(stream, dict)
+        or stream.get("current_pytorch_cuda_stream") is not True
+        or stream.get("non_default_stream_ordering") != "PASS"
+        or not isinstance(graph, dict)
+        or graph.get("capture") != "PASS"
+        or graph.get("replay") != "PASS"
+        or graph.get("eager_graph_output_agreement") != "PASS"
+        or graph.get("caller_owned_pointers_stable") is not True
+        or not isinstance(allocation, dict)
+    ):
+        raise base.ValidationError(
+            "Phase 11D-Q23 stream/Graph evidence differs"
+        )
+    zero_allocation_fields = (
+        "eager_allocation_events",
+        "eager_allocation_bytes",
+        "eager_allocated_delta",
+        "eager_reserved_delta",
+        "graph_replay_allocation_events",
+        "graph_replay_allocation_bytes",
+        "graph_replay_allocated_delta",
+        "graph_replay_reserved_delta",
+        "dynamic_output_allocation",
+        "host_synchronization_in_tested_path",
+    )
+    if any(allocation.get(name) != 0 for name in zero_allocation_fields):
+        raise base.ValidationError(
+            "Phase 11D-Q23 allocation evidence is nonzero"
+        )
+    if (
+        graph.get("replay_allocation_events") != 0
+        or graph.get("replay_allocation_bytes") != 0
+        or graph.get("replay_allocated_delta") != 0
+        or graph.get("replay_reserved_delta") != 0
+    ):
+        raise base.ValidationError(
+            "Phase 11D-Q23 Graph replay allocation is nonzero"
+        )
+
+    regressions = evidence.get("regressions")
+    if (
+        not isinstance(regressions, dict)
+        or regressions.get("q4_determinism") != "PASS"
+        or regressions.get("q4_non_default_stream") != "PASS"
+        or regressions.get("q4_cuda_graph") != "PASS"
+        or regressions.get("adapter_all_nine_fixtures") != "PASS"
+        or regressions.get("adapter_cuda_graph") != "PASS"
+    ):
+        raise base.ValidationError("Phase 11D-Q23 regression evidence differs")
+    cuda_gqa = regressions.get("existing_cuda_mha_gqa_tests")
+    source_gqa = regressions.get("frozen_source_mha_gqa_control")
+    if (
+        not isinstance(cuda_gqa, dict)
+        or cuda_gqa.get("status") != "PASS"
+        or cuda_gqa.get("passed") != 4
+        or cuda_gqa.get("total") != 4
+        or not isinstance(source_gqa, dict)
+        or source_gqa.get("status") != "PASS"
+        or source_gqa.get("modeling_llama_sha256")
+        != "f557acc086ce9b7abff57eec741d97286c09a85cc44c221c8cba43beb9ded308"
+        or source_gqa.get("gqa_mapping") != "query_head//4"
+    ):
+        raise base.ValidationError("Phase 11D-Q23 MHA/GQA evidence differs")
+
+    sanitizer = evidence.get("compute_sanitizer")
+    if not isinstance(sanitizer, dict):
+        raise base.ValidationError(
+            "Phase 11D-Q23 sanitizer evidence is absent"
+        )
+    memcheck = sanitizer.get("memcheck")
+    initcheck = sanitizer.get("initcheck")
+    if (
+        not isinstance(memcheck, dict)
+        or memcheck.get("status") != "PASS"
+        or memcheck.get("error_count") != 0
+        or memcheck.get("leaked_allocations") != 0
+        or memcheck.get("leaked_bytes") != 0
+        or memcheck.get("graph_replay") != "PASS"
+        or not isinstance(initcheck, dict)
+        or initcheck.get("status") != "PASS"
+        or initcheck.get("error_count") != 0
+        or initcheck.get("uninitialized_read_count") != 0
+        or initcheck.get("graph_replay") != "PASS"
+    ):
+        raise base.ValidationError(
+            "Phase 11D-Q23 sanitizer evidence differs"
+        )
+
+    artifact = evidence.get("artifact")
+    scope = evidence.get("scope")
+    if (
+        not isinstance(artifact, dict)
+        or artifact.get("evidence_root_sha256")
+        != artifact.get("checksum_ledger_sha256")
+        or artifact.get("complete_last") is not True
+        or artifact.get("checksum_validation") != "PASS"
+        or not isinstance(scope, dict)
+        or scope.get("adapter_bound_to_new_apis") is not True
+        or scope.get("adapter_workspace_additional_allocated_bytes") != 0
+        or scope.get("measurement_container_changed") is not False
+        or scope.get("phase12_started") is not False
+        or scope.get("admission_grid_run") is not False
+        or scope.get("method_admission_report_published") is not False
+        or scope.get("performance_timing") is not False
+        or scope.get("quality_execution") is not False
+    ):
+        raise base.ValidationError(
+            "Phase 11D-Q23 artifact/scope evidence differs"
+        )
+    for name in (
+        "evidence_root_sha256",
+        "artifact_inventory_sha256",
+        "checksum_ledger_sha256",
+        "complete_sha256",
+        "summary_sha256",
+    ):
+        _require_sha256(artifact.get(name), f"artifact.{name}")
+
+
 def _validate_parent_delta(
     source_root: Path,
     manifest: dict[str, Any],
@@ -460,13 +709,7 @@ def validate(source_root: Path) -> dict[str, object]:
     evidence_sha256 = validation.get("evidence_sha256")
     if evidence_sha256 is not None:
         _require_sha256(evidence_sha256, "validation.evidence_sha256")
-        if (
-            not EVIDENCE.is_file()
-            or base._sha256(EVIDENCE.read_bytes()) != evidence_sha256
-        ):
-            raise base.ValidationError(
-                "Phase 11D-Q23 evidence identity differs"
-            )
+        _validate_final_evidence(manifest, evidence_sha256)
     decision, decision_status = _decision(
         manifest,
         evidence_finalized=evidence_sha256 is not None,
