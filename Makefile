@@ -79,7 +79,7 @@ override PHASE11D_KVQUANT_AUTHORIZED_IMAGE_CONFIG_DIGEST := sha256:059bc9be89387
 override PHASE11D_KVQUANT_COMMIT := 4b8533b29b04f8c4bf55f688a41fefe20487637b
 override PHASE11D_KVQUANT_TREE := 46f2149a0369d5c97d9a6bc77d57b5f3a5a5fb3b
 override PHASE11D_KVQUANT_PATCH_SHA256 := bae63bced549479709b10d7f6a8ee35a8f21ec18cc040a7424591cee47c1b0a6
-override PHASE11D_KVQUANT_EXTENSION_SHA256 := 76f346eddcdfcc19ebc53034445bfb8e002cc35e9112b9dac0fa37013ab536af
+override PHASE11D_KVQUANT_EXTENSION_SHA256 := a79644923ba131e56abe95029e669346dbbb11fd210d2b9f8b2086819ffeaad1
 PHASE11D_KVQUANT_SOURCE_ROOT ?= /home/rockrock/third_party_worktrees/kvquant-gqa
 KIVI_REFERENCE_IMAGE := kvbench-reference-kivi:phase7
 KIVI_REFERENCE_PARENT_CONFIG := sha256:059bc9be89387369d7de9e3e9b26d85b6e9902c41e7dbf002ebc45edd188fb7e
@@ -260,7 +260,7 @@ validate-kvquant-phase11d: verify-measurement-container
 			--workdir /home/rockrock/cmu_paper \
 			--entrypoint /usr/bin/bash "$(MEASUREMENT_IMAGE_CONFIG_DIGEST)" \
 			--noprofile --norc -eu -o pipefail -c \
-			'cd /opt/kvquant-build && /opt/kvbench/.venv/bin/python setup_cuda.py build_ext --inplace && extension="$$(find /opt/kvquant-build -maxdepth 1 -type f -name "quant_cuda.*.so" -print -quit)" && test -n "$$extension" && test "$$(sha256sum "$$extension" | cut -d " " -f 1)" = "$(PHASE11D_KVQUANT_EXTENSION_SHA256)" && cd /home/rockrock/cmu_paper && /opt/kvbench/.venv/bin/python scripts/phase11d_kvquant_validation.py --repository-root /home/rockrock/cmu_paper --source-root /opt/kvquant-source --extension "$$extension" --fixture-root /home/rockrock/cmu_paper/reference/kvquant_phase11pr/fixtures --output-root /opt/phase11d-evidence' \
+			'cd /opt/kvquant-build && /opt/kvbench/.venv/bin/python setup_cuda.py build_ext --inplace && extension="$$(find /opt/kvquant-build -maxdepth 1 -type f -name "quant_cuda.*.so" -print -quit)" && test -n "$$extension" && /usr/bin/strip --strip-unneeded "$$extension" && test "$$(sha256sum "$$extension" | cut -d " " -f 1)" = "$(PHASE11D_KVQUANT_EXTENSION_SHA256)" && cd /home/rockrock/cmu_paper && /opt/kvbench/.venv/bin/python scripts/phase11d_kvquant_validation.py --repository-root /home/rockrock/cmu_paper --source-root /opt/kvquant-source --extension "$$extension" --fixture-root /home/rockrock/cmu_paper/reference/kvquant_phase11pr/fixtures --output-root /opt/phase11d-evidence' \
 		)"; \
 		[[ "$$cid" =~ ^[0-9a-f]{64}$$ ]]; \
 		docker start --attach "$$cid"; \

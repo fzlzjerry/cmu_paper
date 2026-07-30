@@ -239,7 +239,13 @@
     }
   ],
   "extension": {
-    "sha256": "76f346eddcdfcc19ebc53034445bfb8e002cc35e9112b9dac0fa37013ab536af"
+    "sha256": "a79644923ba131e56abe95029e669346dbbb11fd210d2b9f8b2086819ffeaad1",
+    "identity_scope": "post_link_stripped_extension",
+    "post_link_command": [
+      "/usr/bin/strip",
+      "--strip-unneeded"
+    ],
+    "reproducibility_reason": "remove_nvcc_tmpxft_process_id_symbols"
   },
   "validation": {
     "evidence_sha256": null

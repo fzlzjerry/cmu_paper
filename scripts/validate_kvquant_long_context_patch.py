@@ -556,6 +556,19 @@ def _validate_manifest_contract(manifest: dict[str, Any]) -> None:
             "deterministic Value-decode contract mismatch"
         )
 
+    extension = manifest.get("extension")
+    if extension != {
+        "sha256": (
+            "a79644923ba131e56abe95029e669346dbbb11fd210d2b9f8b2086819ffeaad1"
+        ),
+        "identity_scope": "post_link_stripped_extension",
+        "post_link_command": ["/usr/bin/strip", "--strip-unneeded"],
+        "reproducibility_reason": "remove_nvcc_tmpxft_process_id_symbols",
+    }:
+        raise base.ValidationError(
+            "deterministic post-link extension identity mismatch"
+        )
+
     _validate_preserved_authority(manifest)
 
 

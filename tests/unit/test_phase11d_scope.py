@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 import subprocess
 import unittest
@@ -14,6 +15,36 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 class Phase11DScopeTests(unittest.TestCase):
+    def test_extension_identity_uses_deterministic_post_link_strip(self) -> None:
+        manifest = json.loads(
+            (
+                ROOT
+                / "third_party/patches/kvquant/"
+                "deterministic-long-context-manifest.json"
+            ).read_text(encoding="utf-8")
+        )
+        self.assertEqual(
+            manifest["extension"],
+            {
+                "sha256": (
+                    "a79644923ba131e56abe95029e669346dbbb11fd210d2b9f8b2086819ffeaad1"
+                ),
+                "identity_scope": "post_link_stripped_extension",
+                "post_link_command": [
+                    "/usr/bin/strip",
+                    "--strip-unneeded",
+                ],
+                "reproducibility_reason": (
+                    "remove_nvcc_tmpxft_process_id_symbols"
+                ),
+            },
+        )
+        makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
+        self.assertIn(
+            '/usr/bin/strip --strip-unneeded "$$extension"',
+            makefile,
+        )
+
     def test_multiline_source_validator_json_is_parsed(self) -> None:
         payload = b'{\n  "status": "PASS",\n  "value": 1\n}\n'
         self.assertEqual(
