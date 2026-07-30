@@ -55,6 +55,31 @@ def _recipe(target: str) -> str:
 
 
 class Phase11KVQuantMakeTargetTests(unittest.TestCase):
+    def test_graphsafe_validator_reconstructs_historical_authority(
+        self,
+    ) -> None:
+        recipe = _recipe("validate-kvquant-graphsafe-patch")
+        for required in (
+            "mktemp -d /tmp/kvbench-kvquant-graphsafe-validation.",
+            "git clone --quiet --no-local --no-checkout",
+            'checkout --quiet --detach "$(KVQUANT_GRAPHSAFE_COMMIT)"',
+            'rev-parse HEAD^{tree})" = "$(KVQUANT_GRAPHSAFE_TREE)"',
+            "status --porcelain=v1 --untracked-files=all",
+            "scripts.validate_kvquant_graphsafe_patch",
+            '--source-root "$$task_root/source"',
+        ):
+            self.assertIn(required, recipe)
+        self.assertIn(
+            "override KVQUANT_GRAPHSAFE_COMMIT := "
+            "0d9df350bd1788284e1ce76a8bf6e886beca5efa",
+            MAKEFILE,
+        )
+        self.assertIn(
+            "override KVQUANT_GRAPHSAFE_TREE := "
+            "a85cf7bf093982a4bf89c33d4e6794d9a85f846d",
+            MAKEFILE,
+        )
+
     def test_authorities_are_exact_overrides(self) -> None:
         expected = {
             "PHASE11_KVQUANT_AUTHORIZED_IMAGE_CONFIG_DIGEST": (

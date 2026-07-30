@@ -61,6 +61,8 @@ KVQUANT_REFERENCE_EXTENSION_SHA256 := 53bee7b4b5a0dead6adb682df1343330963b41149d
 KVQUANT_REFERENCE_CALIBRATION := $(CURDIR)/calibration/kvquant/kvqcal-cdb724c806d64d095c040d2673a987a3
 KVQUANT_REFERENCE_PATCH_MANIFEST := $(CURDIR)/third_party/patches/kvquant/manifest.json
 KVQUANT_GRAPHSAFE_SOURCE_ROOT ?= /home/rockrock/third_party_worktrees/kvquant-gqa
+override KVQUANT_GRAPHSAFE_COMMIT := 0d9df350bd1788284e1ce76a8bf6e886beca5efa
+override KVQUANT_GRAPHSAFE_TREE := a85cf7bf093982a4bf89c33d4e6794d9a85f846d
 KVQUANT_PHASE11PR_FIXTURES := $(CURDIR)/reference/kvquant_phase11pr/fixtures
 override PHASE11_KVQUANT_AUTHORIZED_IMAGE_CONFIG_DIGEST := sha256:059bc9be89387369d7de9e3e9b26d85b6e9902c41e7dbf002ebc45edd188fb7e
 override PHASE11_KVQUANT_CORRECTED_COMMIT := 4b8533b29b04f8c4bf55f688a41fefe20487637b
@@ -203,7 +205,14 @@ validate-kvquant-gqa-patch:
 	@$(PHASE2_ENV) $(PHASE2_PYTHON) scripts/validate_kvquant_gqa_patch.py $(if $(strip $(KVQUANT_GQA_SOURCE_ROOT)),--source-root "$(KVQUANT_GQA_SOURCE_ROOT)")
 
 validate-kvquant-graphsafe-patch:
-	@$(PHASE2_ENV) $(PHASE2_PYTHON) -m scripts.validate_kvquant_graphsafe_patch --source-root "$(KVQUANT_GRAPHSAFE_SOURCE_ROOT)"
+	@task_root="$$(mktemp -d /tmp/kvbench-kvquant-graphsafe-validation.XXXXXX)"; \
+		trap 'chmod -R u+w "$$task_root" 2>/dev/null || true; rm -rf -- "$$task_root"' EXIT; \
+		git clone --quiet --no-local --no-checkout "$(KVQUANT_GRAPHSAFE_SOURCE_ROOT)" "$$task_root/source"; \
+		git -C "$$task_root/source" checkout --quiet --detach "$(KVQUANT_GRAPHSAFE_COMMIT)"; \
+		test "$$(git -C "$$task_root/source" rev-parse HEAD)" = "$(KVQUANT_GRAPHSAFE_COMMIT)"; \
+		test "$$(git -C "$$task_root/source" rev-parse HEAD^{tree})" = "$(KVQUANT_GRAPHSAFE_TREE)"; \
+		test -z "$$(git -C "$$task_root/source" status --porcelain=v1 --untracked-files=all)"; \
+		$(PHASE2_ENV) $(PHASE2_PYTHON) -m scripts.validate_kvquant_graphsafe_patch --source-root "$$task_root/source"
 
 validate-kvquant-long-context-patch:
 	@$(PHASE2_ENV) $(PHASE2_PYTHON) -m scripts.validate_kvquant_long_context_patch --source-root "$(PHASE11D_KVQUANT_SOURCE_ROOT)"
