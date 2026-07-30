@@ -1,0 +1,161 @@
+{
+  "schema_version": "kvbench-phase11d-cuda-validation-1.0.0",
+  "status": "PASS",
+  "recorded_at_utc": "2026-07-30T02:00:28Z",
+  "run_kind": "phase11d_cuda_validation",
+  "source": {
+    "identifier": "kvquant_gqa_longctx_deterministic_v3",
+    "parent_commit": "0d9df350bd1788284e1ce76a8bf6e886beca5efa",
+    "parent_tree": "a85cf7bf093982a4bf89c33d4e6794d9a85f846d",
+    "patched_commit": "4b8533b29b04f8c4bf55f688a41fefe20487637b",
+    "patched_tree": "46f2149a0369d5c97d9a6bc77d57b5f3a5a5fb3b",
+    "aggregate_patch_sha256": "bae63bced549479709b10d7f6a8ee35a8f21ec18cc040a7424591cee47c1b0a6",
+    "parent_delta_sha256": "d12db702ec6d625330e791f4556af1dd368bfff7f00a45d5817eabcff4298ce9",
+    "changed_files": [
+      {
+        "path": "deployment/kvquant/quant_cuda.cpp",
+        "sha256": "5e6c3a95adf70f1045ef4dc2670c5753ce4772a157e06f632f971de40275a739"
+      },
+      {
+        "path": "deployment/kvquant/quant_cuda_kernel.cu",
+        "sha256": "43c73ccc61bfedcec09197c55e223702dec705e3cec2a2d9357d8fa89c76cc31"
+      }
+    ],
+    "source_contract": "PASS",
+    "reconstruction": "PASS"
+  },
+  "build": {
+    "authorized_measurement_container": "sha256:059bc9be89387369d7de9e3e9b26d85b6e9902c41e7dbf002ebc45edd188fb7e",
+    "extension_sha256": "a79644923ba131e56abe95029e669346dbbb11fd210d2b9f8b2086819ffeaad1",
+    "extension_identity_scope": "post_link_stripped_extension",
+    "post_link_command": [
+      "/usr/bin/strip",
+      "--strip-unneeded"
+    ],
+    "sm_120_cubin": true,
+    "compute_120_ptx": true,
+    "image_changed": false,
+    "packages_installed": false
+  },
+  "determinism": {
+    "quantized_context_width": 4092,
+    "reduction_order": "token_ascending_slot_ascending_then_tile_ascending",
+    "workspace_shape": [
+      1,
+      32,
+      32,
+      128
+    ],
+    "workspace_dtype": "float32",
+    "workspace_bytes": 524288,
+    "caller_owned_workspace": true,
+    "tail_shared_memory_initialized": [
+      "kvq4",
+      "kvq3",
+      "kvq2"
+    ],
+    "cases": [
+      {
+        "sparse_enabled": false,
+        "repetitions": 100,
+        "unique_output_sha256_count": 1,
+        "output_sha256": "3e90e30349cf53de0b711b3a345e6169befbd10166c134cfde497b7295082d2e",
+        "independent_control": {
+          "status": "PASS",
+          "sha256": "86ebe36e0d6ed5a712a7569f61cf183bf4f1016c3f2bbe303ef96868770f7029",
+          "maximum_absolute_difference": 0.000244140625,
+          "maximum_relative_difference": 0.000003451496240813867,
+          "atol": 0.01,
+          "rtol": 0.01
+        }
+      },
+      {
+        "sparse_enabled": true,
+        "repetitions": 100,
+        "unique_output_sha256_count": 1,
+        "output_sha256": "bc2c31cdb5dc3293110311c928b09dc61aa0ae46c9cc3be25ea0ac75340e5fb5",
+        "independent_control": {
+          "status": "PASS",
+          "sha256": "683c2dab1163be26eb39abb9038f33425a1d629abb4acc9ea8b1f2061805880e",
+          "maximum_absolute_difference": 0.000244140625,
+          "maximum_relative_difference": 0.000003451496240813867,
+          "atol": 0.01,
+          "rtol": 0.01
+        }
+      }
+    ],
+    "execution_history_dependent_output": false
+  },
+  "fixture_preservation": {
+    "fixture_id": "kvqref-2e0a0e9022c50cbc6fb497d88cae973e",
+    "fixture_root_sha256": "c28682d58706b58812dc1db69ba5eb4982339ba13f39bf67f751794cdaabfdec",
+    "historical_phase10_root_sha256": "32cdf465a361dd6695b66ccbea0a462bddc075fd9778d0aa8cdaa3f94e6f63ab",
+    "passed": 9,
+    "total": 9,
+    "fixture_files_changed": false,
+    "calibration_changed": false,
+    "q3_q2_paths": "unchanged"
+  },
+  "stream": {
+    "current_pytorch_cuda_stream": true,
+    "non_default_stream_ordering": "PASS",
+    "output_sha256": "bc2c31cdb5dc3293110311c928b09dc61aa0ae46c9cc3be25ea0ac75340e5fb5"
+  },
+  "cuda_graph": {
+    "capture": "PASS",
+    "replay": "PASS",
+    "eager_graph_output_agreement": "PASS",
+    "caller_owned_pointers_stable": true,
+    "replay_count": 10,
+    "replay_unique_output_sha256_count": 1,
+    "replay_allocation_events": 0,
+    "replay_allocation_bytes": 0
+  },
+  "allocation": {
+    "eager_allocation_events": 0,
+    "eager_allocation_bytes": 0,
+    "eager_allocated_delta": 0,
+    "eager_reserved_delta": 0,
+    "graph_replay_allocation_events": 0,
+    "graph_replay_allocation_bytes": 0,
+    "graph_replay_allocated_delta": 0,
+    "graph_replay_reserved_delta": 0,
+    "dynamic_output_allocation": 0,
+    "host_synchronization_in_tested_path": 0
+  },
+  "compute_sanitizer": {
+    "version": "2025.3.1.0 (build 36400806)",
+    "memcheck": {
+      "status": "PASS",
+      "error_count": 0,
+      "leaked_allocations": 0,
+      "leaked_bytes": 0,
+      "graph_replay": "PASS"
+    },
+    "initcheck": {
+      "status": "PASS",
+      "error_count": 0,
+      "uninitialized_read_count": 0,
+      "graph_replay": "PASS"
+    }
+  },
+  "artifact": {
+    "local_root": "artifacts/phase11/phase11d-launch.gUxXQI",
+    "evidence_root_sha256": "7dd03673e74d12fc5218416b162994d007bcaf31aeb53774094381fa351e1007",
+    "artifact_inventory_sha256": "e88256fe8549e98aa3468a2cce68a7cb06a21d0b5c7989924997f95959bd4f27",
+    "checksum_ledger_sha256": "7dd03673e74d12fc5218416b162994d007bcaf31aeb53774094381fa351e1007",
+    "complete_sha256": "547011227acaf0c8138013fac4b846cd03042036558bf1bafbce87981ebebcd9",
+    "summary_sha256": "ddb19db41f104c092f087423c487f23bddd2aea6aed4cb919189c36ffaad0a23",
+    "object_count": 26,
+    "complete_last": true,
+    "checksum_validation": "PASS"
+  },
+  "scope": {
+    "adapter_modified": false,
+    "admission_grid_run": false,
+    "method_admission_report_published": false,
+    "performance_timing": false,
+    "quality_execution": false
+  },
+  "timing_fields_present": false
+}

@@ -22,6 +22,7 @@ PATCH = (
     "third_party/patches/kvquant/"
     "0003-deterministic-long-context-value-decode.patch"
 )
+EVIDENCE = ROOT / "docs/evidence/phase11d/cuda-validation.json"
 PARENT_COMMIT = "0d9df350bd1788284e1ce76a8bf6e886beca5efa"
 PARENT_TREE = "a85cf7bf093982a4bf89c33d4e6794d9a85f846d"
 BASE_COMMIT = "57a238357f0ffe50084670fcd5781c9848f80ea2"
@@ -593,6 +594,35 @@ def validate(source_root: Path) -> dict[str, object]:
             evidence_sha256,
             "validation.evidence_sha256",
         )
+        if (
+            not EVIDENCE.is_file()
+            or base._sha256(EVIDENCE.read_bytes()) != evidence_sha256
+        ):
+            raise base.ValidationError(
+                "Phase 11D validation evidence identity mismatch"
+            )
+        evidence = base._read_json(
+            EVIDENCE,
+            "Phase 11D CUDA validation evidence",
+        )
+        if (
+            evidence.get("status") != "PASS"
+            or evidence.get("source", {}).get("patched_commit")
+            != manifest["source"]["patched_commit"]
+            or evidence.get("source", {}).get("patched_tree")
+            != manifest["source"]["patched_tree"]
+            or evidence.get("source", {}).get("aggregate_patch_sha256")
+            != manifest["patch"]["sha256"]
+            or evidence.get("build", {}).get("extension_sha256")
+            != manifest["extension"]["sha256"]
+            or evidence.get("fixture_preservation", {}).get(
+                "fixture_root_sha256"
+            )
+            != PRESERVED_IDENTITY_AUTHORITY["fixture_root_sha256"]
+        ):
+            raise base.ValidationError(
+                "Phase 11D validation evidence authority mismatch"
+            )
     decision, decision_status = _decision_0027(
         manifest,
         evidence_finalized=evidence_sha256 is not None,

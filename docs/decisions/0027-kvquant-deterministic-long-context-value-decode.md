@@ -1,6 +1,6 @@
 # Decision 0027: KVQuant deterministic long-context Value decode
 
-- Status: Proposed
+- Status: Accepted
 - Date: 2026-07-30
 - Parent authority: Decision 0025 corrected commit
   `0d9df350bd1788284e1ce76a8bf6e886beca5efa`, tree
@@ -53,7 +53,7 @@ pass with zero replay allocation, and Compute Sanitizer memcheck and initcheck
 report zero errors, uninitialized reads, and leaked allocations inside the
 authorized Measurement Container.
 
-## Proposed identities
+## Accepted identities and evidence
 
 - Derived source commit:
   `4b8533b29b04f8c4bf55f688a41fefe20487637b`
@@ -63,6 +63,18 @@ authorized Measurement Container.
   `bae63bced549479709b10d7f6a8ee35a8f21ec18cc040a7424591cee47c1b0a6`
 - Parent-relative delta SHA-256:
   `d12db702ec6d625330e791f4556af1dd368bfff7f00a45d5817eabcff4298ce9`
+- Deterministically stripped extension SHA-256:
+  `a79644923ba131e56abe95029e669346dbbb11fd210d2b9f8b2086819ffeaad1`
+- Validation evidence SHA-256:
+  `18d70be72e3172163ca6cbde46dba6c46e96fd7b9ea22884faac313df1c1eda9`
+- Append-only validation root:
+  `7dd03673e74d12fc5218416b162994d007bcaf31aeb53774094381fa351e1007`
 
-The extension and validation-evidence identities are recorded only after the
-required exact-container checks finish.
+The exact authorized Measurement Container passed the required 100-execution
+width-4092 determinism checks, independent controls, all nine fixture checks,
+non-default-stream ordering, CUDA Graph capture/replay with zero replay
+allocation, and Compute Sanitizer memcheck and initcheck with zero errors,
+uninitialized reads, or leaked allocations. The post-link
+`strip --strip-unneeded` step removes nvcc process-ID-bearing local symbols so
+the recorded extension identity is reproducible without changing executable
+code.
