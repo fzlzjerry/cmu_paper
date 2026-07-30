@@ -6,8 +6,10 @@ from pathlib import Path
 from types import SimpleNamespace
 import tempfile
 import unittest
+from unittest import mock
 
 from kvbench.schema import phase11 as phase11_schema
+from scripts import phase11_kvquant_admission as admission
 from scripts import phase11_r2_outer_bundle as outer
 
 
@@ -279,6 +281,39 @@ class Phase11RQ23OuterProfileTests(unittest.TestCase):
                         {"quality_execution": drifted},
                         allow_quality_execution_false=True,
                     )
+
+    def test_q23_report_replay_uses_and_restores_exact_profile(
+        self,
+    ) -> None:
+        outer._activate_profile(outer.AUTHORITY_PROFILE_DECISION0029)
+        admission._activate_authority_profile(
+            admission._AUTHORITY_PROFILE_DECISION_0027
+        )
+        expected = SimpleNamespace(status="PASS")
+
+        with mock.patch.object(
+            admission,
+            "derive_phase11_method_admission_report",
+            return_value=expected,
+        ) as derive:
+            observed = outer._derive_report_for_active_profile(
+                bundle_path=Path("inner"),
+                publication_receipt_path=Path("receipt"),
+                created_at_utc="2026-07-30T00:00:00Z",
+                repository_root=Path("repository"),
+            )
+
+        self.assertIs(observed, expected)
+        derive.assert_called_once_with(
+            bundle_path=Path("inner"),
+            publication_receipt_path=Path("receipt"),
+            created_at_utc="2026-07-30T00:00:00Z",
+            repository_root=Path("repository"),
+        )
+        self.assertEqual(
+            admission._ACTIVE_AUTHORITY_PROFILE,
+            admission._AUTHORITY_PROFILE_DECISION_0027,
+        )
 
     def test_q23_report_heading_and_authority_fail_closed(self) -> None:
         outer._activate_profile(outer.AUTHORITY_PROFILE_DECISION0029)

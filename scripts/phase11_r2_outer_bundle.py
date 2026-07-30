@@ -1880,11 +1880,7 @@ def _validate_report_join(
         raise Phase11OuterBundleError(
             "Phase 11 MethodAdmissionReport is invalid"
         ) from error
-    from scripts.phase11_kvquant_admission import (
-        derive_phase11_method_admission_report,
-    )
-
-    expected_report = derive_phase11_method_admission_report(
+    expected_report = _derive_report_for_active_profile(
         bundle_path=source_bundle,
         publication_receipt_path=receipt_path,
         created_at_utc=report.created_at_utc,
@@ -1953,6 +1949,30 @@ def _validate_report_join(
         report_sha256=sha256_file(report_path),
     )
     return report
+
+
+def _derive_report_for_active_profile(
+    *,
+    bundle_path: Path,
+    publication_receipt_path: Path,
+    created_at_utc: str,
+    repository_root: Path,
+) -> Phase11MethodAdmissionReport:
+    """Replay report derivation under the outer bundle's exact authority."""
+
+    from scripts import phase11_kvquant_admission as admission
+
+    previous = admission._ACTIVE_AUTHORITY_PROFILE
+    admission._activate_authority_profile(AUTHORITY_PROFILE)
+    try:
+        return admission.derive_phase11_method_admission_report(
+            bundle_path=bundle_path,
+            publication_receipt_path=publication_receipt_path,
+            created_at_utc=created_at_utc,
+            repository_root=repository_root,
+        )
+    finally:
+        admission._activate_authority_profile(previous)
 
 
 def _inner_binding(
