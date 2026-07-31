@@ -864,6 +864,8 @@ unified-admission: verify-measurement-container
 		test "$$stage_relative" != "$$stage"; \
 		mkdir -p "$$task_root/repository/$$(dirname "$$stage_relative")"; \
 		mkdir "$$task_root/repository/$$stage_relative"; \
+		chmod -R a-w "$$task_root/repository/docs/evidence/e00"; \
+		test -z "$$(find "$$task_root/repository/docs/evidence/e00" -perm /222 -print -quit)"; \
 		phase12_artifact_root="$$repository_root/artifacts/phase12"; \
 		test -d "$$phase12_artifact_root" && test ! -L "$$phase12_artifact_root"; \
 		test "$$(realpath -e "$$phase12_artifact_root")" = "$$phase12_artifact_root"; \

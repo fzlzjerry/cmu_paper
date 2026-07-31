@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
 from unittest import mock
@@ -121,6 +122,26 @@ def _write_completed_container_test(stage: Path, target: str) -> None:
 
 
 class Phase12ScopeTests(unittest.TestCase):
+    def test_phase12_replay_imports_only_exact_repository_scripts(
+        self,
+    ) -> None:
+        original_path = list(sys.path)
+        try:
+            sys.path[:] = [str(ROOT / "src"), "/tmp/untrusted"]
+            module = validate_phase2._import_repository_script(
+                "scripts.phase12_unified_admission"
+            )
+            self.assertEqual(sys.path[0], str(ROOT))
+            self.assertEqual(sys.path.count(str(ROOT)), 1)
+            self.assertEqual(
+                Path(module.__file__).resolve(),
+                ROOT / "scripts" / "phase12_unified_admission.py",
+            )
+            with self.assertRaisesRegex(ValueError, "module name"):
+                validate_phase2._import_repository_script("os.path")
+        finally:
+            sys.path[:] = original_path
+
     def test_entry_freezes_phase11rq23(self) -> None:
         self.assertEqual(
             validate_phase2.PHASE12_ENTRY_COMMIT,

@@ -788,6 +788,14 @@ class Phase12CoordinatorBoundaryTests(unittest.TestCase):
                 "dst=/home/rockrock/cmu_paper/artifacts/phase12,readonly"
             ),
             "src=$$stage,dst=/home/rockrock/cmu_paper/$$stage_relative",
+            (
+                'chmod -R a-w "$$task_root/repository/'
+                'docs/evidence/e00"'
+            ),
+            (
+                'find "$$task_root/repository/docs/evidence/e00" '
+                "-perm /222 -print -quit"
+            ),
             "--run-campaign",
             "--finalize-staged-campaign",
             "--finalize-failed-campaign",

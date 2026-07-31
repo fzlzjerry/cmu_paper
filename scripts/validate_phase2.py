@@ -27,7 +27,8 @@ from collections.abc import Callable, Sequence
 from typing import Any
 
 
-ROOT = Path(__file__).resolve().parents[1]
+REPOSITORY_SCRIPT_ROOT = Path(__file__).resolve().parents[1]
+ROOT = REPOSITORY_SCRIPT_ROOT
 SRC = ROOT / "src"
 PHASE2_ENTRY_COMMIT = "fb164b5ea96031ca40b21f4b8436a49a3bb5b8d2"
 PHASE2_FINAL_COMMIT = "7c36d130565acef0883acb638c6b6c731b3f32ad"
@@ -2651,6 +2652,31 @@ def _phase12_json_object(path: Path) -> dict[str, Any]:
     return payload
 
 
+def _import_repository_script(name: str) -> Any:
+    """Import one exact repository script for Phase 12 semantic replay."""
+
+    if re.fullmatch(r"scripts\.[a-z0-9_]+", name) is None:
+        raise ValueError("repository script module name is invalid")
+    root_text = str(REPOSITORY_SCRIPT_ROOT)
+    sys.path[:] = [entry for entry in sys.path if entry != root_text]
+    sys.path.insert(0, root_text)
+    module = importlib.import_module(name)
+    module_file = getattr(module, "__file__", None)
+    expected = (
+        REPOSITORY_SCRIPT_ROOT.joinpath(*name.split("."))
+        .with_suffix(".py")
+        .resolve()
+    )
+    if (
+        not isinstance(module_file, str)
+        or Path(module_file).resolve() != expected
+        or expected.is_symlink()
+        or not expected.is_file()
+    ):
+        raise ValueError("repository script resolved outside the exact root")
+    return module
+
+
 def _validate_phase12_failed_campaign(
     campaign: Path,
     *,
@@ -2658,7 +2684,9 @@ def _validate_phase12_failed_campaign(
 ) -> None:
     """Replay the terminal failed-campaign contract without admitting a retry."""
 
-    phase12 = importlib.import_module("scripts.phase12_unified_admission")
+    phase12 = _import_repository_script(
+        "scripts.phase12_unified_admission"
+    )
 
     phase12.validate_local_artifact(campaign, environ={})
     manifest = _phase12_json_object(campaign / "manifest.json")
@@ -2726,8 +2754,10 @@ def _validate_phase12_failed_campaign(
 def _validate_phase12_final_campaign(campaign: Path) -> None:
     """Dispatch one immutable campaign to its exact semantic validator."""
 
-    phase12 = importlib.import_module("scripts.phase12_unified_admission")
-    r2_artifact = importlib.import_module("scripts.r2_artifact")
+    phase12 = _import_repository_script(
+        "scripts.phase12_unified_admission"
+    )
+    r2_artifact = _import_repository_script("scripts.r2_artifact")
 
     campaign_id = campaign.name
     try:
@@ -2857,7 +2887,9 @@ def _validate_phase12_active_test_evidence(
 ) -> None:
     """Validate any append-only prefix of one container-test evidence set."""
 
-    phase12 = importlib.import_module("scripts.phase12_unified_admission")
+    phase12 = _import_repository_script(
+        "scripts.phase12_unified_admission"
+    )
     root = stage / "validation" / target
     if not root.exists():
         return
@@ -2912,7 +2944,9 @@ def _validate_phase12_active_stage(
 ) -> None:
     """Validate the sole in-flight stage without treating it as finalized."""
 
-    phase12 = importlib.import_module("scripts.phase12_unified_admission")
+    phase12 = _import_repository_script(
+        "scripts.phase12_unified_admission"
+    )
     reservation = _phase12_json_object(
         stage / "campaign-reservation.json"
     )
@@ -3191,7 +3225,7 @@ def validate_phase12_blocked_artifact_root() -> list[str]:
                 f"Phase 12 campaign semantic validation failed: {campaign_id}"
             )
     if active_campaign_id is not None and active_stage is not None:
-        phase12 = importlib.import_module(
+        phase12 = _import_repository_script(
             "scripts.phase12_unified_admission"
         )
         try:
