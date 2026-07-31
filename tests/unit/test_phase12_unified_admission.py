@@ -789,13 +789,11 @@ class Phase12CoordinatorBoundaryTests(unittest.TestCase):
             ),
             "src=$$stage,dst=/home/rockrock/cmu_paper/$$stage_relative",
             (
-                'chmod -R a-w "$$task_root/repository/'
-                'docs/evidence/e00"'
+                "for immutable_relative in docs/evidence/e00 "
+                "reference/kvquant_phase11pr/fixtures"
             ),
-            (
-                'find "$$task_root/repository/docs/evidence/e00" '
-                "-perm /222 -print -quit"
-            ),
+            'chmod -R a-w -- "$$immutable_root"',
+            'find "$$immutable_root" -perm /222 -print -quit',
             "--run-campaign",
             "--finalize-staged-campaign",
             "--finalize-failed-campaign",
