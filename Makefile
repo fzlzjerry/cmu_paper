@@ -108,6 +108,10 @@ override PHASE11DQ23_KVQUANT_TREE := 1f85af65fe03061583ffe8bd91e47d7ecffdd312
 override PHASE11DQ23_KVQUANT_PATCH_SHA256 := 7b9d3cc6773e8ef37697601c885f2c5ec581dffd57cf59424d03e68f147bd55a
 override PHASE11DQ23_KVQUANT_EXTENSION_SHA256 := b3c33badb8e55b19d6b2ce535182e964ce51e5102d8413b29701dd3d817ad73d
 PHASE11DQ23_KVQUANT_SOURCE_ROOT ?= /home/rockrock/third_party_worktrees/kvquant-gqa
+override PHASE12_AUTHORIZED_IMAGE_CONFIG_DIGEST := sha256:059bc9be89387369d7de9e3e9b26d85b6e9902c41e7dbf002ebc45edd188fb7e
+PHASE12_CAMPAIGN_ARTIFACT ?=
+PHASE12_HOST_ENV := /usr/bin/env -i PATH=/usr/bin:/bin LC_ALL=C LANG=C TZ=UTC PYTHONDONTWRITEBYTECODE=1 PYTHONNOUSERSITE=1 PYTHONPATH=$(PHASE3_SITE):$(CURDIR):$(CURDIR)/src
+PHASE12_HOST_PYTHON := $(PHASE12_HOST_ENV) $(CURDIR)/$(PHASE3_PYTHON)
 KIVI_REFERENCE_IMAGE := kvbench-reference-kivi:phase7
 KIVI_REFERENCE_PARENT_CONFIG := sha256:059bc9be89387369d7de9e3e9b26d85b6e9902c41e7dbf002ebc45edd188fb7e
 KIVI_REFERENCE_IMAGE_MANIFEST := sha256:f27e4cdef6bd15f18ab76b1fe0e4413ede004b42538c74e3dd90d04172406f75
@@ -142,6 +146,7 @@ KIVI_REFERENCE_BUILD_REVISION := 3417ea0e7f322369eed21bb787a9a9a19b0a69bd
 .PHONY: admit-kvquant validate-admission-kvquant
 .PHONY: admit-kvquant-q23 validate-admission-kvquant-q23
 .PHONY: validate-phase12e-kivi-history
+.PHONY: unified-admission validate-unified-admission
 
 preflight:
 	@/usr/bin/env -i PATH=/usr/bin:/bin LC_ALL=C LANG=C TZ=UTC \
@@ -208,6 +213,7 @@ test: checks
 	@$(PHASE3_ENV) $(PHASE3_PYTHON) -m unittest discover -s tests/unit -p 'test_phase9_*.py' -v
 	@$(PHASE3_ENV) $(PHASE3_PYTHON) -m unittest discover -s tests/unit -p 'test_phase10_*.py' -v
 	@$(PHASE3_ENV) $(PHASE3_PYTHON) -m unittest discover -s tests/unit -p 'test_phase11pr_*.py' -v
+	@$(PHASE3_ENV) $(PHASE3_PYTHON) -m unittest discover -s tests/unit -p 'test_phase12_*.py' -v
 	@$(PHASE3_ENV) $(PHASE3_PYTHON) -m unittest discover -s tests/unit -p 'test_phase12e_*.py' -v
 	@$(PHASE3_ENV) $(PHASE3_PYTHON) -m unittest tests.unit.test_measurement_container tests.unit.test_phase6a_bf16_parity tests.unit.test_phase6a_governance tests.unit.test_preflight_unit tests.unit.test_r2_artifact -v
 	@$(PHASE2_VALIDATE) immutable
@@ -798,6 +804,172 @@ validate-admission-kvquant validate-admission-kvquant-q23: verify-measurement-co
 		[[ "$$cid" =~ ^[0-9a-f]{64}$$ ]]; \
 		docker start --attach "$$cid"; \
 		docker rm -f "$$cid" >/dev/null; cid=""
+
+unified-admission: override MEASUREMENT_IMAGE_CONFIG_DIGEST := $(PHASE12_AUTHORIZED_IMAGE_CONFIG_DIGEST)
+unified-admission: verify-measurement-container
+	@test "$(MEASUREMENT_IMAGE_CONFIG_DIGEST)" = "$(PHASE12_AUTHORIZED_IMAGE_CONFIG_DIGEST)" || { echo '{"status":"BLOCKED","reason":"authorized_phase12_image_digest_required"}' >&2; exit 2; }
+	@test -z "$$(git status --porcelain=v1 --untracked-files=all)" || { echo '{"status":"BLOCKED","reason":"clean_committed_phase12_tree_required"}' >&2; exit 2; }
+	@task_root="$$(mktemp -d /tmp/kvbench-phase12-unified.XXXXXX)"; \
+		cid=""; reference_cid=""; stage=""; campaign_id=""; final_root=""; head=""; preserve=1; \
+		cleanup() { \
+			status=$$?; \
+			if [[ -n "$$cid" ]]; then docker rm -f "$$cid" >/dev/null 2>&1 || true; fi; \
+			if [[ -n "$$reference_cid" ]]; then docker rm -f "$$reference_cid" >/dev/null 2>&1 || true; fi; \
+			if (( status != 0 )) && [[ -n "$$stage" && -d "$$stage" && -n "$$campaign_id" && -n "$$head" ]]; then \
+				if failed_result="$$($(PHASE12_HOST_PYTHON) -m scripts.phase12_unified_admission --finalize-failed-campaign --stage "$$stage" --campaign-id "$$campaign_id" --git-sha "$$head" --failure-code "$$status" 2>&1)"; then \
+					printf '%s\n' "$$failed_result" >&2; \
+					stage=""; \
+				else \
+					failed_detail="$$($(PHASE12_HOST_PYTHON) -c 'import json,sys; print(json.dumps(sys.argv[1]))' "$$failed_result")"; \
+					printf '{"status":"PHASE12_TERMINAL_FAILURE_FINALIZATION_FAILED","detail":%s}\n' "$$failed_detail" >&2; \
+				fi; \
+			fi; \
+			if [[ -n "$$stage" && -d "$$stage" ]]; then \
+				printf '{"status":"PHASE12_STAGING_EVIDENCE_PRESERVED","path":"%s"}\n' "$$stage" >&2; \
+			fi; \
+			if (( preserve == 0 )); then \
+				chmod -R u+w "$$task_root" 2>/dev/null || true; \
+				rm -rf -- "$$task_root"; \
+			else \
+				printf '{"status":"FAILED_PHASE12_LAUNCH_EVIDENCE_PRESERVED","path":"%s"}\n' "$$task_root" >&2; \
+			fi; \
+			trap - EXIT; \
+			exit $$status; \
+		}; \
+		trap cleanup EXIT; \
+		head="$$(git rev-parse HEAD)"; \
+		repository_root="$$(git rev-parse --show-toplevel)"; \
+		test "$$repository_root" = "$(CURDIR)"; \
+		git cat-file -e "$$head:docs/plans/phase12-unified-admission.md"; \
+		image_id="$(PHASE12_AUTHORIZED_IMAGE_CONFIG_DIGEST)"; \
+		test "$$(docker image inspect "$$image_id" --format '{{.Id}}')" = "$$image_id"; \
+		campaign_id="$$($(PHASE12_HOST_PYTHON) -m scripts.phase12_unified_admission --new-campaign-id --git-sha "$$head")"; \
+		[[ "$$campaign_id" =~ ^phase12-[0-9]{8}t[0-9]{12}z-[0-9a-f]{8}-[0-9a-f]{6}$$ ]]; \
+		stage="$$($(PHASE12_HOST_PYTHON) -m scripts.phase12_unified_admission --reserve-campaign --campaign-id "$$campaign_id" --git-sha "$$head")"; \
+		test -d "$$stage" && test ! -L "$$stage"; \
+		test "$$(realpath -e "$$stage")" = "$$stage"; \
+		case "$$stage" in "$$repository_root"/artifacts/phase12/.kvbench-staging/"$$campaign_id".*.staging) ;; *) echo '{"status":"BLOCKED","reason":"unsafe_phase12_stage"}' >&2; exit 2;; esac; \
+		git clone --quiet --no-local --no-checkout "$(CURDIR)" "$$task_root/repository"; \
+		git -C "$$task_root/repository" checkout --quiet --detach "$$head"; \
+		git -C "$$task_root/repository" remote remove origin; \
+		test "$$(git -C "$$task_root/repository" rev-parse HEAD)" = "$$head"; \
+		test -z "$$(git -C "$$task_root/repository" status --porcelain=v1 --untracked-files=all)"; \
+		test ! -e "$$task_root/repository/.env" && test ! -L "$$task_root/repository/.env"; \
+		mkdir "$$task_root/repository/.venv" "$$task_root/repository/.phase3"; \
+		ln -s /opt/kvbench/.venv/bin "$$task_root/repository/.venv/bin"; \
+		ln -s /opt/kvbench/.venv/lib "$$task_root/repository/.venv/lib"; \
+		ln -s /opt/kvbench/.venv/pyvenv.cfg "$$task_root/repository/.venv/pyvenv.cfg"; \
+		ln -s /opt/kvbench/.phase3/site-packages "$$task_root/repository/.phase3/site-packages"; \
+		stage_relative="$${stage#$$repository_root/}"; \
+		test "$$stage_relative" != "$$stage"; \
+		mkdir -p "$$task_root/repository/$$(dirname "$$stage_relative")"; \
+		mkdir "$$task_root/repository/$$stage_relative"; \
+		phase12_artifact_root="$$repository_root/artifacts/phase12"; \
+		test -d "$$phase12_artifact_root" && test ! -L "$$phase12_artifact_root"; \
+		test "$$(realpath -e "$$phase12_artifact_root")" = "$$phase12_artifact_root"; \
+		reference_image="$(KIVI_REFERENCE_IMAGE)@$(PHASE8_KIVI_REFERENCE_MANIFEST_DIGEST)"; \
+		test "$$(docker image inspect "$$reference_image" --format '{{.Id}}')" = "$(PHASE8_KIVI_REFERENCE_MANIFEST_DIGEST)"; \
+		test "$$(docker image inspect "$$reference_image" --format '{{index .Config.Labels "org.kvbench.reference.parent.config_digest"}}')" = "$$image_id"; \
+		test "$$($(PHASE2_PYTHON) -c 'import json; print(json.load(open("reference/kivi/build_manifest.json", encoding="utf-8"))["image"]["config_digest"])')" = "$(PHASE8_KIVI_REFERENCE_CONFIG_DIGEST)"; \
+		mkdir "$$task_root/kivi-source" "$$task_root/kivi-extension"; \
+		reference_cid="$$(docker create --network=none "$$reference_image")"; \
+		[[ "$$reference_cid" =~ ^[0-9a-f]{64}$$ ]]; \
+		docker cp "$$reference_cid:/opt/kivi-source/." "$$task_root/kivi-source"; \
+		docker cp "$$reference_cid:/opt/kivi-source/quant/kivi_gemv.cpython-312-x86_64-linux-gnu.so" "$$task_root/kivi-extension/kivi_gemv.cpython-312-x86_64-linux-gnu.so"; \
+		docker rm -f "$$reference_cid" >/dev/null; reference_cid=""; \
+		test -f "$$task_root/kivi-source/models/kivi_gqa.py" && test ! -L "$$task_root/kivi-source/models/kivi_gqa.py"; \
+		cp --preserve=mode,timestamps "$$task_root/kivi-source/models/kivi_gqa.py" "$$task_root/kivi-gqa.authority.py"; \
+		git -C "$$task_root/kivi-source" clean -fdx; \
+		cp --preserve=mode,timestamps "$$task_root/kivi-gqa.authority.py" "$$task_root/kivi-source/models/kivi_gqa.py"; \
+		test "$$(sha256sum "$$task_root/kivi-source/quant/new_pack.py" | cut -d ' ' -f 1)" = "$(PHASE8_KIVI_NEW_PACK_SHA256)"; \
+		test "$$(sha256sum "$$task_root/kivi-extension/kivi_gemv.cpython-312-x86_64-linux-gnu.so" | cut -d ' ' -f 1)" = "$(PHASE8_KIVI_EXTENSION_SHA256)"; \
+		$(PHASE12_HOST_PYTHON) scripts/validate_kivi_b019_patch.py --device cpu --source-root "$$task_root/kivi-source" > "$$task_root/kivi-source-validation.json"; \
+		git clone --quiet --no-local --no-checkout "$(PHASE11DQ23_KVQUANT_SOURCE_ROOT)" "$$task_root/kvquant-source"; \
+		git -C "$$task_root/kvquant-source" checkout --quiet --detach "$(PHASE11DQ23_KVQUANT_COMMIT)"; \
+		git -C "$$task_root/kvquant-source" remote remove origin; \
+		test "$$(git -C "$$task_root/kvquant-source" rev-parse HEAD)" = "$(PHASE11DQ23_KVQUANT_COMMIT)"; \
+		test "$$(git -C "$$task_root/kvquant-source" rev-parse HEAD^{tree})" = "$(PHASE11DQ23_KVQUANT_TREE)"; \
+		test -z "$$(git -C "$$task_root/kvquant-source" status --porcelain=v1 --untracked-files=all)"; \
+		$(PHASE12_HOST_PYTHON) -m scripts.validate_kvquant_q23_long_context_patch --source-root "$$task_root/kvquant-source" > "$$task_root/kvquant-source-validation.json"; \
+		test "$$($(PHASE2_PYTHON) -I -c 'import json,sys; print(json.load(open(sys.argv[1], encoding="utf-8"))["aggregate_patch_sha256"])' "$$task_root/kvquant-source-validation.json")" = "$(PHASE11DQ23_KVQUANT_PATCH_SHA256)"; \
+		mkdir "$$task_root/kvquant-build"; \
+		for file in setup_cuda.py quant_cuda.cpp quant_cuda_kernel.cu measurement_cuda_kernel.cu; do \
+			relative="deployment/kvquant/$$file"; \
+			source="$$task_root/kvquant-source/$$relative"; \
+			test -f "$$source" && test ! -L "$$source"; \
+			committed_sha256="$$(git -C "$$task_root/kvquant-source" cat-file blob "$(PHASE11DQ23_KVQUANT_COMMIT):$$relative" | sha256sum | cut -d " " -f 1)"; \
+			test "$$(sha256sum "$$source" | cut -d " " -f 1)" = "$$committed_sha256"; \
+			cp -- "$$source" "$$task_root/kvquant-build/$$file"; \
+			test "$$(sha256sum "$$task_root/kvquant-build/$$file" | cut -d " " -f 1)" = "$$committed_sha256"; \
+		done; \
+		calibration_root="$(PHASE11_KVQUANT_CALIBRATION)"; \
+		test -d "$$calibration_root" && test ! -L "$$calibration_root"; \
+		test "$$(realpath -e "$$calibration_root")" = "$$calibration_root"; \
+		calibration_digest="$$(/usr/bin/env -i PATH=/usr/bin:/bin LC_ALL=C LANG=C TZ=UTC PYTHONDONTWRITEBYTECODE=1 PYTHONNOUSERSITE=1 PYTHONPATH="$(CURDIR):$(CURDIR)/src" /usr/bin/python3 -c 'import sys; from scripts.r2_artifact import validate_local_artifact; print(validate_local_artifact(sys.argv[1], environ={}).root_sha256)' "$$calibration_root")"; \
+		test "$$calibration_digest" = "$(PHASE11_KVQUANT_CALIBRATION_ROOT_SHA256)"; \
+		model_root="$$(realpath /root/.cache/huggingface/hub/models--meta-llama--Llama-3.1-8B-Instruct)"; \
+		model_snapshot="$$model_root/snapshots/0e9e39f249a16976918f6564b8830bc894c89659"; \
+		test -d "$$model_root" && test -d "$$model_snapshot"; \
+		cid="$$(docker create --read-only --network=none --pid=host \
+			--gpus "device=$(MEASUREMENT_GPU_UUID)" \
+			--tmpfs /tmp:rw,exec,nosuid,nodev,size=16g \
+			--tmpfs /root:rw,exec,nosuid,nodev,size=8g \
+			--mount "type=bind,src=$$task_root/repository,dst=/home/rockrock/cmu_paper,readonly" \
+			--mount "type=bind,src=$$phase12_artifact_root,dst=/home/rockrock/cmu_paper/artifacts/phase12,readonly" \
+			--mount "type=bind,src=$$stage,dst=/home/rockrock/cmu_paper/$$stage_relative" \
+			--mount "type=bind,src=$$task_root/kivi-source,dst=/opt/kivi-source,readonly" \
+			--mount "type=bind,src=$$task_root/kivi-extension/kivi_gemv.cpython-312-x86_64-linux-gnu.so,dst=/opt/kvbench/.phase3/site-packages/kivi_gemv.cpython-312-x86_64-linux-gnu.so,readonly" \
+			--mount "type=bind,src=$$task_root/kvquant-source,dst=/opt/kvquant-source,readonly" \
+			--mount "type=bind,src=$$task_root/kvquant-build,dst=/opt/kvquant-build" \
+			--mount "type=bind,src=$$calibration_root,dst=/opt/kvquant-calibration/kvqcal-cdb724c806d64d095c040d2673a987a3,readonly" \
+			--mount "type=bind,src=$$model_root,dst=/root/.cache/huggingface/hub/models--meta-llama--Llama-3.1-8B-Instruct,readonly" \
+			--env PYTHONDONTWRITEBYTECODE=1 \
+			--env PYTHONNOUSERSITE=1 \
+			--env PYTHONIOENCODING=utf-8 \
+			--env PYTHONPATH=/opt/kivi-source:/opt/kvbench/.phase3/site-packages:/home/rockrock/cmu_paper/src:/home/rockrock/cmu_paper \
+			--env LANG=C.UTF-8 \
+			--env TZ=UTC \
+			--env HF_HUB_OFFLINE=1 \
+			--env TRANSFORMERS_OFFLINE=1 \
+			--env HF_HUB_DISABLE_TELEMETRY=1 \
+			--env TOKENIZERS_PARALLELISM=false \
+			--env CUBLAS_WORKSPACE_CONFIG=:4096:8 \
+			--env TORCH_CUDA_ARCH_LIST=12.0+PTX \
+			--env TRITON_CACHE_DIR=/root/.triton \
+			--env KVBENCH_KIVI_SOURCE_ROOT=/opt/kivi-source \
+			--env KVBENCH_KVQUANT_SOURCE_ROOT=/opt/kvquant-source \
+			--env KVBENCH_KVQUANT_CALIBRATION_ROOT=/opt/kvquant-calibration/kvqcal-cdb724c806d64d095c040d2673a987a3 \
+			--env KVBENCH_KVQUANT_EXTENSION_SHA256="$(PHASE11DQ23_KVQUANT_EXTENSION_SHA256)" \
+			--env KVBENCH_AUTHORIZED_IMAGE_DIGEST="$$image_id" \
+			--env KVBENCH_EXECUTION_ENVIRONMENT=measurement_container \
+			--workdir /home/rockrock/cmu_paper \
+			--entrypoint /usr/bin/bash "$$image_id" \
+			--noprofile --norc -eu -o pipefail -c \
+			'cd /opt/kvquant-build && /opt/kvbench/.venv/bin/python setup_cuda.py build_ext --inplace && fresh_extension="$$(find /opt/kvquant-build -maxdepth 1 -type f -name "quant_cuda.*.so" -print -quit)" && test -n "$$fresh_extension" && /usr/bin/strip --strip-unneeded "$$fresh_extension" && test "$$(sha256sum "$$fresh_extension" | cut -d " " -f 1)" = "$(PHASE11DQ23_KVQUANT_EXTENSION_SHA256)" && /usr/local/cuda-13.0/bin/cuobjdump --list-elf "$$fresh_extension" | grep -F ".sm_120.cubin" >/dev/null && /usr/local/cuda-13.0/bin/cuobjdump --dump-ptx "$$fresh_extension" | grep -F ".target sm_120" >/dev/null && export KVBENCH_KVQUANT_EXTENSION="$$fresh_extension" KVBENCH_KVQUANT_FRESH_BUILD_EXTENSION="$$fresh_extension" && cd /home/rockrock/cmu_paper && /usr/bin/mkdir -p /tmp/kivi-b019-objects && GIT_OBJECT_DIRECTORY=/tmp/kivi-b019-objects GIT_ALTERNATE_OBJECT_DIRECTORIES=/opt/kivi-source/.git/objects /opt/kvbench/.venv/bin/python scripts/validate_kivi_b019_patch.py --device cpu --source-root /opt/kivi-source && /opt/kvbench/.venv/bin/python -m scripts.validate_kvquant_q23_long_context_patch --source-root /opt/kvquant-source && /opt/kvbench/.venv/bin/python -m scripts.phase12_unified_admission --run-campaign --stage "/home/rockrock/cmu_paper/'"$$stage_relative"'" --campaign-id "'"$$campaign_id"'" --git-sha "'"$$head"'"')"; \
+		[[ "$$cid" =~ ^[0-9a-f]{64}$$ ]]; \
+		docker start --attach "$$cid"; \
+		docker rm -f "$$cid" >/dev/null; cid=""; \
+		$(PHASE12_HOST_PYTHON) -m scripts.phase12_unified_admission --finalize-staged-campaign --stage "$$stage" --campaign-id "$$campaign_id"; \
+		final_root="$$repository_root/artifacts/phase12/$$campaign_id"; \
+		test -d "$$final_root" && test ! -L "$$final_root"; \
+		test ! -e "$$stage" && test ! -L "$$stage"; \
+		$(PHASE12_HOST_PYTHON) -m scripts.phase12_unified_admission --validate-campaign --artifact "$$final_root"; \
+		printf 'PHASE12_CAMPAIGN_ID=%s\nPHASE12_CAMPAIGN_ARTIFACT=%s\n' "$$campaign_id" "$$final_root"; \
+		preserve=0
+
+validate-unified-admission:
+	@test -n "$(PHASE12_CAMPAIGN_ARTIFACT)" || { echo '{"status":"BLOCKED","reason":"PHASE12_CAMPAIGN_ARTIFACT_required"}' >&2; exit 2; }
+	@artifact="$$(realpath -e "$(PHASE12_CAMPAIGN_ARTIFACT)")"; \
+		repository_root="$$(git rev-parse --show-toplevel)"; \
+		test "$$repository_root" = "$(CURDIR)"; \
+		test -d "$$artifact" && test ! -L "$(PHASE12_CAMPAIGN_ARTIFACT)"; \
+		test "$$(dirname "$$artifact")" = "$$repository_root/artifacts/phase12"; \
+		[[ "$$(basename "$$artifact")" =~ ^phase12-[0-9]{8}t[0-9]{12}z-[0-9a-f]{8}-[0-9a-f]{6}$$ ]]; \
+		test -f docs/evidence/phase12/r2-publication.json && test ! -L docs/evidence/phase12/r2-publication.json; \
+		test -f docs/evidence/phase12/unified-admission.json && test ! -L docs/evidence/phase12/unified-admission.json; \
+		test -f docs/phase_reports/phase12-unified-admission.md && test ! -L docs/phase_reports/phase12-unified-admission.md; \
+		$(PHASE12_HOST_PYTHON) -m scripts.phase12_unified_admission --validate-campaign --artifact "$$artifact"; \
+		$(PHASE12_HOST_PYTHON) -m scripts.phase12_unified_admission --validate-final-evidence --artifact "$$artifact" --receipt-output docs/evidence/phase12/r2-publication.json --report-output docs/evidence/phase12/unified-admission.json --markdown-output docs/phase_reports/phase12-unified-admission.md
 
 reference-kivi: validate-kivi-b019-patch
 	@command -v docker >/dev/null

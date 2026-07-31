@@ -48,6 +48,7 @@ PHASE11R_ENTRY_COMMIT = "f0f02364a556da70e67b3107a0c0afad5f75eae9"
 PHASE12E_ENTRY_COMMIT = "7c7af7cd1efe4a8befa36ceaedb11e2b47733276"
 PHASE11DQ23_ENTRY_COMMIT = "2bc6aaa1d05b08d50f4c01bbc0b2863dd8689fe1"
 PHASE11RQ23_ENTRY_COMMIT = "d99920e5dd7ea94bce7c98b4301bd035c073dfea"
+PHASE12_ENTRY_COMMIT = "845a9293877121187a383c2c7aeab67912c856bd"
 QUALITY_COMMIT = "a7b8285dd8ed2fb598efbb3312e9f55064a0ee64"
 ENVIRONMENT_COMMIT = "ea176994921c793789ebbd9d42515ce20ae4baee"
 EVIDENCE_COMMIT = "fb164b5ea96031ca40b21f4b8436a49a3bb5b8d2"
@@ -1005,6 +1006,25 @@ PHASE11RQ23_ALLOWED_PATHS = frozenset(
         "tests/unit/test_phase11rq23_scope.py",
     }
 )
+PHASE12_ALLOWED_PATHS = frozenset(
+    {
+        "Makefile",
+        "docs/evidence/phase12/r2-publication.json",
+        "docs/evidence/phase12/unified-admission.json",
+        "docs/phase_reports/phase12-unified-admission.md",
+        "docs/plans/phase12-unified-admission.md",
+        "docs/risk_register.md",
+        "docs/status.md",
+        "docs/tasks.md",
+        "scripts/phase12_unified_admission.py",
+        "scripts/validate_phase2.py",
+        "src/kvbench/schema/phase12.py",
+        "tests/unit/test_phase12_artifact_lifecycle.py",
+        "tests/unit/test_phase12_schema.py",
+        "tests/unit/test_phase12_scope.py",
+        "tests/unit/test_phase12_unified_admission.py",
+    }
+)
 
 
 RAW_RESULT_SUFFIXES = {
@@ -1521,16 +1541,55 @@ def current_phase11dq23_paths() -> set[str]:
     return historical_phase11dq23_paths()
 
 
+def historical_phase11rq23_paths() -> set[str]:
+    """Return the completed current-source KVQuant re-admission segment."""
+
+    return git_paths(
+        (
+            "diff",
+            "--name-only",
+            "-z",
+            PHASE11RQ23_ENTRY_COMMIT,
+            PHASE12_ENTRY_COMMIT,
+            "--",
+        )
+    )
+
+
 def current_phase11rq23_paths() -> set[str]:
-    """Return tracked and untracked Phase 11R-Q23 admission changes."""
+    """Compatibility view of the completed, frozen Phase 11R-Q23 segment."""
+
+    return historical_phase11rq23_paths()
+
+
+def current_phase12_paths() -> set[str]:
+    """Return tracked and untracked changes after the Phase 12R entry."""
 
     changed = git_paths(
-        ("diff", "--name-only", "-z", PHASE11RQ23_ENTRY_COMMIT, "--")
+        ("diff", "--name-only", "-z", PHASE12_ENTRY_COMMIT, "--")
     )
     untracked = git_paths(
         ("ls-files", "--others", "--exclude-standard", "-z", "--")
     )
     return changed | untracked
+
+
+def phase12_path_is_allowed(relative: str) -> bool:
+    """Accept only canonical exact paths in the Phase 12R allowlist."""
+
+    try:
+        candidate = PurePosixPath(relative)
+    except (TypeError, ValueError):
+        return False
+    return (
+        isinstance(relative, str)
+        and relative == candidate.as_posix()
+        and relative not in {"", "."}
+        and not candidate.is_absolute()
+        and ".." not in candidate.parts
+        and "\\" not in relative
+        and relative in PHASE12_ALLOWED_PATHS
+    )
 
 
 def current_phase9_paths() -> set[str]:
@@ -1580,7 +1639,7 @@ def current_phase5_paths() -> set[str]:
 
 
 def changed_paths() -> set[str]:
-    return current_phase11dq23_paths()
+    return current_phase12_paths()
 
 
 def repository_python_paths() -> list[Path]:
@@ -2540,22 +2599,28 @@ PHASE11_APPROVED_ARTIFACT_ROOT_NAMES = frozenset(
     {"phase11", "phase11_r2_outer"}
 )
 PHASE12_BLOCKED_ARTIFACT_ROOT_NAMES = frozenset({"phase12"})
+PHASE12_STOPPED_CAMPAIGN_ID = (
+    "phase12-20260730t000000000000z-2bc6aaa1-abcdef"
+)
+PHASE12_CAMPAIGN_ID_RE = re.compile(
+    r"phase12-[0-9]{8}t[0-9]{12}z-[0-9a-f]{8}-[0-9a-f]{6}"
+)
 PHASE12_BLOCKED_STAGING_DIRECTORIES = frozenset(
     {
         ".kvbench-reservations",
         (
             ".kvbench-reservations/"
-            "phase12-20260730t000000000000z-2bc6aaa1-abcdef"
+            f"{PHASE12_STOPPED_CAMPAIGN_ID}"
         ),
         ".kvbench-staging",
         (
             ".kvbench-staging/"
-            "phase12-20260730t000000000000z-2bc6aaa1-abcdef."
+            f"{PHASE12_STOPPED_CAMPAIGN_ID}."
             "df41252db7c860d9755c4843.staging"
         ),
         (
             ".kvbench-staging/"
-            "phase12-20260730t000000000000z-2bc6aaa1-abcdef."
+            f"{PHASE12_STOPPED_CAMPAIGN_ID}."
             "df41252db7c860d9755c4843.staging/unified"
         ),
     }
@@ -2563,32 +2628,399 @@ PHASE12_BLOCKED_STAGING_DIRECTORIES = frozenset(
 PHASE12_BLOCKED_STAGING_FILE_SHA256S = {
     (
         ".kvbench-staging/"
-        "phase12-20260730t000000000000z-2bc6aaa1-abcdef."
+        f"{PHASE12_STOPPED_CAMPAIGN_ID}."
         "df41252db7c860d9755c4843.staging/campaign-reservation.json"
     ): "d123ba56f1341176dab82e8b4eba108117053c018f11e7ed2ec94a1f8a3e16a1",
     (
         ".kvbench-staging/"
-        "phase12-20260730t000000000000z-2bc6aaa1-abcdef."
+        f"{PHASE12_STOPPED_CAMPAIGN_ID}."
         "df41252db7c860d9755c4843.staging/unified/entry-authority.json"
     ): "033f883fbfd001e515d345cb8f1c9e0568b6c60b6e3fd4bef2dacf51b1672e6c",
     (
         ".kvbench-staging/"
-        "phase12-20260730t000000000000z-2bc6aaa1-abcdef."
+        f"{PHASE12_STOPPED_CAMPAIGN_ID}."
         "df41252db7c860d9755c4843.staging/unified/entry-g1-g4.json"
     ): "27e336995b26aac74e954432dc2786d6704b223f5a77bf2beb6fe34a648d65e9",
 }
 
 
+def _phase12_json_object(path: Path) -> dict[str, Any]:
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        raise ValueError(f"{path.name} is not a JSON object")
+    return payload
+
+
+def _validate_phase12_failed_campaign(
+    campaign: Path,
+    *,
+    campaign_id: str,
+) -> None:
+    """Replay the terminal failed-campaign contract without admitting a retry."""
+
+    phase12 = importlib.import_module("scripts.phase12_unified_admission")
+
+    phase12.validate_local_artifact(campaign, environ={})
+    manifest = _phase12_json_object(campaign / "manifest.json")
+    failure = _phase12_json_object(campaign / "failure.json")
+    reservation = _phase12_json_object(
+        campaign / "campaign-reservation.json"
+    )
+    execution_git_sha = manifest.get("execution_git_sha")
+    preserved_run_ids = manifest.get("preserved_run_ids")
+    if (
+        manifest.get("schema_version")
+        != "kvbench-phase12-failed-campaign-bundle-1.0.0"
+        or manifest.get("run_id") != campaign_id
+        or manifest.get("campaign_id") != campaign_id
+        or manifest.get("status") != "failed"
+        or not isinstance(execution_git_sha, str)
+        or re.fullmatch(r"[0-9a-f]{40}", execution_git_sha) is None
+        or manifest.get("authorized_container_digest")
+        != phase12.PHASE12_AUTHORIZED_CONTAINER_DIGEST
+        or not isinstance(preserved_run_ids, list)
+        or len(preserved_run_ids) != len(set(preserved_run_ids))
+        or preserved_run_ids != sorted(preserved_run_ids)
+        or any(
+            not isinstance(run_id, str)
+            or not run_id.startswith(f"{campaign_id}-")
+            for run_id in preserved_run_ids
+        )
+        or manifest.get("failure_path") != "failure.json"
+        or manifest.get("failure_sha256")
+        != phase12.sha256_file(campaign / "failure.json")
+        or manifest.get("append_only") is not True
+        or manifest.get("resume_permitted") is not False
+        or manifest.get("selective_reruns") != 0
+        or manifest.get("global_g5") != "NOT_EVALUATED"
+        or manifest.get("pilot") != "NOT_READY"
+        or manifest.get("full_scan") != "CLOSED"
+        or manifest.get("quality_execution") != "LOCKED"
+        or manifest.get("performance_data_frozen") is not False
+        or manifest.get("speedup_calculated") is not False
+        or manifest.get("r_hbm") is not None
+        or failure.get("schema_version")
+        != "kvbench-phase12-terminal-failure-1.0.0"
+        or failure.get("campaign_id") != campaign_id
+        or failure.get("execution_git_sha") != execution_git_sha
+        or type(failure.get("failure_code")) is not int
+        or not 1 <= failure["failure_code"] <= 255
+        or failure.get("preserved_run_ids") != preserved_run_ids
+        or failure.get("resume_permitted") is not False
+        or failure.get("selective_rerun_permitted") is not False
+        or failure.get("pilot") != "NOT_READY"
+        or failure.get("full_scan") != "CLOSED"
+        or failure.get("quality_execution") != "LOCKED"
+        or failure.get("performance_data_frozen") is not False
+        or failure.get("speedup_calculated") is not False
+        or reservation.get("schema_version")
+        != "kvbench-phase12-campaign-reservation-1.0.0"
+        or reservation.get("campaign_id") != campaign_id
+        or reservation.get("execution_git_sha") != execution_git_sha
+        or reservation.get("append_only") is not True
+        or reservation.get("reuse_permitted") is not False
+    ):
+        raise ValueError("failed Phase 12 campaign semantics differ")
+
+
+def _validate_phase12_final_campaign(campaign: Path) -> None:
+    """Dispatch one immutable campaign to its exact semantic validator."""
+
+    phase12 = importlib.import_module("scripts.phase12_unified_admission")
+    r2_artifact = importlib.import_module("scripts.r2_artifact")
+
+    campaign_id = campaign.name
+    try:
+        manifest = _phase12_json_object(campaign / "manifest.json")
+        schema = manifest.get("schema_version")
+        if schema == "kvbench-phase12-campaign-bundle-1.0.0":
+            result = phase12.validate_phase12_campaign(campaign)
+            if (
+                result.get("campaign_id") != campaign_id
+                or result.get("status") not in {"PASS", "UNSTABLE"}
+            ):
+                raise ValueError("Phase 12 campaign verdict differs")
+        elif schema == "kvbench-phase12-failed-campaign-bundle-1.0.0":
+            _validate_phase12_failed_campaign(
+                campaign,
+                campaign_id=campaign_id,
+            )
+        else:
+            raise ValueError("Phase 12 campaign schema is unrecognized")
+    except (
+        r2_artifact.ArtifactValidationError,
+        json.JSONDecodeError,
+        OSError,
+        phase12.Phase12UnifiedAdmissionError,
+        TypeError,
+        ValueError,
+    ) as error:
+        raise ValueError(
+            f"Phase 12 campaign validation failed: {campaign_id}"
+        ) from error
+
+
+def _phase12_active_path_is_allowed(
+    relative: str,
+    *,
+    campaign_id: str,
+) -> bool:
+    """Accept only files and prefixes written by the one Phase 12 campaign."""
+
+    parts = PurePosixPath(relative).parts
+    if relative in {
+        "campaign-reservation.json",
+        "unified",
+        "unified/entry-authority.json",
+        "unified/entry-g1-g4.json",
+        "unified/local-admission.json",
+        "unified/campaign-result.json",
+        "validation",
+        "runs",
+        "admission",
+    }:
+        return True
+    if len(parts) >= 2 and parts[0] == "validation":
+        target = parts[1]
+        return bool(
+            target in {"test-cuda", "test-graph"}
+            and (
+                len(parts) == 2
+                or (
+                    len(parts) == 3
+                    and parts[2]
+                    in {
+                        "command.stdout.txt",
+                        "command.stderr.txt",
+                        "command.supervision.json",
+                        "command.gpu-before.json",
+                        "command.gpu-after.json",
+                        "verdict.json",
+                    }
+                )
+            )
+        )
+    if len(parts) >= 2 and parts[0] == "runs":
+        run_id = parts[1]
+        return bool(
+            run_id.startswith(f"{campaign_id}-")
+            and (
+                len(parts) == 2
+                or (
+                    len(parts) == 3
+                    and parts[2]
+                    in {
+                        "started.json",
+                        "worker.stdout.txt",
+                        "worker.stderr.txt",
+                        "worker.supervision.json",
+                        "worker.gpu-before.json",
+                        "worker.gpu-after.json",
+                        "failure.json",
+                        "result.json",
+                        "manifest.json",
+                        "kernel-path.before.raw.dot",
+                        "kernel-path.before.normalized.dot",
+                        "kernel-path.after.raw.dot",
+                        "kernel-path.after.normalized.dot",
+                    }
+                )
+            )
+        )
+    if len(parts) >= 2 and parts[0] == "admission":
+        return bool(
+            parts[1]
+            in {
+                "bf16",
+                "tq_4bit_nc",
+                "tq_k3v4_nc",
+                "tq_3bit_nc",
+                "k4v4",
+                "k2v4",
+                "k2v2",
+                "kvq4",
+                "kvq3",
+                "kvq2",
+            }
+            and (
+                len(parts) == 2
+                or (len(parts) == 3 and parts[2] == "report.json")
+            )
+        )
+    return False
+
+
+def _validate_phase12_active_test_evidence(
+    stage: Path,
+    *,
+    target: str,
+) -> None:
+    """Validate any append-only prefix of one container-test evidence set."""
+
+    phase12 = importlib.import_module("scripts.phase12_unified_admission")
+    root = stage / "validation" / target
+    if not root.exists():
+        return
+    ordered = (
+        "command.stdout.txt",
+        "command.stderr.txt",
+        "command.supervision.json",
+        "command.gpu-before.json",
+        "command.gpu-after.json",
+        "verdict.json",
+    )
+    present = {path.name for path in root.iterdir()}
+    if present not in {
+        frozenset(ordered[:count]) for count in range(len(ordered) + 1)
+    }:
+        raise ValueError("container-test evidence is not append-only")
+    if "command.supervision.json" in present:
+        phase12._validate_supervision_payload(
+            _phase12_json_object(root / "command.supervision.json")
+        )
+    for name in ("command.gpu-before.json", "command.gpu-after.json"):
+        if name in present:
+            phase12._validate_idle_snapshot_payload(
+                _phase12_json_object(root / name)
+            )
+    if "verdict.json" in present:
+        verdict = _phase12_json_object(root / "verdict.json")
+        if (
+            set(verdict)
+            != {
+                "schema_version",
+                "target",
+                "authorized_container_digest",
+                "passed",
+                "cuda_executed_on_native_host",
+            }
+            or verdict.get("schema_version")
+            != "kvbench-phase12-container-test-verdict-1.0.0"
+            or verdict.get("target") != target
+            or verdict.get("authorized_container_digest")
+            != phase12.PHASE12_AUTHORIZED_CONTAINER_DIGEST
+            or type(verdict.get("passed")) is not bool
+            or verdict.get("cuda_executed_on_native_host") is not False
+        ):
+            raise ValueError("container-test verdict differs")
+
+
+def _validate_phase12_active_stage(
+    stage: Path,
+    *,
+    campaign_id: str,
+) -> None:
+    """Validate the sole in-flight stage without treating it as finalized."""
+
+    phase12 = importlib.import_module("scripts.phase12_unified_admission")
+    reservation = _phase12_json_object(
+        stage / "campaign-reservation.json"
+    )
+    execution_git_sha = reservation.get("execution_git_sha")
+    expected_reservation_keys = {
+        "schema_version",
+        "campaign_id",
+        "execution_git_sha",
+        "created_at_utc",
+        "staging_directory",
+        "reservation_directory",
+        "append_only",
+        "reuse_permitted",
+    }
+    if (
+        set(reservation) != expected_reservation_keys
+        or reservation.get("schema_version")
+        != "kvbench-phase12-campaign-reservation-1.0.0"
+        or reservation.get("campaign_id") != campaign_id
+        or not isinstance(execution_git_sha, str)
+        or re.fullmatch(r"[0-9a-f]{40}", execution_git_sha) is None
+        or execution_git_sha[:8] != campaign_id.rsplit("-", 2)[1]
+        or not isinstance(reservation.get("created_at_utc"), str)
+        or not reservation["created_at_utc"].endswith("Z")
+        or reservation.get("staging_directory") != stage.name
+        or reservation.get("reservation_directory") != campaign_id
+        or reservation.get("append_only") is not True
+        or reservation.get("reuse_permitted") is not False
+    ):
+        raise ValueError("active Phase 12 reservation differs")
+    entry_authority = _phase12_json_object(
+        stage / "unified" / "entry-authority.json"
+    )
+    expected_authority = phase12._expected_entry_authority(
+        campaign_id=campaign_id,
+        execution_git_sha=execution_git_sha,
+        repo_root=ROOT,
+    )
+    if entry_authority != expected_authority:
+        raise ValueError("active Phase 12 authority differs")
+    entry_gates = _phase12_json_object(
+        stage / "unified" / "entry-g1-g4.json"
+    )
+    if entry_gates != phase12._expected_entry_g1_g4():
+        raise ValueError("active Phase 12 G1-G4 evidence differs")
+    for path in stage.rglob("*"):
+        relative = path.relative_to(stage).as_posix()
+        if not _phase12_active_path_is_allowed(
+            relative,
+            campaign_id=campaign_id,
+        ):
+            raise ValueError(
+                f"active Phase 12 path is unrecognized: {relative}"
+            )
+    for target in ("test-cuda", "test-graph"):
+        _validate_phase12_active_test_evidence(stage, target=target)
+    if (stage / "validation" / "test-graph").exists() and not (
+        stage / "validation" / "test-cuda" / "verdict.json"
+    ).is_file():
+        raise ValueError("test-graph exists before completed test-cuda")
+
+    run_roots = stage / "runs"
+    observed_slots: set[tuple[int, int]] = set()
+    if run_roots.is_dir():
+        for run_root in sorted(run_roots.iterdir()):
+            run_id = run_root.name
+            if (
+                not run_root.is_dir()
+                or phase12._RUN_ID_RE.fullmatch(run_id) is None
+                or not run_id.startswith(f"{campaign_id}-")
+            ):
+                raise ValueError("active Phase 12 run identity differs")
+            started = _phase12_json_object(run_root / "started.json")
+            replicate_index = started.get("replicate_index")
+            order_index = started.get("order_index")
+            configuration = started.get("method_config_id")
+            if (
+                started.get("schema_version")
+                != "kvbench-phase12-run-start-1.0.0"
+                or started.get("run_id") != run_id
+                or started.get("campaign_id") != campaign_id
+                or type(replicate_index) is not int
+                or type(order_index) is not int
+                or not 0 <= replicate_index < len(
+                    phase12.PHASE12_RANDOMIZATION_SEEDS
+                )
+                or not 0 <= order_index < len(phase12.MAIN_CONFIG_IDS)
+                or started.get("seed")
+                != phase12.PHASE12_RANDOMIZATION_SEEDS[replicate_index]
+                or configuration
+                != phase12.PHASE12_RANDOMIZED_ORDERS[replicate_index][
+                    order_index
+                ]
+                or (replicate_index, order_index) in observed_slots
+            ):
+                raise ValueError("active Phase 12 run start differs")
+            observed_slots.add((replicate_index, order_index))
+
+
 def validate_phase12_blocked_artifact_root() -> list[str]:
-    """Freeze the pre-G5 Phase 12 staging tree without admitting new runs."""
+    """Freeze stopped staging and validate only new append-only campaigns."""
 
     root = ROOT / "artifacts" / "phase12"
     if not root.exists() and not root.is_symlink():
         return []
     if root.is_symlink() or not root.is_dir():
         return ["historical Phase 12 blocked artifact root is unsafe"]
-    observed_directories: set[str] = set()
-    observed_files: set[str] = set()
+    errors: list[str] = []
     for path in root.rglob("*"):
         relative = path.relative_to(root).as_posix()
         if path.is_symlink():
@@ -2596,28 +3028,187 @@ def validate_phase12_blocked_artifact_root() -> list[str]:
                 "historical Phase 12 blocked artifact contains a symlink: "
                 f"{relative}"
             ]
-        if path.is_dir():
-            observed_directories.add(relative)
-        elif path.is_file():
-            observed_files.add(relative)
-        else:
+        if not path.is_dir() and not path.is_file():
             return [
                 "historical Phase 12 blocked artifact contains an unsafe "
                 f"entry: {relative}"
             ]
-    errors: list[str] = []
-    if observed_directories != PHASE12_BLOCKED_STAGING_DIRECTORIES:
+    stopped_stage_prefix = next(
+        relative
+        for relative in PHASE12_BLOCKED_STAGING_DIRECTORIES
+        if relative.startswith(".kvbench-staging/")
+        and relative.count("/") == 1
+    )
+    observed_stopped_directories = {
+        path.relative_to(root).as_posix()
+        for path in root.rglob("*")
+        if path.is_dir()
+        and (
+            path.relative_to(root).as_posix()
+            in {
+                ".kvbench-reservations",
+                (
+                    ".kvbench-reservations/"
+                    f"{PHASE12_STOPPED_CAMPAIGN_ID}"
+                ),
+                ".kvbench-staging",
+            }
+            or path.relative_to(root).as_posix() == stopped_stage_prefix
+            or path.relative_to(root).as_posix().startswith(
+                f"{stopped_stage_prefix}/"
+            )
+        )
+    }
+    observed_stopped_files = {
+        path.relative_to(root).as_posix()
+        for path in root.rglob("*")
+        if path.is_file()
+        and path.relative_to(root).as_posix().startswith(
+            f"{stopped_stage_prefix}/"
+        )
+    }
+    if observed_stopped_directories != PHASE12_BLOCKED_STAGING_DIRECTORIES:
         errors.append(
             "historical Phase 12 blocked artifact directories differ"
         )
-    if observed_files != set(PHASE12_BLOCKED_STAGING_FILE_SHA256S):
+    if observed_stopped_files != set(
+        PHASE12_BLOCKED_STAGING_FILE_SHA256S
+    ):
         errors.append("historical Phase 12 blocked artifact files differ")
+    for relative in PHASE12_BLOCKED_STAGING_DIRECTORIES:
+        if not (root / relative).is_dir():
+            errors.append(
+                "historical Phase 12 blocked artifact directory differs: "
+                f"{relative}"
+            )
     for relative, expected in PHASE12_BLOCKED_STAGING_FILE_SHA256S.items():
         path = root / relative
-        if path.is_file() and sha256(path) != expected:
+        if not path.is_file() or sha256(path) != expected:
             errors.append(
                 "historical Phase 12 blocked artifact checksum differs: "
                 f"{relative}"
+            )
+    staging = root / ".kvbench-staging"
+    stopped_stage = stopped_stage_prefix.split("/", 1)[1]
+    staging_entries = (
+        {
+            path.name: path
+            for path in staging.iterdir()
+        }
+        if staging.is_dir()
+        else {}
+    )
+    active_entries = {
+        name: path
+        for name, path in staging_entries.items()
+        if name != stopped_stage
+    }
+    active_campaign_id: str | None = None
+    active_stage: Path | None = None
+    if len(active_entries) > 1:
+        errors.append("Phase 12 staging contains multiple active campaigns")
+    elif active_entries:
+        active_name, candidate = next(iter(active_entries.items()))
+        match = re.fullmatch(
+            (
+                rf"({PHASE12_CAMPAIGN_ID_RE.pattern})"
+                r"\.([0-9a-f]{24})\.staging"
+            ),
+            active_name,
+        )
+        if (
+            match is None
+            or not candidate.is_dir()
+            or candidate.is_symlink()
+            or match.group(1) == PHASE12_STOPPED_CAMPAIGN_ID
+        ):
+            errors.append("Phase 12 staging contains an unrecognized campaign")
+        else:
+            active_campaign_id = match.group(1)
+            active_stage = candidate
+
+    reservations = root / ".kvbench-reservations"
+    reservation_ids = (
+        {path.name for path in reservations.iterdir()}
+        if reservations.is_dir()
+        else set()
+    )
+    final_campaigns = {
+        path.name: path
+        for path in root.iterdir()
+        if path.name not in {".kvbench-reservations", ".kvbench-staging"}
+    }
+    invalid_ids = sorted(
+        campaign_id
+        for campaign_id, path in final_campaigns.items()
+        if (
+            not path.is_dir()
+            or PHASE12_CAMPAIGN_ID_RE.fullmatch(campaign_id) is None
+            or campaign_id == PHASE12_STOPPED_CAMPAIGN_ID
+        )
+    )
+    if invalid_ids:
+        errors.append(
+            f"Phase 12 artifact contains invalid campaign roots: {invalid_ids!r}"
+        )
+    if (
+        active_campaign_id is not None
+        and active_campaign_id in final_campaigns
+    ):
+        errors.append("active Phase 12 campaign was already finalized")
+    expected_reservations = {
+        PHASE12_STOPPED_CAMPAIGN_ID,
+        *(
+            campaign_id
+            for campaign_id in final_campaigns
+            if campaign_id not in invalid_ids
+        ),
+    }
+    if active_campaign_id is not None:
+        expected_reservations.add(active_campaign_id)
+    if reservation_ids != expected_reservations:
+        errors.append(
+            "Phase 12 reservation/campaign identities differ"
+        )
+    for campaign_id in sorted(expected_reservations):
+        reservation = reservations / campaign_id
+        if (
+            not reservation.is_dir()
+            or reservation.is_symlink()
+            or any(reservation.iterdir())
+        ):
+            errors.append(
+                "Phase 12 reservation is unsafe or reused: "
+                f"{campaign_id}"
+            )
+    for campaign_id, campaign in sorted(final_campaigns.items()):
+        if campaign_id in invalid_ids:
+            continue
+        try:
+            _validate_phase12_final_campaign(campaign)
+        except ValueError:
+            errors.append(
+                f"Phase 12 campaign semantic validation failed: {campaign_id}"
+            )
+    if active_campaign_id is not None and active_stage is not None:
+        phase12 = importlib.import_module(
+            "scripts.phase12_unified_admission"
+        )
+        try:
+            _validate_phase12_active_stage(
+                active_stage,
+                campaign_id=active_campaign_id,
+            )
+        except (
+            json.JSONDecodeError,
+            OSError,
+            phase12.Phase12UnifiedAdmissionError,
+            TypeError,
+            ValueError,
+        ):
+            errors.append(
+                "Phase 12 active staging semantic validation failed: "
+                f"{active_campaign_id}"
             )
     return errors
 
@@ -2919,6 +3510,10 @@ def check_scope() -> int:
         errors.append(
             "the accepted Phase 11R-Q23 entry commit is not an ancestor of HEAD"
         )
+    if not commit_is_ancestor(PHASE12_ENTRY_COMMIT):
+        errors.append(
+            "the accepted Phase 12R entry commit is not an ancestor of HEAD"
+        )
     phase5 = historical_phase5_paths()
     phase5_unexpected = sorted(phase5 - PHASE5_ALLOWED_PATHS)
     if phase5_unexpected:
@@ -3033,7 +3628,7 @@ def check_scope() -> int:
             "remediation "
             f"plan: {phase11dq23_unexpected!r}"
         )
-    changed = current_phase11rq23_paths()
+    changed = historical_phase11rq23_paths()
     phase11rq23_unexpected = sorted(
         changed - PHASE11RQ23_ALLOWED_PATHS
     )
@@ -3042,12 +3637,19 @@ def check_scope() -> int:
             "files outside the approved Phase 11R-Q23 admission-rerun "
             f"plan: {phase11rq23_unexpected!r}"
         )
-    for relative in sorted(changed):
+    phase12 = current_phase12_paths()
+    phase12_unexpected = sorted(phase12 - PHASE12_ALLOWED_PATHS)
+    if phase12_unexpected:
+        errors.append(
+            "files outside the approved Phase 12R unified-admission "
+            f"plan: {phase12_unexpected!r}"
+        )
+    for relative in sorted(phase12):
         if relative.startswith("docs/evidence/e00/"):
             errors.append(f"immutable E00 evidence changed: {relative}")
         if relative in QUALITY_PROTOCOL_HASHES:
             errors.append(
-                "quality protocol changed during Phase 11R-Q23: "
+                "quality protocol changed during Phase 12R: "
                 f"{relative}"
             )
         if (
@@ -3055,7 +3657,7 @@ def check_scope() -> int:
         ):
             errors.append(
                 f"forbidden binary, kernel, model, or profiler artifact "
-                f"in Phase 11R-Q23 Git scope: {relative}"
+                f"in Phase 12R Git scope: {relative}"
             )
         if relative.startswith(
             (
@@ -3067,7 +3669,7 @@ def check_scope() -> int:
             )
         ):
             errors.append(
-                f"forbidden result tree in Phase 11R-Q23 scope: {relative}"
+                f"forbidden result tree in Phase 12R scope: {relative}"
             )
     e00_changes = git_paths(
         (
