@@ -790,6 +790,7 @@ class Phase12CoordinatorBoundaryTests(unittest.TestCase):
             "src=$$stage,dst=/home/rockrock/cmu_paper/$$stage_relative",
             (
                 "for immutable_relative in docs/evidence/e00 "
+                "reference/kvquant/fixtures "
                 "reference/kvquant_phase11pr/fixtures"
             ),
             'chmod -R a-w -- "$$immutable_root"',

@@ -864,7 +864,7 @@ unified-admission: verify-measurement-container
 		test "$$stage_relative" != "$$stage"; \
 		mkdir -p "$$task_root/repository/$$(dirname "$$stage_relative")"; \
 		mkdir "$$task_root/repository/$$stage_relative"; \
-		for immutable_relative in docs/evidence/e00 reference/kvquant_phase11pr/fixtures; do \
+		for immutable_relative in docs/evidence/e00 reference/kvquant/fixtures reference/kvquant_phase11pr/fixtures; do \
 			immutable_root="$$task_root/repository/$$immutable_relative"; \
 			test -d "$$immutable_root" && test ! -L "$$immutable_root"; \
 			chmod -R a-w -- "$$immutable_root"; \
