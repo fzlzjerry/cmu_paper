@@ -1,0 +1,2020 @@
+{
+  "authorized_container_digest": "sha256:059bc9be89387369d7de9e3e9b26d85b6e9902c41e7dbf002ebc45edd188fb7e",
+  "batch_size": 1,
+  "campaign_id": "phase12-20260731t062914664948z-6165f78d-c78b9a",
+  "clean_retrieval": true,
+  "complete_last": true,
+  "configurations": [
+    {
+      "byte_accounting": {
+        "allocated_bytes": 537165824,
+        "data_payload_bytes": 537001984,
+        "logical_bf16_bytes": 537001984,
+        "metadata_bytes": 0,
+        "padding_bytes": 0,
+        "predicted_allocated_bytes": 537001984,
+        "predicted_relative_error": 0.000305008235222351,
+        "r_alloc": 0.9996949917647776,
+        "r_hbm": null,
+        "rho_alloc": 1.0003051012936295,
+        "sink_residual_bytes": 0,
+        "sparse_bytes": 0,
+        "workspace_bytes": 163840
+      },
+      "method_config_fingerprint": "81ca6a0d74727a9c8a54f14d6d222dee502ee5e9a9ab6e8c9a03b4fed98f371b",
+      "method_config_id": "bf16",
+      "no_fallback": true,
+      "prior_gates": [
+        {
+          "criteria_satisfied": true,
+          "evidence": [
+            {
+              "evidence_id": "bf16_g1_method_admission",
+              "path": "docs/evidence/phase4/method-admission.json",
+              "sha256": "1362fd1817b8bb5706baaa09ed6e5115789fbc4d35d394f184d0b132a0e58d22"
+            },
+            {
+              "evidence_id": "bf16_g1_historical_source_bridge",
+              "path": "unified/entry-authority.json",
+              "sha256": "73cd98d83b8fe8cca84684a822ff3b7cd2741aad2b323e4339571806f3790203"
+            }
+          ],
+          "gate": "G1",
+          "status": "PASS"
+        },
+        {
+          "criteria_satisfied": true,
+          "evidence": [
+            {
+              "evidence_id": "bf16_g2_method_admission",
+              "path": "docs/evidence/phase4/method-admission.json",
+              "sha256": "1362fd1817b8bb5706baaa09ed6e5115789fbc4d35d394f184d0b132a0e58d22"
+            },
+            {
+              "evidence_id": "bf16_g2_historical_source_bridge",
+              "path": "unified/entry-authority.json",
+              "sha256": "73cd98d83b8fe8cca84684a822ff3b7cd2741aad2b323e4339571806f3790203"
+            }
+          ],
+          "gate": "G2",
+          "status": "PASS"
+        },
+        {
+          "criteria_satisfied": true,
+          "evidence": [
+            {
+              "evidence_id": "bf16_g3_method_admission",
+              "path": "docs/evidence/phase4/method-admission.json",
+              "sha256": "1362fd1817b8bb5706baaa09ed6e5115789fbc4d35d394f184d0b132a0e58d22"
+            },
+            {
+              "evidence_id": "bf16_g3_historical_source_bridge",
+              "path": "unified/entry-authority.json",
+              "sha256": "73cd98d83b8fe8cca84684a822ff3b7cd2741aad2b323e4339571806f3790203"
+            }
+          ],
+          "gate": "G3",
+          "status": "PASS"
+        },
+        {
+          "criteria_satisfied": true,
+          "evidence": [
+            {
+              "evidence_id": "bf16_g4_method_admission",
+              "path": "docs/evidence/phase4/method-admission.json",
+              "sha256": "1362fd1817b8bb5706baaa09ed6e5115789fbc4d35d394f184d0b132a0e58d22"
+            },
+            {
+              "evidence_id": "bf16_g4_historical_source_bridge",
+              "path": "unified/entry-authority.json",
+              "sha256": "73cd98d83b8fe8cca84684a822ff3b7cd2741aad2b323e4339571806f3790203"
+            }
+          ],
+          "gate": "G4",
+          "status": "PASS"
+        }
+      ],
+      "speedup_calculated": false
+    },
+    {
+      "byte_accounting": {
+        "allocated_bytes": 241675200,
+        "data_payload_bytes": 184594432,
+        "logical_bf16_bytes": 537001984,
+        "metadata_bytes": 5540292,
+        "padding_bytes": 696000,
+        "predicted_allocated_bytes": 241675200,
+        "predicted_relative_error": 0.0,
+        "r_alloc": 2.2219987156315586,
+        "r_hbm": null,
+        "rho_alloc": 0.45004526463723454,
+        "sink_residual_bytes": 0,
+        "sparse_bytes": 0,
+        "workspace_bytes": 50844476
+      },
+      "method_config_fingerprint": "5b56167c81ef2042be5fa45ed4e7f8ddc60670d5611283e19e848307076c27eb",
+      "method_config_id": "tq_4bit_nc",
+      "no_fallback": true,
+      "prior_gates": [
+        {
+          "criteria_satisfied": true,
+          "evidence": [
+            {
+              "evidence_id": "tq_4bit_nc_g1_method_admission",
+              "path": "docs/evidence/phase6/turboquant-method-admission.json",
+              "sha256": "388e8107b649a9093491699357c8b1ad1d8e12c8c75378bce658f8a09bf9ab2a"
+            },
+            {
+              "evidence_id": "tq_4bit_nc_g1_historical_source_bridge",
+              "path": "unified/entry-authority.json",
+              "sha256": "73cd98d83b8fe8cca84684a822ff3b7cd2741aad2b323e4339571806f3790203"
+            }
+          ],
+          "gate": "G1",
+          "status": "PASS"
+        },
+        {
+          "criteria_satisfied": true,
+          "evidence": [
+            {
+              "evidence_id": "tq_4bit_nc_g2_method_admission",
+              "path": "docs/evidence/phase6/turboquant-method-admission.json",
+              "sha256": "388e8107b649a9093491699357c8b1ad1d8e12c8c75378bce658f8a09bf9ab2a"
+            },
+            {
+              "evidence_id": "tq_4bit_nc_g2_historical_source_bridge",
+              "path": "unified/entry-authority.json",
+              "sha256": "73cd98d83b8fe8cca84684a822ff3b7cd2741aad2b323e4339571806f3790203"
+            }
+          ],
+          "gate": "G2",
+          "status": "PASS"
+        },
+        {
+          "criteria_satisfied": true,
+          "evidence": [
+            {
+              "evidence_id": "tq_4bit_nc_g3_method_admission",
+              "path": "docs/evidence/phase6/turboquant-method-admission.json",
+              "sha256": "388e8107b649a9093491699357c8b1ad1d8e12c8c75378bce658f8a09bf9ab2a"
+            },
+            {
+              "evidence_id": "tq_4bit_nc_g3_historical_source_bridge",
+              "path": "unified/entry-authority.json",
+              "sha256": "73cd98d83b8fe8cca84684a822ff3b7cd2741aad2b323e4339571806f3790203"
+            }
+          ],
+          "gate": "G3",
+          "status": "PASS"
+        },
+        {
+          "criteria_satisfied": true,
+          "evidence": [
+            {
+              "evidence_id": "tq_4bit_nc_g4_method_admission",
+              "path": "docs/evidence/phase6/turboquant-method-admission.json",
+              "sha256": "388e8107b649a9093491699357c8b1ad1d8e12c8c75378bce658f8a09bf9ab2a"
+            },
+            {
+              "evidence_id": "tq_4bit_nc_g4_historical_source_bridge",
+              "path": "unified/entry-authority.json",
+              "sha256": "73cd98d83b8fe8cca84684a822ff3b7cd2741aad2b323e4339571806f3790203"
+            }
+          ],
+          "gate": "G4",
+          "status": "PASS"
+        }
+      ],
+      "speedup_calculated": false
+    },
+    {
+      "byte_accounting": {
+        "allocated_bytes": 226937728,
+        "data_payload_bytes": 169910784,
+        "logical_bf16_bytes": 537001984,
+        "metadata_bytes": 5540292,
+        "padding_bytes": 642240,
+        "predicted_allocated_bytes": 226937728,
+        "predicted_relative_error": 0.0,
+        "r_alloc": 2.3662966432800454,
+        "r_hbm": null,
+        "rho_alloc": 0.4226012840950696,
+        "sink_residual_bytes": 0,
+        "sparse_bytes": 0,
+        "workspace_bytes": 50844412
+      },
+      "method_config_fingerprint": "ff92cd334059888584564bb84999353a698baf3b991a602a827a53aab726908e",
+      "method_config_id": "tq_k3v4_nc",
+      "no_fallback": true,
+      "prior_gates": [
+        {
+          "criteria_satisfied": true,
+          "evidence": [
+            {
+              "evidence_id": "tq_k3v4_nc_g1_method_admission",
+              "path": "docs/evidence/phase6/turboquant-method-admission.json",
+              "sha256": "388e8107b649a9093491699357c8b1ad1d8e12c8c75378bce658f8a09bf9ab2a"
+            },
+            {
+              "evidence_id": "tq_k3v4_nc_g1_historical_source_bridge",
+              "path": "unified/entry-authority.json",
+              "sha256": "73cd98d83b8fe8cca84684a822ff3b7cd2741aad2b323e4339571806f3790203"
+            }
+          ],
+          "gate": "G1",
+          "status": "PASS"
+        },
+        {
+          "criteria_satisfied": true,
+          "evidence": [
+            {
+              "evidence_id": "tq_k3v4_nc_g2_method_admission",
+              "path": "docs/evidence/phase6/turboquant-method-admission.json",
+              "sha256": "388e8107b649a9093491699357c8b1ad1d8e12c8c75378bce658f8a09bf9ab2a"
+            },
+            {
+              "evidence_id": "tq_k3v4_nc_g2_historical_source_bridge",
+              "path": "unified/entry-authority.json",
+              "sha256": "73cd98d83b8fe8cca84684a822ff3b7cd2741aad2b323e4339571806f3790203"
+            }
+          ],
+          "gate": "G2",
+          "status": "PASS"
+        },
+        {
+          "criteria_satisfied": true,
+          "evidence": [
+            {
+              "evidence_id": "tq_k3v4_nc_g3_method_admission",
+              "path": "docs/evidence/phase6/turboquant-method-admission.json",
+              "sha256": "388e8107b649a9093491699357c8b1ad1d8e12c8c75378bce658f8a09bf9ab2a"
+            },
+            {
+              "evidence_id": "tq_k3v4_nc_g3_historical_source_bridge",
+              "path": "unified/entry-authority.json",
+              "sha256": "73cd98d83b8fe8cca84684a822ff3b7cd2741aad2b323e4339571806f3790203"
+            }
+          ],
+          "gate": "G3",
+          "status": "PASS"
+        },
+        {
+          "criteria_satisfied": true,
+          "evidence": [
+            {
+              "evidence_id": "tq_k3v4_nc_g4_method_admission",
+              "path": "docs/evidence/phase6/turboquant-method-admission.json",
+              "sha256": "388e8107b649a9093491699357c8b1ad1d8e12c8c75378bce658f8a09bf9ab2a"
+            },
+            {
+              "evidence_id": "tq_k3v4_nc_g4_historical_source_bridge",
+              "path": "unified/entry-authority.json",
+              "sha256": "73cd98d83b8fe8cca84684a822ff3b7cd2741aad2b323e4339571806f3790203"
+            }
+          ],
+          "gate": "G4",
+          "status": "PASS"
+        }
+      ],
+      "speedup_calculated": false
+    },
+    {
+      "byte_accounting": {
+        "allocated_bytes": 212200320,
+        "data_payload_bytes": 155227136,
+        "logical_bf16_bytes": 537001984,
+        "metadata_bytes": 5540292,
+        "padding_bytes": 588480,
+        "predicted_allocated_bytes": 212200320,
+        "predicted_relative_error": 0.0,
+        "r_alloc": 2.530637013176983,
+        "r_hbm": null,
+        "rho_alloc": 0.3951574227330974,
+        "sink_residual_bytes": 0,
+        "sparse_bytes": 0,
+        "workspace_bytes": 50844412
+      },
+      "method_config_fingerprint": "0d17950c2502fe7399cf5a896efa429861eb53194060ab95a7369287889dc49a",
+      "method_config_id": "tq_3bit_nc",
+      "no_fallback": true,
+      "prior_gates": [
+        {
+          "criteria_satisfied": true,
+          "evidence": [
+            {
+              "evidence_id": "tq_3bit_nc_g1_method_admission",
+              "path": "docs/evidence/phase6/turboquant-method-admission.json",
+              "sha256": "388e8107b649a9093491699357c8b1ad1d8e12c8c75378bce658f8a09bf9ab2a"
+            },
+            {
+              "evidence_id": "tq_3bit_nc_g1_historical_source_bridge",
+              "path": "unified/entry-authority.json",
+              "sha256": "73cd98d83b8fe8cca84684a822ff3b7cd2741aad2b323e4339571806f3790203"
+            }
+          ],
+          "gate": "G1",
+          "status": "PASS"
+        },
+        {
+          "criteria_satisfied": true,
+          "evidence": [
+            {
+              "evidence_id": "tq_3bit_nc_g2_method_admission",
+              "path": "docs/evidence/phase6/turboquant-method-admission.json",
+              "sha256": "388e8107b649a9093491699357c8b1ad1d8e12c8c75378bce658f8a09bf9ab2a"
+            },
+            {
+              "evidence_id": "tq_3bit_nc_g2_historical_source_bridge",
+              "path": "unified/entry-authority.json",
+              "sha256": "73cd98d83b8fe8cca84684a822ff3b7cd2741aad2b323e4339571806f3790203"
+            }
+          ],
+          "gate": "G2",
+          "status": "PASS"
+        },
+        {
+          "criteria_satisfied": true,
+          "evidence": [
+            {
+              "evidence_id": "tq_3bit_nc_g3_method_admission",
+              "path": "docs/evidence/phase6/turboquant-method-admission.json",
+              "sha256": "388e8107b649a9093491699357c8b1ad1d8e12c8c75378bce658f8a09bf9ab2a"
+            },
+            {
+              "evidence_id": "tq_3bit_nc_g3_historical_source_bridge",
+              "path": "unified/entry-authority.json",
+              "sha256": "73cd98d83b8fe8cca84684a822ff3b7cd2741aad2b323e4339571806f3790203"
+            }
+          ],
+          "gate": "G3",
+          "status": "PASS"
+        },
+        {
+          "criteria_satisfied": true,
+          "evidence": [
+            {
+              "evidence_id": "tq_3bit_nc_g4_method_admission",
+              "path": "docs/evidence/phase6/turboquant-method-admission.json",
+              "sha256": "388e8107b649a9093491699357c8b1ad1d8e12c8c75378bce658f8a09bf9ab2a"
+            },
+            {
+              "evidence_id": "tq_3bit_nc_g4_historical_source_bridge",
+              "path": "unified/entry-authority.json",
+              "sha256": "73cd98d83b8fe8cca84684a822ff3b7cd2741aad2b323e4339571806f3790203"
+            }
+          ],
+          "gate": "G4",
+          "status": "PASS"
+        }
+      ],
+      "speedup_calculated": false
+    },
+    {
+      "byte_accounting": {
+        "allocated_bytes": 176853632,
+        "data_payload_bytes": 133709824,
+        "logical_bf16_bytes": 537001984,
+        "metadata_bytes": 35533056,
+        "padding_bytes": 0,
+        "predicted_allocated_bytes": 176853632,
+        "predicted_relative_error": 0.0,
+        "r_alloc": 3.0364204451283197,
+        "r_hbm": null,
+        "rho_alloc": 0.3293351556779351,
+        "sink_residual_bytes": 4194304,
+        "sparse_bytes": 0,
+        "workspace_bytes": 3416448
+      },
+      "method_config_fingerprint": "97289ed9c875e27013ddcf7659fc6e849b3d438c58d0d86bd3dcac5d82eefb09",
+      "method_config_id": "k4v4",
+      "no_fallback": true,
+      "prior_gates": [
+        {
+          "criteria_satisfied": true,
+          "evidence": [
+            {
+              "evidence_id": "k4v4_g1_method_admission",
+              "path": "docs/evidence/phase8/kivi-method-admission.json",
+              "sha256": "3a4b63b9da0eab12db9a916ebdc1cffd788ea6f93678d87964a8332ae7cec83a"
+            }
+          ],
+          "gate": "G1",
+          "status": "PASS"
+        },
+        {
+          "criteria_satisfied": true,
+          "evidence": [
+            {
+              "evidence_id": "k4v4_g2_method_admission",
+              "path": "docs/evidence/phase8/kivi-method-admission.json",
+              "sha256": "3a4b63b9da0eab12db9a916ebdc1cffd788ea6f93678d87964a8332ae7cec83a"
+            }
+          ],
+          "gate": "G2",
+          "status": "PASS"
+        },
+        {
+          "criteria_satisfied": true,
+          "evidence": [
+            {
+              "evidence_id": "k4v4_g3_method_admission",
+              "path": "docs/evidence/phase8/kivi-method-admission.json",
+              "sha256": "3a4b63b9da0eab12db9a916ebdc1cffd788ea6f93678d87964a8332ae7cec83a"
+            }
+          ],
+          "gate": "G3",
+          "status": "PASS"
+        },
+        {
+          "criteria_satisfied": true,
+          "evidence": [
+            {
+              "evidence_id": "k4v4_g4_method_admission",
+              "path": "docs/evidence/phase8/kivi-method-admission.json",
+              "sha256": "3a4b63b9da0eab12db9a916ebdc1cffd788ea6f93678d87964a8332ae7cec83a"
+            }
+          ],
+          "gate": "G4",
+          "status": "PASS"
+        }
+      ],
+      "speedup_calculated": false
+    },
+    {
+      "byte_accounting": {
+        "allocated_bytes": 143299200,
+        "data_payload_bytes": 100155392,
+        "logical_bf16_bytes": 537001984,
+        "metadata_bytes": 35533056,
+        "padding_bytes": 0,
+        "predicted_allocated_bytes": 143299200,
+        "predicted_relative_error": 0.0,
+        "r_alloc": 3.7474178781179517,
+        "r_hbm": null,
+        "rho_alloc": 0.26685041074261656,
+        "sink_residual_bytes": 4194304,
+        "sparse_bytes": 0,
+        "workspace_bytes": 3416448
+      },
+      "method_config_fingerprint": "568493e09cad122088716533c954beb6b25a01209fa28016f761b2ede4930a3f",
+      "method_config_id": "k2v4",
+      "no_fallback": true,
+      "prior_gates": [
+        {
+          "criteria_satisfied": true,
+          "evidence": [
+            {
+              "evidence_id": "k2v4_g1_method_admission",
+              "path": "docs/evidence/phase8/kivi-method-admission.json",
+              "sha256": "3a4b63b9da0eab12db9a916ebdc1cffd788ea6f93678d87964a8332ae7cec83a"
+            }
+          ],
+          "gate": "G1",
+          "status": "PASS"
+        },
+        {
+          "criteria_satisfied": true,
+          "evidence": [
+            {
+              "evidence_id": "k2v4_g2_method_admission",
+              "path": "docs/evidence/phase8/kivi-method-admission.json",
+              "sha256": "3a4b63b9da0eab12db9a916ebdc1cffd788ea6f93678d87964a8332ae7cec83a"
+            }
+          ],
+          "gate": "G2",
+          "status": "PASS"
+        },
+        {
+          "criteria_satisfied": true,
+          "evidence": [
+            {
+              "evidence_id": "k2v4_g3_method_admission",
+              "path": "docs/evidence/phase8/kivi-method-admission.json",
+              "sha256": "3a4b63b9da0eab12db9a916ebdc1cffd788ea6f93678d87964a8332ae7cec83a"
+            }
+          ],
+          "gate": "G3",
+          "status": "PASS"
+        },
+        {
+          "criteria_satisfied": true,
+          "evidence": [
+            {
+              "evidence_id": "k2v4_g4_method_admission",
+              "path": "docs/evidence/phase8/kivi-method-admission.json",
+              "sha256": "3a4b63b9da0eab12db9a916ebdc1cffd788ea6f93678d87964a8332ae7cec83a"
+            }
+          ],
+          "gate": "G4",
+          "status": "PASS"
+        }
+      ],
+      "speedup_calculated": false
+    },
+    {
+      "byte_accounting": {
+        "allocated_bytes": 109998720,
+        "data_payload_bytes": 66854912,
+        "logical_bf16_bytes": 537001984,
+        "metadata_bytes": 35533056,
+        "padding_bytes": 0,
+        "predicted_allocated_bytes": 109998720,
+        "predicted_relative_error": 0.0,
+        "r_alloc": 4.881893025664299,
+        "r_hbm": null,
+        "rho_alloc": 0.20483857281242374,
+        "sink_residual_bytes": 4194304,
+        "sparse_bytes": 0,
+        "workspace_bytes": 3416448
+      },
+      "method_config_fingerprint": "667395cefa882efc7c54f9088e3706dcdc3ba33c8734bdf8de9e0dd8ae1124b8",
+      "method_config_id": "k2v2",
+      "no_fallback": true,
+      "prior_gates": [
+        {
+          "criteria_satisfied": true,
+          "evidence": [
+            {
+              "evidence_id": "k2v2_g1_method_admission",
+              "path": "docs/evidence/phase8/kivi-method-admission.json",
+              "sha256": "3a4b63b9da0eab12db9a916ebdc1cffd788ea6f93678d87964a8332ae7cec83a"
+            }
+          ],
+          "gate": "G1",
+          "status": "PASS"
+        },
+        {
+          "criteria_satisfied": true,
+          "evidence": [
+            {
+              "evidence_id": "k2v2_g2_method_admission",
+              "path": "docs/evidence/phase8/kivi-method-admission.json",
+              "sha256": "3a4b63b9da0eab12db9a916ebdc1cffd788ea6f93678d87964a8332ae7cec83a"
+            }
+          ],
+          "gate": "G2",
+          "status": "PASS"
+        },
+        {
+          "criteria_satisfied": true,
+          "evidence": [
+            {
+              "evidence_id": "k2v2_g3_method_admission",
+              "path": "docs/evidence/phase8/kivi-method-admission.json",
+              "sha256": "3a4b63b9da0eab12db9a916ebdc1cffd788ea6f93678d87964a8332ae7cec83a"
+            }
+          ],
+          "gate": "G3",
+          "status": "PASS"
+        },
+        {
+          "criteria_satisfied": true,
+          "evidence": [
+            {
+              "evidence_id": "k2v2_g4_method_admission",
+              "path": "docs/evidence/phase8/kivi-method-admission.json",
+              "sha256": "3a4b63b9da0eab12db9a916ebdc1cffd788ea6f93678d87964a8332ae7cec83a"
+            }
+          ],
+          "gate": "G4",
+          "status": "PASS"
+        }
+      ],
+      "speedup_calculated": false
+    },
+    {
+      "byte_accounting": {
+        "allocated_bytes": 174189918,
+        "data_payload_bytes": 134250496,
+        "logical_bf16_bytes": 537001984,
+        "metadata_bytes": 11938305,
+        "padding_bytes": 0,
+        "predicted_allocated_bytes": 174189918,
+        "predicted_relative_error": 0.0,
+        "r_alloc": 3.0828534174980207,
+        "r_hbm": null,
+        "rho_alloc": 0.324374812738122,
+        "sink_residual_bytes": 655360,
+        "sparse_bytes": 25171968,
+        "workspace_bytes": 2173789
+      },
+      "method_config_fingerprint": "8f3ea4f49056a5c4ada715a853ec506de4b6bcab262cfd88dc5796bacc032fa0",
+      "method_config_id": "kvq4",
+      "no_fallback": true,
+      "prior_gates": [
+        {
+          "criteria_satisfied": true,
+          "evidence": [
+            {
+              "evidence_id": "kvq4_g1_method_admission",
+              "path": "docs/evidence/phase11rq23/kvquant-method-admission.json",
+              "sha256": "9cfed618cee9514a1071392d0a2dca327dcf6acd33d81ac72cc477c7880c09e2"
+            }
+          ],
+          "gate": "G1",
+          "status": "PASS"
+        },
+        {
+          "criteria_satisfied": true,
+          "evidence": [
+            {
+              "evidence_id": "kvq4_g2_method_admission",
+              "path": "docs/evidence/phase11rq23/kvquant-method-admission.json",
+              "sha256": "9cfed618cee9514a1071392d0a2dca327dcf6acd33d81ac72cc477c7880c09e2"
+            }
+          ],
+          "gate": "G2",
+          "status": "PASS"
+        },
+        {
+          "criteria_satisfied": true,
+          "evidence": [
+            {
+              "evidence_id": "kvq4_g3_method_admission",
+              "path": "docs/evidence/phase11rq23/kvquant-method-admission.json",
+              "sha256": "9cfed618cee9514a1071392d0a2dca327dcf6acd33d81ac72cc477c7880c09e2"
+            }
+          ],
+          "gate": "G3",
+          "status": "PASS"
+        },
+        {
+          "criteria_satisfied": true,
+          "evidence": [
+            {
+              "evidence_id": "kvq4_g4_method_admission",
+              "path": "docs/evidence/phase11rq23/kvquant-method-admission.json",
+              "sha256": "9cfed618cee9514a1071392d0a2dca327dcf6acd33d81ac72cc477c7880c09e2"
+            }
+          ],
+          "gate": "G4",
+          "status": "PASS"
+        }
+      ],
+      "speedup_calculated": false
+    },
+    {
+      "byte_accounting": {
+        "allocated_bytes": 134857022,
+        "data_payload_bytes": 100687872,
+        "logical_bf16_bytes": 537001984,
+        "metadata_bytes": 6692353,
+        "padding_bytes": 0,
+        "predicted_allocated_bytes": 134857022,
+        "predicted_relative_error": 0.0,
+        "r_alloc": 3.9820098059113302,
+        "r_hbm": null,
+        "rho_alloc": 0.2511294669630122,
+        "sink_residual_bytes": 655360,
+        "sparse_bytes": 25171968,
+        "workspace_bytes": 1649469
+      },
+      "method_config_fingerprint": "2f0d1a99db2e6884745b6cd54c50eedfa17744b89a3e8b2ffd840986126bd802",
+      "method_config_id": "kvq3",
+      "no_fallback": true,
+      "prior_gates": [
+        {
+          "criteria_satisfied": true,
+          "evidence": [
+            {
+              "evidence_id": "kvq3_g1_method_admission",
+              "path": "docs/evidence/phase11rq23/kvquant-method-admission.json",
+              "sha256": "9cfed618cee9514a1071392d0a2dca327dcf6acd33d81ac72cc477c7880c09e2"
+            }
+          ],
+          "gate": "G1",
+          "status": "PASS"
+        },
+        {
+          "criteria_satisfied": true,
+          "evidence": [
+            {
+              "evidence_id": "kvq3_g2_method_admission",
+              "path": "docs/evidence/phase11rq23/kvquant-method-admission.json",
+              "sha256": "9cfed618cee9514a1071392d0a2dca327dcf6acd33d81ac72cc477c7880c09e2"
+            }
+          ],
+          "gate": "G2",
+          "status": "PASS"
+        },
+        {
+          "criteria_satisfied": true,
+          "evidence": [
+            {
+              "evidence_id": "kvq3_g3_method_admission",
+              "path": "docs/evidence/phase11rq23/kvquant-method-admission.json",
+              "sha256": "9cfed618cee9514a1071392d0a2dca327dcf6acd33d81ac72cc477c7880c09e2"
+            }
+          ],
+          "gate": "G3",
+          "status": "PASS"
+        },
+        {
+          "criteria_satisfied": true,
+          "evidence": [
+            {
+              "evidence_id": "kvq3_g4_method_admission",
+              "path": "docs/evidence/phase11rq23/kvquant-method-admission.json",
+              "sha256": "9cfed618cee9514a1071392d0a2dca327dcf6acd33d81ac72cc477c7880c09e2"
+            }
+          ],
+          "gate": "G4",
+          "status": "PASS"
+        }
+      ],
+      "speedup_calculated": false
+    },
+    {
+      "byte_accounting": {
+        "allocated_bytes": 98671406,
+        "data_payload_bytes": 67125248,
+        "logical_bf16_bytes": 537001984,
+        "metadata_bytes": 4069377,
+        "padding_bytes": 0,
+        "predicted_allocated_bytes": 98671406,
+        "predicted_relative_error": 0.0,
+        "r_alloc": 5.442326260152814,
+        "r_hbm": null,
+        "rho_alloc": 0.18374495614526445,
+        "sink_residual_bytes": 655360,
+        "sparse_bytes": 25171968,
+        "workspace_bytes": 1649453
+      },
+      "method_config_fingerprint": "eb75d6cbf8ff27365cd2799c4e0232649c94d6f094cb4d041bbe8c3ac1cda5ee",
+      "method_config_id": "kvq2",
+      "no_fallback": true,
+      "prior_gates": [
+        {
+          "criteria_satisfied": true,
+          "evidence": [
+            {
+              "evidence_id": "kvq2_g1_method_admission",
+              "path": "docs/evidence/phase11rq23/kvquant-method-admission.json",
+              "sha256": "9cfed618cee9514a1071392d0a2dca327dcf6acd33d81ac72cc477c7880c09e2"
+            }
+          ],
+          "gate": "G1",
+          "status": "PASS"
+        },
+        {
+          "criteria_satisfied": true,
+          "evidence": [
+            {
+              "evidence_id": "kvq2_g2_method_admission",
+              "path": "docs/evidence/phase11rq23/kvquant-method-admission.json",
+              "sha256": "9cfed618cee9514a1071392d0a2dca327dcf6acd33d81ac72cc477c7880c09e2"
+            }
+          ],
+          "gate": "G2",
+          "status": "PASS"
+        },
+        {
+          "criteria_satisfied": true,
+          "evidence": [
+            {
+              "evidence_id": "kvq2_g3_method_admission",
+              "path": "docs/evidence/phase11rq23/kvquant-method-admission.json",
+              "sha256": "9cfed618cee9514a1071392d0a2dca327dcf6acd33d81ac72cc477c7880c09e2"
+            }
+          ],
+          "gate": "G3",
+          "status": "PASS"
+        },
+        {
+          "criteria_satisfied": true,
+          "evidence": [
+            {
+              "evidence_id": "kvq2_g4_method_admission",
+              "path": "docs/evidence/phase11rq23/kvquant-method-admission.json",
+              "sha256": "9cfed618cee9514a1071392d0a2dca327dcf6acd33d81ac72cc477c7880c09e2"
+            }
+          ],
+          "gate": "G4",
+          "status": "PASS"
+        }
+      ],
+      "speedup_calculated": false
+    }
+  ],
+  "context_length": 4096,
+  "created_at_utc": "2026-07-31T15:06:26.982018Z",
+  "cv_threshold": 0.03,
+  "excluded_configurations": [
+    {
+      "method_config_id": "turboquant_k8v4",
+      "reason": "validation_only_control"
+    },
+    {
+      "method_config_id": "k4v2",
+      "reason": "validation_only_control"
+    }
+  ],
+  "execution_git_sha": "6165f78ddfbc96f7e65568b6a960d4b47f85e813",
+  "g5_statistics": [
+    {
+      "allocation_agreement": true,
+      "coefficient_of_variation": 5.592249204210033e-05,
+      "disposition": "PASS",
+      "kernel_path_agreement": true,
+      "maximum_ms": 11.764447212219238,
+      "mean_ms": 11.763731638590494,
+      "median_ms": 11.763594627380371,
+      "memory_clock_max_mhz": 13365,
+      "memory_clock_min_mhz": 13365,
+      "method_config_id": "bf16",
+      "minimum_ms": 11.763153076171875,
+      "output_checksum_agreement": true,
+      "power_max_w": 415.21,
+      "power_min_w": 101.56,
+      "process_medians_ms": [
+        11.764447212219238,
+        11.763153076171875,
+        11.763594627380371
+      ],
+      "run_ids": [
+        "phase12-20260731t062914664948z-6165f78d-c78b9a-r0-04-bf16",
+        "phase12-20260731t062914664948z-6165f78d-c78b9a-r1-09-bf16",
+        "phase12-20260731t062914664948z-6165f78d-c78b9a-r2-03-bf16"
+      ],
+      "sm_clock_max_mhz": 2835,
+      "sm_clock_min_mhz": 2820,
+      "standard_deviation_ms": 0.0006578571889444808,
+      "temperature_max_c": 60.0,
+      "temperature_min_c": 49.0
+    },
+    {
+      "allocation_agreement": true,
+      "coefficient_of_variation": 0.0002352043163519326,
+      "disposition": "PASS",
+      "kernel_path_agreement": true,
+      "maximum_ms": 25.79061508178711,
+      "mean_ms": 25.783781051635742,
+      "median_ms": 25.781686782836914,
+      "memory_clock_max_mhz": 13365,
+      "memory_clock_min_mhz": 13365,
+      "method_config_id": "tq_4bit_nc",
+      "minimum_ms": 25.779041290283203,
+      "output_checksum_agreement": true,
+      "power_max_w": 275.56,
+      "power_min_w": 101.28,
+      "process_medians_ms": [
+        25.781686782836914,
+        25.779041290283203,
+        25.79061508178711
+      ],
+      "run_ids": [
+        "phase12-20260731t062914664948z-6165f78d-c78b9a-r0-05-tq_4bit_nc",
+        "phase12-20260731t062914664948z-6165f78d-c78b9a-r1-05-tq_4bit_nc",
+        "phase12-20260731t062914664948z-6165f78d-c78b9a-r2-01-tq_4bit_nc"
+      ],
+      "sm_clock_max_mhz": 2835,
+      "sm_clock_min_mhz": 2827,
+      "standard_deviation_ms": 0.006064456595217899,
+      "temperature_max_c": 59.0,
+      "temperature_min_c": 48.0
+    },
+    {
+      "allocation_agreement": true,
+      "coefficient_of_variation": 0.0005785847917346165,
+      "disposition": "PASS",
+      "kernel_path_agreement": true,
+      "maximum_ms": 21.084360122680664,
+      "mean_ms": 21.075419743855793,
+      "median_ms": 21.08036994934082,
+      "memory_clock_max_mhz": 13365,
+      "memory_clock_min_mhz": 13365,
+      "method_config_id": "tq_k3v4_nc",
+      "minimum_ms": 21.0615291595459,
+      "output_checksum_agreement": true,
+      "power_max_w": 304.1,
+      "power_min_w": 101.63,
+      "process_medians_ms": [
+        21.084360122680664,
+        21.0615291595459,
+        21.08036994934082
+      ],
+      "run_ids": [
+        "phase12-20260731t062914664948z-6165f78d-c78b9a-r0-08-tq_k3v4_nc",
+        "phase12-20260731t062914664948z-6165f78d-c78b9a-r1-00-tq_k3v4_nc",
+        "phase12-20260731t062914664948z-6165f78d-c78b9a-r2-00-tq_k3v4_nc"
+      ],
+      "sm_clock_max_mhz": 2835,
+      "sm_clock_min_mhz": 2820,
+      "standard_deviation_ms": 0.012193917343218428,
+      "temperature_max_c": 59.0,
+      "temperature_min_c": 48.0
+    },
+    {
+      "allocation_agreement": true,
+      "coefficient_of_variation": 0.0008093098737498038,
+      "disposition": "PASS",
+      "kernel_path_agreement": true,
+      "maximum_ms": 22.848342895507812,
+      "mean_ms": 22.83288828531901,
+      "median_ms": 22.837902069091797,
+      "memory_clock_max_mhz": 13365,
+      "memory_clock_min_mhz": 13365,
+      "method_config_id": "tq_3bit_nc",
+      "minimum_ms": 22.812419891357422,
+      "output_checksum_agreement": true,
+      "power_max_w": 289.64,
+      "power_min_w": 100.61,
+      "process_medians_ms": [
+        22.837902069091797,
+        22.812419891357422,
+        22.848342895507812
+      ],
+      "run_ids": [
+        "phase12-20260731t062914664948z-6165f78d-c78b9a-r0-03-tq_3bit_nc",
+        "phase12-20260731t062914664948z-6165f78d-c78b9a-r1-07-tq_3bit_nc",
+        "phase12-20260731t062914664948z-6165f78d-c78b9a-r2-06-tq_3bit_nc"
+      ],
+      "sm_clock_max_mhz": 2835,
+      "sm_clock_min_mhz": 2820,
+      "standard_deviation_ms": 0.018478881935534902,
+      "temperature_max_c": 57.0,
+      "temperature_min_c": 47.0
+    },
+    {
+      "allocation_agreement": true,
+      "coefficient_of_variation": 0.00015331205274465748,
+      "disposition": "PASS",
+      "kernel_path_agreement": true,
+      "maximum_ms": 19.04454231262207,
+      "mean_ms": 19.0412654876709,
+      "median_ms": 19.040311813354492,
+      "memory_clock_max_mhz": 13365,
+      "memory_clock_min_mhz": 13365,
+      "method_config_id": "k4v4",
+      "minimum_ms": 19.038942337036133,
+      "output_checksum_agreement": true,
+      "power_max_w": 311.5,
+      "power_min_w": 79.03,
+      "process_medians_ms": [
+        19.040311813354492,
+        19.038942337036133,
+        19.04454231262207
+      ],
+      "run_ids": [
+        "phase12-20260731t062914664948z-6165f78d-c78b9a-r0-07-k4v4",
+        "phase12-20260731t062914664948z-6165f78d-c78b9a-r1-08-k4v4",
+        "phase12-20260731t062914664948z-6165f78d-c78b9a-r2-02-k4v4"
+      ],
+      "sm_clock_max_mhz": 2820,
+      "sm_clock_min_mhz": 2610,
+      "standard_deviation_ms": 0.0029192554987708267,
+      "temperature_max_c": 58.0,
+      "temperature_min_c": 48.0
+    },
+    {
+      "allocation_agreement": true,
+      "coefficient_of_variation": 0.00014398738183156484,
+      "disposition": "PASS",
+      "kernel_path_agreement": true,
+      "maximum_ms": 18.994421005249023,
+      "mean_ms": 18.991275787353516,
+      "median_ms": 18.989944458007812,
+      "memory_clock_max_mhz": 13365,
+      "memory_clock_min_mhz": 13365,
+      "method_config_id": "k2v4",
+      "minimum_ms": 18.98946189880371,
+      "output_checksum_agreement": true,
+      "power_max_w": 309.52,
+      "power_min_w": 78.26,
+      "process_medians_ms": [
+        18.989944458007812,
+        18.98946189880371,
+        18.994421005249023
+      ],
+      "run_ids": [
+        "phase12-20260731t062914664948z-6165f78d-c78b9a-r0-00-k2v4",
+        "phase12-20260731t062914664948z-6165f78d-c78b9a-r1-01-k2v4",
+        "phase12-20260731t062914664948z-6165f78d-c78b9a-r2-04-k2v4"
+      ],
+      "sm_clock_max_mhz": 2820,
+      "sm_clock_min_mhz": 2610,
+      "standard_deviation_ms": 0.0027345040782622227,
+      "temperature_max_c": 57.0,
+      "temperature_min_c": 48.0
+    },
+    {
+      "allocation_agreement": true,
+      "coefficient_of_variation": 6.0223651152304835e-05,
+      "disposition": "PASS",
+      "kernel_path_agreement": true,
+      "maximum_ms": 19.08041000366211,
+      "mean_ms": 19.079152425130207,
+      "median_ms": 19.078889846801758,
+      "memory_clock_max_mhz": 13365,
+      "memory_clock_min_mhz": 13365,
+      "method_config_id": "k2v2",
+      "minimum_ms": 19.078157424926758,
+      "output_checksum_agreement": true,
+      "power_max_w": 305.83,
+      "power_min_w": 77.59,
+      "process_medians_ms": [
+        19.078889846801758,
+        19.078157424926758,
+        19.08041000366211
+      ],
+      "run_ids": [
+        "phase12-20260731t062914664948z-6165f78d-c78b9a-r0-01-k2v2",
+        "phase12-20260731t062914664948z-6165f78d-c78b9a-r1-02-k2v2",
+        "phase12-20260731t062914664948z-6165f78d-c78b9a-r2-05-k2v2"
+      ],
+      "sm_clock_max_mhz": 2820,
+      "sm_clock_min_mhz": 2610,
+      "standard_deviation_ms": 0.0011490162199326924,
+      "temperature_max_c": 57.0,
+      "temperature_min_c": 48.0
+    },
+    {
+      "allocation_agreement": true,
+      "coefficient_of_variation": 0.00012555766832445073,
+      "disposition": "PASS",
+      "kernel_path_agreement": true,
+      "maximum_ms": 150.7654266357422,
+      "mean_ms": 150.7497100830078,
+      "median_ms": 150.7550048828125,
+      "memory_clock_max_mhz": 13365,
+      "memory_clock_min_mhz": 13365,
+      "method_config_id": "kvq4",
+      "minimum_ms": 150.72869873046875,
+      "output_checksum_agreement": true,
+      "power_max_w": 149.09,
+      "power_min_w": 74.89,
+      "process_medians_ms": [
+        150.72869873046875,
+        150.7654266357422,
+        150.7550048828125
+      ],
+      "run_ids": [
+        "phase12-20260731t062914664948z-6165f78d-c78b9a-r0-06-kvq4",
+        "phase12-20260731t062914664948z-6165f78d-c78b9a-r1-03-kvq4",
+        "phase12-20260731t062914664948z-6165f78d-c78b9a-r2-09-kvq4"
+      ],
+      "sm_clock_max_mhz": 2835,
+      "sm_clock_min_mhz": 2610,
+      "standard_deviation_ms": 0.018927782098609403,
+      "temperature_max_c": 54.0,
+      "temperature_min_c": 45.0
+    },
+    {
+      "allocation_agreement": true,
+      "coefficient_of_variation": 2.6607266224535877e-05,
+      "disposition": "PASS",
+      "kernel_path_agreement": true,
+      "maximum_ms": 151.86585998535156,
+      "mean_ms": 151.86160786946616,
+      "median_ms": 151.86114501953125,
+      "memory_clock_max_mhz": 13365,
+      "memory_clock_min_mhz": 13365,
+      "method_config_id": "kvq3",
+      "minimum_ms": 151.85781860351562,
+      "output_checksum_agreement": true,
+      "power_max_w": 150.04,
+      "power_min_w": 75.88,
+      "process_medians_ms": [
+        151.85781860351562,
+        151.86585998535156,
+        151.86114501953125
+      ],
+      "run_ids": [
+        "phase12-20260731t062914664948z-6165f78d-c78b9a-r0-02-kvq3",
+        "phase12-20260731t062914664948z-6165f78d-c78b9a-r1-06-kvq3",
+        "phase12-20260731t062914664948z-6165f78d-c78b9a-r2-08-kvq3"
+      ],
+      "sm_clock_max_mhz": 2835,
+      "sm_clock_min_mhz": 2610,
+      "standard_deviation_ms": 0.004040622229868959,
+      "temperature_max_c": 54.0,
+      "temperature_min_c": 45.0
+    },
+    {
+      "allocation_agreement": true,
+      "coefficient_of_variation": 6.289442977361726e-05,
+      "disposition": "PASS",
+      "kernel_path_agreement": true,
+      "maximum_ms": 148.99171447753906,
+      "mean_ms": 148.9835968017578,
+      "median_ms": 148.98573303222656,
+      "memory_clock_max_mhz": 13365,
+      "memory_clock_min_mhz": 13365,
+      "method_config_id": "kvq2",
+      "minimum_ms": 148.9733428955078,
+      "output_checksum_agreement": true,
+      "power_max_w": 149.94,
+      "power_min_w": 75.59,
+      "process_medians_ms": [
+        148.9733428955078,
+        148.98573303222656,
+        148.99171447753906
+      ],
+      "run_ids": [
+        "phase12-20260731t062914664948z-6165f78d-c78b9a-r0-09-kvq2",
+        "phase12-20260731t062914664948z-6165f78d-c78b9a-r1-04-kvq2",
+        "phase12-20260731t062914664948z-6165f78d-c78b9a-r2-07-kvq2"
+      ],
+      "sm_clock_max_mhz": 2827,
+      "sm_clock_min_mhz": 2610,
+      "standard_deviation_ms": 0.009370238366469065,
+      "temperature_max_c": 55.0,
+      "temperature_min_c": 46.0
+    }
+  ],
+  "gates": {
+    "full_scan_state": "CLOSED",
+    "g0": "PASS",
+    "g1": "PASS",
+    "g2": "PASS",
+    "g3": "PASS",
+    "g4": "PASS",
+    "g5": "PASS",
+    "performance_data_frozen": false,
+    "pilot_state": "READY",
+    "quality_execution": "locked"
+  },
+  "graph_mode": "cuda_graph",
+  "independent_process_replicates": 3,
+  "measured_batches": 5,
+  "measured_steps": 128,
+  "model_id": "meta-llama/Llama-3.1-8B-Instruct",
+  "model_revision": "0e9e39f249a16976918f6564b8830bc894c89659",
+  "object_count": 391,
+  "publication_receipt": {
+    "evidence_id": "phase12_r2_publication",
+    "path": "docs/evidence/phase12/r2-publication.json",
+    "sha256": "789f5de201e83ddf73b8835710f5d8b1daf9bcabfac41f211a2eb157dc96cca7"
+  },
+  "publication_state": "PASS",
+  "published_root_sha256": "42ab15b6617d072f9b0825b701d1df4519caa110166b8edd48b8359fe8e588e5",
+  "r2_uri": "r2://kvbench-artifacts/kvbench/sha256/42ab15b6617d072f9b0825b701d1df4519caa110166b8edd48b8359fe8e588e5/",
+  "randomized_orders": [
+    {
+      "configurations": [
+        "k2v4",
+        "k2v2",
+        "kvq3",
+        "tq_3bit_nc",
+        "bf16",
+        "tq_4bit_nc",
+        "kvq4",
+        "k4v4",
+        "tq_k3v4_nc",
+        "kvq2"
+      ],
+      "replicate_index": 0,
+      "seed": 20260730
+    },
+    {
+      "configurations": [
+        "tq_k3v4_nc",
+        "k2v4",
+        "k2v2",
+        "kvq4",
+        "kvq2",
+        "tq_4bit_nc",
+        "kvq3",
+        "tq_3bit_nc",
+        "k4v4",
+        "bf16"
+      ],
+      "replicate_index": 1,
+      "seed": 20260731
+    },
+    {
+      "configurations": [
+        "tq_k3v4_nc",
+        "tq_4bit_nc",
+        "k4v4",
+        "bf16",
+        "k2v4",
+        "k2v2",
+        "tq_3bit_nc",
+        "kvq2",
+        "kvq3",
+        "kvq4"
+      ],
+      "replicate_index": 2,
+      "seed": 20260732
+    }
+  ],
+  "runner_kind": "fixed_l",
+  "runs": [
+    {
+      "allocation_fingerprint": "a41ee5b7ebbfbb6b38208d5825511c866fe07d6416ae7fa4bd03360eeee719ef",
+      "allocation_stable": true,
+      "finite_output": true,
+      "gpu_exclusive": true,
+      "kernel_path_fingerprint": "e25ab9ac85a9e8606d2b71d0d5777884fdb07b167601794a86abc66833767dd3",
+      "kernel_path_stable": true,
+      "manifest_path": "runs/phase12-20260731t062914664948z-6165f78d-c78b9a-r0-00-k2v4/manifest.json",
+      "manifest_sha256": "fb2705a740e1cb4d65f51dd92883b30eb3caa0f0597b7d1f9c4d71173ab37309",
+      "memory_clock_max_mhz": 13365,
+      "memory_clock_min_mhz": 13365,
+      "method_config_id": "k2v4",
+      "no_backend_fallback": true,
+      "order_index": 0,
+      "output_checksum": "056dddc8bc685b60e5caf7b9b420b792a23a7218c098b4a6c181746dabd8454c",
+      "power_max_w": 309.52,
+      "power_min_w": 79.5,
+      "process_median_ms": 18.989944458007812,
+      "replicate_index": 0,
+      "run_id": "phase12-20260731t062914664948z-6165f78d-c78b9a-r0-00-k2v4",
+      "seed": 20260730,
+      "sm_clock_max_mhz": 2820,
+      "sm_clock_min_mhz": 2610,
+      "speedup_calculated": false,
+      "temperature_max_c": 57.0,
+      "temperature_min_c": 49.0
+    },
+    {
+      "allocation_fingerprint": "2abccafcc361852292bbbea423393479631870bf1058052ad8be31e78e8308ee",
+      "allocation_stable": true,
+      "finite_output": true,
+      "gpu_exclusive": true,
+      "kernel_path_fingerprint": "dd38b66352a6f5473b0989adbca4912d1756d6bca1a192173d5aa96e822f85ce",
+      "kernel_path_stable": true,
+      "manifest_path": "runs/phase12-20260731t062914664948z-6165f78d-c78b9a-r0-01-k2v2/manifest.json",
+      "manifest_sha256": "dc8dc717c8e0922f684cc32123991b6ef94c2a9c221fc435e3d278bee3d1cd30",
+      "memory_clock_max_mhz": 13365,
+      "memory_clock_min_mhz": 13365,
+      "method_config_id": "k2v2",
+      "no_backend_fallback": true,
+      "order_index": 1,
+      "output_checksum": "03881a7cbf649f074c1c46218765bc2ec0ac8b9020067367df30a8330ee84c0f",
+      "power_max_w": 305.18,
+      "power_min_w": 79.85,
+      "process_median_ms": 19.078889846801758,
+      "replicate_index": 0,
+      "run_id": "phase12-20260731t062914664948z-6165f78d-c78b9a-r0-01-k2v2",
+      "seed": 20260730,
+      "sm_clock_max_mhz": 2820,
+      "sm_clock_min_mhz": 2610,
+      "speedup_calculated": false,
+      "temperature_max_c": 57.0,
+      "temperature_min_c": 49.0
+    },
+    {
+      "allocation_fingerprint": "1ed7752f8d6d95f34bd3eecf4c033697f03272e7a184df0550bfa18dcb4d0652",
+      "allocation_stable": true,
+      "finite_output": true,
+      "gpu_exclusive": true,
+      "kernel_path_fingerprint": "c9e547ddadee750cf7fd89ab9917d1bc996c2ae6581ee6ac8604e19589f5cd19",
+      "kernel_path_stable": true,
+      "manifest_path": "runs/phase12-20260731t062914664948z-6165f78d-c78b9a-r0-02-kvq3/manifest.json",
+      "manifest_sha256": "838d3562eb85d26f0c539551334cfda438207e19be80574e1b383fd7996badec",
+      "memory_clock_max_mhz": 13365,
+      "memory_clock_min_mhz": 13365,
+      "method_config_id": "kvq3",
+      "no_backend_fallback": true,
+      "order_index": 2,
+      "output_checksum": "0ae40fa925d0d04bf0ab5099e244df5d6ade6bc165398862b96d1fe1bc809674",
+      "power_max_w": 149.6,
+      "power_min_w": 77.43,
+      "process_median_ms": 151.85781860351562,
+      "replicate_index": 0,
+      "run_id": "phase12-20260731t062914664948z-6165f78d-c78b9a-r0-02-kvq3",
+      "seed": 20260730,
+      "sm_clock_max_mhz": 2827,
+      "sm_clock_min_mhz": 2610,
+      "speedup_calculated": false,
+      "temperature_max_c": 54.0,
+      "temperature_min_c": 46.0
+    },
+    {
+      "allocation_fingerprint": "dbafc14c9a20d77c530fc8681b3d10dace73e4058b54f8a08e38fcdcc0e31bf3",
+      "allocation_stable": true,
+      "finite_output": true,
+      "gpu_exclusive": true,
+      "kernel_path_fingerprint": "cae3ed02f24a94c216f6063fed0f0fa707a92e39bd2bed973fb0d5fd6f3e3cc3",
+      "kernel_path_stable": true,
+      "manifest_path": "runs/phase12-20260731t062914664948z-6165f78d-c78b9a-r0-03-tq_3bit_nc/manifest.json",
+      "manifest_sha256": "f228f01ed7553f759fb7af51e5037a1e1b382e9fca6e4e246ac5b71c0b106bdc",
+      "memory_clock_max_mhz": 13365,
+      "memory_clock_min_mhz": 13365,
+      "method_config_id": "tq_3bit_nc",
+      "no_backend_fallback": true,
+      "order_index": 3,
+      "output_checksum": "7fdb9d4c24b5202183023974f505dcbefa09aca6410e38e7f18a6f0d25a4eb9c",
+      "power_max_w": 287.91,
+      "power_min_w": 100.61,
+      "process_median_ms": 22.837902069091797,
+      "replicate_index": 0,
+      "run_id": "phase12-20260731t062914664948z-6165f78d-c78b9a-r0-03-tq_3bit_nc",
+      "seed": 20260730,
+      "sm_clock_max_mhz": 2835,
+      "sm_clock_min_mhz": 2820,
+      "speedup_calculated": false,
+      "temperature_max_c": 56.0,
+      "temperature_min_c": 47.0
+    },
+    {
+      "allocation_fingerprint": "c29a4c65e89491c9581473cb232fb1f230a9f7dff3099890a2e001cb8895b92e",
+      "allocation_stable": true,
+      "finite_output": true,
+      "gpu_exclusive": true,
+      "kernel_path_fingerprint": "ce00397000d7629255bd0fb6d10579e9e555fe2d02541e37cce69efcdce706f3",
+      "kernel_path_stable": true,
+      "manifest_path": "runs/phase12-20260731t062914664948z-6165f78d-c78b9a-r0-04-bf16/manifest.json",
+      "manifest_sha256": "5b937d317195f99c9527e950702a85a31d49b09b098024d02e6d6a0994d2c47f",
+      "memory_clock_max_mhz": 13365,
+      "memory_clock_min_mhz": 13365,
+      "method_config_id": "bf16",
+      "no_backend_fallback": true,
+      "order_index": 4,
+      "output_checksum": "fd26ab8546db83d8d39e654c2a31c1ef91632d4e3e75897d817bd331293d3831",
+      "power_max_w": 415.11,
+      "power_min_w": 103.18,
+      "process_median_ms": 11.764447212219238,
+      "replicate_index": 0,
+      "run_id": "phase12-20260731t062914664948z-6165f78d-c78b9a-r0-04-bf16",
+      "seed": 20260730,
+      "sm_clock_max_mhz": 2835,
+      "sm_clock_min_mhz": 2820,
+      "speedup_calculated": false,
+      "temperature_max_c": 60.0,
+      "temperature_min_c": 51.0
+    },
+    {
+      "allocation_fingerprint": "1c1196c65329e416930caad2ee08bc13e6d78f786e7ed24bb1e94877ffc0462b",
+      "allocation_stable": true,
+      "finite_output": true,
+      "gpu_exclusive": true,
+      "kernel_path_fingerprint": "44bb0434abc781243ba13c8e7c4f89a1ce2d61c6a41cb6894a47a28c31c656e8",
+      "kernel_path_stable": true,
+      "manifest_path": "runs/phase12-20260731t062914664948z-6165f78d-c78b9a-r0-05-tq_4bit_nc/manifest.json",
+      "manifest_sha256": "5ed2b2b5bfd2d8dd1368cf922eba1e50a1d3563cd68b604b006092c26739e9c0",
+      "memory_clock_max_mhz": 13365,
+      "memory_clock_min_mhz": 13365,
+      "method_config_id": "tq_4bit_nc",
+      "no_backend_fallback": true,
+      "order_index": 5,
+      "output_checksum": "a2e98090586acb86a0b8af1c793e91d175c01edeb5e3b242a2be494295a90310",
+      "power_max_w": 271.54,
+      "power_min_w": 105.89,
+      "process_median_ms": 25.781686782836914,
+      "replicate_index": 0,
+      "run_id": "phase12-20260731t062914664948z-6165f78d-c78b9a-r0-05-tq_4bit_nc",
+      "seed": 20260730,
+      "sm_clock_max_mhz": 2835,
+      "sm_clock_min_mhz": 2827,
+      "speedup_calculated": false,
+      "temperature_max_c": 59.0,
+      "temperature_min_c": 52.0
+    },
+    {
+      "allocation_fingerprint": "76cb9283bdc28b803faf76887ae325e23022979ed6f54f21ff373fa50af775af",
+      "allocation_stable": true,
+      "finite_output": true,
+      "gpu_exclusive": true,
+      "kernel_path_fingerprint": "1f95098163fe991b2d5dc8c6a55b67e42b110139dbd5db64d20a35d47f181628",
+      "kernel_path_stable": true,
+      "manifest_path": "runs/phase12-20260731t062914664948z-6165f78d-c78b9a-r0-06-kvq4/manifest.json",
+      "manifest_sha256": "2369cf41037c9afafc76b289d21c3fc42927b1cfb190ffbb8b5f85d4ddb2b1d4",
+      "memory_clock_max_mhz": 13365,
+      "memory_clock_min_mhz": 13365,
+      "method_config_id": "kvq4",
+      "no_backend_fallback": true,
+      "order_index": 6,
+      "output_checksum": "25776c4e0074218220ad663fb69100892f144e7591aad2b73c11f901af8c33eb",
+      "power_max_w": 149.09,
+      "power_min_w": 75.52,
+      "process_median_ms": 150.72869873046875,
+      "replicate_index": 0,
+      "run_id": "phase12-20260731t062914664948z-6165f78d-c78b9a-r0-06-kvq4",
+      "seed": 20260730,
+      "sm_clock_max_mhz": 2827,
+      "sm_clock_min_mhz": 2610,
+      "speedup_calculated": false,
+      "temperature_max_c": 54.0,
+      "temperature_min_c": 45.0
+    },
+    {
+      "allocation_fingerprint": "cefb6303a534d997559f22fd8b87da33d155f901f00a65cab0a3fc397c118165",
+      "allocation_stable": true,
+      "finite_output": true,
+      "gpu_exclusive": true,
+      "kernel_path_fingerprint": "213a8ed5bb2e18de2bf38c13dd1b8dfecc449fbc4f370500d9cffd3399d5b245",
+      "kernel_path_stable": true,
+      "manifest_path": "runs/phase12-20260731t062914664948z-6165f78d-c78b9a-r0-07-k4v4/manifest.json",
+      "manifest_sha256": "b65c57808e2e1e442f83c58e0e10dd13a44b330eead4fd591a0bb60e7c3cef21",
+      "memory_clock_max_mhz": 13365,
+      "memory_clock_min_mhz": 13365,
+      "method_config_id": "k4v4",
+      "no_backend_fallback": true,
+      "order_index": 7,
+      "output_checksum": "28ea73f61641b10c4560fc66850b70996993b289af113e844443dc44d2a8a498",
+      "power_max_w": 311.5,
+      "power_min_w": 80.76,
+      "process_median_ms": 19.040311813354492,
+      "replicate_index": 0,
+      "run_id": "phase12-20260731t062914664948z-6165f78d-c78b9a-r0-07-k4v4",
+      "seed": 20260730,
+      "sm_clock_max_mhz": 2820,
+      "sm_clock_min_mhz": 2610,
+      "speedup_calculated": false,
+      "temperature_max_c": 58.0,
+      "temperature_min_c": 49.0
+    },
+    {
+      "allocation_fingerprint": "14361ad302db43ec4c9db14c631252fa8aee28f5d8a18451de67b2fc03b00e09",
+      "allocation_stable": true,
+      "finite_output": true,
+      "gpu_exclusive": true,
+      "kernel_path_fingerprint": "eff9b639f53be65b6988a6e29a3db777aabf8da3a9fa949548489d9c742f738d",
+      "kernel_path_stable": true,
+      "manifest_path": "runs/phase12-20260731t062914664948z-6165f78d-c78b9a-r0-08-tq_k3v4_nc/manifest.json",
+      "manifest_sha256": "abc3a437811439a978cfcd67322542bbec23eba40f64bb68b0571ec24cbde084",
+      "memory_clock_max_mhz": 13365,
+      "memory_clock_min_mhz": 13365,
+      "method_config_id": "tq_k3v4_nc",
+      "no_backend_fallback": true,
+      "order_index": 8,
+      "output_checksum": "f312ca8e9a4e649a7dab940ba16fe7f6f87d5af9d7ef24c6bf36ca70ebb30094",
+      "power_max_w": 300.05,
+      "power_min_w": 102.58,
+      "process_median_ms": 21.084360122680664,
+      "replicate_index": 0,
+      "run_id": "phase12-20260731t062914664948z-6165f78d-c78b9a-r0-08-tq_k3v4_nc",
+      "seed": 20260730,
+      "sm_clock_max_mhz": 2835,
+      "sm_clock_min_mhz": 2820,
+      "speedup_calculated": false,
+      "temperature_max_c": 57.0,
+      "temperature_min_c": 50.0
+    },
+    {
+      "allocation_fingerprint": "2f56a1eb309c897ee1c38be2ee63a6e5cf14959ba345827845f5b59413ffe598",
+      "allocation_stable": true,
+      "finite_output": true,
+      "gpu_exclusive": true,
+      "kernel_path_fingerprint": "39dbc842e72598591f301c8f263550f4307986f3fe107e3b334d70499c696a4c",
+      "kernel_path_stable": true,
+      "manifest_path": "runs/phase12-20260731t062914664948z-6165f78d-c78b9a-r0-09-kvq2/manifest.json",
+      "manifest_sha256": "39ea3e2d2bdeada8dbb68065348ad0a4c3a25d0bf5ec068117eca12cef36f7e2",
+      "memory_clock_max_mhz": 13365,
+      "memory_clock_min_mhz": 13365,
+      "method_config_id": "kvq2",
+      "no_backend_fallback": true,
+      "order_index": 9,
+      "output_checksum": "5f12292e3c516b9fcd0b4ea223cf9c9e0784924b8c5d52882c48abf82cd4feb4",
+      "power_max_w": 149.94,
+      "power_min_w": 78.14,
+      "process_median_ms": 148.9733428955078,
+      "replicate_index": 0,
+      "run_id": "phase12-20260731t062914664948z-6165f78d-c78b9a-r0-09-kvq2",
+      "seed": 20260730,
+      "sm_clock_max_mhz": 2827,
+      "sm_clock_min_mhz": 2610,
+      "speedup_calculated": false,
+      "temperature_max_c": 55.0,
+      "temperature_min_c": 47.0
+    },
+    {
+      "allocation_fingerprint": "14361ad302db43ec4c9db14c631252fa8aee28f5d8a18451de67b2fc03b00e09",
+      "allocation_stable": true,
+      "finite_output": true,
+      "gpu_exclusive": true,
+      "kernel_path_fingerprint": "eff9b639f53be65b6988a6e29a3db777aabf8da3a9fa949548489d9c742f738d",
+      "kernel_path_stable": true,
+      "manifest_path": "runs/phase12-20260731t062914664948z-6165f78d-c78b9a-r1-00-tq_k3v4_nc/manifest.json",
+      "manifest_sha256": "b8d6e2d01d14bde158622117ce8a85d69038768ecdc63bff7c786ace3dac6ad5",
+      "memory_clock_max_mhz": 13365,
+      "memory_clock_min_mhz": 13365,
+      "method_config_id": "tq_k3v4_nc",
+      "no_backend_fallback": true,
+      "order_index": 0,
+      "output_checksum": "f312ca8e9a4e649a7dab940ba16fe7f6f87d5af9d7ef24c6bf36ca70ebb30094",
+      "power_max_w": 299.67,
+      "power_min_w": 101.63,
+      "process_median_ms": 21.0615291595459,
+      "replicate_index": 1,
+      "run_id": "phase12-20260731t062914664948z-6165f78d-c78b9a-r1-00-tq_k3v4_nc",
+      "seed": 20260731,
+      "sm_clock_max_mhz": 2835,
+      "sm_clock_min_mhz": 2820,
+      "speedup_calculated": false,
+      "temperature_max_c": 56.0,
+      "temperature_min_c": 48.0
+    },
+    {
+      "allocation_fingerprint": "a41ee5b7ebbfbb6b38208d5825511c866fe07d6416ae7fa4bd03360eeee719ef",
+      "allocation_stable": true,
+      "finite_output": true,
+      "gpu_exclusive": true,
+      "kernel_path_fingerprint": "e25ab9ac85a9e8606d2b71d0d5777884fdb07b167601794a86abc66833767dd3",
+      "kernel_path_stable": true,
+      "manifest_path": "runs/phase12-20260731t062914664948z-6165f78d-c78b9a-r1-01-k2v4/manifest.json",
+      "manifest_sha256": "3304a007dddf7f64e3c5c4825d2bff3fce7efbbe44f0ae850a6a22a0d067a420",
+      "memory_clock_max_mhz": 13365,
+      "memory_clock_min_mhz": 13365,
+      "method_config_id": "k2v4",
+      "no_backend_fallback": true,
+      "order_index": 1,
+      "output_checksum": "056dddc8bc685b60e5caf7b9b420b792a23a7218c098b4a6c181746dabd8454c",
+      "power_max_w": 308.35,
+      "power_min_w": 78.26,
+      "process_median_ms": 18.98946189880371,
+      "replicate_index": 1,
+      "run_id": "phase12-20260731t062914664948z-6165f78d-c78b9a-r1-01-k2v4",
+      "seed": 20260731,
+      "sm_clock_max_mhz": 2820,
+      "sm_clock_min_mhz": 2610,
+      "speedup_calculated": false,
+      "temperature_max_c": 57.0,
+      "temperature_min_c": 49.0
+    },
+    {
+      "allocation_fingerprint": "2abccafcc361852292bbbea423393479631870bf1058052ad8be31e78e8308ee",
+      "allocation_stable": true,
+      "finite_output": true,
+      "gpu_exclusive": true,
+      "kernel_path_fingerprint": "dd38b66352a6f5473b0989adbca4912d1756d6bca1a192173d5aa96e822f85ce",
+      "kernel_path_stable": true,
+      "manifest_path": "runs/phase12-20260731t062914664948z-6165f78d-c78b9a-r1-02-k2v2/manifest.json",
+      "manifest_sha256": "9bc07e46eeac8fa107c7c47d80ad406a4953bd54641e87c5358f86faac612f26",
+      "memory_clock_max_mhz": 13365,
+      "memory_clock_min_mhz": 13365,
+      "method_config_id": "k2v2",
+      "no_backend_fallback": true,
+      "order_index": 2,
+      "output_checksum": "03881a7cbf649f074c1c46218765bc2ec0ac8b9020067367df30a8330ee84c0f",
+      "power_max_w": 305.83,
+      "power_min_w": 77.59,
+      "process_median_ms": 19.078157424926758,
+      "replicate_index": 1,
+      "run_id": "phase12-20260731t062914664948z-6165f78d-c78b9a-r1-02-k2v2",
+      "seed": 20260731,
+      "sm_clock_max_mhz": 2820,
+      "sm_clock_min_mhz": 2610,
+      "speedup_calculated": false,
+      "temperature_max_c": 57.0,
+      "temperature_min_c": 49.0
+    },
+    {
+      "allocation_fingerprint": "76cb9283bdc28b803faf76887ae325e23022979ed6f54f21ff373fa50af775af",
+      "allocation_stable": true,
+      "finite_output": true,
+      "gpu_exclusive": true,
+      "kernel_path_fingerprint": "1f95098163fe991b2d5dc8c6a55b67e42b110139dbd5db64d20a35d47f181628",
+      "kernel_path_stable": true,
+      "manifest_path": "runs/phase12-20260731t062914664948z-6165f78d-c78b9a-r1-03-kvq4/manifest.json",
+      "manifest_sha256": "51215c4f42b034f87a908f2a5388adeedd70161ddd3949c89e2502ff8d7a306e",
+      "memory_clock_max_mhz": 13365,
+      "memory_clock_min_mhz": 13365,
+      "method_config_id": "kvq4",
+      "no_backend_fallback": true,
+      "order_index": 3,
+      "output_checksum": "25776c4e0074218220ad663fb69100892f144e7591aad2b73c11f901af8c33eb",
+      "power_max_w": 148.7,
+      "power_min_w": 76.0,
+      "process_median_ms": 150.7654266357422,
+      "replicate_index": 1,
+      "run_id": "phase12-20260731t062914664948z-6165f78d-c78b9a-r1-03-kvq4",
+      "seed": 20260731,
+      "sm_clock_max_mhz": 2820,
+      "sm_clock_min_mhz": 2610,
+      "speedup_calculated": false,
+      "temperature_max_c": 54.0,
+      "temperature_min_c": 45.0
+    },
+    {
+      "allocation_fingerprint": "2f56a1eb309c897ee1c38be2ee63a6e5cf14959ba345827845f5b59413ffe598",
+      "allocation_stable": true,
+      "finite_output": true,
+      "gpu_exclusive": true,
+      "kernel_path_fingerprint": "39dbc842e72598591f301c8f263550f4307986f3fe107e3b334d70499c696a4c",
+      "kernel_path_stable": true,
+      "manifest_path": "runs/phase12-20260731t062914664948z-6165f78d-c78b9a-r1-04-kvq2/manifest.json",
+      "manifest_sha256": "612a8b802892073b16cb218ef20b3e09dbef5a417734d2f91bc2b21dd5532946",
+      "memory_clock_max_mhz": 13365,
+      "memory_clock_min_mhz": 13365,
+      "method_config_id": "kvq2",
+      "no_backend_fallback": true,
+      "order_index": 4,
+      "output_checksum": "5f12292e3c516b9fcd0b4ea223cf9c9e0784924b8c5d52882c48abf82cd4feb4",
+      "power_max_w": 149.65,
+      "power_min_w": 77.47,
+      "process_median_ms": 148.98573303222656,
+      "replicate_index": 1,
+      "run_id": "phase12-20260731t062914664948z-6165f78d-c78b9a-r1-04-kvq2",
+      "seed": 20260731,
+      "sm_clock_max_mhz": 2827,
+      "sm_clock_min_mhz": 2610,
+      "speedup_calculated": false,
+      "temperature_max_c": 54.0,
+      "temperature_min_c": 46.0
+    },
+    {
+      "allocation_fingerprint": "1c1196c65329e416930caad2ee08bc13e6d78f786e7ed24bb1e94877ffc0462b",
+      "allocation_stable": true,
+      "finite_output": true,
+      "gpu_exclusive": true,
+      "kernel_path_fingerprint": "44bb0434abc781243ba13c8e7c4f89a1ce2d61c6a41cb6894a47a28c31c656e8",
+      "kernel_path_stable": true,
+      "manifest_path": "runs/phase12-20260731t062914664948z-6165f78d-c78b9a-r1-05-tq_4bit_nc/manifest.json",
+      "manifest_sha256": "f989c20f40eee76746643f5daa19f0f57891b9fed9183c708477478c15af0409",
+      "memory_clock_max_mhz": 13365,
+      "memory_clock_min_mhz": 13365,
+      "method_config_id": "tq_4bit_nc",
+      "no_backend_fallback": true,
+      "order_index": 5,
+      "output_checksum": "a2e98090586acb86a0b8af1c793e91d175c01edeb5e3b242a2be494295a90310",
+      "power_max_w": 269.61,
+      "power_min_w": 101.28,
+      "process_median_ms": 25.779041290283203,
+      "replicate_index": 1,
+      "run_id": "phase12-20260731t062914664948z-6165f78d-c78b9a-r1-05-tq_4bit_nc",
+      "seed": 20260731,
+      "sm_clock_max_mhz": 2835,
+      "sm_clock_min_mhz": 2827,
+      "speedup_calculated": false,
+      "temperature_max_c": 55.0,
+      "temperature_min_c": 48.0
+    },
+    {
+      "allocation_fingerprint": "1ed7752f8d6d95f34bd3eecf4c033697f03272e7a184df0550bfa18dcb4d0652",
+      "allocation_stable": true,
+      "finite_output": true,
+      "gpu_exclusive": true,
+      "kernel_path_fingerprint": "c9e547ddadee750cf7fd89ab9917d1bc996c2ae6581ee6ac8604e19589f5cd19",
+      "kernel_path_stable": true,
+      "manifest_path": "runs/phase12-20260731t062914664948z-6165f78d-c78b9a-r1-06-kvq3/manifest.json",
+      "manifest_sha256": "cbe1b94f545c8ec61533a8ade55657dd5bf78710094c36fcb5c54de668131875",
+      "memory_clock_max_mhz": 13365,
+      "memory_clock_min_mhz": 13365,
+      "method_config_id": "kvq3",
+      "no_backend_fallback": true,
+      "order_index": 6,
+      "output_checksum": "0ae40fa925d0d04bf0ab5099e244df5d6ade6bc165398862b96d1fe1bc809674",
+      "power_max_w": 150.04,
+      "power_min_w": 77.72,
+      "process_median_ms": 151.86585998535156,
+      "replicate_index": 1,
+      "run_id": "phase12-20260731t062914664948z-6165f78d-c78b9a-r1-06-kvq3",
+      "seed": 20260731,
+      "sm_clock_max_mhz": 2827,
+      "sm_clock_min_mhz": 2610,
+      "speedup_calculated": false,
+      "temperature_max_c": 54.0,
+      "temperature_min_c": 45.0
+    },
+    {
+      "allocation_fingerprint": "dbafc14c9a20d77c530fc8681b3d10dace73e4058b54f8a08e38fcdcc0e31bf3",
+      "allocation_stable": true,
+      "finite_output": true,
+      "gpu_exclusive": true,
+      "kernel_path_fingerprint": "cae3ed02f24a94c216f6063fed0f0fa707a92e39bd2bed973fb0d5fd6f3e3cc3",
+      "kernel_path_stable": true,
+      "manifest_path": "runs/phase12-20260731t062914664948z-6165f78d-c78b9a-r1-07-tq_3bit_nc/manifest.json",
+      "manifest_sha256": "3f555435f2dcf759581cb3062456326a0e3353dec3080e1d49f2c282eeda042d",
+      "memory_clock_max_mhz": 13365,
+      "memory_clock_min_mhz": 13365,
+      "method_config_id": "tq_3bit_nc",
+      "no_backend_fallback": true,
+      "order_index": 7,
+      "output_checksum": "7fdb9d4c24b5202183023974f505dcbefa09aca6410e38e7f18a6f0d25a4eb9c",
+      "power_max_w": 285.77,
+      "power_min_w": 100.81,
+      "process_median_ms": 22.812419891357422,
+      "replicate_index": 1,
+      "run_id": "phase12-20260731t062914664948z-6165f78d-c78b9a-r1-07-tq_3bit_nc",
+      "seed": 20260731,
+      "sm_clock_max_mhz": 2835,
+      "sm_clock_min_mhz": 2820,
+      "speedup_calculated": false,
+      "temperature_max_c": 55.0,
+      "temperature_min_c": 47.0
+    },
+    {
+      "allocation_fingerprint": "cefb6303a534d997559f22fd8b87da33d155f901f00a65cab0a3fc397c118165",
+      "allocation_stable": true,
+      "finite_output": true,
+      "gpu_exclusive": true,
+      "kernel_path_fingerprint": "213a8ed5bb2e18de2bf38c13dd1b8dfecc449fbc4f370500d9cffd3399d5b245",
+      "kernel_path_stable": true,
+      "manifest_path": "runs/phase12-20260731t062914664948z-6165f78d-c78b9a-r1-08-k4v4/manifest.json",
+      "manifest_sha256": "c69ce6396018f1b9003d4c8b1c28b08ee4f211fddf8235e22c160a38db8bc312",
+      "memory_clock_max_mhz": 13365,
+      "memory_clock_min_mhz": 13365,
+      "method_config_id": "k4v4",
+      "no_backend_fallback": true,
+      "order_index": 8,
+      "output_checksum": "28ea73f61641b10c4560fc66850b70996993b289af113e844443dc44d2a8a498",
+      "power_max_w": 310.13,
+      "power_min_w": 79.03,
+      "process_median_ms": 19.038942337036133,
+      "replicate_index": 1,
+      "run_id": "phase12-20260731t062914664948z-6165f78d-c78b9a-r1-08-k4v4",
+      "seed": 20260731,
+      "sm_clock_max_mhz": 2820,
+      "sm_clock_min_mhz": 2610,
+      "speedup_calculated": false,
+      "temperature_max_c": 57.0,
+      "temperature_min_c": 48.0
+    },
+    {
+      "allocation_fingerprint": "c29a4c65e89491c9581473cb232fb1f230a9f7dff3099890a2e001cb8895b92e",
+      "allocation_stable": true,
+      "finite_output": true,
+      "gpu_exclusive": true,
+      "kernel_path_fingerprint": "ce00397000d7629255bd0fb6d10579e9e555fe2d02541e37cce69efcdce706f3",
+      "kernel_path_stable": true,
+      "manifest_path": "runs/phase12-20260731t062914664948z-6165f78d-c78b9a-r1-09-bf16/manifest.json",
+      "manifest_sha256": "776ad31de6f8696393099ab75e08d7d07218d41d47ad1ee7adef082a93d05556",
+      "memory_clock_max_mhz": 13365,
+      "memory_clock_min_mhz": 13365,
+      "method_config_id": "bf16",
+      "no_backend_fallback": true,
+      "order_index": 9,
+      "output_checksum": "fd26ab8546db83d8d39e654c2a31c1ef91632d4e3e75897d817bd331293d3831",
+      "power_max_w": 414.06,
+      "power_min_w": 101.56,
+      "process_median_ms": 11.763153076171875,
+      "replicate_index": 1,
+      "run_id": "phase12-20260731t062914664948z-6165f78d-c78b9a-r1-09-bf16",
+      "seed": 20260731,
+      "sm_clock_max_mhz": 2835,
+      "sm_clock_min_mhz": 2820,
+      "speedup_calculated": false,
+      "temperature_max_c": 59.0,
+      "temperature_min_c": 49.0
+    },
+    {
+      "allocation_fingerprint": "14361ad302db43ec4c9db14c631252fa8aee28f5d8a18451de67b2fc03b00e09",
+      "allocation_stable": true,
+      "finite_output": true,
+      "gpu_exclusive": true,
+      "kernel_path_fingerprint": "eff9b639f53be65b6988a6e29a3db777aabf8da3a9fa949548489d9c742f738d",
+      "kernel_path_stable": true,
+      "manifest_path": "runs/phase12-20260731t062914664948z-6165f78d-c78b9a-r2-00-tq_k3v4_nc/manifest.json",
+      "manifest_sha256": "15eda16e52215d399d7e062a4f78c53d8585f8bb14133fbd971f2344911a06c9",
+      "memory_clock_max_mhz": 13365,
+      "memory_clock_min_mhz": 13365,
+      "method_config_id": "tq_k3v4_nc",
+      "no_backend_fallback": true,
+      "order_index": 0,
+      "output_checksum": "f312ca8e9a4e649a7dab940ba16fe7f6f87d5af9d7ef24c6bf36ca70ebb30094",
+      "power_max_w": 304.1,
+      "power_min_w": 103.91,
+      "process_median_ms": 21.08036994934082,
+      "replicate_index": 2,
+      "run_id": "phase12-20260731t062914664948z-6165f78d-c78b9a-r2-00-tq_k3v4_nc",
+      "seed": 20260732,
+      "sm_clock_max_mhz": 2835,
+      "sm_clock_min_mhz": 2827,
+      "speedup_calculated": false,
+      "temperature_max_c": 59.0,
+      "temperature_min_c": 51.0
+    },
+    {
+      "allocation_fingerprint": "1c1196c65329e416930caad2ee08bc13e6d78f786e7ed24bb1e94877ffc0462b",
+      "allocation_stable": true,
+      "finite_output": true,
+      "gpu_exclusive": true,
+      "kernel_path_fingerprint": "44bb0434abc781243ba13c8e7c4f89a1ce2d61c6a41cb6894a47a28c31c656e8",
+      "kernel_path_stable": true,
+      "manifest_path": "runs/phase12-20260731t062914664948z-6165f78d-c78b9a-r2-01-tq_4bit_nc/manifest.json",
+      "manifest_sha256": "8e7a24b67e4d730e1e618eac4f6d4bb123062b031587fbb0c36358b5fd346403",
+      "memory_clock_max_mhz": 13365,
+      "memory_clock_min_mhz": 13365,
+      "method_config_id": "tq_4bit_nc",
+      "no_backend_fallback": true,
+      "order_index": 1,
+      "output_checksum": "a2e98090586acb86a0b8af1c793e91d175c01edeb5e3b242a2be494295a90310",
+      "power_max_w": 275.56,
+      "power_min_w": 106.19,
+      "process_median_ms": 25.79061508178711,
+      "replicate_index": 2,
+      "run_id": "phase12-20260731t062914664948z-6165f78d-c78b9a-r2-01-tq_4bit_nc",
+      "seed": 20260732,
+      "sm_clock_max_mhz": 2827,
+      "sm_clock_min_mhz": 2827,
+      "speedup_calculated": false,
+      "temperature_max_c": 59.0,
+      "temperature_min_c": 53.0
+    },
+    {
+      "allocation_fingerprint": "cefb6303a534d997559f22fd8b87da33d155f901f00a65cab0a3fc397c118165",
+      "allocation_stable": true,
+      "finite_output": true,
+      "gpu_exclusive": true,
+      "kernel_path_fingerprint": "213a8ed5bb2e18de2bf38c13dd1b8dfecc449fbc4f370500d9cffd3399d5b245",
+      "kernel_path_stable": true,
+      "manifest_path": "runs/phase12-20260731t062914664948z-6165f78d-c78b9a-r2-02-k4v4/manifest.json",
+      "manifest_sha256": "74942d2c014d649a9654ea64e0d30089ba116b723336dc4238eb07e839d2b170",
+      "memory_clock_max_mhz": 13365,
+      "memory_clock_min_mhz": 13365,
+      "method_config_id": "k4v4",
+      "no_backend_fallback": true,
+      "order_index": 2,
+      "output_checksum": "28ea73f61641b10c4560fc66850b70996993b289af113e844443dc44d2a8a498",
+      "power_max_w": 311.39,
+      "power_min_w": 80.15,
+      "process_median_ms": 19.04454231262207,
+      "replicate_index": 2,
+      "run_id": "phase12-20260731t062914664948z-6165f78d-c78b9a-r2-02-k4v4",
+      "seed": 20260732,
+      "sm_clock_max_mhz": 2820,
+      "sm_clock_min_mhz": 2610,
+      "speedup_calculated": false,
+      "temperature_max_c": 57.0,
+      "temperature_min_c": 48.0
+    },
+    {
+      "allocation_fingerprint": "c29a4c65e89491c9581473cb232fb1f230a9f7dff3099890a2e001cb8895b92e",
+      "allocation_stable": true,
+      "finite_output": true,
+      "gpu_exclusive": true,
+      "kernel_path_fingerprint": "ce00397000d7629255bd0fb6d10579e9e555fe2d02541e37cce69efcdce706f3",
+      "kernel_path_stable": true,
+      "manifest_path": "runs/phase12-20260731t062914664948z-6165f78d-c78b9a-r2-03-bf16/manifest.json",
+      "manifest_sha256": "6d8c23654e347aca5e1a58cc3891062b7cf9cd851af43f1d2919e7f892da6ae8",
+      "memory_clock_max_mhz": 13365,
+      "memory_clock_min_mhz": 13365,
+      "method_config_id": "bf16",
+      "no_backend_fallback": true,
+      "order_index": 3,
+      "output_checksum": "fd26ab8546db83d8d39e654c2a31c1ef91632d4e3e75897d817bd331293d3831",
+      "power_max_w": 415.21,
+      "power_min_w": 102.93,
+      "process_median_ms": 11.763594627380371,
+      "replicate_index": 2,
+      "run_id": "phase12-20260731t062914664948z-6165f78d-c78b9a-r2-03-bf16",
+      "seed": 20260732,
+      "sm_clock_max_mhz": 2835,
+      "sm_clock_min_mhz": 2820,
+      "speedup_calculated": false,
+      "temperature_max_c": 59.0,
+      "temperature_min_c": 49.0
+    },
+    {
+      "allocation_fingerprint": "a41ee5b7ebbfbb6b38208d5825511c866fe07d6416ae7fa4bd03360eeee719ef",
+      "allocation_stable": true,
+      "finite_output": true,
+      "gpu_exclusive": true,
+      "kernel_path_fingerprint": "e25ab9ac85a9e8606d2b71d0d5777884fdb07b167601794a86abc66833767dd3",
+      "kernel_path_stable": true,
+      "manifest_path": "runs/phase12-20260731t062914664948z-6165f78d-c78b9a-r2-04-k2v4/manifest.json",
+      "manifest_sha256": "9e908007406acc186dd914b327cedb8d70a052138142777123423ab60d527e23",
+      "memory_clock_max_mhz": 13365,
+      "memory_clock_min_mhz": 13365,
+      "method_config_id": "k2v4",
+      "no_backend_fallback": true,
+      "order_index": 4,
+      "output_checksum": "056dddc8bc685b60e5caf7b9b420b792a23a7218c098b4a6c181746dabd8454c",
+      "power_max_w": 308.9,
+      "power_min_w": 79.46,
+      "process_median_ms": 18.994421005249023,
+      "replicate_index": 2,
+      "run_id": "phase12-20260731t062914664948z-6165f78d-c78b9a-r2-04-k2v4",
+      "seed": 20260732,
+      "sm_clock_max_mhz": 2820,
+      "sm_clock_min_mhz": 2610,
+      "speedup_calculated": false,
+      "temperature_max_c": 57.0,
+      "temperature_min_c": 48.0
+    },
+    {
+      "allocation_fingerprint": "2abccafcc361852292bbbea423393479631870bf1058052ad8be31e78e8308ee",
+      "allocation_stable": true,
+      "finite_output": true,
+      "gpu_exclusive": true,
+      "kernel_path_fingerprint": "dd38b66352a6f5473b0989adbca4912d1756d6bca1a192173d5aa96e822f85ce",
+      "kernel_path_stable": true,
+      "manifest_path": "runs/phase12-20260731t062914664948z-6165f78d-c78b9a-r2-05-k2v2/manifest.json",
+      "manifest_sha256": "f85d4ab71293727236f303fd2b59fabca52602e1177d8f5e9afe27c1f3d14f3b",
+      "memory_clock_max_mhz": 13365,
+      "memory_clock_min_mhz": 13365,
+      "method_config_id": "k2v2",
+      "no_backend_fallback": true,
+      "order_index": 5,
+      "output_checksum": "03881a7cbf649f074c1c46218765bc2ec0ac8b9020067367df30a8330ee84c0f",
+      "power_max_w": 304.82,
+      "power_min_w": 79.68,
+      "process_median_ms": 19.08041000366211,
+      "replicate_index": 2,
+      "run_id": "phase12-20260731t062914664948z-6165f78d-c78b9a-r2-05-k2v2",
+      "seed": 20260732,
+      "sm_clock_max_mhz": 2820,
+      "sm_clock_min_mhz": 2610,
+      "speedup_calculated": false,
+      "temperature_max_c": 57.0,
+      "temperature_min_c": 48.0
+    },
+    {
+      "allocation_fingerprint": "dbafc14c9a20d77c530fc8681b3d10dace73e4058b54f8a08e38fcdcc0e31bf3",
+      "allocation_stable": true,
+      "finite_output": true,
+      "gpu_exclusive": true,
+      "kernel_path_fingerprint": "cae3ed02f24a94c216f6063fed0f0fa707a92e39bd2bed973fb0d5fd6f3e3cc3",
+      "kernel_path_stable": true,
+      "manifest_path": "runs/phase12-20260731t062914664948z-6165f78d-c78b9a-r2-06-tq_3bit_nc/manifest.json",
+      "manifest_sha256": "f5db5d53c6b28cdec698945eae389ceee921a6a8aac17215bd45706f3bd4a8eb",
+      "memory_clock_max_mhz": 13365,
+      "memory_clock_min_mhz": 13365,
+      "method_config_id": "tq_3bit_nc",
+      "no_backend_fallback": true,
+      "order_index": 6,
+      "output_checksum": "7fdb9d4c24b5202183023974f505dcbefa09aca6410e38e7f18a6f0d25a4eb9c",
+      "power_max_w": 289.64,
+      "power_min_w": 103.38,
+      "process_median_ms": 22.848342895507812,
+      "replicate_index": 2,
+      "run_id": "phase12-20260731t062914664948z-6165f78d-c78b9a-r2-06-tq_3bit_nc",
+      "seed": 20260732,
+      "sm_clock_max_mhz": 2835,
+      "sm_clock_min_mhz": 2827,
+      "speedup_calculated": false,
+      "temperature_max_c": 57.0,
+      "temperature_min_c": 49.0
+    },
+    {
+      "allocation_fingerprint": "2f56a1eb309c897ee1c38be2ee63a6e5cf14959ba345827845f5b59413ffe598",
+      "allocation_stable": true,
+      "finite_output": true,
+      "gpu_exclusive": true,
+      "kernel_path_fingerprint": "39dbc842e72598591f301c8f263550f4307986f3fe107e3b334d70499c696a4c",
+      "kernel_path_stable": true,
+      "manifest_path": "runs/phase12-20260731t062914664948z-6165f78d-c78b9a-r2-07-kvq2/manifest.json",
+      "manifest_sha256": "cc29e0094a3d0893bf19ca7bd1a9ec36d5ba9ae07096e2eec58dd6725ca8f31b",
+      "memory_clock_max_mhz": 13365,
+      "memory_clock_min_mhz": 13365,
+      "method_config_id": "kvq2",
+      "no_backend_fallback": true,
+      "order_index": 7,
+      "output_checksum": "5f12292e3c516b9fcd0b4ea223cf9c9e0784924b8c5d52882c48abf82cd4feb4",
+      "power_max_w": 149.01,
+      "power_min_w": 75.59,
+      "process_median_ms": 148.99171447753906,
+      "replicate_index": 2,
+      "run_id": "phase12-20260731t062914664948z-6165f78d-c78b9a-r2-07-kvq2",
+      "seed": 20260732,
+      "sm_clock_max_mhz": 2827,
+      "sm_clock_min_mhz": 2610,
+      "speedup_calculated": false,
+      "temperature_max_c": 54.0,
+      "temperature_min_c": 46.0
+    },
+    {
+      "allocation_fingerprint": "1ed7752f8d6d95f34bd3eecf4c033697f03272e7a184df0550bfa18dcb4d0652",
+      "allocation_stable": true,
+      "finite_output": true,
+      "gpu_exclusive": true,
+      "kernel_path_fingerprint": "c9e547ddadee750cf7fd89ab9917d1bc996c2ae6581ee6ac8604e19589f5cd19",
+      "kernel_path_stable": true,
+      "manifest_path": "runs/phase12-20260731t062914664948z-6165f78d-c78b9a-r2-08-kvq3/manifest.json",
+      "manifest_sha256": "b0e3c4f86c11235daa427869097ff05a1dd6dbe848781b99756b22aeba62cc8c",
+      "memory_clock_max_mhz": 13365,
+      "memory_clock_min_mhz": 13365,
+      "method_config_id": "kvq3",
+      "no_backend_fallback": true,
+      "order_index": 8,
+      "output_checksum": "0ae40fa925d0d04bf0ab5099e244df5d6ade6bc165398862b96d1fe1bc809674",
+      "power_max_w": 150.02,
+      "power_min_w": 75.88,
+      "process_median_ms": 151.86114501953125,
+      "replicate_index": 2,
+      "run_id": "phase12-20260731t062914664948z-6165f78d-c78b9a-r2-08-kvq3",
+      "seed": 20260732,
+      "sm_clock_max_mhz": 2835,
+      "sm_clock_min_mhz": 2610,
+      "speedup_calculated": false,
+      "temperature_max_c": 54.0,
+      "temperature_min_c": 46.0
+    },
+    {
+      "allocation_fingerprint": "76cb9283bdc28b803faf76887ae325e23022979ed6f54f21ff373fa50af775af",
+      "allocation_stable": true,
+      "finite_output": true,
+      "gpu_exclusive": true,
+      "kernel_path_fingerprint": "1f95098163fe991b2d5dc8c6a55b67e42b110139dbd5db64d20a35d47f181628",
+      "kernel_path_stable": true,
+      "manifest_path": "runs/phase12-20260731t062914664948z-6165f78d-c78b9a-r2-09-kvq4/manifest.json",
+      "manifest_sha256": "a8a2c30fca597ce4a07c81e4f449bdb04e92ec55b9eae893b52135099b77d6dc",
+      "memory_clock_max_mhz": 13365,
+      "memory_clock_min_mhz": 13365,
+      "method_config_id": "kvq4",
+      "no_backend_fallback": true,
+      "order_index": 9,
+      "output_checksum": "25776c4e0074218220ad663fb69100892f144e7591aad2b73c11f901af8c33eb",
+      "power_max_w": 147.96,
+      "power_min_w": 74.89,
+      "process_median_ms": 150.7550048828125,
+      "replicate_index": 2,
+      "run_id": "phase12-20260731t062914664948z-6165f78d-c78b9a-r2-09-kvq4",
+      "seed": 20260732,
+      "sm_clock_max_mhz": 2835,
+      "sm_clock_min_mhz": 2610,
+      "speedup_calculated": false,
+      "temperature_max_c": 54.0,
+      "temperature_min_c": 45.0
+    }
+  ],
+  "schema_version": "kvbench-phase12-unified-admission-1.0.0",
+  "speedup_calculated": false,
+  "tokenizer_id": "meta-llama/Llama-3.1-8B-Instruct",
+  "tokenizer_revision": "0e9e39f249a16976918f6564b8830bc894c89659",
+  "warmup_steps": 64
+}
