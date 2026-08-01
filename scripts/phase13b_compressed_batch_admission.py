@@ -29,7 +29,6 @@ from scripts import phase13_pilot as phase13
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 MATRIX_SCHEMA = "kvbench-phase13b-cuda-validation-1.0.0"
 _SHA256_RE = re.compile(r"[0-9a-f]{64}")
-_UNSCALED_COMMON_EAGER_BYTES = 768
 EAGER_ALLOCATION_AUTHORITY = {
     "turboquant": {
         "report": "docs/evidence/phase6/turboquant-method-admission.json",
@@ -38,6 +37,7 @@ EAGER_ALLOCATION_AUTHORITY = {
         ),
         "b1_event_count": 898,
         "b1_event_bytes": 9_802_604,
+        "batch_invariant_event_bytes": 96,
     },
     "kivi": {
         "report": "docs/evidence/phase8/kivi-method-admission.json",
@@ -46,6 +46,7 @@ EAGER_ALLOCATION_AUTHORITY = {
         ),
         "b1_event_count": 874,
         "b1_event_bytes": 9_637_132,
+        "batch_invariant_event_bytes": 768,
     },
     "kvquant": {
         "report": "docs/evidence/phase11rq23/kvquant-method-admission.json",
@@ -54,6 +55,7 @@ EAGER_ALLOCATION_AUTHORITY = {
         ),
         "b1_event_count": 874,
         "b1_event_bytes": 9_637_132,
+        "batch_invariant_event_bytes": 768,
     },
 }
 
@@ -129,9 +131,8 @@ def _eager_control(*, family: str, batch: int) -> dict[str, Any]:
 
     authority = EAGER_ALLOCATION_AUTHORITY[family]
     b1_bytes = int(authority["b1_event_bytes"])
-    expected_bytes = _UNSCALED_COMMON_EAGER_BYTES + batch * (
-        b1_bytes - _UNSCALED_COMMON_EAGER_BYTES
-    )
+    invariant_bytes = int(authority["batch_invariant_event_bytes"])
+    expected_bytes = invariant_bytes + batch * (b1_bytes - invariant_bytes)
     count = int(authority["b1_event_count"])
     return {
         **authority,
@@ -143,7 +144,7 @@ def _eager_control(*, family: str, batch: int) -> dict[str, Any]:
             "free_completed": count,
             "free_requested": count,
         },
-        "formula": "fixed_768_plus_batch_times_admitted_b1_remainder",
+        "formula": "family_fixed_plus_batch_times_admitted_b1_remainder",
     }
 
 
@@ -178,6 +179,74 @@ def _frozen_tolerance(family: str) -> tuple[float, float]:
 
         return float(PHASE11_DECODE_ATOL), float(PHASE11_DECODE_RTOL)
     return 0.02, 0.02
+
+
+def _batch_banks_equal(cache: Any, *, family: str) -> dict[str, Any]:
+    """Compare identical-input persistent banks outside measured execution."""
+
+    import torch
+
+    batch = int(cache.batch_size)
+    tensors: list[tuple[str, Any, int]]
+    if family == "turboquant":
+        packed = cache.packed_cache.reshape(
+            len(cache.compressed_layers),
+            batch,
+            cache.block_count,
+            cache.block_size,
+            cache.num_kv_heads,
+            cache.slot_size,
+        )
+        tensors = [
+            ("packed_cache", packed, 1),
+            ("bf16_keys", cache.bf16_cache.keys, 1),
+            ("bf16_values", cache.bf16_cache.values, 1),
+        ]
+    elif family == "kivi":
+        tensors = [
+            (name, getattr(cache, name), 1)
+            for name in (
+                "packed_key_history",
+                "packed_value_history",
+                "key_scales",
+                "key_minimums",
+                "value_scales",
+                "value_minimums",
+                "key_residual",
+                "value_residual_ring",
+            )
+        ]
+    else:
+        tensors = [
+            (name, getattr(cache, name), 1)
+            for name in (
+                "packed_key_cache",
+                "packed_value_cache",
+                "value_lookup_cache",
+                "key_sparse_values",
+                "key_sparse_indices",
+                "value_sparse_values",
+                "value_sparse_indices",
+                "key_active_counts",
+                "value_active_counts",
+                "sink_key",
+                "sink_value",
+            )
+        ]
+
+    comparisons: dict[str, bool] = {}
+    for name, tensor, axis in tensors:
+        reference = tensor.select(axis, 0)
+        comparisons[name] = all(
+            bool(torch.equal(tensor.select(axis, index), reference))
+            for index in range(1, batch)
+        )
+    return {
+        "passed": all(comparisons.values()),
+        "input_contract": "identical_rows",
+        "comparison": "exact_tensor_equality",
+        "banks": comparisons,
+    }
 
 
 def _run_cuda_matrix(*, output: Path, git_sha: str) -> dict[str, Any]:
@@ -318,18 +387,32 @@ def _run_cuda_matrix(*, output: Path, git_sha: str) -> dict[str, Any]:
                 and torch.isfinite(graph_output).all()
                 and torch.isfinite(stream_cpu).all()
             )
+            row_sha256 = [
+                tensor_sha256_untimed(eager_output[index : index + 1])
+                for index in range(batch)
+            ]
             if batch == 1:
                 b1_outputs[configuration] = eager_output.clone()
                 batch_control = {
                     "passed": True,
                     "rows_compared": 1,
-                    "reference": "self_b1_and_frozen_method_tolerance",
+                    "reference": "b1_frozen_fixture_and_source_preservation",
+                    "row_output_sha256": row_sha256,
                 }
             else:
                 reference = b1_outputs.get(configuration)
                 if reference is None:
                     raise Phase13BBatchAdmissionError("B=1 control is absent")
-                comparisons = [
+                within_batch = [
+                    compare_tensors_untimed(
+                        eager_output[index : index + 1],
+                        eager_output[0:1],
+                        atol=atol,
+                        rtol=rtol,
+                    )
+                    for index in range(1, batch)
+                ]
+                cross_batch_diagnostic = [
                     compare_tensors_untimed(
                         eager_output[index : index + 1],
                         reference,
@@ -339,19 +422,42 @@ def _run_cuda_matrix(*, output: Path, git_sha: str) -> dict[str, Any]:
                     for index in range(batch)
                 ]
                 batch_control = {
-                    "passed": all(item.passed for item in comparisons),
+                    "passed": all(item.passed for item in within_batch),
                     "rows_compared": batch,
                     "maximum_absolute_error": max(
-                        item.max_absolute_error for item in comparisons
+                        item.max_absolute_error for item in within_batch
                     ),
                     "maximum_relative_error": max(
-                        item.max_relative_error for item in comparisons
+                        item.max_relative_error for item in within_batch
                     ),
-                    "reference": "identical_input_b1_execution",
+                    "reference": "identical_rows_within_same_batch_execution",
+                    "row_output_sha256": row_sha256,
+                    "cross_batch_b1_diagnostic": {
+                        "admission_gate": False,
+                        "passed_at_single_layer_method_tolerance": all(
+                            item.passed for item in cross_batch_diagnostic
+                        ),
+                        "maximum_absolute_error": max(
+                            item.max_absolute_error
+                            for item in cross_batch_diagnostic
+                        ),
+                        "maximum_relative_error": max(
+                            item.max_relative_error
+                            for item in cross_batch_diagnostic
+                        ),
+                        "reason": (
+                            "full_model_batched_bf16_gemm_rounding_is_not_"
+                            "a_single_layer_cache_tolerance"
+                        ),
+                    },
                 }
 
             pointers_after = phase12._phase12_session_pointers(session)
             history_after = session.current_historical_prefix_sha256()
+            bank_control = _batch_banks_equal(
+                session.cache,
+                family=family,
+            )
             geometry = session.gqa_cache_geometry()
             geometry_passed = phase12._gqa_geometry_passes(
                 geometry,
@@ -398,6 +504,7 @@ def _run_cuda_matrix(*, output: Path, git_sha: str) -> dict[str, Any]:
                 "graph": graph_passed,
                 "non_default_stream": stream_comparison.passed,
                 "batch_numerical_control": batch_control["passed"],
+                "batch_bank_isolation": bank_control["passed"],
                 "finite": finite,
                 "native_gqa_geometry": geometry_passed,
                 "execution_path": path_audit.passed,
@@ -424,6 +531,7 @@ def _run_cuda_matrix(*, output: Path, git_sha: str) -> dict[str, Any]:
                 "output_sha256": tensor_sha256_untimed(eager_output),
                 "output_finite": finite,
                 "batch_numerical_control": batch_control,
+                "batch_bank_isolation": bank_control,
                 "eager_graph_comparison": eager_graph.to_dict(),
                 "non_default_stream_comparison": stream_comparison.to_dict(),
                 "eager_allocation": eager_allocation.to_dict(),

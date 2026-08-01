@@ -29,6 +29,8 @@ from kvbench.schema.phase13b import (
 from scripts.phase13b_compressed_batch_admission import (
     MATRIX_SCHEMA,
     Phase13BBatchAdmissionError,
+    _batch_banks_equal,
+    _eager_control,
     validate_cuda_matrix,
 )
 
@@ -47,6 +49,38 @@ class Phase13BStaticBatchGeometryTests(unittest.TestCase):
     def test_exact_compressed_configuration_and_batch_sets(self) -> None:
         self.assertEqual(len(TURBOQUANT_CONFIGS + KIVI_CONFIGS + tuple(KVQUANT_BITS)), 9)
         self.assertEqual(SUPPORTED_BATCH_SIZES, (1, 4, 8))
+
+    def test_eager_allocation_scaling_is_family_bound(self) -> None:
+        turboquant = _eager_control(family="turboquant", batch=4)
+        kivi = _eager_control(family="kivi", batch=4)
+        self.assertEqual(turboquant["batch_invariant_event_bytes"], 96)
+        self.assertEqual(
+            turboquant["expected_allocation_event_bytes"], 39_210_128
+        )
+        self.assertEqual(kivi["batch_invariant_event_bytes"], 768)
+        self.assertEqual(
+            kivi["expected_allocation_event_bytes"], 38_546_224
+        )
+
+    def test_turboquant_bank_control_detects_one_bank_tamper(self) -> None:
+        cache = TurboQuantStaticCache(
+            config_name="turboquant_4bit_nc",
+            num_layers=32,
+            batch_size=4,
+            num_query_heads=32,
+            num_kv_heads=8,
+            capacity=17,
+            head_dim=128,
+            device="cpu",
+        )
+        cache.initialize_deterministic()
+        self.assertTrue(
+            _batch_banks_equal(cache, family="turboquant")["passed"]
+        )
+        cache.packed_cache[cache.block_count, 0, 0, 0, 0] = 1
+        self.assertFalse(
+            _batch_banks_equal(cache, family="turboquant")["passed"]
+        )
 
     def test_turboquant_native_batch_banks_and_exact_accounting(self) -> None:
         for configuration in TURBOQUANT_CONFIGS:

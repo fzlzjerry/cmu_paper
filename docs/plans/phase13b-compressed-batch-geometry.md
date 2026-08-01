@@ -32,6 +32,14 @@ agreement, native GQA/path checks, stable pointers, zero graph-replay
 allocation, non-default-stream ordering, and focused Compute Sanitizer
 coverage inside the Decision 0016 container.
 
+Exact B=1 preservation is proved by the frozen method fixtures and unchanged
+B=1 address/order contracts.  For `B=4,8`, identical input rows must produce
+equal output rows and byte-identical persistent cache banks.  The full-model
+B=1-to-batched logits delta is retained as a diagnostic only: changing the
+cuBLAS GEMM row count can change BF16 rounding, so the frozen single-layer
+cache tolerance is not misapplied to that cross-shape comparison.  No
+numerical tolerance is changed.
+
 Create append-only successor TurboQuant, KIVI, and KVQuant
 MethodAdmissionReports bound to the new adapter/cache fingerprints.  Finalize
 one Phase 13B evidence bundle, publish it to R2 with `COMPLETE` last, and verify
