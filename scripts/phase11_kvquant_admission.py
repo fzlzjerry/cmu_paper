@@ -406,6 +406,45 @@ def _git_bytes(*arguments: str) -> bytes:
     return result.stdout
 
 
+def _git_adapter_version(git_sha: str) -> str:
+    """Read the Adapter version from the exact execution Git blob."""
+
+    blob = _git_bytes(
+        "cat-file",
+        "blob",
+        f"{git_sha}:src/kvbench/adapters/kvquant.py",
+    )
+    try:
+        tree = ast.parse(blob.decode("utf-8"))
+    except (SyntaxError, UnicodeDecodeError) as error:
+        raise Phase11KVQuantDriverError(
+            "historical KVQuant Adapter Git blob is invalid"
+        ) from error
+    versions = []
+    for node in tree.body:
+        if (
+            isinstance(node, ast.Assign)
+            and len(node.targets) == 1
+            and isinstance(node.targets[0], ast.Name)
+            and node.targets[0].id == "KVQUANT_ADAPTER_VERSION"
+            and isinstance(node.value, ast.Constant)
+            and isinstance(node.value.value, str)
+        ):
+            versions.append(node.value.value)
+    if (
+        len(versions) != 1
+        or re.fullmatch(
+            r"kvbench-kvquant-method-adapter-[0-9]+\.[0-9]+\.[0-9]+",
+            versions[0],
+        )
+        is None
+    ):
+        raise Phase11KVQuantDriverError(
+            "historical KVQuant Adapter version is invalid"
+        )
+    return versions[0]
+
+
 def _require_clean_git() -> str:
     if _git("status", "--porcelain=v1", "--untracked-files=all"):
         raise Phase11KVQuantDriverError(
@@ -2351,11 +2390,13 @@ def _validate_authority_environment_and_gqa(
         "graph_test_sha256",
         "records",
     }
+    execution_adapter_version = _git_adapter_version(manifest.git_sha)
     if (
         set(path_payload) != expected_path_keys
         or path_payload.get("schema_version")
         != "kvbench-phase11-execution-path-set-1.0.0"
-        or path_payload.get("adapter_version") != manifest.adapter_version
+        or path_payload.get("adapter_version")
+        != execution_adapter_version
     ):
         raise Phase11KVQuantDriverError(
             "Phase 11 execution-path wrapper differs"

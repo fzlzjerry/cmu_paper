@@ -115,18 +115,27 @@ class Phase11RQ23AdmissionDriverTests(unittest.TestCase):
         self.assertIn("q23_binding", checks["execution_path"])
         self.assertIn("q23_checksum_ledger", checks["immutable_checksums"])
 
-    def test_historical_wrapper_version_is_manifest_bound(self) -> None:
+    def test_historical_wrapper_version_is_git_blob_bound(self) -> None:
         source = inspect.getsource(
             admission._validate_authority_environment_and_gqa
         )
         self.assertIn(
-            'path_payload.get("adapter_version") != manifest.adapter_version',
+            "execution_adapter_version = "
+            "_git_adapter_version(manifest.git_sha)",
             source,
         )
         self.assertNotIn(
             'path_payload.get("adapter_version") != KVQUANT_ADAPTER_VERSION',
             source,
         )
+        self.assertEqual(
+            admission._git_adapter_version(
+                "8a708407825d5f3f3eaa0af476a55631ad546059"
+            ),
+            "kvbench-kvquant-method-adapter-1.2.0",
+        )
+        with self.assertRaises(admission.Phase11KVQuantDriverError):
+            admission._git_adapter_version("0" * 40)
 
     def test_static_path_audit_accepts_exact_assigned_getattr_binding(
         self,
