@@ -215,6 +215,7 @@ test: checks
 	@$(PHASE3_ENV) $(PHASE3_PYTHON) -m unittest discover -s tests/unit -p 'test_phase11pr_*.py' -v
 	@$(PHASE3_ENV) $(PHASE3_PYTHON) -m unittest discover -s tests/unit -p 'test_phase12_*.py' -v
 	@$(PHASE3_ENV) $(PHASE3_PYTHON) -m unittest discover -s tests/unit -p 'test_phase12e_*.py' -v
+	@$(PHASE3_ENV) $(PHASE3_PYTHON) -m unittest discover -s tests/unit -p 'test_phase13_*.py' -v
 	@$(PHASE3_ENV) $(PHASE3_PYTHON) -m unittest tests.unit.test_measurement_container tests.unit.test_phase6a_bf16_parity tests.unit.test_phase6a_governance tests.unit.test_preflight_unit tests.unit.test_r2_artifact -v
 	@$(PHASE2_VALIDATE) immutable
 

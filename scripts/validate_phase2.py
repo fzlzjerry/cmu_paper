@@ -50,6 +50,7 @@ PHASE12E_ENTRY_COMMIT = "7c7af7cd1efe4a8befa36ceaedb11e2b47733276"
 PHASE11DQ23_ENTRY_COMMIT = "2bc6aaa1d05b08d50f4c01bbc0b2863dd8689fe1"
 PHASE11RQ23_ENTRY_COMMIT = "d99920e5dd7ea94bce7c98b4301bd035c073dfea"
 PHASE12_ENTRY_COMMIT = "845a9293877121187a383c2c7aeab67912c856bd"
+PHASE13_ENTRY_COMMIT = "7379e808ff687b10bf18c56364ae1c545cd00fe4"
 QUALITY_COMMIT = "a7b8285dd8ed2fb598efbb3312e9f55064a0ee64"
 ENVIRONMENT_COMMIT = "ea176994921c793789ebbd9d42515ce20ae4baee"
 EVIDENCE_COMMIT = "fb164b5ea96031ca40b21f4b8436a49a3bb5b8d2"
@@ -1026,6 +1027,22 @@ PHASE12_ALLOWED_PATHS = frozenset(
         "tests/unit/test_phase12_unified_admission.py",
     }
 )
+PHASE13_ALLOWED_PATHS = frozenset(
+    {
+        "Makefile",
+        "docs/evidence/phase13/pilot_qc.json",
+        "docs/evidence/phase13/r2-publication.json",
+        "docs/phase_reports/phase13-pilot-scan.md",
+        "docs/plans/phase13-pilot-scan.md",
+        "docs/risk_register.md",
+        "docs/status.md",
+        "docs/tasks.md",
+        "scripts/phase13_pilot.py",
+        "scripts/validate_phase2.py",
+        "tests/unit/test_phase13_pilot.py",
+        "tests/unit/test_phase13_scope.py",
+    }
+)
 
 
 RAW_RESULT_SUFFIXES = {
@@ -1563,11 +1580,32 @@ def current_phase11rq23_paths() -> set[str]:
     return historical_phase11rq23_paths()
 
 
+def historical_phase12_paths() -> set[str]:
+    """Return the completed, frozen Phase 12R segment."""
+
+    return git_paths(
+        (
+            "diff",
+            "--name-only",
+            "-z",
+            PHASE12_ENTRY_COMMIT,
+            PHASE13_ENTRY_COMMIT,
+            "--",
+        )
+    )
+
+
 def current_phase12_paths() -> set[str]:
-    """Return tracked and untracked changes after the Phase 12R entry."""
+    """Compatibility view of the completed, frozen Phase 12R segment."""
+
+    return historical_phase12_paths()
+
+
+def current_phase13_paths() -> set[str]:
+    """Return tracked and untracked changes after the Phase 13 entry."""
 
     changed = git_paths(
-        ("diff", "--name-only", "-z", PHASE12_ENTRY_COMMIT, "--")
+        ("diff", "--name-only", "-z", PHASE13_ENTRY_COMMIT, "--")
     )
     untracked = git_paths(
         ("ls-files", "--others", "--exclude-standard", "-z", "--")
@@ -1590,6 +1628,24 @@ def phase12_path_is_allowed(relative: str) -> bool:
         and ".." not in candidate.parts
         and "\\" not in relative
         and relative in PHASE12_ALLOWED_PATHS
+    )
+
+
+def phase13_path_is_allowed(relative: str) -> bool:
+    """Accept only canonical exact paths in the Phase 13 allowlist."""
+
+    try:
+        candidate = PurePosixPath(relative)
+    except (TypeError, ValueError):
+        return False
+    return (
+        isinstance(relative, str)
+        and relative == candidate.as_posix()
+        and relative not in {"", "."}
+        and not candidate.is_absolute()
+        and ".." not in candidate.parts
+        and "\\" not in relative
+        and relative in PHASE13_ALLOWED_PATHS
     )
 
 
@@ -1748,7 +1804,7 @@ def check_format() -> int:
     text_suffixes = {".md", ".py", ".toml", ".yaml", ".json", ".txt"}
     candidates = {
         ROOT / relative
-        for relative in changed_paths()
+        for relative in (changed_paths() | current_phase13_paths())
         if Path(relative).suffix in text_suffixes
         or relative in {".gitignore", "Makefile"}
     }
@@ -2599,6 +2655,16 @@ PHASE8_APPROVED_ARTIFACT_ROOT_NAMES = frozenset(
 PHASE11_APPROVED_ARTIFACT_ROOT_NAMES = frozenset(
     {"phase11", "phase11_r2_outer"}
 )
+PHASE3_BACKUP_ARTIFACT_ROOT_NAMES = frozenset(
+    {
+        "cloud_backup_catalog",
+        "historical_failure_custody",
+        "phase3_r2_custody",
+        "phase3_r2_outer",
+        "residual_evidence_custody",
+    }
+)
+PHASE13_APPROVED_ARTIFACT_ROOT_NAMES = frozenset({"phase13"})
 PHASE12_BLOCKED_ARTIFACT_ROOT_NAMES = frozenset({"phase12"})
 PHASE12_STOPPED_CAMPAIGN_ID = (
     "phase12-20260730t000000000000z-2bc6aaa1-abcdef"
@@ -3276,6 +3342,8 @@ def validate_phase3_artifact_root() -> list[str]:
                 | PHASE7_APPROVED_ARTIFACT_ROOT_NAMES
                 | PHASE8_APPROVED_ARTIFACT_ROOT_NAMES
                 | PHASE11_APPROVED_ARTIFACT_ROOT_NAMES
+                | PHASE3_BACKUP_ARTIFACT_ROOT_NAMES
+                | PHASE13_APPROVED_ARTIFACT_ROOT_NAMES
                 | PHASE12_BLOCKED_ARTIFACT_ROOT_NAMES
             )
         )
@@ -3283,6 +3351,13 @@ def validate_phase3_artifact_root() -> list[str]:
             errors.append(
                 f"unapproved artifact roots: {unexpected!r}"
             )
+        for name in sorted(PHASE3_BACKUP_ARTIFACT_ROOT_NAMES):
+            backup = artifacts / name
+            if backup.exists() or backup.is_symlink():
+                if backup.is_symlink() or not backup.is_dir():
+                    errors.append(
+                        f"unsafe Phase 3 backup artifact root: {name}"
+                    )
     errors.extend(validate_phase12_blocked_artifact_root())
     errors.extend(validate_phase3_campaign_and_report_roots(artifacts))
     if not phase3.exists() and not phase3.is_symlink():
@@ -3671,7 +3746,7 @@ def check_scope() -> int:
             "files outside the approved Phase 11R-Q23 admission-rerun "
             f"plan: {phase11rq23_unexpected!r}"
         )
-    phase12 = current_phase12_paths()
+    phase12 = historical_phase12_paths()
     phase12_unexpected = sorted(phase12 - PHASE12_ALLOWED_PATHS)
     if phase12_unexpected:
         errors.append(
@@ -3704,6 +3779,38 @@ def check_scope() -> int:
         ):
             errors.append(
                 f"forbidden result tree in Phase 12R scope: {relative}"
+            )
+    phase13 = current_phase13_paths()
+    phase13_unexpected = sorted(phase13 - PHASE13_ALLOWED_PATHS)
+    if phase13_unexpected:
+        errors.append(
+            "files outside the approved Phase 13 Pilot plan: "
+            f"{phase13_unexpected!r}"
+        )
+    for relative in sorted(phase13):
+        if relative.startswith("docs/evidence/e00/"):
+            errors.append(f"immutable E00 evidence changed: {relative}")
+        if relative in QUALITY_PROTOCOL_HASHES:
+            errors.append(
+                "quality protocol changed during Phase 13: "
+                f"{relative}"
+            )
+        if Path(relative).suffix in RAW_RESULT_SUFFIXES:
+            errors.append(
+                "forbidden binary, kernel, model, or profiler artifact "
+                f"in Phase 13 Git scope: {relative}"
+            )
+        if relative.startswith(
+            (
+                "artifacts/profiler/",
+                "artifacts/quality/",
+                "paper-results/",
+                "paper_results/",
+                "results/",
+            )
+        ):
+            errors.append(
+                f"forbidden result tree in Phase 13 scope: {relative}"
             )
     e00_changes = git_paths(
         (
