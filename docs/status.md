@@ -8,17 +8,17 @@ requirements; and AGENTS.md. Decision 0005 records precedence.
 
 ## Current state
 
-- Latest scoped phase: Phase 13 Pilot Scan BLOCKED. Global G0-G5 and all ten
-  Phase 12 admissions remain PASS, but the first preregistered feasible Pilot
-  point (`tq_3bit_nc`, B=8, L=24576) reached the unchanged method factory and
-  was rejected by `TurboQuantStaticCache`, which supports only the frozen B=1
-  Llama GQA geometry. The campaign preserved all 810 planned records as one
-  runtime failure, 18 capacity-infeasible records, and 791 aborted records;
-  no timing point completed and no selective rerun occurred. Root
-  `be8680d3d94dba35d58a98ac13aa5ae3aa2ba47e767c301418b129060466babc`
-  contains 1653 objects, was published with `COMPLETE` last, and passed one
-  clean retrieval. Phase 14 is NOT READY, Full Scan remains CLOSED, quality
-  remains LOCKED, and `PERFORMANCE_DATA_FROZEN` remains absent.
+- Latest scoped phase: Phase 13B PASS. Decision 0030 admits preallocated
+  native-HKV static-cache geometry at B=1/4/8 for all nine compressed main
+  configurations. The authorized-container matrix passed 27/27 together with
+  B=1 preservation, byte/path/GQA/allocation, eager/Graph, pointer, stream,
+  and sanitizer controls. Successor TurboQuant, KIVI, and KVQuant reports are
+  checksum-bound in `docs/evidence/phase13b/`. The 52-object R2 root
+  `f1c96eaacbbace1c23b249d1afe8d892aa26c3f6b8d04e07f373a2becafba1fe`
+  is COMPLETE-last and cleanly retrieved. The stopped Phase 13 campaign and
+  all historical evidence remain immutable; no timing was collected. A fresh
+  Phase 13 Pilot may now be proposed, but Phase 14 is NOT READY, Full Scan is
+  CLOSED, quality remains LOCKED, and `PERFORMANCE_DATA_FROZEN` is absent.
 - Phase 6 status: PASS for method-specific G2-TQ at execution commit
   `0df5bb4d445d48e6cba17e30723733f8de35cb14`. The approved admission driver
   reran all three mandatory Compute Sanitizer probes against that clean HEAD
@@ -746,7 +746,8 @@ reference execution is recorded separately above.
 | Phase 11R-Q23 KVQuant current-source re-admission | PASS | Decision 0029 source and extension binding; unchanged Adapter/cache/session; all nine corrected fixtures; fresh bounded grid 9/9; path/allocation/GQA/Graph/sanitizer PASS; successor MethodAdmissionReport SHA-256 `9cfed618cee9514a1071392d0a2dca327dcf6acd33d81ac72cc477c7880c09e2`; 212-object inner root `8ea533b9544e99140aec04b4cb9b1ad26f271273206d170e7abefa195c0581aa` COMPLETE-last and cleanly retrieved. |
 | G2-KVQ | PASS | All three bit widths satisfy the current Decision 0029 method-specific admission criteria. The successor MethodAdmissionReport SHA-256 is `9cfed618cee9514a1071392d0a2dca327dcf6acd33d81ac72cc477c7880c09e2`; historical Decision 0027 report SHA-256 `59ef5bfc581a68cdc4d21c4c0a840f046e698633f7475f79906063c6e333ae6a` remains unchanged. |
 | G1-G5 unified admission | PASS | Phase 12R campaign `phase12-20260731t062914664948z-6165f78d-c78b9a`; 30/30 completed, all 10 configurations stable, root `42ab15b6617d072f9b0825b701d1df4519caa110166b8edd48b8359fe8e588e5` COMPLETE-last and cleanly retrieved |
-| Pilot/full-scan gates | BLOCKED / CLOSED | Phase 13 preserved the complete 810-record design and stopped at the unchanged TurboQuant B=1-only cache boundary; Phase 14 is not ready |
+| Phase 13B compressed batch geometry | PASS | All nine compressed configurations pass B=1/4/8 static-cache admission; 27/27 matrix, Graph, allocation, stream, and sanitizer checks pass; 52-object R2 root is COMPLETE-last and cleanly retrieved. |
+| Pilot/full-scan gates | READY FOR A FRESH CAMPAIGN / CLOSED | Never resume the stopped Phase 13 campaign; Phase 14 remains not ready until a new Pilot completes. |
 | Post-performance quality validation | LOCKED | Decision 0005; `PERFORMANCE_DATA_FROZEN` absent |
 
 ## Phase 0 acceptance
@@ -768,10 +769,10 @@ Decision 0016 continues to authorize Measurement Lane CUDA only in the exact
 recorded image digest. All earlier failed and passing reports, campaigns,
 runs, fixtures, and publication roots remain unchanged.
 
-Phase 13 is BLOCKED at the recorded B>1 static-cache geometry boundary. Preserve campaign
+Phase 13B resolves the compressed B=4/B=8 method-geometry blocker under
+Decision 0030. Preserve stopped campaign
 `phase13-20260801t080641686374z-009dfd71-14b7e3` and its R2 root
 `be8680d3d94dba35d58a98ac13aa5ae3aa2ba47e767c301418b129060466babc`.
-The minimum next action is a separately authorized method-geometry remediation
-or an explicit Pilot-contract revision followed by a completely new campaign.
-Do not selectively resume the stopped campaign. Phase 14, profiling, Full Scan,
-performance claims, and quality execution remain closed.
+The next action is a separately proposed, completely new Phase 13 Pilot
+campaign. Do not selectively resume the stopped campaign. Phase 14, profiling,
+Full Scan, performance claims, and quality execution remain closed.

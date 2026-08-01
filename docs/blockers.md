@@ -245,3 +245,15 @@ redistribution. No Phase 10 fixture or Measurement Adapter exists, so G2-KVQ
 remains NOT EVALUATED. Global G2-G5 remain NOT EVALUATED, Full Scan remains
 CLOSED, quality execution remains LOCKED, and `PERFORMANCE_DATA_FROZEN`
 remains absent.
+
+## Phase 13B compressed-batch disposition
+
+The stopped Phase 13 campaign remains immutable and durably retrieved. Decision
+0030 separately authorizes only static B=1/4/8 geometry for the nine compressed
+main configurations. Phase 13B passed 27/27 bounded container points, exact B=1
+preservation, byte/path/GQA/allocation, eager/Graph, pointer, stream, and
+sanitizer controls without changing CUDA or method semantics. Its successor
+reports are checksum-bound, and the 52-object root
+`f1c96eaacbbace1c23b249d1afe8d892aa26c3f6b8d04e07f373a2becafba1fe`
+is COMPLETE-last and cleanly retrieved. No Phase 13B blocker remains. Any Pilot
+must start as a completely new campaign; the stopped campaign cannot resume.
