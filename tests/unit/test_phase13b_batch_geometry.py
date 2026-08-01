@@ -57,9 +57,9 @@ class Phase13BStaticBatchGeometryTests(unittest.TestCase):
         self.assertEqual(
             turboquant["expected_allocation_event_bytes"], 39_210_128
         )
-        self.assertEqual(kivi["batch_invariant_event_bytes"], 768)
+        self.assertEqual(kivi["batch_invariant_event_bytes"], 0)
         self.assertEqual(
-            kivi["expected_allocation_event_bytes"], 38_546_224
+            kivi["expected_allocation_event_bytes"], 38_548_528
         )
 
     def test_turboquant_bank_control_detects_one_bank_tamper(self) -> None:

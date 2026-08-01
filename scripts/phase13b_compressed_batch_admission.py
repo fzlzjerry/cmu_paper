@@ -46,7 +46,9 @@ EAGER_ALLOCATION_AUTHORITY = {
         ),
         "b1_event_count": 874,
         "b1_event_bytes": 9_637_132,
-        "batch_invariant_event_bytes": 768,
+        # Every KIVI eager event is owned by a batch-shaped outer-model
+        # tensor; the admitted direct cache path contributes zero events.
+        "batch_invariant_event_bytes": 0,
     },
     "kvquant": {
         "report": "docs/evidence/phase11rq23/kvquant-method-admission.json",
