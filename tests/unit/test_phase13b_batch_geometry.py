@@ -34,7 +34,11 @@ from scripts.phase13b_compressed_batch_admission import (
     Phase13BBatchAdmissionError,
     _batch_banks_equal,
     _eager_control,
+    create_command_evidence,
+    create_sanitizer_evidence,
+    validate_command_evidence,
     validate_cuda_matrix,
+    validate_sanitizer_evidence,
 )
 
 
@@ -308,6 +312,85 @@ class Phase13BStaticBatchGeometryTests(unittest.TestCase):
         payload["cache_layout_fingerprints"].pop("tq_3bit_nc/B8")
         with self.assertRaises(Exception):
             Phase13BMethodAdmissionReport.from_dict(payload)
+
+    def test_command_evidence_requires_exact_fixture_markers(self) -> None:
+        markers = (
+            "test_all_mandatory_fixture_paths_and_bf16_boundaries",
+            "test_all_four_frozen_configurations_store_append_and_rollover",
+            "test_all_nine_corrected_fixtures_conform_through_adapter",
+            "test_all_twenty_seven_geometry_records_pass",
+            "OK",
+        )
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            stdout = root / "test-cuda.stdout.txt"
+            stderr = root / "test-cuda.stderr.txt"
+            output = root / "test-cuda.json"
+            stdout.write_text("\n".join(markers), encoding="utf-8")
+            stderr.write_text("", encoding="utf-8")
+            create_command_evidence(
+                kind="test-cuda",
+                stdout_path=stdout,
+                stderr_path=stderr,
+                exit_code=0,
+                output=output,
+            )
+            self.assertEqual(
+                validate_command_evidence(output, kind="test-cuda")["status"],
+                "PASS",
+            )
+            payload = json.loads(output.read_text(encoding="utf-8"))
+            payload["exit_code"] = 1
+            output.write_text(json.dumps(payload), encoding="utf-8")
+            with self.assertRaises(Phase13BBatchAdmissionError):
+                validate_command_evidence(output, kind="test-cuda")
+
+    def test_sanitizer_evidence_requires_all_memcheck_coverage(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            version = root / "version.txt"
+            version.write_text("Compute Sanitizer version 2025.3\n", encoding="utf-8")
+            specifications = []
+            for configuration in PHASE13B_CONFIGURATIONS:
+                tools = ["memcheck"]
+                if configuration in {"tq_3bit_nc", "k2v2", "kvq3"}:
+                    tools.append("initcheck")
+                for tool in tools:
+                    prefix = f"{tool}-{configuration}-B8"
+                    stdout = root / f"{prefix}.stdout.txt"
+                    stderr = root / f"{prefix}.stderr.txt"
+                    leak = (
+                        "========= LEAK SUMMARY: 0 bytes leaked in 0 allocations\n"
+                        if tool == "memcheck"
+                        else ""
+                    )
+                    stdout.write_text(
+                        (
+                            f'{{"status":"PASS","result":'
+                            f'{{"configuration":"{configuration}",'
+                            '"batch_size":8}}}\n'
+                            f"{leak}========= ERROR SUMMARY: 0 errors\n"
+                        ),
+                        encoding="utf-8",
+                    )
+                    stderr.write_text("", encoding="utf-8")
+                    specifications.append(
+                        f"{tool}:{configuration}:8:{stdout}:{stderr}:0"
+                    )
+            output = root / "sanitizer.json"
+            create_sanitizer_evidence(
+                specifications=tuple(specifications),
+                version_path=version,
+                output=output,
+            )
+            self.assertEqual(validate_sanitizer_evidence(output)["status"], "PASS")
+            missing = root / "missing.json"
+            with self.assertRaises(Phase13BBatchAdmissionError):
+                create_sanitizer_evidence(
+                    specifications=tuple(specifications[:-1]),
+                    version_path=version,
+                    output=missing,
+                )
 
     def test_phase13b_uses_existing_complete_last_lifecycle(self) -> None:
         created_at = "2026-08-01T00:00:00Z"
