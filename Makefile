@@ -879,6 +879,7 @@ unified-admission: verify-measurement-container
 		phase12_artifact_root="$$repository_root/artifacts/phase12"; \
 		test -d "$$phase12_artifact_root" && test ! -L "$$phase12_artifact_root"; \
 		test "$$(realpath -e "$$phase12_artifact_root")" = "$$phase12_artifact_root"; \
+		mkdir -p "$$task_root/repository/artifacts/phase12"; \
 		reference_image="$(KIVI_REFERENCE_IMAGE)@$(PHASE8_KIVI_REFERENCE_MANIFEST_DIGEST)"; \
 		test "$$(docker image inspect "$$reference_image" --format '{{.Id}}')" = "$(PHASE8_KIVI_REFERENCE_MANIFEST_DIGEST)"; \
 		test "$$(docker image inspect "$$reference_image" --format '{{index .Config.Labels "org.kvbench.reference.parent.config_digest"}}')" = "$$image_id"; \
