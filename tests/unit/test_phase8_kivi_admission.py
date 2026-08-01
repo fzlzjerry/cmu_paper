@@ -14,7 +14,6 @@ import unittest
 from unittest import mock
 
 from kvbench.adapters.kivi import (
-    KIVI_ADAPTER_VERSION,
     KIVI_BGEMV2_HOST_STUB_OFFSET,
     KIVI_BGEMV4_HOST_STUB_OFFSET,
     KIVIMethodAdapter,
@@ -25,6 +24,7 @@ from kvbench.runtime.kivi_admission import (
     OFFICIAL_KIVI_HOST_STUB_OFFSETS,
     PHASE8_ADMISSION_GRID,
     PHASE8_DECISION_0026_ENDPOINT_COMMIT,
+    PHASE8_HISTORICAL_ADAPTER_VERSION,
     Phase8HistoricalSourceAuthority,
     audit_kivi_execution_path,
     build_phase8_method_admission_report,
@@ -100,6 +100,20 @@ def _synthetic_historical_source_authority(
         ),
         endpoint_transition_commit=PHASE8_DECISION_0026_ENDPOINT_COMMIT,
     )
+
+
+def _synthetic_git_object_query(
+    repository_root: Path,
+    *arguments: str,
+    binary: bool = False,
+) -> bytes | str:
+    if len(arguments) == 3 and arguments[:2] == ("cat-file", "blob"):
+        _, separator, relative_path = arguments[2].partition(":")
+        if not separator:
+            raise KIVIAdmissionError("synthetic Git blob path is absent")
+        payload = (repository_root / relative_path).read_bytes()
+        return payload if binary else payload.decode("ascii").strip()
+    raise KIVIAdmissionError("unexpected synthetic Git object query")
 
 
 def _breakdown() -> Phase8ByteBreakdown:
@@ -183,7 +197,7 @@ def _manifests() -> tuple[Phase8RunManifest, ...]:
                 v_bits=v_bits,
                 method_config_fingerprint="1" * 64,
                 method_fingerprint=f"{index + 1:064x}",
-                adapter_version=KIVI_ADAPTER_VERSION,
+                adapter_version=PHASE8_HISTORICAL_ADAPTER_VERSION,
                 adapter_source_sha256="a" * 64,
                 official_base_commit=PHASE8_OFFICIAL_COMMIT,
                 official_base_tree=PHASE8_BASE_TREE,
@@ -1434,6 +1448,12 @@ class Phase8KIVIAdmissionTests(unittest.TestCase):
         )
         patcher.start()
         self.addCleanup(patcher.stop)
+        git_patcher = mock.patch(
+            "kvbench.runtime.kivi_admission._phase8_git",
+            side_effect=_synthetic_git_object_query,
+        )
+        git_patcher.start()
+        self.addCleanup(git_patcher.stop)
 
     def test_local_validation_explicitly_selects_bundle_and_records_history(
         self,
