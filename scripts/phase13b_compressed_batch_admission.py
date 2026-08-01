@@ -316,19 +316,22 @@ def _run_cuda_matrix(*, output: Path, git_sha: str) -> dict[str, Any]:
             logical_bf16 = int(session.cache.logical_bf16_storage_bytes)
             rho_alloc = allocated / logical_bf16
             r_alloc = logical_bf16 / allocated
-            record_passed = bool(
-                eager_passed
-                and graph_passed
-                and stream_comparison.passed
-                and batch_control["passed"]
-                and finite
-                and geometry_passed
-                and path_audit.passed
-                and pointers_before == pointers_after
-                and history_before == history_after
-                and relative_error < 0.01
-                and abs(rho_alloc * r_alloc - 1.0) <= 1e-9
-            )
+            checks = {
+                "eager_allocation": eager_passed,
+                "graph": graph_passed,
+                "non_default_stream": stream_comparison.passed,
+                "batch_numerical_control": batch_control["passed"],
+                "finite": finite,
+                "native_gqa_geometry": geometry_passed,
+                "execution_path": path_audit.passed,
+                "pointers_stable": pointers_before == pointers_after,
+                "historical_prefix_unchanged": history_before == history_after,
+                "allocation_error_below_one_percent": relative_error < 0.01,
+                "ratios_reciprocal": (
+                    abs(rho_alloc * r_alloc - 1.0) <= 1e-9
+                ),
+            }
+            record_passed = all(checks.values())
             record = {
                 "schema_version": "kvbench-phase13b-point-1.0.0",
                 "configuration": configuration,
@@ -337,6 +340,7 @@ def _run_cuda_matrix(*, output: Path, git_sha: str) -> dict[str, Any]:
                 "historical_context": PHASE13B_CONTEXT_LENGTH,
                 "attended_context": PHASE13B_CONTEXT_LENGTH + 1,
                 "status": "PASS" if record_passed else "FAIL",
+                "checks": checks,
                 "adapter_version": session.method.adapter_version,
                 "adapter_config_fingerprint": session.adapter_config_fingerprint,
                 "cache_layout_fingerprint": session.cache_layout_fingerprint(),
@@ -378,8 +382,38 @@ def _run_cuda_matrix(*, output: Path, git_sha: str) -> dict[str, Any]:
             )
             torch.cuda.empty_cache()
             if not record_passed:
+                failure_payload = {
+                    "schema_version": MATRIX_SCHEMA,
+                    "status": "FAIL",
+                    "created_at_utc": _utc_now(),
+                    "creation_git_sha": git_sha,
+                    "authorized_container_digest": (
+                        PHASE13B_AUTHORIZED_CONTAINER_DIGEST
+                    ),
+                    "container_attestation": attestation,
+                    "decision": "0030",
+                    "configurations": list(PHASE13B_CONFIGURATIONS),
+                    "batch_sizes": list(PHASE13B_BATCH_SIZES),
+                    "context_length": PHASE13B_CONTEXT_LENGTH,
+                    "point_count": len(records),
+                    "source_hashes": source_hashes,
+                    "records": records,
+                    "failed_point": {
+                        "configuration": configuration,
+                        "batch_size": batch,
+                        "failed_checks": sorted(
+                            name for name, passed in checks.items() if not passed
+                        ),
+                    },
+                    "cuda_source_changed": False,
+                    "timing_collected": False,
+                    "performance_claim_eligible": False,
+                }
+                _write_exclusive(output, failure_payload)
                 raise Phase13BBatchAdmissionError(
-                    f"Phase 13B point failed: {configuration}/B={batch}"
+                    "Phase 13B point failed: "
+                    f"{configuration}/B={batch}; "
+                    f"checks={failure_payload['failed_point']['failed_checks']}"
                 )
 
     if len(records) != len(PHASE13B_CONFIGURATIONS) * len(PHASE13B_BATCH_SIZES):
