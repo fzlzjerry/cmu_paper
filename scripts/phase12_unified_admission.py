@@ -51,6 +51,7 @@ from kvbench.schema.method_admission import (
 from kvbench.schema.phase3 import GateDisposition
 from kvbench.schema.phase8 import Phase8MethodAdmissionReport
 from kvbench.schema.phase11 import Phase11RQ23MethodAdmissionReport
+from kvbench.schema.phase13b import Phase13BMethodAdmissionReport
 from kvbench.schema.phase12 import (
     PHASE12_AUTHORIZED_CONTAINER_DIGEST,
     PHASE12_BATCH_SIZE,
@@ -278,6 +279,44 @@ PHASE12_TURBOQUANT_SESSION_SHA256 = (
 PHASE12_TURBOQUANT_SESSION_BLOB = (
     "c24b55ce1d91d52890ec0efb7de5507fe9f5c032"
 )
+PHASE13B_DECISION0030_PATH = Path(
+    "docs/decisions/0030-compressed-static-cache-batch-geometry.md"
+)
+PHASE13B_DECISION0030_SHA256 = (
+    "84c2eb943b35afba312eaf599f8ec8f1d4a82169daa2d5c5fc5d127f0a965e62"
+)
+PHASE13B_DECISION0030_COMMIT = (
+    "2af47459e109207ac21167ddd88e8ca79d815490"
+)
+PHASE13B_SOURCE_AUTHORITY_COMMIT = (
+    "b862af64346a0dba2650b2c213ebd1d3b5b99ef2"
+)
+PHASE13B_TURBOQUANT_REPORT_PATH = Path(
+    "docs/evidence/phase13b/turboquant-method-admission.json"
+)
+PHASE13B_TURBOQUANT_REPORT_SHA256 = (
+    "49799ef89646ec008a530c5180fdcef6cd4af9ca0d5772fe2b01d6e775e3b1c0"
+)
+PHASE13B_TURBOQUANT_SOURCE_AUTHORITY = {
+    "src/kvbench/adapters/turboquant.py": {
+        "historical_blob": "085734a9fcd58408fdf48782f6103738c66a8336",
+        "historical_sha256": PHASE12_TURBOQUANT_ADAPTER_SHA256,
+        "authority_blob": "495aea48aca540d37ca5cd1bc1fb0889d542d235",
+        "authority_sha256": (
+            "b9911379ee0cc79b68691a55e0e5cecd2bfcfa8bbfe35e0120bdbe394f9b7432"
+        ),
+    },
+    "src/kvbench/runtime/turboquant_cache.py": {
+        "historical_blob": "5376ffc9b84f925d8b8b7e51db85f0f39fec3754",
+        "historical_sha256": (
+            "2a94de9ea7baf233c90413abb6e40e5083414f3312da4c19312c9556a98e2274"
+        ),
+        "authority_blob": "41126285ca3ab22611c242556012f4b7824112f8",
+        "authority_sha256": (
+            "92551d9daf9c0af2b830655c414c137a52ef5e6dcaf26506efef31200e037b15"
+        ),
+    },
+}
 GATE_EVIDENCE_REQUIREMENTS = {
     "bf16": {
         "G1": ("correctness", "execution_path"),
@@ -564,6 +603,114 @@ def _path_transition_commits(
     return tuple(line for line in output.splitlines() if line)
 
 
+def _validate_phase13b_turboquant_successor_transition(
+    root: Path,
+    *,
+    execution_commit: str,
+) -> dict[str, Any]:
+    """Recognize only Decision 0030's checksum-bound static-batch successor."""
+
+    head = _git_bytes(root, "rev-parse", "HEAD").decode().strip()
+    decision = _resolve_evidence_path(
+        root, PHASE13B_DECISION0030_PATH.as_posix()
+    )
+    report_path = _resolve_evidence_path(
+        root, PHASE13B_TURBOQUANT_REPORT_PATH.as_posix()
+    )
+    if sha256_file(decision) != PHASE13B_DECISION0030_SHA256:
+        raise Phase12UnifiedAdmissionError("Decision 0030 checksum differs")
+    if sha256_file(report_path) != PHASE13B_TURBOQUANT_REPORT_SHA256:
+        raise Phase12UnifiedAdmissionError(
+            "Phase 13B TurboQuant successor report checksum differs"
+        )
+    try:
+        report = Phase13BMethodAdmissionReport.from_dict(
+            _strict_json(report_path)
+        )
+    except (TypeError, ValueError) as error:
+        raise Phase12UnifiedAdmissionError(
+            "Phase 13B TurboQuant successor report schema differs"
+        ) from error
+    expected_source_hashes = {
+        path: authority["authority_sha256"]
+        for path, authority in PHASE13B_TURBOQUANT_SOURCE_AUTHORITY.items()
+    }
+    if (
+        report.method_family != "turboquant"
+        or report.decision_id != "0030"
+        or report.creation_git_sha != PHASE13B_SOURCE_AUTHORITY_COMMIT
+        or report.historical_report_path
+        != PRIOR_ADMISSION_REPORT_BINDINGS["turboquant"].as_posix()
+        or report.historical_report_sha256
+        != EXPECTED_REPORT_SHA256S["turboquant"]
+        or report.source_hashes != expected_source_hashes
+        or not report.b1_numerical_preserved
+        or report.cuda_source_changed
+    ):
+        raise Phase12UnifiedAdmissionError(
+            "Phase 13B TurboQuant successor authority differs"
+        )
+    _require_ancestor(root, execution_commit, PHASE13B_DECISION0030_COMMIT)
+    _require_ancestor(
+        root,
+        PHASE13B_DECISION0030_COMMIT,
+        PHASE13B_SOURCE_AUTHORITY_COMMIT,
+    )
+    _require_ancestor(root, PHASE13B_SOURCE_AUTHORITY_COMMIT, head)
+    sources: dict[str, dict[str, Any]] = {}
+    for path, expected in PHASE13B_TURBOQUANT_SOURCE_AUTHORITY.items():
+        historical = _git_blob_authority(
+            root,
+            commit=execution_commit,
+            path=path,
+        )
+        authority = _git_blob_authority(
+            root,
+            commit=PHASE13B_SOURCE_AUTHORITY_COMMIT,
+            path=path,
+        )
+        current = _git_blob_authority(root, commit=head, path=path)
+        if (
+            historical["blob"] != expected["historical_blob"]
+            or historical["sha256"] != expected["historical_sha256"]
+            or authority["blob"] != expected["authority_blob"]
+            or authority["sha256"] != expected["authority_sha256"]
+            or current["blob"] != authority["blob"]
+            or current["sha256"] != authority["sha256"]
+            or _path_transition_commits(
+                root,
+                start=execution_commit,
+                end=PHASE13B_SOURCE_AUTHORITY_COMMIT,
+                path=path,
+            )
+            != (PHASE13B_DECISION0030_COMMIT,)
+            or _path_transition_commits(
+                root,
+                start=PHASE13B_SOURCE_AUTHORITY_COMMIT,
+                end=head,
+                path=path,
+            )
+        ):
+            raise Phase12UnifiedAdmissionError(
+                f"Decision 0030 source transition is unrecognized: {path}"
+            )
+        sources[path] = {
+            "historical": historical,
+            "authority": authority,
+            "current": current,
+        }
+    return {
+        "decision": "0030",
+        "decision_path": PHASE13B_DECISION0030_PATH.as_posix(),
+        "decision_sha256": PHASE13B_DECISION0030_SHA256,
+        "decision_commit": PHASE13B_DECISION0030_COMMIT,
+        "source_authority_commit": PHASE13B_SOURCE_AUTHORITY_COMMIT,
+        "successor_report_path": PHASE13B_TURBOQUANT_REPORT_PATH.as_posix(),
+        "successor_report_sha256": PHASE13B_TURBOQUANT_REPORT_SHA256,
+        "sources": sources,
+    }
+
+
 def _validate_decision0026_transition(
     root: Path,
     *,
@@ -611,6 +758,7 @@ def _validate_decision0026_transition(
             "Decision 0026 endpoint transition is unrecognized"
         )
     stable: dict[str, dict[str, str]] = {}
+    phase13b_successor: dict[str, Any] | None = None
     for path, expected_sha256 in unchanged_paths.items():
         historical = _git_blob_authority(
             root,
@@ -618,20 +766,41 @@ def _validate_decision0026_transition(
             path=path,
         )
         current = _git_blob_authority(root, commit=head, path=path)
-        if (
+        historical_differs = (
             historical["sha256"] != expected_sha256
-            or current["sha256"] != expected_sha256
+        )
+        current_differs = (
+            current["sha256"] != expected_sha256
             or historical["blob"] != current["blob"]
-            or _path_transition_commits(
-                root,
-                start=execution_commit,
-                end=head,
-                path=path,
+            or bool(
+                _path_transition_commits(
+                    root,
+                    start=execution_commit,
+                    end=head,
+                    path=path,
+                )
             )
-        ):
+        )
+        if historical_differs:
             raise Phase12UnifiedAdmissionError(
                 f"historical method source changed after execution: {path}"
             )
+        if current_differs:
+            if path != "src/kvbench/adapters/turboquant.py":
+                raise Phase12UnifiedAdmissionError(
+                    f"historical method source changed after execution: {path}"
+                )
+            if phase13b_successor is None:
+                phase13b_successor = (
+                    _validate_phase13b_turboquant_successor_transition(
+                        root,
+                        execution_commit=execution_commit,
+                    )
+                )
+            if path not in phase13b_successor["sources"]:
+                raise Phase12UnifiedAdmissionError(
+                    f"historical method source changed after execution: {path}"
+                )
         stable[path] = historical
     return {
         "schema_version": (

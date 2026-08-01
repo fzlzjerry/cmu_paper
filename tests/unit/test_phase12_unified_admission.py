@@ -268,6 +268,44 @@ class Phase12PriorAdmissionEvidenceTests(unittest.TestCase):
                     },
                 )
 
+    def test_decision0030_successor_transition_is_checksum_bound(self) -> None:
+        authority = (
+            phase12._validate_phase13b_turboquant_successor_transition(
+                REPOSITORY,
+                execution_commit=phase12.PHASE12_TURBOQUANT_EXECUTION_COMMIT,
+            )
+        )
+        self.assertEqual(authority["decision"], "0030")
+        self.assertEqual(
+            set(authority["sources"]),
+            set(phase12.PHASE13B_TURBOQUANT_SOURCE_AUTHORITY),
+        )
+        original = phase12.sha256_file
+        report_path = (
+            REPOSITORY / phase12.PHASE13B_TURBOQUANT_REPORT_PATH
+        ).resolve()
+
+        def altered(path: Path) -> str:
+            if Path(path).resolve() == report_path:
+                return "0" * 64
+            return original(path)
+
+        with mock.patch.object(
+            phase12,
+            "sha256_file",
+            side_effect=altered,
+        ):
+            with self.assertRaisesRegex(
+                Phase12UnifiedAdmissionError,
+                "successor report checksum",
+            ):
+                phase12._validate_phase13b_turboquant_successor_transition(
+                    REPOSITORY,
+                    execution_commit=(
+                        phase12.PHASE12_TURBOQUANT_EXECUTION_COMMIT
+                    ),
+                )
+
     def test_report_byte_tampering_fails_closed(self) -> None:
         source = REPOSITORY / "docs/evidence/phase6/turboquant-method-admission.json"
         payload = json.loads(source.read_text(encoding="utf-8"))
