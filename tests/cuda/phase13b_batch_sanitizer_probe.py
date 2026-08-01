@@ -33,6 +33,7 @@ from kvbench.schema.phase13b import (
     PHASE13B_AUTHORIZED_CONTAINER_DIGEST,
     PHASE13B_CONFIGURATIONS,
 )
+from scripts.phase12_unified_admission import _gqa_geometry_passes
 
 
 _CONFIGURATION_MAP = {
@@ -268,13 +269,7 @@ def _run(configuration: str, batch: int) -> dict[str, Any]:
     ):
         raise RuntimeError("Phase 13B sanitizer numerical/graph contract differs")
     geometry = cache.gqa_geometry()
-    if (
-        geometry["num_query_heads"] != 32
-        or geometry["num_kv_heads"] != 8
-        or geometry["gqa_group_size"] != 4
-        or geometry["native_kv_head_storage"] is not True
-        or geometry["query_head_sized_kv_cache"] is not False
-    ):
+    if not _gqa_geometry_passes(geometry, family=family):
         raise RuntimeError("Phase 13B sanitizer GQA geometry differs")
     return {
         "batch_size": batch,
