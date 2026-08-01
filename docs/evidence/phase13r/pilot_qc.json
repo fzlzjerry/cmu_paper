@@ -1,0 +1,54 @@
+{
+  "artifact_pilot_qc_sha256": "09a1fdd135bd15a17c5897761971f4260152674b1354b38993369329a7ec4c8c",
+  "authorized_container_digest": "sha256:059bc9be89387369d7de9e3e9b26d85b6e9902c41e7dbf002ebc45edd188fb7e",
+  "blocker": {
+    "code": "predicted_feasible_prefix_construction_oom",
+    "configuration": "tq_3bit_nc",
+    "error_type": "torch.OutOfMemoryError",
+    "failed_run_id": "phase13-20260801t184243094922z-e886592f-99b6ca-r0-o014-tq_3bit_nc-b8-l98304",
+    "failure_stage": "prefix_construction_before_graph_capture_warmup_or_timing",
+    "point": {
+      "batch_size": 8,
+      "context_label": 98304,
+      "graph_mode": "cuda_graph",
+      "historical_context": 98304,
+      "replicate_index": 0,
+      "total_attended_context": 98305
+    },
+    "requested_allocation_gib": 6.0,
+    "reported_free_gib": 5.27
+  },
+  "campaign_execution_status": "BLOCKED",
+  "campaign_id": "phase13-20260801t184243094922z-e886592f-99b6ca",
+  "campaign_root_sha256": "94104865452017fbfd3c87fffd34e82b12248e379ef2680b22153dd5b71d90b8",
+  "capacity_infeasible_points": 6,
+  "capacity_infeasible_run_records": 18,
+  "execution_git_sha": "e886592fd83de9e037cf154d1512c53192bfb0aa",
+  "feasible_gpu_run_records": 792,
+  "fit_status_counts": {
+    "insufficient_feasible_span": 30
+  },
+  "full_scan": "CLOSED",
+  "historical_stopped_campaign_preserved": true,
+  "knee_density_assessed": 0,
+  "maximum_cv": null,
+  "performance_claim_eligible": false,
+  "performance_data_frozen": false,
+  "phase13_status": "BLOCKED",
+  "phase14_readiness": "NOT_READY",
+  "planned_point_records": 810,
+  "provisional_ratio_records": 243,
+  "provisional_ratios_calculated": 0,
+  "quality_execution": "LOCKED",
+  "r_hbm": null,
+  "schema_version": "kvbench-phase13r-external-pilot-qc-1.0.0",
+  "selective_reruns": 0,
+  "stable_points": 0,
+  "status_counts": {
+    "aborted": 777,
+    "capacity_infeasible": 18,
+    "completed": 14,
+    "runtime_failed": 1
+  },
+  "unstable_points": 0
+}
