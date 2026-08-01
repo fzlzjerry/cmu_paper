@@ -278,6 +278,10 @@ def _validate_manifest(payload: Mapping[str, Any]) -> object:
             Phase11RQ23RunManifest,
             Phase11RunManifest,
         )
+        from kvbench.schema.phase13b import Phase13BBatchAdmissionManifest
+
+        if payload.get("schema_version") == Phase13BBatchAdmissionManifest.SCHEMA_VERSION:
+            return Phase13BBatchAdmissionManifest.from_dict(dict(payload))
 
         if payload.get("schema_version") == Phase11RQ23RunManifest.SCHEMA_VERSION:
             return Phase11RQ23RunManifest.from_dict(dict(payload))
@@ -497,6 +501,7 @@ class ArtifactRun:
         from kvbench.schema.phase8 import Phase8RunManifest
         from kvbench.schema.phase9 import Phase9CalibrationManifest
         from kvbench.schema.phase11 import Phase11RunManifest
+        from kvbench.schema.phase13b import Phase13BBatchAdmissionManifest
 
         if isinstance(parsed, Phase3RunManifest):
             required = {
@@ -596,6 +601,36 @@ class ArtifactRun:
             if missing:
                 raise ArtifactStateError(
                     "Phase 11 finalization lacks required evidence payloads"
+                )
+
+        if (
+            isinstance(parsed, Phase13BBatchAdmissionManifest)
+            and parsed.status is RunStatus.COMPLETED
+        ):
+            required = {
+                "admission/kivi-method-admission.json",
+                "admission/kvquant-method-admission.json",
+                "admission/turboquant-method-admission.json",
+                "allocation/audit.json",
+                "config/authority.json",
+                "environment/container_identity.json",
+                "gqa/audit.json",
+                "numerical/batch-control.json",
+                "validation/cuda-graph.json",
+                "validation/historical-preservation.json",
+                "validation/matrix.json",
+                "validation/non-default-stream.json",
+                "validation/sanitizer.json",
+            }
+            missing = sorted(
+                relative
+                for relative in required
+                if not (self.stage / relative).is_file()
+            )
+            if missing:
+                raise ArtifactStateError(
+                    "Phase 13B finalization lacks required evidence payloads: "
+                    f"{missing!r}"
                 )
 
         if (

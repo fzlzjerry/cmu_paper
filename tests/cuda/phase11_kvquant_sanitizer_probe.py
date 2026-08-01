@@ -283,10 +283,10 @@ def _run_case(
     quantized_prefix = PREFIX_LENGTH - SINK_TOKENS
     history = (
         cache.packed_key_cache[
-            LAYER, :, :, :quantized_prefix
+            LAYER, 0, :, :, :quantized_prefix
         ].detach().cpu().clone(),
         cache.packed_value_cache[
-            LAYER, :, :, :quantized_prefix
+            LAYER, 0, :, :, :quantized_prefix
         ].detach().cpu().clone(),
     )
     append_position = positions[PREFIX_LENGTH:CAPACITY]
@@ -347,13 +347,13 @@ def _run_case(
     torch.cuda.synchronize(device=device)
 
     for tensor_name, observed in (
-        ("k_dense_allocated", cache.packed_key_cache[LAYER]),
-        ("v_dense_allocated", cache.packed_value_cache[LAYER]),
-        ("v_lookup_allocated", cache.value_lookup_cache[LAYER]),
-        ("k_sparse_values_allocated", cache.key_sparse_values[LAYER]),
-        ("k_sparse_indices_allocated", cache.key_sparse_indices[LAYER]),
-        ("v_sparse_values_allocated", cache.value_sparse_values[LAYER]),
-        ("v_sparse_indices_allocated", cache.value_sparse_indices[LAYER]),
+        ("k_dense_allocated", cache.packed_key_cache[LAYER, 0]),
+        ("v_dense_allocated", cache.packed_value_cache[LAYER, 0]),
+        ("v_lookup_allocated", cache.value_lookup_cache[LAYER, 0]),
+        ("k_sparse_values_allocated", cache.key_sparse_values[LAYER, 0]),
+        ("k_sparse_indices_allocated", cache.key_sparse_indices[LAYER, 0]),
+        ("v_sparse_values_allocated", cache.value_sparse_values[LAYER, 0]),
+        ("v_sparse_indices_allocated", cache.value_sparse_indices[LAYER, 0]),
         ("sink_k", cache.sink_key[LAYER]),
         ("sink_v", cache.sink_value[LAYER]),
     ):
@@ -368,14 +368,14 @@ def _run_case(
         raise RuntimeError("KVQuant sanitizer decode differs or is nonfinite")
     quantized_total = CAPACITY - SINK_TOKENS
     key_counts = (
-        cache.key_active_counts[LAYER, :quantized_total]
+        cache.key_active_counts[LAYER, 0, :quantized_total]
         .unique()
         .detach()
         .cpu()
         .tolist()
     )
     value_counts = (
-        cache.value_active_counts[LAYER, :quantized_total]
+        cache.value_active_counts[LAYER, 0, :quantized_total]
         .unique()
         .detach()
         .cpu()
@@ -388,13 +388,13 @@ def _run_case(
     if (
         not torch.equal(
             cache.packed_key_cache[
-                LAYER, :, :, :quantized_prefix
+                LAYER, 0, :, :, :quantized_prefix
             ].detach().cpu(),
             history[0],
         )
         or not torch.equal(
             cache.packed_value_cache[
-                LAYER, :, :, :quantized_prefix
+                LAYER, 0, :, :, :quantized_prefix
             ].detach().cpu(),
             history[1],
         )

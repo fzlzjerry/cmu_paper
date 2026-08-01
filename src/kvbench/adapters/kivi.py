@@ -32,8 +32,8 @@ from kvbench.schema import canonical_json_bytes, sha256_hex
 from kvbench.schema.base import require_sha256
 
 
-KIVI_ADAPTER_VERSION = "kvbench-kivi-method-adapter-1.0.0"
-KIVI_ADAPTER_FINGERPRINT_SCHEMA_VERSION = "kvbench-kivi-method-adapter-config-1.0.0"
+KIVI_ADAPTER_VERSION = "kvbench-kivi-method-adapter-1.1.0"
+KIVI_ADAPTER_FINGERPRINT_SCHEMA_VERSION = "kvbench-kivi-method-adapter-config-1.1.0"
 KIVI_OFFICIAL_COMMIT = "876b4d2d08e3b1d5f70d0969c299d8c7c42ddfb6"
 KIVI_OFFICIAL_BASE_TREE = "c94c31b2cfd44eeb9a18cff9dcdf03adff4ac49b"
 KIVI_PATCHED_TREE = "b617493dea5aff1a754cd27ad6be12ac512b2aee"
@@ -697,7 +697,12 @@ class KIVIMethodAdapter:
         cache = handle.cache
         if cache.device.type != "cuda":
             raise CacheStateError("KIVI compressed kernels require CUDA execution")
-        if tuple(int(x) for x in query_states.shape) != (1, 32, 1, 128):
+        if tuple(int(x) for x in query_states.shape) != (
+            cache.batch_size,
+            cache.num_query_heads,
+            1,
+            cache.head_dim,
+        ):
             raise CacheStateError("KIVI decode query has unsupported geometry")
         if query_states.dtype != _torch().bfloat16 or query_states.device != cache.device:
             raise CacheStateError("KIVI decode query differs from BF16 cache device")
@@ -716,13 +721,33 @@ class KIVIMethodAdapter:
             scales = cache.key_scales[handle.layer_idx]
             minimums = cache.key_minimums[handle.layer_idx]
             kernel_output = cache.key_kernel_output_fp16.view(-1)[
-                : 32 * kernel_history
-            ].view(32, 1, kernel_history)
+                : cache.batch_size * cache.num_query_heads * kernel_history
+            ].view(
+                cache.batch_size * cache.num_query_heads,
+                1,
+                kernel_history,
+            )
             launcher.launch_into(
-                input_tensor=cache.query_fp16_staging.view(32, 1, 128),
-                packed=packed.view(8, -1, 128),
-                scales=scales.view(8, -1, 128),
-                minimums=minimums.view(8, -1, 128),
+                input_tensor=cache.query_fp16_staging.view(
+                    cache.batch_size * cache.num_query_heads,
+                    1,
+                    cache.head_dim,
+                ),
+                packed=packed.view(
+                    cache.batch_size * cache.num_kv_heads,
+                    -1,
+                    cache.head_dim,
+                ),
+                scales=scales.view(
+                    cache.batch_size * cache.num_kv_heads,
+                    -1,
+                    cache.head_dim,
+                ),
+                minimums=minimums.view(
+                    cache.batch_size * cache.num_kv_heads,
+                    -1,
+                    cache.head_dim,
+                ),
                 output=kernel_output,
                 bits=self.k_bits,
                 group_size=KIVI_GROUP_SIZE,
@@ -730,7 +755,11 @@ class KIVIMethodAdapter:
                 num_kv_heads=8,
             )
             logits[:, :, :historical].copy_(
-                kernel_output[:, :, :historical].view(1, 32, historical)
+                kernel_output[:, :, :historical].view(
+                    cache.batch_size,
+                    cache.num_query_heads,
+                    historical,
+                )
             )
         for query_head in range(32):
             kv_head = query_head // KIVI_GQA_GROUP_SIZE
@@ -767,24 +796,48 @@ class KIVIMethodAdapter:
         if value_history:
             kernel_history = cache.value_history_capacity
             value_weights = cache.key_kernel_output_fp16.view(-1)[
-                : 32 * kernel_history
-            ].view(32, 1, kernel_history)
+                : cache.batch_size * cache.num_query_heads * kernel_history
+            ].view(
+                cache.batch_size * cache.num_query_heads,
+                1,
+                kernel_history,
+            )
             value_weights.zero_()
             value_weights[:, :, :value_history].copy_(
-                logits[:, :, :value_history].view(32, 1, value_history)
+                logits[:, :, :value_history].view(
+                    cache.batch_size * cache.num_query_heads,
+                    1,
+                    value_history,
+                )
             )
             launcher.launch_into(
                 input_tensor=value_weights,
                 packed=cache.packed_value_history[
                     handle.layer_idx
-                ].view(8, -1, kernel_history),
+                ].view(
+                    cache.batch_size * cache.num_kv_heads,
+                    -1,
+                    kernel_history,
+                ),
                 scales=cache.value_scales[
                     handle.layer_idx
-                ].view(8, -1, kernel_history),
+                ].view(
+                    cache.batch_size * cache.num_kv_heads,
+                    -1,
+                    kernel_history,
+                ),
                 minimums=cache.value_minimums[
                     handle.layer_idx
-                ].view(8, -1, kernel_history),
-                output=cache.decode_output_fp16.view(32, 1, 128),
+                ].view(
+                    cache.batch_size * cache.num_kv_heads,
+                    -1,
+                    kernel_history,
+                ),
+                output=cache.decode_output_fp16.view(
+                    cache.batch_size * cache.num_query_heads,
+                    1,
+                    cache.head_dim,
+                ),
                 bits=self.v_bits,
                 group_size=KIVI_GROUP_SIZE,
                 num_query_heads=32,

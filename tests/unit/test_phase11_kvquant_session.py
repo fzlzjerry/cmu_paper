@@ -327,10 +327,10 @@ class Phase11KVQuantSessionTests(unittest.TestCase):
                 active_context=2,
                 config_name="kvq4",
                 packed_key_cache=torch.zeros(
-                    (1, 1, 1, 2), dtype=torch.int32
+                    (1, 1, 1, 1, 2), dtype=torch.int32
                 ),
                 packed_value_cache=torch.zeros(
-                    (1, 1, 1, 2), dtype=torch.int32
+                    (1, 1, 1, 1, 2), dtype=torch.int32
                 ),
                 key_codebook=scalar(),
                 key_lookup_table=scalar(),
@@ -339,24 +339,24 @@ class Phase11KVQuantSessionTests(unittest.TestCase):
                 key_zero_point=scalar(),
                 rope_inv_freq=scalar(),
                 value_codebook=scalar(),
-                value_lookup_cache=torch.zeros((1, 2, 1)),
-                key_sparse_values=sparse(),
-                key_sparse_indices=sparse_index(),
-                value_sparse_values=sparse(),
-                value_sparse_indices=sparse_index(),
-                key_active_counts=torch.zeros((1, 2), dtype=torch.int32),
-                value_active_counts=torch.zeros((1, 2), dtype=torch.int32),
+                value_lookup_cache=torch.zeros((1, 1, 2, 1)),
+                key_sparse_values=sparse().unsqueeze(1),
+                key_sparse_indices=sparse_index().unsqueeze(1),
+                value_sparse_values=sparse().unsqueeze(1),
+                value_sparse_indices=sparse_index().unsqueeze(1),
+                key_active_counts=torch.zeros((1, 1, 2), dtype=torch.int32),
+                value_active_counts=torch.zeros((1, 1, 2), dtype=torch.int32),
                 sink_key=scalar(),
                 sink_value=scalar(),
             ),
         )
         original = _historical_prefix_sha256(cache, 2)
-        cache.packed_key_cache[0, 0, 0, 1] = 7
+        cache.packed_key_cache[0, 0, 0, 0, 1] = 7
         self.assertEqual(
             _historical_prefix_sha256(cache, 2),
             original,
         )
-        cache.packed_key_cache[0, 0, 0, 0] = 9
+        cache.packed_key_cache[0, 0, 0, 0, 0] = 9
         self.assertNotEqual(
             _historical_prefix_sha256(cache, 2),
             original,

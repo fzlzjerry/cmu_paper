@@ -121,9 +121,14 @@ class KIVIStaticCache:
             _positive_int(capacity, "capacity"),
             _positive_int(head_dim, "head_dim"),
         )
-        if geometry[1:4] != (1, 32, 8) or geometry[5] != 128:
+        if (
+            geometry[1] not in {1, 4, 8}
+            or geometry[2:4] != (32, 8)
+            or geometry[5] != 128
+        ):
             raise ValueError(
-                "KIVI cache requires frozen B=1 H_Q=32 H_KV=8 D=128 geometry"
+                "KIVI cache requires frozen B in {1,4,8} "
+                "H_Q=32 H_KV=8 D=128 geometry"
             )
         if isinstance(workspace_bytes, bool) or not isinstance(workspace_bytes, int):
             raise ValueError("workspace_bytes must be a nonnegative integer")
@@ -743,7 +748,7 @@ class KIVIStaticCache:
 
     def layout_fingerprint(self) -> str:
         payload = {
-            "schema": "kvbench-kivi-static-cache-layout-1.0.0",
+            "schema": "kvbench-kivi-static-cache-layout-1.1.0",
             "configuration": self.config_name,
             "bits": {"key": self.k_bits, "value": self.v_bits},
             "num_layers": self.num_layers,

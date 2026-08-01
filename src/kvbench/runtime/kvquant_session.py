@@ -446,13 +446,13 @@ def _historical_prefix_sha256(
         ("key_zero", cache.key_zero_point),
         ("rope_inv_freq", cache.rope_inv_freq),
         ("value_codebook", cache.value_codebook),
-        ("value_lookup", cache.value_lookup_cache[:, :quantized]),
-        ("key_sparse_values", cache.key_sparse_values[:, :quantized]),
-        ("key_sparse_indices", cache.key_sparse_indices[:, :quantized]),
-        ("value_sparse_values", cache.value_sparse_values[:, :quantized]),
-        ("value_sparse_indices", cache.value_sparse_indices[:, :quantized]),
-        ("key_counts", cache.key_active_counts[:, :quantized]),
-        ("value_counts", cache.value_active_counts[:, :quantized]),
+        ("value_lookup", cache.value_lookup_cache[:, :, :quantized]),
+        ("key_sparse_values", cache.key_sparse_values[:, :, :quantized]),
+        ("key_sparse_indices", cache.key_sparse_indices[:, :, :quantized]),
+        ("value_sparse_values", cache.value_sparse_values[:, :, :quantized]),
+        ("value_sparse_indices", cache.value_sparse_indices[:, :, :quantized]),
+        ("key_counts", cache.key_active_counts[:, :, :quantized]),
+        ("value_counts", cache.value_active_counts[:, :, :quantized]),
         ("sink_key", cache.sink_key),
         ("sink_value", cache.sink_value),
     )
@@ -472,7 +472,7 @@ def _key_active_entries_untimed(
     torch = _torch()
     quantized = max(0, active_context - cache.sink_tokens)
     selected = (
-        cache.key_active_counts[:, :quantized]
+        cache.key_active_counts[:, :, :quantized]
         .detach()
         .contiguous()
         .view(torch.uint8)

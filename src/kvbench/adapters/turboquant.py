@@ -23,9 +23,9 @@ from kvbench.schema import canonical_json_bytes, sha256_hex
 from kvbench.schema.base import require_sha256
 
 
-TURBOQUANT_ADAPTER_VERSION = "kvbench-turboquant-method-adapter-1.0.0"
+TURBOQUANT_ADAPTER_VERSION = "kvbench-turboquant-method-adapter-1.1.0"
 TURBOQUANT_ADAPTER_FINGERPRINT_SCHEMA_VERSION = (
-    "kvbench-turboquant-method-adapter-config-1.0.0"
+    "kvbench-turboquant-method-adapter-config-1.1.0"
 )
 TURBOQUANT_SOURCE_COMMIT = "752a3a504485790a2e8491cacbb35c137339ad34"
 TURBOQUANT_SOURCE_TREE = "3ec7a4eb00f9bc8fec399bea6cf7de27a7936372"
@@ -157,7 +157,8 @@ class TurboQuantMethodAdapter:
         if (
             int(cache_position.ndim) != 1
             or int(cache_position.shape[0]) != tokens
-            or int(cache.current_slot_mapping.shape[0]) != tokens
+            or int(cache.current_slot_mapping.shape[0])
+            != tokens * cache.batch_size
         ):
             raise CacheStateError(
                 "TurboQuant slot mapping differs from the declared update"
@@ -182,24 +183,26 @@ class TurboQuantMethodAdapter:
         rotated = cache.store_rotated_key[:tokens]
         norms = cache.store_norms[:tokens]
         denominator = cache.store_norm_denominator[:tokens]
-        key_float.copy_(key_states[0].transpose(0, 1))
-        value_float.copy_(value_states[0].transpose(0, 1))
+        key_float.copy_(key_states.permute(2, 0, 1, 3))
+        value_float.copy_(value_states.permute(2, 0, 1, 3))
 
         flat_key = key_float.view(
-            tokens * cache.num_kv_heads,
+            tokens * cache.batch_size * cache.num_kv_heads,
             cache.head_dim,
         )
         flat_value = value_float.view(
-            tokens * cache.num_kv_heads,
+            tokens * cache.batch_size * cache.num_kv_heads,
             cache.head_dim,
         )
         flat_rotated = rotated.view(
-            tokens * cache.num_kv_heads,
+            tokens * cache.batch_size * cache.num_kv_heads,
             cache.head_dim,
         )
-        flat_norms = norms.view(tokens * cache.num_kv_heads, 1)
+        flat_norms = norms.view(
+            tokens * cache.batch_size * cache.num_kv_heads, 1
+        )
         flat_denominator = denominator.view(
-            tokens * cache.num_kv_heads,
+            tokens * cache.batch_size * cache.num_kv_heads,
             1,
         )
         torch.linalg.vector_norm(
@@ -219,7 +222,7 @@ class TurboQuantMethodAdapter:
         mse_bytes = math.ceil(cache.head_dim * mse_bits / 8)
         value_data_bytes = math.ceil(cache.head_dim * value_bits / 8)
         block_value = 1 << (value_data_bytes - 1).bit_length()
-        grid = (tokens * cache.num_kv_heads,)
+        grid = (tokens * cache.batch_size * cache.num_kv_heads,)
         cache._store_kernel[grid](
             flat_rotated,
             flat_norms,
@@ -271,6 +274,7 @@ class TurboQuantMethodAdapter:
                 key_states,
                 value_states,
                 layer_idx,
+                cache_position,
             )
         if layer_idx not in TURBOQUANT_COMPRESSED_LAYERS:
             raise CacheStateError("TurboQuant layer policy is incomplete")
@@ -318,6 +322,7 @@ class TurboQuantMethodAdapter:
                 key_states,
                 value_states,
                 layer_idx,
+                cache_position,
             )
         if layer_idx not in TURBOQUANT_COMPRESSED_LAYERS:
             raise CacheStateError("TurboQuant layer policy is incomplete")
@@ -368,12 +373,12 @@ class TurboQuantMethodAdapter:
         cache.decode_query_float.copy_(query_states[:, :, 0, :])
         torch.mm(
             cache.decode_query_float.view(
-                cache.num_query_heads,
+                cache.batch_size * cache.num_query_heads,
                 cache.head_dim,
             ),
             cache.PiT,
             out=cache.decode_rotated_query.view(
-                cache.num_query_heads,
+                cache.batch_size * cache.num_query_heads,
                 cache.head_dim,
             ),
         )

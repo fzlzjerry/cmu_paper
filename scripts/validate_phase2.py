@@ -51,6 +51,7 @@ PHASE11DQ23_ENTRY_COMMIT = "2bc6aaa1d05b08d50f4c01bbc0b2863dd8689fe1"
 PHASE11RQ23_ENTRY_COMMIT = "d99920e5dd7ea94bce7c98b4301bd035c073dfea"
 PHASE12_ENTRY_COMMIT = "845a9293877121187a383c2c7aeab67912c856bd"
 PHASE13_ENTRY_COMMIT = "7379e808ff687b10bf18c56364ae1c545cd00fe4"
+PHASE13B_ENTRY_COMMIT = "c853acf65048b957a713f67b05ee560b845cd37f"
 QUALITY_COMMIT = "a7b8285dd8ed2fb598efbb3312e9f55064a0ee64"
 ENVIRONMENT_COMMIT = "ea176994921c793789ebbd9d42515ce20ae4baee"
 EVIDENCE_COMMIT = "fb164b5ea96031ca40b21f4b8436a49a3bb5b8d2"
@@ -1044,6 +1045,47 @@ PHASE13_ALLOWED_PATHS = frozenset(
         "tests/unit/test_phase13_scope.py",
     }
 )
+PHASE13B_ALLOWED_PATHS = frozenset(
+    {
+        "Makefile",
+        "docs/blockers.md",
+        "docs/decisions/0030-compressed-static-cache-batch-geometry.md",
+        "docs/evidence/phase13b/cuda-validation.json",
+        "docs/evidence/phase13b/kivi-method-admission.json",
+        "docs/evidence/phase13b/kvquant-method-admission.json",
+        "docs/evidence/phase13b/r2-publication.json",
+        "docs/evidence/phase13b/turboquant-method-admission.json",
+        "docs/phase_reports/phase13b-compressed-batch-geometry.md",
+        "docs/plans/phase13b-compressed-batch-geometry.md",
+        "docs/risk_register.md",
+        "docs/status.md",
+        "docs/tasks.md",
+        "scripts/phase13b_compressed_batch_admission.py",
+        "scripts/validate_phase2.py",
+        "src/kvbench/adapters/kivi.py",
+        "src/kvbench/adapters/kvquant.py",
+        "src/kvbench/adapters/turboquant.py",
+        "src/kvbench/runtime/artifacts.py",
+        "src/kvbench/runtime/kivi_cache.py",
+        "src/kvbench/runtime/kvquant_cache.py",
+        "src/kvbench/runtime/kvquant_session.py",
+        "src/kvbench/runtime/turboquant_cache.py",
+        "src/kvbench/schema/__init__.py",
+        "src/kvbench/schema/phase13b.py",
+        "tests/cuda/phase11_kvquant_sanitizer_probe.py",
+        "tests/cuda/phase13b_batch_sanitizer_probe.py",
+        "tests/cuda/test_phase11_kvquant_cuda.py",
+        "tests/cuda/test_phase13b_batch_geometry_cuda.py",
+        "tests/graph/test_phase11_kvquant_graph.py",
+        "tests/unit/test_phase11_kvquant_adapter.py",
+        "tests/unit/test_phase11_kvquant_cache.py",
+        "tests/unit/test_phase11_kvquant_session.py",
+        "tests/unit/test_phase13_scope.py",
+        "tests/unit/test_phase13b_batch_geometry.py",
+        "tests/unit/test_phase13b_scope.py",
+        "tests/unit/test_phase7_kivi_source_audit.py",
+    }
+)
 
 
 RAW_RESULT_SUFFIXES = {
@@ -1614,6 +1656,18 @@ def current_phase13_paths() -> set[str]:
     return changed | untracked
 
 
+def current_phase13b_paths() -> set[str]:
+    """Return tracked and untracked changes after the Phase 13B entry."""
+
+    changed = git_paths(
+        ("diff", "--name-only", "-z", PHASE13B_ENTRY_COMMIT, "--")
+    )
+    untracked = git_paths(
+        ("ls-files", "--others", "--exclude-standard", "-z", "--")
+    )
+    return changed | untracked
+
+
 def phase12_path_is_allowed(relative: str) -> bool:
     """Accept only canonical exact paths in the Phase 12R allowlist."""
 
@@ -1647,6 +1701,24 @@ def phase13_path_is_allowed(relative: str) -> bool:
         and ".." not in candidate.parts
         and "\\" not in relative
         and relative in PHASE13_ALLOWED_PATHS
+    )
+
+
+def phase13b_path_is_allowed(relative: str) -> bool:
+    """Accept only canonical exact paths in the Phase 13B allowlist."""
+
+    try:
+        candidate = PurePosixPath(relative)
+    except (TypeError, ValueError):
+        return False
+    return (
+        isinstance(relative, str)
+        and relative == candidate.as_posix()
+        and relative not in {"", "."}
+        and not candidate.is_absolute()
+        and ".." not in candidate.parts
+        and "\\" not in relative
+        and relative in PHASE13B_ALLOWED_PATHS
     )
 
 
@@ -2666,6 +2738,7 @@ PHASE3_BACKUP_ARTIFACT_ROOT_NAMES = frozenset(
     }
 )
 PHASE13_APPROVED_ARTIFACT_ROOT_NAMES = frozenset({"phase13"})
+PHASE13B_APPROVED_ARTIFACT_ROOT_NAMES = frozenset({"phase13b"})
 PHASE12_BLOCKED_ARTIFACT_ROOT_NAMES = frozenset({"phase12"})
 PHASE12_STOPPED_CAMPAIGN_ID = (
     "phase12-20260730t000000000000z-2bc6aaa1-abcdef"
@@ -3345,6 +3418,7 @@ def validate_phase3_artifact_root() -> list[str]:
                 | PHASE11_APPROVED_ARTIFACT_ROOT_NAMES
                 | PHASE3_BACKUP_ARTIFACT_ROOT_NAMES
                 | PHASE13_APPROVED_ARTIFACT_ROOT_NAMES
+                | PHASE13B_APPROVED_ARTIFACT_ROOT_NAMES
                 | PHASE12_BLOCKED_ARTIFACT_ROOT_NAMES
             )
         )
@@ -3782,7 +3856,9 @@ def check_scope() -> int:
                 f"forbidden result tree in Phase 12R scope: {relative}"
             )
     phase13 = current_phase13_paths()
-    phase13_unexpected = sorted(phase13 - PHASE13_ALLOWED_PATHS)
+    phase13_unexpected = sorted(
+        phase13 - PHASE13_ALLOWED_PATHS - PHASE13B_ALLOWED_PATHS
+    )
     if phase13_unexpected:
         errors.append(
             "files outside the approved Phase 13 Pilot plan: "
@@ -3812,6 +3888,38 @@ def check_scope() -> int:
         ):
             errors.append(
                 f"forbidden result tree in Phase 13 scope: {relative}"
+            )
+    phase13b = current_phase13b_paths()
+    phase13b_unexpected = sorted(phase13b - PHASE13B_ALLOWED_PATHS)
+    if phase13b_unexpected:
+        errors.append(
+            "files outside the approved Phase 13B remediation: "
+            f"{phase13b_unexpected!r}"
+        )
+    for relative in sorted(phase13b):
+        if relative.startswith("docs/evidence/e00/"):
+            errors.append(f"immutable E00 evidence changed: {relative}")
+        if relative in QUALITY_PROTOCOL_HASHES:
+            errors.append(
+                "quality protocol changed during Phase 13B: "
+                f"{relative}"
+            )
+        if Path(relative).suffix in RAW_RESULT_SUFFIXES:
+            errors.append(
+                "forbidden binary, kernel, model, or profiler artifact "
+                f"in Phase 13B Git scope: {relative}"
+            )
+        if relative.startswith(
+            (
+                "artifacts/profiler/",
+                "artifacts/quality/",
+                "paper-results/",
+                "paper_results/",
+                "results/",
+            )
+        ):
+            errors.append(
+                f"forbidden result tree in Phase 13B scope: {relative}"
             )
     e00_changes = git_paths(
         (

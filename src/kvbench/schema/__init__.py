@@ -126,6 +126,14 @@ from kvbench.schema.phase11 import (
     parse_phase11_run_manifest,
     require_exact_phase11_grid,
 )
+from kvbench.schema.phase13b import (
+    PHASE13B_AUTHORIZED_CONTAINER_DIGEST,
+    PHASE13B_BATCH_SIZES,
+    PHASE13B_CONFIGURATIONS,
+    PHASE13B_CONTEXT_LENGTH,
+    Phase13BBatchAdmissionManifest,
+    parse_phase13b_manifest,
+)
 
 from kvbench.schema.result import (
     ArtifactEntry,

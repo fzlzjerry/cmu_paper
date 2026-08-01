@@ -168,9 +168,15 @@ class TurboQuantStaticCache:
             _positive_int(capacity, "capacity"),
             _positive_int(head_dim, "head_dim"),
         )
-        if geometry[:4] != (32, 1, 32, 8) or geometry[5] != 128:
+        if (
+            geometry[0] != 32
+            or geometry[1] not in {1, 4, 8}
+            or geometry[2:4] != (32, 8)
+            or geometry[5] != 128
+        ):
             raise ValueError(
-                "TurboQuant cache requires frozen B=1 Llama GQA geometry"
+                "TurboQuant cache requires frozen B in {1,4,8} "
+                "Llama GQA geometry"
             )
         if (
             isinstance(workspace_bytes, bool)
@@ -229,7 +235,7 @@ class TurboQuantStaticCache:
         self.packed_cache = torch.zeros(
             (
                 len(self.compressed_layers),
-                self.block_count,
+                self.batch_size * self.block_count,
                 self.block_size,
                 self.num_kv_heads,
                 self.slot_size,
@@ -247,23 +253,34 @@ class TurboQuantStaticCache:
         )
 
         self.block_table = torch.arange(
-            self.block_count,
+            self.batch_size * self.block_count,
             dtype=torch.int32,
             device=self.device,
-        ).reshape(1, self.block_count)
-        self.slot_mapping = torch.arange(
-            self.rounded_capacity,
-            dtype=torch.int32,
-            device=self.device,
-        )
+        ).reshape(self.batch_size, self.block_count)
+        positions = torch.arange(
+            self.rounded_capacity, dtype=torch.int32, device=self.device
+        ).reshape(self.rounded_capacity, 1)
+        batch_offsets = (
+            torch.arange(
+                self.batch_size, dtype=torch.int32, device=self.device
+            )
+            * self.rounded_capacity
+        ).reshape(1, self.batch_size)
+        # Position-major ordering matches flattened [T,B,H_KV,D] staging.
+        # B=1 retains the historical mapping byte-for-byte.
+        self.slot_mapping = (positions + batch_offsets).reshape(-1)
         self._seq_lens = torch.arange(
             1,
             self.rounded_capacity + 1,
             dtype=torch.int32,
             device=self.device,
-        ).reshape(self.rounded_capacity, 1)
+        ).reshape(self.rounded_capacity, 1).expand(
+            self.rounded_capacity, self.batch_size
+        ).clone()
         self._single_slot_mappings = tuple(
-            self.slot_mapping[position : position + 1]
+            self.slot_mapping[
+                position * self.batch_size : (position + 1) * self.batch_size
+            ]
             for position in range(self.rounded_capacity)
         )
         self._single_seq_lens = tuple(
@@ -284,6 +301,7 @@ class TurboQuantStaticCache:
 
         store_shape = (
             self.capacity,
+            self.batch_size,
             self.num_kv_heads,
             self.head_dim,
         )
@@ -295,7 +313,7 @@ class TurboQuantStaticCache:
         self.store_value_float = torch.empty_like(self.store_key_float)
         self.store_rotated_key = torch.empty_like(self.store_key_float)
         self.store_norms = torch.empty(
-            (self.capacity, self.num_kv_heads, 1),
+            (self.capacity, self.batch_size, self.num_kv_heads, 1),
             dtype=torch.float32,
             device=self.device,
         )
@@ -392,6 +410,7 @@ class TurboQuantStaticCache:
         )
         nominal_compressed = (
             len(self.compressed_layers)
+            * self.batch_size
             * self.capacity
             * self.num_kv_heads
             * self.head_dim
@@ -401,6 +420,7 @@ class TurboQuantStaticCache:
         skipped = (
             2
             * len(self.bf16_layers)
+            * self.batch_size
             * self.capacity
             * self.num_kv_heads
             * self.head_dim
@@ -505,6 +525,7 @@ class TurboQuantStaticCache:
         components = _SLOT_COMPONENTS[self.config_name]
         requested_slots = (
             len(self.compressed_layers)
+            * self.batch_size
             * self.capacity
             * self.num_kv_heads
         )
@@ -529,6 +550,7 @@ class TurboQuantStaticCache:
         extra_positions = self.rounded_capacity - self.capacity
         breakdown["block_rounding_overhead_bytes"] = (
             len(self.compressed_layers)
+            * self.batch_size
             * extra_positions
             * self.num_kv_heads
             * self.slot_size
@@ -617,7 +639,7 @@ class TurboQuantStaticCache:
 
     def layout_fingerprint(self) -> str:
         payload = {
-            "schema": "kvbench-turboquant-static-cache-layout-1.0.0",
+            "schema": "kvbench-turboquant-static-cache-layout-1.1.0",
             "configuration": self.config_name,
             "num_layers": self.num_layers,
             "batch_size": self.batch_size,
@@ -628,8 +650,8 @@ class TurboQuantStaticCache:
             "rounded_capacity": self.rounded_capacity,
             "block_size": self.block_size,
             "block_count": self.block_count,
-            "block_table": list(range(self.block_count)),
-            "slot_mapping": "deterministic_contiguous",
+            "block_table": self.block_table.detach().cpu().tolist(),
+            "slot_mapping": "deterministic_position_major_batch_banks",
             "slot_size": self.slot_size,
             "compressed_layers": list(self.compressed_layers),
             "bf16_layers": list(self.bf16_layers),
@@ -705,7 +727,9 @@ class TurboQuantStaticCache:
         self.bf16_cache.prepare_prefill(length)
         self._mode = "prefill"
         self._prefix_length = length
-        self._current_slot_mapping = self.slot_mapping[:length]
+        self._current_slot_mapping = self.slot_mapping[
+            : length * self.batch_size
+        ]
         self._current_seq_lens = self._single_seq_lens[length - 1]
 
     def complete_prefill(self) -> None:
@@ -789,6 +813,7 @@ class TurboQuantStaticCache:
         key_states: Any,
         value_states: Any,
         layer_idx: int,
+        cache_position: Any,
     ) -> tuple[Any, Any]:
         try:
             slot = self._bf16_layer_slots[layer_idx]
@@ -800,7 +825,7 @@ class TurboQuantStaticCache:
             key_states,
             value_states,
             slot,
-            {"cache_position": self.current_slot_mapping},
+            {"cache_position": cache_position},
         )
 
     def attended_handle(
@@ -826,12 +851,21 @@ class TurboQuantStaticCache:
         """Hash the untimed packed and BF16 prefix in deterministic order."""
 
         length = self._check_length(historical_length)
-        packed = self.packed_cache.reshape(
-            len(self.compressed_layers),
-            self.rounded_capacity,
-            self.num_kv_heads,
-            self.slot_size,
-        )[:, :length]
+        if self.batch_size == 1:
+            packed = self.packed_cache.reshape(
+                len(self.compressed_layers),
+                self.rounded_capacity,
+                self.num_kv_heads,
+                self.slot_size,
+            )[:, :length]
+        else:
+            packed = self.packed_cache.reshape(
+                len(self.compressed_layers),
+                self.batch_size,
+                self.rounded_capacity,
+                self.num_kv_heads,
+                self.slot_size,
+            )[:, :, :length]
         bf16_keys, bf16_values = self.bf16_cache.historical_tensors(length)
         header = json.dumps(
             {

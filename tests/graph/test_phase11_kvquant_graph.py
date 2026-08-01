@@ -171,31 +171,31 @@ class Phase11KVQuantGraphTests(unittest.TestCase):
         quantized_prefix = PREFIX_LENGTH - SINK_TOKENS
         historical = (
             cache.packed_key_cache[
-                LAYER, :, :, :quantized_prefix
+                LAYER, 0, :, :, :quantized_prefix
             ].detach().cpu().clone(),
             cache.packed_value_cache[
-                LAYER, :, :, :quantized_prefix
+                LAYER, 0, :, :, :quantized_prefix
             ].detach().cpu().clone(),
             cache.key_sparse_values[
-                LAYER, :quantized_prefix
+                LAYER, 0, :quantized_prefix
             ].detach().cpu().clone(),
             cache.key_sparse_indices[
-                LAYER, :quantized_prefix
+                LAYER, 0, :quantized_prefix
             ].detach().cpu().clone(),
             cache.value_sparse_values[
-                LAYER, :quantized_prefix
+                LAYER, 0, :quantized_prefix
             ].detach().cpu().clone(),
             cache.value_sparse_indices[
-                LAYER, :quantized_prefix
+                LAYER, 0, :quantized_prefix
             ].detach().cpu().clone(),
             cache.key_active_counts[
-                LAYER, :quantized_prefix
+                LAYER, 0, :quantized_prefix
             ].detach().cpu().clone(),
             cache.value_active_counts[
-                LAYER, :quantized_prefix
+                LAYER, 0, :quantized_prefix
             ].detach().cpu().clone(),
             cache.value_lookup_cache[
-                LAYER, :quantized_prefix
+                LAYER, 0, :quantized_prefix
             ].detach().cpu().clone(),
             cache.sink_key[LAYER].detach().cpu().clone(),
             cache.sink_value[LAYER].detach().cpu().clone(),
@@ -223,15 +223,15 @@ class Phase11KVQuantGraphTests(unittest.TestCase):
     ) -> None:
         quantized_prefix = PREFIX_LENGTH - SINK_TOKENS
         observed = (
-            cache.packed_key_cache[LAYER, :, :, :quantized_prefix],
-            cache.packed_value_cache[LAYER, :, :, :quantized_prefix],
-            cache.key_sparse_values[LAYER, :quantized_prefix],
-            cache.key_sparse_indices[LAYER, :quantized_prefix],
-            cache.value_sparse_values[LAYER, :quantized_prefix],
-            cache.value_sparse_indices[LAYER, :quantized_prefix],
-            cache.key_active_counts[LAYER, :quantized_prefix],
-            cache.value_active_counts[LAYER, :quantized_prefix],
-            cache.value_lookup_cache[LAYER, :quantized_prefix],
+            cache.packed_key_cache[LAYER, 0, :, :, :quantized_prefix],
+            cache.packed_value_cache[LAYER, 0, :, :, :quantized_prefix],
+            cache.key_sparse_values[LAYER, 0, :quantized_prefix],
+            cache.key_sparse_indices[LAYER, 0, :quantized_prefix],
+            cache.value_sparse_values[LAYER, 0, :quantized_prefix],
+            cache.value_sparse_indices[LAYER, 0, :quantized_prefix],
+            cache.key_active_counts[LAYER, 0, :quantized_prefix],
+            cache.value_active_counts[LAYER, 0, :quantized_prefix],
+            cache.value_lookup_cache[LAYER, 0, :quantized_prefix],
             cache.sink_key[LAYER],
             cache.sink_value[LAYER],
         )

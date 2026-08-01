@@ -204,7 +204,7 @@ class Phase11KVQuantCudaTests(unittest.TestCase):
             ("value_codebook", cache.value_codebook[LAYER]),
             (
                 f"value_lookup_after_{stage}",
-                cache.value_lookup_cache[LAYER],
+                cache.value_lookup_cache[LAYER, 0],
             ),
         )
         for tensor_name, observed in expected_names:
@@ -226,11 +226,11 @@ class Phase11KVQuantCudaTests(unittest.TestCase):
         for tensor_name, observed in (
             (
                 "value_dense_lower_bound",
-                cache.value_store_lower_bounds[:quantized_tokens],
+                cache.value_store_lower_bounds[0, :quantized_tokens],
             ),
             (
                 "value_dense_upper_bound",
-                cache.value_store_upper_bounds[:quantized_tokens],
+                cache.value_store_upper_bounds[0, :quantized_tokens],
             ),
         ):
             expected = metadata[tensor_name][
@@ -252,10 +252,10 @@ class Phase11KVQuantCudaTests(unittest.TestCase):
     ) -> None:
         observed = {
             "dense_k_payload_bytes": _tensor_nbytes(
-                cache.packed_key_cache[LAYER]
+                cache.packed_key_cache[LAYER, 0]
             ),
             "dense_v_payload_bytes": _tensor_nbytes(
-                cache.packed_value_cache[LAYER]
+                cache.packed_value_cache[LAYER, 0]
             ),
             "key_metadata_bytes": sum(
                 _tensor_nbytes(tensor)
@@ -272,20 +272,20 @@ class Phase11KVQuantCudaTests(unittest.TestCase):
                 _tensor_nbytes(tensor)
                 for tensor in (
                     cache.value_codebook[LAYER],
-                    cache.value_lookup_cache[LAYER],
+                    cache.value_lookup_cache[LAYER, 0],
                 )
             ),
             "key_sparse_value_bytes": _tensor_nbytes(
-                cache.key_sparse_values[LAYER]
+                cache.key_sparse_values[LAYER, 0]
             ),
             "key_sparse_index_bytes": _tensor_nbytes(
-                cache.key_sparse_indices[LAYER]
+                cache.key_sparse_indices[LAYER, 0]
             ),
             "value_sparse_value_bytes": _tensor_nbytes(
-                cache.value_sparse_values[LAYER]
+                cache.value_sparse_values[LAYER, 0]
             ),
             "value_sparse_index_bytes": _tensor_nbytes(
-                cache.value_sparse_indices[LAYER]
+                cache.value_sparse_indices[LAYER, 0]
             ),
             "sink_k_bytes": _tensor_nbytes(cache.sink_key[LAYER]),
             "sink_v_bytes": _tensor_nbytes(cache.sink_value[LAYER]),
@@ -316,10 +316,10 @@ class Phase11KVQuantCudaTests(unittest.TestCase):
     ) -> None:
         declared = files["sparse_indices.safetensors"]
         for source_name, observed in (
-            ("key_active_count_by_position", cache.key_active_counts[LAYER]),
+            ("key_active_count_by_position", cache.key_active_counts[LAYER, 0]),
             (
                 "value_active_count_by_position",
-                cache.value_active_counts[LAYER],
+                cache.value_active_counts[LAYER, 0],
             ),
         ):
             expected = self.torch.zeros_like(observed)
@@ -355,24 +355,24 @@ class Phase11KVQuantCudaTests(unittest.TestCase):
             STORE_CONTEXT if stage == "store" else TOTAL_CONTEXT,
         )
         state_tensors = (
-            ("k_dense_allocated", cache.packed_key_cache[LAYER]),
-            ("v_dense_allocated", cache.packed_value_cache[LAYER]),
-            ("v_lookup_allocated", cache.value_lookup_cache[LAYER]),
+            ("k_dense_allocated", cache.packed_key_cache[LAYER, 0]),
+            ("v_dense_allocated", cache.packed_value_cache[LAYER, 0]),
+            ("v_lookup_allocated", cache.value_lookup_cache[LAYER, 0]),
             (
                 "k_sparse_values_allocated",
-                cache.key_sparse_values[LAYER],
+                cache.key_sparse_values[LAYER, 0],
             ),
             (
                 "k_sparse_indices_allocated",
-                cache.key_sparse_indices[LAYER],
+                cache.key_sparse_indices[LAYER, 0],
             ),
             (
                 "v_sparse_values_allocated",
-                cache.value_sparse_values[LAYER],
+                cache.value_sparse_values[LAYER, 0],
             ),
             (
                 "v_sparse_indices_allocated",
-                cache.value_sparse_indices[LAYER],
+                cache.value_sparse_indices[LAYER, 0],
             ),
             ("sink_k", cache.sink_key[LAYER]),
             ("sink_v", cache.sink_value[LAYER]),
@@ -390,11 +390,11 @@ class Phase11KVQuantCudaTests(unittest.TestCase):
         for tensor_name, observed in (
             (
                 f"key_packed_{suffix}",
-                cache.packed_key_cache[LAYER, :, :, :quantized_tokens],
+                cache.packed_key_cache[LAYER, 0, :, :, :quantized_tokens],
             ),
             (
                 f"value_packed_{suffix}",
-                cache.packed_value_cache[LAYER, :, :, :quantized_tokens],
+                cache.packed_value_cache[LAYER, 0, :, :, :quantized_tokens],
             ),
         ):
             self._assert_exact(
@@ -407,22 +407,22 @@ class Phase11KVQuantCudaTests(unittest.TestCase):
             (
                 "sparse_values.safetensors",
                 "key_cache",
-                cache.key_sparse_values[LAYER],
+                cache.key_sparse_values[LAYER, 0],
             ),
             (
                 "sparse_values.safetensors",
                 "value_cache",
-                cache.value_sparse_values[LAYER],
+                cache.value_sparse_values[LAYER, 0],
             ),
             (
                 "sparse_indices.safetensors",
                 "key_cache",
-                cache.key_sparse_indices[LAYER],
+                cache.key_sparse_indices[LAYER, 0],
             ),
             (
                 "sparse_indices.safetensors",
                 "value_cache",
-                cache.value_sparse_indices[LAYER],
+                cache.value_sparse_indices[LAYER, 0],
             ),
         ):
             self._assert_exact(
@@ -455,13 +455,13 @@ class Phase11KVQuantCudaTests(unittest.TestCase):
                 fixture,
                 "dense_payload.safetensors",
                 "key_appended_slot",
-                cache.packed_key_cache[LAYER, :, :, quantized_tokens - 1],
+                cache.packed_key_cache[LAYER, 0, :, :, quantized_tokens - 1],
             )
             self._assert_exact(
                 fixture,
                 "dense_payload.safetensors",
                 "value_appended_slot",
-                cache.packed_value_cache[LAYER, :, :, quantized_tokens - 1],
+                cache.packed_value_cache[LAYER, 0, :, :, quantized_tokens - 1],
             )
 
     def _prefill_append_decode(
@@ -561,13 +561,13 @@ class Phase11KVQuantCudaTests(unittest.TestCase):
                     )
                     self.assertEqual(
                         cache.key_active_counts[
-                            LAYER, : TOTAL_CONTEXT - SINK_TOKENS
+                            LAYER, 0, : TOTAL_CONTEXT - SINK_TOKENS
                         ].unique().cpu().tolist(),
                         [fixture.key_active_count],
                     )
                     self.assertEqual(
                         cache.value_active_counts[
-                            LAYER, : TOTAL_CONTEXT - SINK_TOKENS
+                            LAYER, 0, : TOTAL_CONTEXT - SINK_TOKENS
                         ].unique().cpu().tolist(),
                         [12],
                     )

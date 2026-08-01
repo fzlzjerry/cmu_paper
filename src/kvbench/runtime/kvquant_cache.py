@@ -26,6 +26,7 @@ KVQUANT_CONFIG_BITS: Final[dict[str, int]] = {
 }
 KVQUANT_NUM_LAYERS: Final[int] = 32
 KVQUANT_BATCH_SIZE: Final[int] = 1
+KVQUANT_SUPPORTED_BATCH_SIZES: Final[tuple[int, ...]] = (1, 4, 8)
 KVQUANT_NUM_QUERY_HEADS: Final[int] = 32
 KVQUANT_NUM_KV_HEADS: Final[int] = 8
 KVQUANT_HEAD_DIM: Final[int] = 128
@@ -186,15 +187,15 @@ class KVQuantStaticCache:
             _positive_int(capacity, "capacity"),
             _positive_int(head_dim, "head_dim"),
         )
-        expected = (
-            KVQUANT_NUM_LAYERS,
-            KVQUANT_BATCH_SIZE,
-            KVQUANT_NUM_QUERY_HEADS,
-            KVQUANT_NUM_KV_HEADS,
-        )
-        if geometry[:4] != expected or geometry[5] != KVQUANT_HEAD_DIM:
+        if (
+            geometry[0] != KVQUANT_NUM_LAYERS
+            or geometry[1] not in KVQUANT_SUPPORTED_BATCH_SIZES
+            or geometry[2:4]
+            != (KVQUANT_NUM_QUERY_HEADS, KVQUANT_NUM_KV_HEADS)
+            or geometry[5] != KVQUANT_HEAD_DIM
+        ):
             raise ValueError(
-                "KVQuant cache requires frozen layers=32 B=1 "
+                "KVQuant cache requires frozen layers=32 B in {1,4,8} "
                 "H_Q=32 H_KV=8 D=128 geometry"
             )
         if geometry[4] < KVQUANT_SINK_TOKENS:
@@ -225,6 +226,7 @@ class KVQuantStaticCache:
         # the separate full-precision sink buffers.
         dense_shape = (
             self.num_layers,
+            self.batch_size,
             self.num_kv_heads,
             self.packed_rows,
             self.capacity,
@@ -273,13 +275,19 @@ class KVQuantStaticCache:
             device=self.device,
         )
         self.value_lookup_cache = torch.zeros(
-            (self.num_layers, self.capacity, self.levels),
+            (
+                self.num_layers,
+                self.batch_size,
+                self.capacity,
+                self.levels,
+            ),
             dtype=torch.float32,
             device=self.device,
         )
 
         sparse_shape = (
             self.num_layers,
+            self.batch_size,
             self.capacity,
             self.key_cap,
         )
@@ -295,7 +303,11 @@ class KVQuantStaticCache:
         self.value_sparse_indices = torch.zeros(
             sparse_shape, dtype=torch.int32, device=self.device
         )
-        count_shape = (self.num_layers, self.capacity)
+        count_shape = (
+            self.num_layers,
+            self.batch_size,
+            self.capacity,
+        )
         self.key_active_counts = torch.zeros(
             count_shape, dtype=torch.int32, device=self.device
         )
@@ -424,7 +436,9 @@ class KVQuantStaticCache:
         # parallel Value pack can consume the full prefix without allocating
         # threshold outputs.  Only the declared prefix slice is live.
         self.value_store_lower_bounds = torch.zeros(
-            (self.capacity,), dtype=torch.float32, device=self.device
+            (self.batch_size, self.capacity),
+            dtype=torch.float32,
+            device=self.device,
         )
         self.value_store_upper_bounds = torch.zeros_like(
             self.value_store_lower_bounds
@@ -476,7 +490,10 @@ class KVQuantStaticCache:
         )
         self.q4_value_decode_workspace = (
             torch.empty(
-                KVQUANT_Q4_VALUE_DECODE_WORKSPACE_SHAPE,
+                (
+                    self.batch_size,
+                    *KVQUANT_Q4_VALUE_DECODE_WORKSPACE_SHAPE[1:],
+                ),
                 dtype=torch.float32,
                 device=self.device,
             )
@@ -875,7 +892,12 @@ class KVQuantStaticCache:
         query_elements = self.batch_size * self.num_query_heads * dimension
         kv_elements = self.batch_size * heads * dimension
         dense_bytes = (
-            layers * heads * self.packed_rows * capacity * 4
+            layers
+            * self.batch_size
+            * heads
+            * self.packed_rows
+            * capacity
+            * 4
         )
         key_metadata = (
             layers * levels * 4
@@ -884,10 +906,15 @@ class KVQuantStaticCache:
             + KVQUANT_ROPE_DIM * 4
         )
         value_metadata = (
-            layers * levels * 4 + layers * capacity * levels * 4
+            layers * levels * 4
+            + layers * self.batch_size * capacity * levels * 4
         )
-        sparse_bytes = layers * capacity * self.key_cap * 4
-        count_mask = 2 * layers * capacity * 4 + capacity
+        sparse_bytes = (
+            layers * self.batch_size * capacity * self.key_cap * 4
+        )
+        count_mask = (
+            2 * layers * self.batch_size * capacity * 4 + capacity
+        )
         sink_bytes = (
             layers
             * self.batch_size
@@ -898,7 +925,7 @@ class KVQuantStaticCache:
         )
         staging = (
             3 * kv_elements * 2
-            + 4 * kv_elements * 4
+            + 4 * heads * dimension * 4
             + query_elements * 2
             + query_elements * 4
             + query_elements * 2
@@ -906,11 +933,11 @@ class KVQuantStaticCache:
             + self.key_cap * 4
             + 3 * 4
             + 1
-            + kv_elements * 4
-            + 2 * kv_elements * 4
+            + heads * dimension * 4
+            + 2 * heads * dimension * 4
             + levels * 4
             + 5 * 4
-            + 2 * capacity * 4
+            + 2 * self.batch_size * capacity * 4
             + 3 * 4
             + 8
         )
@@ -924,7 +951,7 @@ class KVQuantStaticCache:
             + 4 * query_elements * 4
             + query_elements * 2
             + (
-                KVQUANT_Q4_VALUE_DECODE_WORKSPACE_BYTES
+                self.batch_size * KVQUANT_Q4_VALUE_DECODE_WORKSPACE_BYTES
                 if self.config_name == "kvq4"
                 else 0
             )
@@ -982,7 +1009,9 @@ class KVQuantStaticCache:
         """
 
         nonsink_rows = (
-            self.num_layers * max(0, self.active_context - self.sink_tokens)
+            self.num_layers
+            * self.batch_size
+            * max(0, self.active_context - self.sink_tokens)
         )
         total = _nonnegative_int(total_entries, "total_entries")
         if total > nonsink_rows * self.key_cap:
@@ -1004,7 +1033,7 @@ class KVQuantStaticCache:
         )
         sink = min(context, self.sink_tokens)
         nonsink = max(0, context - self.sink_tokens)
-        rows = self.num_layers * nonsink
+        rows = self.num_layers * self.batch_size * nonsink
         if key_active_entries is None:
             if context == self.active_context:
                 key_active_entries = self._known_key_active_entries
@@ -1021,6 +1050,7 @@ class KVQuantStaticCache:
             raise CacheBoundsError("Key active entries exceed fixed sparse capacity")
         dense = (
             self.num_layers
+            * self.batch_size
             * self.num_kv_heads
             * self.head_dim
             * nonsink
@@ -1089,7 +1119,7 @@ class KVQuantStaticCache:
 
     def layout_fingerprint(self) -> str:
         payload = {
-            "schema": "kvbench-kvquant-static-cache-layout-1.2.0",
+            "schema": "kvbench-kvquant-static-cache-layout-1.3.0",
             "configuration": self.config_name,
             "bits": self.bits,
             "levels": self.levels,
@@ -1225,15 +1255,15 @@ class KVQuantStaticCache:
             or payload_slot >= self.capacity
         ):
             raise CacheBoundsError("payload slot is outside the static cache")
-        self.packed_key_cache[layer, :, :, payload_slot].zero_()
-        self.packed_value_cache[layer, :, :, payload_slot].zero_()
-        self.value_lookup_cache[layer, payload_slot].zero_()
-        self.key_sparse_values[layer, payload_slot].zero_()
-        self.key_sparse_indices[layer, payload_slot].zero_()
-        self.value_sparse_values[layer, payload_slot].zero_()
-        self.value_sparse_indices[layer, payload_slot].zero_()
-        self.key_active_counts[layer, payload_slot].zero_()
-        self.value_active_counts[layer, payload_slot].zero_()
+        self.packed_key_cache[layer, :, :, :, payload_slot].zero_()
+        self.packed_value_cache[layer, :, :, :, payload_slot].zero_()
+        self.value_lookup_cache[layer, :, payload_slot].zero_()
+        self.key_sparse_values[layer, :, payload_slot].zero_()
+        self.key_sparse_indices[layer, :, payload_slot].zero_()
+        self.value_sparse_values[layer, :, payload_slot].zero_()
+        self.value_sparse_indices[layer, :, payload_slot].zero_()
+        self.key_active_counts[layer, :, payload_slot].zero_()
+        self.value_active_counts[layer, :, payload_slot].zero_()
 
     def begin_prefill(self) -> None:
         if self._mode not in {"idle", "ready"}:

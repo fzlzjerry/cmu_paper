@@ -74,7 +74,7 @@ class KVQuantStaticCacheTests(unittest.TestCase):
                 packed_rows = bits * 128 // 32
                 self.assertEqual(
                     cache.packed_key_cache.shape,
-                    (32, 8, packed_rows, 18),
+                    (32, 1, 8, packed_rows, 18),
                 )
                 self.assertEqual(
                     cache.packed_value_cache.shape,
@@ -84,11 +84,14 @@ class KVQuantStaticCacheTests(unittest.TestCase):
                     cache.key_lookup_table.shape,
                     (32, 8, 128, 1 << bits),
                 )
-                self.assertEqual(cache.value_lookup_cache.shape, (32, 18, 1 << bits))
-                self.assertEqual(cache.key_sparse_values.shape, (32, 18, 12))
-                self.assertEqual(cache.value_sparse_values.shape, (32, 18, 12))
-                self.assertEqual(cache.key_active_counts.shape, (32, 18))
-                self.assertEqual(cache.value_active_counts.shape, (32, 18))
+                self.assertEqual(
+                    cache.value_lookup_cache.shape,
+                    (32, 1, 18, 1 << bits),
+                )
+                self.assertEqual(cache.key_sparse_values.shape, (32, 1, 18, 12))
+                self.assertEqual(cache.value_sparse_values.shape, (32, 1, 18, 12))
+                self.assertEqual(cache.key_active_counts.shape, (32, 1, 18))
+                self.assertEqual(cache.value_active_counts.shape, (32, 1, 18))
                 self.assertEqual(cache.sink_key.shape, (32, 1, 8, 128, 5))
                 self.assertEqual(cache.sink_value.shape, (32, 1, 8, 5, 128))
                 self.assertEqual(cache.payload_slot_for_position(5), 0)
@@ -101,11 +104,11 @@ class KVQuantStaticCacheTests(unittest.TestCase):
                 self.assertEqual(cache.key_float_staging.shape, (1, 1024))
                 self.assertEqual(
                     cache.value_store_lower_bounds.shape,
-                    (18,),
+                    (1, 18),
                 )
                 self.assertEqual(
                     cache.value_store_upper_bounds.shape,
-                    (18,),
+                    (1, 18),
                 )
                 self.assertEqual(cache.key_selector_lower.shape, (1024,))
                 self.assertEqual(cache.key_selector_upper.shape, (1024,))
@@ -170,7 +173,7 @@ class KVQuantStaticCacheTests(unittest.TestCase):
                 )
                 self.assertEqual(
                     cache.storage_geometry()["dense_k"],
-                    (32, 8, packed_rows, 18),
+                    (32, 1, 8, packed_rows, 18),
                 )
                 self.assertEqual(
                     cache.storage_geometry()["sink_logits_fp16"],
@@ -322,15 +325,15 @@ class KVQuantStaticCacheTests(unittest.TestCase):
         )
         cache.begin_fixed(17)
         self.assertEqual(cache.fixed_slot(0), 12)
-        cache.packed_key_cache[0, 0, 0, 12].fill_(7)
-        cache.value_sparse_indices[0, 12].fill_(7)
+        cache.packed_key_cache[0, 0, 0, 0, 12].fill_(7)
+        cache.value_sparse_indices[0, 0, 12].fill_(7)
         self.assertEqual(cache.fixed_scratch_overwrite(layer_idx=0), 12)
         self.assertEqual(
-            int(cache.packed_key_cache[0, 0, 0, 12]),
+            int(cache.packed_key_cache[0, 0, 0, 0, 12]),
             0,
         )
         self.assertEqual(
-            int(cache.value_sparse_indices[0, 12].count_nonzero()),
+            int(cache.value_sparse_indices[0, 0, 12].count_nonzero()),
             0,
         )
         self.assertEqual(cache.active_context, 17)

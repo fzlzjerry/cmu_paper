@@ -325,7 +325,7 @@ class Phase11KVQuantMethodTests(unittest.TestCase):
                 self.assertTrue(method.requires_pre_rope_key)
                 self.assertEqual(
                     tuple(cache.packed_key_cache.shape),
-                    (32, 8, bits * 4, 18),
+                    (32, 1, 8, bits * 4, 18),
                 )
         with self.assertRaisesRegex(ValueError, "unsupported"):
             KVQuantMethodAdapter(context, "kvq5")
@@ -457,6 +457,7 @@ class Phase11KVQuantMethodTests(unittest.TestCase):
                     layer_idx=0,
                     value_weights=value_weights,
                     quantized=13,
+                    batch_idx=0,
                 )
                 self.assertEqual(len(runtime.calls), 1)
                 name, arguments = runtime.calls[0]
@@ -466,14 +467,14 @@ class Phase11KVQuantMethodTests(unittest.TestCase):
                     KVQUANT_DETERMINISTIC_VALUE_DECODE_APIS[method.bits],
                 )
                 if configuration == "kvq4":
-                    self.assertIs(
-                        arguments[-1],
-                        cache.q4_value_decode_workspace,
+                    self.assertEqual(
+                        arguments[-1].untyped_storage().data_ptr(),
+                        cache.q4_value_decode_workspace.untyped_storage().data_ptr(),
                     )
                 else:
-                    self.assertIs(
-                        arguments[-1],
-                        cache.q23_value_decode_workspace,
+                    self.assertEqual(
+                        arguments[-1].untyped_storage().data_ptr(),
+                        cache.q23_value_decode_workspace.untyped_storage().data_ptr(),
                     )
                     self.assertIsNone(cache.q4_value_decode_workspace)
 

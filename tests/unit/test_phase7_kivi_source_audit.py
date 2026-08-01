@@ -284,7 +284,6 @@ class Phase7KiviSourceAuditTests(unittest.TestCase):
         protected = (
             "docker/measurement.Dockerfile",
             "reference/turboquant",
-            "src/kvbench/adapters/turboquant.py",
             "src/kvbench/runtime/cuda_graph.py",
             "src/kvbench/runtime/fixed_l_runner.py",
             "src/kvbench/runtime/growing_context_runner.py",
@@ -305,6 +304,40 @@ class Phase7KiviSourceAuditTests(unittest.TestCase):
             check=False,
         )
         self.assertEqual(result.returncode, 0)
+
+        phase13b_entry = "c853acf65048b957a713f67b05ee560b845cd37f"
+        turboquant_adapter = "src/kvbench/adapters/turboquant.py"
+        historical = subprocess.run(
+            (
+                "git",
+                "diff",
+                "--quiet",
+                "--no-ext-diff",
+                PHASE7_ENTRY_COMMIT,
+                phase13b_entry,
+                "--",
+                turboquant_adapter,
+            ),
+            cwd=REPOSITORY_ROOT,
+            check=False,
+        )
+        self.assertEqual(historical.returncode, 0)
+        successor = subprocess.run(
+            (
+                "git",
+                "diff",
+                "--name-only",
+                "--no-ext-diff",
+                phase13b_entry,
+                "--",
+                turboquant_adapter,
+            ),
+            cwd=REPOSITORY_ROOT,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(successor.stdout.splitlines(), [turboquant_adapter])
 
     def test_governance_and_claim_boundaries_remain_closed(self) -> None:
         entry = self.audit["entry"]

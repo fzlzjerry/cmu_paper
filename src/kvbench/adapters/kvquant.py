@@ -39,9 +39,9 @@ from kvbench.schema import canonical_json_bytes, sha256_hex
 from kvbench.schema.base import require_sha256
 
 
-KVQUANT_ADAPTER_VERSION = "kvbench-kvquant-method-adapter-1.2.0"
+KVQUANT_ADAPTER_VERSION = "kvbench-kvquant-method-adapter-1.3.0"
 KVQUANT_ADAPTER_FINGERPRINT_SCHEMA_VERSION = (
-    "kvbench-kvquant-method-adapter-config-1.2.0"
+    "kvbench-kvquant-method-adapter-config-1.3.0"
 )
 KVQUANT_METHOD_IDENTIFIER = "kvquant_gqa_upstream_patch_v1"
 KVQUANT_EXECUTION_SOURCE_IDENTIFIER = (
@@ -600,25 +600,32 @@ class KVQuantMethodAdapter:
         cache: KVQuantStaticCache,
         *,
         layer_idx: int,
+        batch_idx: int,
         payload_slot: int,
         key_pre_rope: Any,
         value: Any,
     ) -> None:
         runtime = self._runtime()
-        cache.key_pre_rope_bf16_staging.copy_(key_pre_rope)
-        cache.value_bf16_staging.copy_(value)
+        key_staging = cache.key_pre_rope_bf16_staging[
+            batch_idx : batch_idx + 1
+        ]
+        value_staging = cache.value_bf16_staging[
+            batch_idx : batch_idx + 1
+        ]
+        key_staging.copy_(key_pre_rope)
+        value_staging.copy_(value)
         cache.key_float_staging.copy_(
-            cache.key_pre_rope_bf16_staging.reshape(
+            key_staging.reshape(
                 1, KVQUANT_NUM_KV_HEADS * KVQUANT_HEAD_DIM
             )
         )
         cache.value_float_staging.copy_(
-            cache.value_bf16_staging.reshape(
+            value_staging.reshape(
                 1, KVQUANT_NUM_KV_HEADS * KVQUANT_HEAD_DIM
             )
         )
         cache.key_rescaled_staging.copy_(cache.key_float_staging)
-        key_cache = cache.packed_key_cache[layer_idx]
+        key_cache = cache.packed_key_cache[layer_idx, batch_idx]
         key_lookup = cache.key_lookup_table[layer_idx]
         key_lower = cache.key_lower_threshold[layer_idx].reshape(-1)
         key_upper = cache.key_upper_threshold[layer_idx].reshape(-1)
@@ -649,9 +656,9 @@ class KVQuantMethodAdapter:
             cache.selector_values,
             cache.selector_indices,
             cache.selector_count,
-            cache.key_sparse_values[layer_idx],
-            cache.key_sparse_indices[layer_idx],
-            cache.key_active_counts[layer_idx],
+            cache.key_sparse_values[layer_idx, batch_idx],
+            cache.key_sparse_indices[layer_idx, batch_idx],
+            cache.key_active_counts[layer_idx, batch_idx],
             payload_slot,
             self.bits,
         )
@@ -671,10 +678,10 @@ class KVQuantMethodAdapter:
         cache.value_lower_bound_staging.copy_(cache.selector_dense_lower)
         cache.value_upper_bound_staging.copy_(cache.selector_dense_upper)
         cache.value_store_lower_bounds[
-            payload_slot : payload_slot + 1
+            batch_idx, payload_slot : payload_slot + 1
         ].copy_(cache.value_lower_bound_staging)
         cache.value_store_upper_bounds[
-            payload_slot : payload_slot + 1
+            batch_idx, payload_slot : payload_slot + 1
         ].copy_(cache.value_upper_bound_staging)
         cache.value_scale_staging.copy_(
             cache.value_upper_bound_staging
@@ -692,8 +699,8 @@ class KVQuantMethodAdapter:
             ]
         )
         runtime.append_value_sparse_1024_cap12_out(
-            cache.packed_value_cache[layer_idx],
-            cache.value_lookup_cache[layer_idx],
+            cache.packed_value_cache[layer_idx, batch_idx],
+            cache.value_lookup_cache[layer_idx, batch_idx],
             cache.value_float_staging.reshape(-1),
             cache.value_metadata_row_staging,
             cache.value_lower_bound_staging,
@@ -702,9 +709,9 @@ class KVQuantMethodAdapter:
             cache.selector_values.reshape(-1),
             cache.selector_indices.reshape(-1),
             cache.selector_count,
-            cache.value_sparse_values[layer_idx],
-            cache.value_sparse_indices[layer_idx],
-            cache.value_active_counts[layer_idx],
+            cache.value_sparse_values[layer_idx, batch_idx],
+            cache.value_sparse_indices[layer_idx, batch_idx],
+            cache.value_active_counts[layer_idx, batch_idx],
             payload_slot,
             self.bits,
         )
@@ -748,15 +755,25 @@ class KVQuantMethodAdapter:
                 layer_idx=layer_idx,
                 payload_slot=payload_slot,
             )
-            self._pack_nonsink_token(
-                cache,
-                layer_idx=layer_idx,
-                payload_slot=payload_slot,
-                key_pre_rope=key_pre_rope_states[
-                    :, :, position : position + 1, :
-                ],
-                value=value_states[:, :, position : position + 1, :],
-            )
+            for batch_idx in range(cache.batch_size):
+                self._pack_nonsink_token(
+                    cache,
+                    layer_idx=layer_idx,
+                    batch_idx=batch_idx,
+                    payload_slot=payload_slot,
+                    key_pre_rope=key_pre_rope_states[
+                        batch_idx : batch_idx + 1,
+                        :,
+                        position : position + 1,
+                        :,
+                    ],
+                    value=value_states[
+                        batch_idx : batch_idx + 1,
+                        :,
+                        position : position + 1,
+                        :,
+                    ],
+                )
         quantized_tokens = tokens - sink
         if quantized_tokens:
             # Phase 11P-R corrected the exact upstream parallel Value-store
@@ -765,25 +782,34 @@ class KVQuantMethodAdapter:
             # dense prefix through that corrected source path.  The temporary
             # FP32 layout conversion occurs only during untimed prefill, never
             # in measured append/decode or graph replay.
-            value_parallel = (
-                value_states[0, :, sink:tokens, :]
-                .transpose(1, 2)
-                .float()
-                .contiguous()
-            )
-            cache.packed_value_cache[
-                layer_idx, :, :, :quantized_tokens
-            ].zero_()
-            getattr(
-                self._runtime(),
-                f"vecquant{self.bits}appendvecVsparseParallel",
-            )(
-                cache.packed_value_cache[layer_idx],
-                cache.value_lookup_cache[layer_idx],
-                value_parallel,
-                cache.value_store_lower_bounds[:quantized_tokens],
-                cache.value_store_upper_bounds[:quantized_tokens],
-            )
+            for batch_idx in range(cache.batch_size):
+                value_parallel = (
+                    value_states[batch_idx, :, sink:tokens, :]
+                    .transpose(1, 2)
+                    .float()
+                    .contiguous()
+                )
+                cache.packed_value_cache[
+                    layer_idx,
+                    batch_idx,
+                    :,
+                    :,
+                    :quantized_tokens,
+                ].zero_()
+                getattr(
+                    self._runtime(),
+                    f"vecquant{self.bits}appendvecVsparseParallel",
+                )(
+                    cache.packed_value_cache[layer_idx, batch_idx],
+                    cache.value_lookup_cache[layer_idx, batch_idx],
+                    value_parallel,
+                    cache.value_store_lower_bounds[
+                        batch_idx, :quantized_tokens
+                    ],
+                    cache.value_store_upper_bounds[
+                        batch_idx, :quantized_tokens
+                    ],
+                )
         handle = self._handle(cache, layer_idx)
         handle.prefill = True
         handle.prefill_key_states = key_states
@@ -827,13 +853,17 @@ class KVQuantMethodAdapter:
             layer_idx=layer_idx,
             payload_slot=payload_slot,
         )
-        self._pack_nonsink_token(
-            cache,
-            layer_idx=layer_idx,
-            payload_slot=payload_slot,
-            key_pre_rope=key_pre_rope_states,
-            value=value_states,
-        )
+        for batch_idx in range(cache.batch_size):
+            self._pack_nonsink_token(
+                cache,
+                layer_idx=layer_idx,
+                batch_idx=batch_idx,
+                payload_slot=payload_slot,
+                key_pre_rope=key_pre_rope_states[
+                    batch_idx : batch_idx + 1
+                ],
+                value=value_states[batch_idx : batch_idx + 1],
+            )
         handle = self._handle(cache, layer_idx)
         handle.payload_slot = payload_slot
         handle.commit_after_decode = cache.mode == "growing_step"
@@ -851,7 +881,12 @@ class KVQuantMethodAdapter:
             raise CacheStateError("KVQuant compressed kernels require CUDA")
         if (
             tuple(int(item) for item in query_states.shape)
-            != (1, KVQUANT_NUM_QUERY_HEADS, 1, KVQUANT_HEAD_DIM)
+            != (
+                cache.batch_size,
+                KVQUANT_NUM_QUERY_HEADS,
+                1,
+                KVQUANT_HEAD_DIM,
+            )
             or query_states.dtype != torch.bfloat16
             or query_states.device != cache.device
             or type(scaling) is not float
@@ -865,28 +900,6 @@ class KVQuantMethodAdapter:
         runtime = self._runtime()
         cache.query_bf16_staging.copy_(query_states[:, :, 0, :])
         cache.query_float_staging.copy_(cache.query_bf16_staging)
-        key_output = cache.decode_logits.reshape(-1)[
-            : KVQUANT_NUM_QUERY_HEADS * quantized
-        ].view(1, KVQUANT_NUM_QUERY_HEADS, quantized)
-        key_output.zero_()
-        getattr(
-            runtime,
-            (
-                f"vecquant{self.bits}matmul_nuq_perchannel_transposed_"
-                "rope_mha_batched_fused_opt2"
-            ),
-        )(
-            cache.query_float_staging,
-            cache.packed_key_cache[handle.layer_idx],
-            key_output,
-            cache.key_lookup_table[handle.layer_idx],
-            quantized,
-            cache.key_sparse_values[handle.layer_idx],
-            cache.key_sparse_indices[handle.layer_idx],
-            cache.rope_inv_freq,
-            cache.sink_tokens,
-        )
-
         # The source stores attention-ready sink K in FP16.
         cache.sink_output_fp16.copy_(cache.query_bf16_staging)
         for query_head in range(KVQUANT_NUM_QUERY_HEADS):
@@ -909,10 +922,35 @@ class KVQuantMethodAdapter:
         cache.decode_logits_bf16[
             :, :, : cache.sink_tokens
         ].copy_(cache.sink_logits_fp16)
-        for query_head in range(KVQUANT_NUM_QUERY_HEADS):
-            cache.decode_logits_bf16[
-                :, query_head, cache.sink_tokens : total
-            ].copy_(key_output[:, query_head, :])
+        key_api = getattr(
+            runtime,
+            (
+                f"vecquant{self.bits}matmul_nuq_perchannel_transposed_"
+                "rope_mha_batched_fused_opt2"
+            ),
+        )
+        for batch_idx in range(cache.batch_size):
+            key_output = cache.decode_logits[batch_idx].reshape(-1)[
+                : KVQUANT_NUM_QUERY_HEADS * quantized
+            ].view(1, KVQUANT_NUM_QUERY_HEADS, quantized)
+            key_output.zero_()
+            key_api(
+                cache.query_float_staging[batch_idx : batch_idx + 1],
+                cache.packed_key_cache[handle.layer_idx, batch_idx],
+                key_output,
+                cache.key_lookup_table[handle.layer_idx],
+                quantized,
+                cache.key_sparse_values[handle.layer_idx, batch_idx],
+                cache.key_sparse_indices[handle.layer_idx, batch_idx],
+                cache.rope_inv_freq,
+                cache.sink_tokens,
+            )
+            for query_head in range(KVQUANT_NUM_QUERY_HEADS):
+                cache.decode_logits_bf16[
+                    batch_idx : batch_idx + 1,
+                    query_head,
+                    cache.sink_tokens : total,
+                ].copy_(key_output[:, query_head, :])
         cache.decode_logits_bf16.mul_(scaling)
         # Passing a BF16 input together with ``dtype=float32`` makes PyTorch
         # allocate a full logits-sized conversion temporary even when ``out``
@@ -927,27 +965,34 @@ class KVQuantMethodAdapter:
         )
         cache.decode_logits_bf16.copy_(cache.decode_softmax)
 
-        if self.bits == 4:
-            value_weights = cache.decode_logits.reshape(-1)[
-                : KVQUANT_NUM_QUERY_HEADS * quantized
-            ].view(1, KVQUANT_NUM_QUERY_HEADS, quantized)
-            for query_head in range(KVQUANT_NUM_QUERY_HEADS):
-                value_weights[:, query_head, :].copy_(
-                    cache.decode_logits_bf16[
-                        :, query_head, cache.sink_tokens : total
-                    ]
-                )
-        else:
-            value_weights = cache.decode_softmax[
-                :, :, cache.sink_tokens : total
-            ]
-        self._decode_quantized_value(
-            runtime=runtime,
-            cache=cache,
-            layer_idx=handle.layer_idx,
-            value_weights=value_weights,
-            quantized=quantized,
-        )
+        cache.decode_quantized_output.zero_()
+        for batch_idx in range(cache.batch_size):
+            if self.bits == 4:
+                value_weights = cache.decode_logits[batch_idx].reshape(-1)[
+                    : KVQUANT_NUM_QUERY_HEADS * quantized
+                ].view(1, KVQUANT_NUM_QUERY_HEADS, quantized)
+                for query_head in range(KVQUANT_NUM_QUERY_HEADS):
+                    value_weights[:, query_head, :].copy_(
+                        cache.decode_logits_bf16[
+                            batch_idx : batch_idx + 1,
+                            query_head,
+                            cache.sink_tokens : total,
+                        ]
+                    )
+            else:
+                value_weights = cache.decode_softmax[
+                    batch_idx : batch_idx + 1,
+                    :,
+                    cache.sink_tokens : total,
+                ]
+            self._decode_quantized_value(
+                runtime=runtime,
+                cache=cache,
+                layer_idx=handle.layer_idx,
+                batch_idx=batch_idx,
+                value_weights=value_weights,
+                quantized=quantized,
+            )
         cache.output_bf16_staging.copy_(cache.decode_quantized_output)
         cache.sink_logits_fp16.copy_(
             cache.decode_logits_bf16[:, :, : cache.sink_tokens]
@@ -981,12 +1026,12 @@ class KVQuantMethodAdapter:
         runtime: ModuleType,
         cache: KVQuantStaticCache,
         layer_idx: int,
+        batch_idx: int,
         value_weights: Any,
         quantized: int,
     ) -> None:
         """Dispatch every bit width through its deterministic out API."""
 
-        cache.decode_quantized_output.zero_()
         if self.bits == 4:
             workspace = cache.q4_value_decode_workspace
             if workspace is None:
@@ -999,18 +1044,22 @@ class KVQuantMethodAdapter:
                 raise CacheStateError(
                     "KVQuant q3/q2 deterministic workspace differs"
                 )
+        output = cache.decode_quantized_output[
+            batch_idx : batch_idx + 1
+        ]
+        output.zero_()
         getattr(
             runtime,
             KVQUANT_DETERMINISTIC_VALUE_DECODE_APIS[self.bits],
         )(
             value_weights,
-            cache.packed_value_cache[layer_idx],
-            cache.decode_quantized_output,
-            cache.value_lookup_cache[layer_idx],
+            cache.packed_value_cache[layer_idx, batch_idx],
+            output,
+            cache.value_lookup_cache[layer_idx, batch_idx],
             quantized,
-            cache.value_sparse_values[layer_idx],
-            cache.value_sparse_indices[layer_idx],
-            workspace,
+            cache.value_sparse_values[layer_idx, batch_idx],
+            cache.value_sparse_indices[layer_idx, batch_idx],
+            workspace[batch_idx : batch_idx + 1],
         )
 
     def decode_attention(
