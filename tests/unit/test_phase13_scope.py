@@ -31,8 +31,10 @@ EXPECTED_PHASE13_PATHS = frozenset(
         "docs/risk_register.md",
         "docs/status.md",
         "docs/tasks.md",
+        "scripts/phase12_unified_admission.py",
         "scripts/phase13_pilot.py",
         "scripts/validate_phase2.py",
+        "tests/unit/test_phase12_unified_admission.py",
         "tests/unit/test_phase13_pilot.py",
         "tests/unit/test_phase13_scope.py",
     }
@@ -59,6 +61,8 @@ class Phase13ScopeTests(unittest.TestCase):
             self.assertTrue(validate_phase2.phase13_path_is_allowed(relative))
         for relative in (
             "docs/plans/phase13-pilot-scan.md.backup",
+            "scripts/phase12_unified_admission.py.backup",
+            "tests/unit/test_phase12_unified_admission.py.backup",
             "artifacts/phase13",
             "../docs/plans/phase13-pilot-scan.md",
             "/docs/plans/phase13-pilot-scan.md",

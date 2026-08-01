@@ -30,6 +30,8 @@ class Phase13BScopeTests(unittest.TestCase):
         for relative in (
             "src/kvbench/adapters",
             "src/kvbench/adapters/kivi.py.backup",
+            "scripts/phase12_unified_admission.py.backup",
+            "tests/unit/test_phase12_unified_admission.py.backup",
             "tests/cuda/*.py",
             "artifacts/phase13b",
             "../src/kvbench/adapters/kivi.py",
