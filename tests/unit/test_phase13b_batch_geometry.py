@@ -34,6 +34,7 @@ from scripts.phase13b_compressed_batch_admission import (
     Phase13BBatchAdmissionError,
     _batch_banks_equal,
     _eager_control,
+    _verify_command_raw_logs,
     create_command_evidence,
     create_sanitizer_evidence,
     validate_command_evidence,
@@ -309,6 +310,12 @@ class Phase13BStaticBatchGeometryTests(unittest.TestCase):
         }
         parsed = Phase13BMethodAdmissionReport.from_dict(payload)
         self.assertEqual(parsed.method_family, "turboquant")
+        canonical = json.loads(json.dumps(parsed.to_dict(), sort_keys=True))
+        reparsed = Phase13BMethodAdmissionReport.from_dict(canonical)
+        self.assertEqual(reparsed.checks, parsed.checks)
+        canonical["checks"].pop("b1_fixture_preservation")
+        with self.assertRaises(Exception):
+            Phase13BMethodAdmissionReport.from_dict(canonical)
         payload["cache_layout_fingerprints"].pop("tq_3bit_nc/B8")
         with self.assertRaises(Exception):
             Phase13BMethodAdmissionReport.from_dict(payload)
@@ -340,6 +347,22 @@ class Phase13BStaticBatchGeometryTests(unittest.TestCase):
                 "PASS",
             )
             payload = json.loads(output.read_text(encoding="utf-8"))
+            bundled_stdout = root / "bundled.stdout.txt"
+            bundled_stderr = root / "bundled.stderr.txt"
+            bundled_stdout.write_bytes(stdout.read_bytes())
+            bundled_stderr.write_bytes(stderr.read_bytes())
+            _verify_command_raw_logs(
+                payload,
+                stdout_path=bundled_stdout,
+                stderr_path=bundled_stderr,
+                require_recorded_names=False,
+            )
+            with self.assertRaises(Phase13BBatchAdmissionError):
+                _verify_command_raw_logs(
+                    payload,
+                    stdout_path=bundled_stdout,
+                    stderr_path=bundled_stderr,
+                )
             payload["exit_code"] = 1
             output.write_text(json.dumps(payload), encoding="utf-8")
             with self.assertRaises(Phase13BBatchAdmissionError):

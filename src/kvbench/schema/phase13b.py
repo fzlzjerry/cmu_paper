@@ -214,9 +214,9 @@ class Phase13BMethodAdmissionReport(StrictModel):
         for relative, digest in self.source_hashes.items():
             require_relative_path(relative, field_name="source_path")
             require_sha256(digest, field_name="source_sha256")
-        if tuple(self.checks) != PHASE13B_SUCCESSOR_CHECK_IDS:
+        if set(self.checks) != set(PHASE13B_SUCCESSOR_CHECK_IDS):
             raise ValueError("Phase 13B successor checks differ")
-        if tuple(self.evidence_references) != PHASE13B_SUCCESSOR_EVIDENCE_IDS:
+        if set(self.evidence_references) != set(PHASE13B_SUCCESSOR_EVIDENCE_IDS):
             raise ValueError("Phase 13B successor evidence set differs")
         for digest in self.evidence_references.values():
             require_sha256(digest, field_name="evidence_sha256")

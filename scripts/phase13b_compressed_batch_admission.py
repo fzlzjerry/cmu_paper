@@ -1053,10 +1053,16 @@ def _verify_command_raw_logs(
     *,
     stdout_path: Path,
     stderr_path: Path,
+    require_recorded_names: bool = True,
 ) -> None:
     if (
-        stdout_path.name != evidence["stdout_name"]
-        or stderr_path.name != evidence["stderr_name"]
+        (
+            require_recorded_names
+            and (
+                stdout_path.name != evidence["stdout_name"]
+                or stderr_path.name != evidence["stderr_name"]
+            )
+        )
         or _sha256_file(stdout_path) != evidence["stdout_sha256"]
         or _sha256_file(stderr_path) != evidence["stderr_sha256"]
     ):
@@ -1392,11 +1398,13 @@ def validate_phase13b_bundle(path: Path) -> dict[str, Any]:
         test_cuda,
         stdout_path=path / "validation/test-cuda.stdout.txt",
         stderr_path=path / "validation/test-cuda.stderr.txt",
+        require_recorded_names=False,
     )
     _verify_command_raw_logs(
         test_graph,
         stdout_path=path / "validation/test-graph.stdout.txt",
         stderr_path=path / "validation/test-graph.stderr.txt",
+        require_recorded_names=False,
     )
     for record in sanitizer["records"]:
         prefix = (

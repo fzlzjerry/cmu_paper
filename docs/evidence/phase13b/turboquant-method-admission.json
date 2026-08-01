@@ -1,0 +1,81 @@
+{
+  "adapter_config_fingerprints": {
+    "tq_3bit_nc/B1": "3ca84dd0255967b4be4267aeea2c1ea6dee26a60d3853b45f55cbfc47678e93b",
+    "tq_3bit_nc/B4": "de061e5d1bc0059e2b1375802a740ac75d6d8735635bb1243e1f60f2e3e0755b",
+    "tq_3bit_nc/B8": "9f306a560f1c4e2c4745568ab2cbd5b19ac9fafc38d2b830aa9b7dc49850e0c0",
+    "tq_4bit_nc/B1": "8a5a38e7ed70c5deefe66ba1a3f16af83faf4eebe9db038349972446d71a2ed0",
+    "tq_4bit_nc/B4": "ed30766102d1b249e2b710ab2d361db103266db8357101329070353691582030",
+    "tq_4bit_nc/B8": "aae892dd13f8e480b05d45f24944a7e1cc9bd4c378ec7bfa01325c71b3f77962",
+    "tq_k3v4_nc/B1": "bf4dcd5561714fa8999a1876d323ecbc90542ed935f06b422f5fcec22eaeaa71",
+    "tq_k3v4_nc/B4": "3e228dbb9ebfd03ca86520a544d984b258dbb9c81fb59e64657b3a08145c3a8c",
+    "tq_k3v4_nc/B8": "9b6746595a666138a788d5835fecc1c7978c9c66ca2a89009bf388cafa0fca03"
+  },
+  "adapter_versions": {
+    "tq_3bit_nc": "kvbench-turboquant-method-adapter-1.1.0",
+    "tq_4bit_nc": "kvbench-turboquant-method-adapter-1.1.0",
+    "tq_k3v4_nc": "kvbench-turboquant-method-adapter-1.1.0"
+  },
+  "authorized_container_digest": "sha256:059bc9be89387369d7de9e3e9b26d85b6e9902c41e7dbf002ebc45edd188fb7e",
+  "b1_numerical_preserved": true,
+  "batch_sizes": [
+    1,
+    4,
+    8
+  ],
+  "blockers": [],
+  "cache_layout_fingerprints": {
+    "tq_3bit_nc/B1": "a6172a5b3101548c3fe18ec4c674f24fada5619ba8364819a667d93f7eb5340d",
+    "tq_3bit_nc/B4": "4a8fa884932825485b3c8b606f41ae6f3ccf3c824ab7398be0aff18b3ff1bfe2",
+    "tq_3bit_nc/B8": "08538b0e7a4701b92d4003fea297aabb35344218c67d55fa9324adee77628c00",
+    "tq_4bit_nc/B1": "ff54d8a6cf2d5345c564ab8cd33d378a26bef32bbc6a3b1265df3407bfabd7dc",
+    "tq_4bit_nc/B4": "0e16e6d2d7e4cbfdda53191bbb90c667e6f124b75c7fd9be8a38e05f8f86dda0",
+    "tq_4bit_nc/B8": "8b96e94a32ec9906e8c77c968abb57f43f373d0f7e69c703a93675a7f28c2d2a",
+    "tq_k3v4_nc/B1": "fdfde7c68327c6bf4ee0c099767db183cb9b030b0c3553fc21d2f4f48019d7e0",
+    "tq_k3v4_nc/B4": "7e18f733aa5a2e6d3cebca277ac7dd4418264c6c980a86e74acf6d13c648a25f",
+    "tq_k3v4_nc/B8": "b1e92508840eaea23cbe71defdff1c3ae209c3a621434e099bc17aeac7ea4de3"
+  },
+  "checks": {
+    "b1_fixture_preservation": "PASS",
+    "batched_numerical_control": "PASS",
+    "byte_accounting": "PASS",
+    "compute_sanitizer": "PASS",
+    "cuda_graph": "PASS",
+    "eager_allocation": "PASS",
+    "finite_outputs": "PASS",
+    "historical_evidence_preservation": "PASS",
+    "native_gqa_execution_path": "PASS",
+    "non_default_stream": "PASS",
+    "pointer_stability": "PASS",
+    "zero_replay_allocation": "PASS"
+  },
+  "configurations": [
+    "tq_4bit_nc",
+    "tq_k3v4_nc",
+    "tq_3bit_nc"
+  ],
+  "created_at_utc": "2026-08-01T14:31:38.267459Z",
+  "creation_git_sha": "b862af64346a0dba2650b2c213ebd1d3b5b99ef2",
+  "cuda_source_changed": false,
+  "decision_id": "0030",
+  "evidence_references": {
+    "cuda_matrix": "5bcb450a572409d579bf008f77df9e8b5d1373cfe1b2069eac1f0b707dd46aa6",
+    "historical_preservation": "ea90ec4199dec8e28da3f5fe2c479761df214f108fd44d190a24fdc0c09b5de4",
+    "sanitizer": "34302a0e6a2fa000c4f360a60bed5a05e77351749eeee018eadc263a1f3328b2",
+    "test_cuda": "1cd424c82a0353c7c87d6c4baa38988ee5b2092512abb6a7aca2239103895721",
+    "test_graph": "918f751942ffe288916dff54f0edb6efc592bc1cca33d3bcbdde691c7b538598"
+  },
+  "full_scan_state": "CLOSED",
+  "historical_report_path": "docs/evidence/phase6/turboquant-method-admission.json",
+  "historical_report_sha256": "388e8107b649a9093491699357c8b1ad1d8e12c8c75378bce658f8a09bf9ab2a",
+  "method_family": "turboquant",
+  "performance_claim_eligible": false,
+  "quality_execution": "LOCKED",
+  "r_hbm": null,
+  "schema_version": "kvbench-phase13b-method-admission-report-1.0.0",
+  "source_hashes": {
+    "src/kvbench/adapters/turboquant.py": "b9911379ee0cc79b68691a55e0e5cecd2bfcfa8bbfe35e0120bdbe394f9b7432",
+    "src/kvbench/runtime/turboquant_cache.py": "92551d9daf9c0af2b830655c414c137a52ef5e6dcaf26506efef31200e037b15"
+  },
+  "status": "PASS",
+  "timing_collected": false
+}
