@@ -21,6 +21,10 @@ from kvbench.runtime.kivi_admission import (
     PHASE8_HISTORICAL_ADAPTER_SHA256,
     PHASE8_HISTORICAL_CACHE_SHA256,
     PHASE8_HISTORICAL_ENDPOINT_SHA256,
+    PHASE13B_DECISION_0030_PATH,
+    PHASE13B_DECISION_0030_SHA256,
+    PHASE13B_KIVI_REPORT_PATH,
+    PHASE13B_KIVI_REPORT_SHA256,
     _phase8_git_path_history,
     _parse_publication_receipt,
     resolve_phase8_historical_source_authority,
@@ -204,6 +208,48 @@ class Phase12EKIVIHistoricalAuthorityTests(unittest.TestCase):
             authority.endpoint_transition_commit,
             PHASE8_DECISION_0026_ENDPOINT_COMMIT,
         )
+
+    def test_phase13b_successor_decision_and_report_are_checksum_bound(
+        self,
+    ) -> None:
+        from kvbench.runtime import kivi_admission
+
+        self.assertEqual(
+            kivi_admission.sha256_file(
+                REPOSITORY_ROOT / PHASE13B_DECISION_0030_PATH
+            ),
+            PHASE13B_DECISION_0030_SHA256,
+        )
+        self.assertEqual(
+            kivi_admission.sha256_file(
+                REPOSITORY_ROOT / PHASE13B_KIVI_REPORT_PATH
+            ),
+            PHASE13B_KIVI_REPORT_SHA256,
+        )
+        original = kivi_admission.sha256_file
+        for relative_path, message in (
+            (PHASE13B_DECISION_0030_PATH, "Decision 0030 checksum differs"),
+            (
+                PHASE13B_KIVI_REPORT_PATH,
+                "successor report checksum differs",
+            ),
+        ):
+            with self.subTest(relative_path=relative_path):
+
+                def tampered(
+                    path: Path,
+                    *,
+                    target: Path = REPOSITORY_ROOT / relative_path,
+                ) -> str:
+                    if path == target:
+                        return "0" * 64
+                    return original(path)
+
+                with mock.patch(
+                    "kvbench.runtime.kivi_admission.sha256_file",
+                    side_effect=tampered,
+                ), self.assertRaisesRegex(KIVIAdmissionError, message):
+                    _resolve()
 
     def test_missing_or_tampered_execution_commit_fails_closed(self) -> None:
         with self.assertRaisesRegex(

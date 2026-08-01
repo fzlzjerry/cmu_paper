@@ -20,7 +20,6 @@ import subprocess
 from typing import Any
 
 from kvbench.adapters.kivi import (
-    KIVI_ADAPTER_VERSION,
     KIVI_BGEMV2_HOST_STUB_OFFSET,
     KIVI_BGEMV4_HOST_STUB_OFFSET,
     KIVI_DECISION_0018_PATCH_SHA256,
@@ -83,6 +82,7 @@ from kvbench.schema.phase8 import (
     Phase8MethodAdmissionReport,
     Phase8RunManifest,
 )
+from kvbench.schema.phase13b import Phase13BMethodAdmissionReport
 
 
 PHASE8_IMAGE_ENVIRONMENT_VARIABLE = "KVBENCH_AUTHORIZED_IMAGE_DIGEST"
@@ -110,6 +110,9 @@ PHASE8_EXECUTION_GIT_SHA = (
 PHASE8_HISTORICAL_ADAPTER_SHA256 = (
     "d47efdb9a9b6e34aaf3f8465a33b6f2bc550680ad369cfb1a3e4d6f0222bccc8"
 )
+PHASE8_HISTORICAL_ADAPTER_VERSION = (
+    "kvbench-kivi-method-adapter-1.0.0"
+)
 PHASE8_HISTORICAL_CACHE_SHA256 = (
     "0c99bb6b6bf9e84074f5e087d545988912285d4c5621c10ee8e7920cac0844a5"
 )
@@ -122,6 +125,41 @@ PHASE8_DECISION_0026_ENDPOINT_COMMIT = (
 PHASE8_DECISION_0026_ENDPOINT_SHA256 = (
     "9095e9a2a9c01e1ea6afb2f1cefcee46a964a82caae7b819a125757b59244a9b"
 )
+PHASE13B_DECISION_0030_PATH = (
+    "docs/decisions/0030-compressed-static-cache-batch-geometry.md"
+)
+PHASE13B_DECISION_0030_SHA256 = (
+    "84c2eb943b35afba312eaf599f8ec8f1d4a82169daa2d5c5fc5d127f0a965e62"
+)
+PHASE13B_DECISION_0030_COMMIT = (
+    "2af47459e109207ac21167ddd88e8ca79d815490"
+)
+PHASE13B_SOURCE_AUTHORITY_COMMIT = (
+    "b862af64346a0dba2650b2c213ebd1d3b5b99ef2"
+)
+PHASE13B_KIVI_REPORT_PATH = (
+    "docs/evidence/phase13b/kivi-method-admission.json"
+)
+PHASE13B_KIVI_REPORT_SHA256 = (
+    "1e91730ac56af37e03d80edce7979a509d52049428faad89f61e61dc6bd48c51"
+)
+PHASE13B_KIVI_HISTORICAL_REPORT_SHA256 = (
+    "3a4b63b9da0eab12db9a916ebdc1cffd788ea6f93678d87964a8332ae7cec83a"
+)
+PHASE13B_KIVI_SOURCE_AUTHORITY = {
+    PHASE8_ADAPTER_PATH: {
+        "historical_sha256": PHASE8_HISTORICAL_ADAPTER_SHA256,
+        "authority_sha256": (
+            "d4fa3cf8e576bc6a080b2132e1976f195c9756fd82f8b9ffcc0d4251b08c16f0"
+        ),
+    },
+    PHASE8_CACHE_PATH: {
+        "historical_sha256": PHASE8_HISTORICAL_CACHE_SHA256,
+        "authority_sha256": (
+            "5a466e0b80c50e891a18b40b058cbf46eeb8221508ef7be0ab47f164f9c08400"
+        ),
+    },
+}
 PHASE8_METHOD_CONFIG_PATH = "configs/methods/kivi.yaml"
 PHASE8_BOUNDED_GRID_SCHEMA = (
     "kvbench-phase8-kivi-bounded-grid-1.0.0"
@@ -286,6 +324,134 @@ def _phase8_regular_source_sha256(
         ) from error
 
 
+def _validate_phase13b_kivi_successor_transition(
+    repository_root: Path,
+    *,
+    execution_git_sha: str,
+    current_git_sha: str,
+) -> None:
+    """Recognize only Decision 0030's checksum-bound KIVI successor."""
+
+    decision = _resolve_within(
+        repository_root.joinpath(*PHASE13B_DECISION_0030_PATH.split("/")),
+        root=repository_root,
+        label="Decision 0030",
+        require_file=True,
+    )
+    report_path = _resolve_within(
+        repository_root.joinpath(*PHASE13B_KIVI_REPORT_PATH.split("/")),
+        root=repository_root,
+        label="Phase 13B KIVI successor report",
+        require_file=True,
+    )
+    if sha256_file(decision) != PHASE13B_DECISION_0030_SHA256:
+        raise KIVIAdmissionError("Decision 0030 checksum differs")
+    if sha256_file(report_path) != PHASE13B_KIVI_REPORT_SHA256:
+        raise KIVIAdmissionError(
+            "Phase 13B KIVI successor report checksum differs"
+        )
+    try:
+        report = Phase13BMethodAdmissionReport.from_dict(
+            _strict_json(
+                report_path,
+                label="Phase 13B KIVI successor report",
+            )
+        )
+    except (TypeError, ValueError) as error:
+        raise KIVIAdmissionError(
+            "Phase 13B KIVI successor report schema differs"
+        ) from error
+    expected_sources = {
+        path: authority["authority_sha256"]
+        for path, authority in PHASE13B_KIVI_SOURCE_AUTHORITY.items()
+    }
+    if (
+        report.method_family != "kivi"
+        or report.creation_git_sha != PHASE13B_SOURCE_AUTHORITY_COMMIT
+        or report.historical_report_path
+        != "docs/evidence/phase8/kivi-method-admission.json"
+        or report.historical_report_sha256
+        != PHASE13B_KIVI_HISTORICAL_REPORT_SHA256
+        or report.source_hashes != expected_sources
+        or not report.b1_numerical_preserved
+        or report.cuda_source_changed
+    ):
+        raise KIVIAdmissionError(
+            "Phase 13B KIVI successor authority differs"
+        )
+
+    for ancestor, descendant in (
+        (execution_git_sha, PHASE13B_DECISION_0030_COMMIT),
+        (PHASE13B_DECISION_0030_COMMIT, PHASE13B_SOURCE_AUTHORITY_COMMIT),
+        (PHASE13B_SOURCE_AUTHORITY_COMMIT, current_git_sha),
+    ):
+        ancestry = _phase8_git(
+            repository_root,
+            "merge-base",
+            "--is-ancestor",
+            ancestor,
+            descendant,
+        )
+        if ancestry != "":
+            raise KIVIAdmissionError(
+                "Decision 0030 KIVI successor ancestry differs"
+            )
+
+    for relative_path, expected in PHASE13B_KIVI_SOURCE_AUTHORITY.items():
+        historical = _phase8_git_blob_sha256(
+            repository_root,
+            revision=execution_git_sha,
+            relative_path=relative_path,
+        )
+        authority = _phase8_git_blob_sha256(
+            repository_root,
+            revision=PHASE13B_SOURCE_AUTHORITY_COMMIT,
+            relative_path=relative_path,
+        )
+        current_head = _phase8_git_blob_sha256(
+            repository_root,
+            revision=current_git_sha,
+            relative_path=relative_path,
+        )
+        current_file = _phase8_regular_source_sha256(
+            repository_root,
+            relative_path,
+        )
+        transition = _phase8_git_path_history(
+            repository_root,
+            start_commit=execution_git_sha,
+            end_commit=PHASE13B_SOURCE_AUTHORITY_COMMIT,
+            relative_paths=(relative_path,),
+        )
+        post_authority = _phase8_git_path_history(
+            repository_root,
+            start_commit=PHASE13B_SOURCE_AUTHORITY_COMMIT,
+            end_commit=current_git_sha,
+            relative_paths=(relative_path,),
+        )
+        if (
+            historical != expected["historical_sha256"]
+            or authority != expected["authority_sha256"]
+            or current_head != expected["authority_sha256"]
+            or current_file != expected["authority_sha256"]
+        ):
+            source_label = (
+                "adapter"
+                if relative_path == PHASE8_ADAPTER_PATH
+                else "cache"
+            )
+            raise KIVIAdmissionError(
+                f"KIVI {source_label} authority changed outside the exact "
+                "Decision 0030 successor"
+            )
+        if (
+            transition != PHASE13B_DECISION_0030_COMMIT
+            or post_authority != ""
+        ):
+            raise KIVIAdmissionError(
+                "KIVI adapter or cache changed outside the exact "
+                "Decision 0030 successor"
+            )
 def resolve_phase8_historical_source_authority(
     *,
     repository_root: Path,
@@ -352,16 +518,11 @@ def resolve_phase8_historical_source_authority(
         raise KIVIAdmissionError(
             "KIVI endpoint transition is not the exact Decision 0026 commit"
         )
-    kivi_source_commits = _phase8_git_path_history(
+    _validate_phase13b_kivi_successor_transition(
         repository_root,
-        start_commit=execution_git_sha,
-        end_commit=current_git_sha,
-        relative_paths=(PHASE8_ADAPTER_PATH, PHASE8_CACHE_PATH),
+        execution_git_sha=execution_git_sha,
+        current_git_sha=current_git_sha,
     )
-    if kivi_source_commits != "":
-        raise KIVIAdmissionError(
-            "KIVI adapter or cache changed after Phase 8"
-        )
 
     historical_adapter = _phase8_git_blob_sha256(
         repository_root,
@@ -418,16 +579,28 @@ def resolve_phase8_historical_source_authority(
     if (
         historical_adapter != PHASE8_HISTORICAL_ADAPTER_SHA256
         or manifest_adapter_sha256 != PHASE8_HISTORICAL_ADAPTER_SHA256
-        or current_head_adapter != PHASE8_HISTORICAL_ADAPTER_SHA256
-        or current_adapter != PHASE8_HISTORICAL_ADAPTER_SHA256
+        or current_head_adapter
+        != PHASE13B_KIVI_SOURCE_AUTHORITY[PHASE8_ADAPTER_PATH][
+            "authority_sha256"
+        ]
+        or current_adapter
+        != PHASE13B_KIVI_SOURCE_AUTHORITY[PHASE8_ADAPTER_PATH][
+            "authority_sha256"
+        ]
     ):
         raise KIVIAdmissionError(
             "KIVI adapter authority changed after Phase 8"
         )
     if (
         historical_cache != PHASE8_HISTORICAL_CACHE_SHA256
-        or current_head_cache != PHASE8_HISTORICAL_CACHE_SHA256
-        or current_cache != PHASE8_HISTORICAL_CACHE_SHA256
+        or current_head_cache
+        != PHASE13B_KIVI_SOURCE_AUTHORITY[PHASE8_CACHE_PATH][
+            "authority_sha256"
+        ]
+        or current_cache
+        != PHASE13B_KIVI_SOURCE_AUTHORITY[PHASE8_CACHE_PATH][
+            "authority_sha256"
+        ]
     ):
         raise KIVIAdmissionError(
             "KIVI cache authority changed after Phase 8"
@@ -1463,6 +1636,26 @@ def _require_source_digest(
         raise KIVIAdmissionError(f"{label} identity differs")
 
 
+def _require_historical_source_digest(
+    *,
+    repository_root: Path,
+    execution_git_sha: str,
+    relative_path: str,
+    observed_sha256: object,
+    label: str,
+) -> None:
+    require_sha256(str(observed_sha256), field_name=f"{label} SHA-256")
+    if (
+        _phase8_git_blob_sha256(
+            repository_root,
+            revision=execution_git_sha,
+            relative_path=relative_path,
+        )
+        != observed_sha256
+    ):
+        raise KIVIAdmissionError(f"{label} identity differs")
+
+
 def _supervision_passed(
     value: object,
     *,
@@ -1710,6 +1903,7 @@ def _validate_sanitizer_result(
     *,
     bundle_root: Path,
     repository_root: Path,
+    execution_git_sha: str,
 ) -> tuple[dict[str, Any], tuple[str, ...]]:
     prefix = bundle_root / "validation" / "sanitizer"
     result_path = prefix / "result.json"
@@ -1823,8 +2017,9 @@ def _validate_sanitizer_result(
         observed_sha256=result.get("probe_source_sha256"),
         label="Compute Sanitizer probe",
     )
-    _require_source_digest(
+    _require_historical_source_digest(
         repository_root=repository_root,
+        execution_git_sha=execution_git_sha,
         relative_path=PHASE8_ADAPTER_PATH,
         observed_sha256=result.get("adapter_source_sha256"),
         label="KIVI adapter",
@@ -1851,6 +2046,7 @@ def _execution_audit_from_bundle(
     bundle_root: Path,
     repository_root: Path,
     points: Sequence[_ValidatedPointEvidence],
+    execution_git_sha: str,
 ) -> tuple[KIVIExecutionPathAudit, tuple[str, ...]]:
     static_path = (
         bundle_root
@@ -1876,20 +2072,35 @@ def _execution_audit_from_bundle(
         "\n".join((*first_names, *repeated_names)).encode("utf-8")
     ).hexdigest()
     adapter_sha256 = execution.get("adapter_source_sha256")
-    _require_source_digest(
+    _require_historical_source_digest(
         repository_root=repository_root,
+        execution_git_sha=execution_git_sha,
         relative_path=PHASE8_ADAPTER_PATH,
         observed_sha256=adapter_sha256,
         label="KIVI adapter",
     )
     try:
-        adapter_source_text = (
-            repository_root / PHASE8_ADAPTER_PATH
-        ).read_text(encoding="utf-8")
-        cache_source_text = (
-            repository_root / PHASE8_CACHE_PATH
-        ).read_text(encoding="utf-8")
-    except (OSError, UnicodeError) as error:
+        adapter_payload = _phase8_git(
+            repository_root,
+            "cat-file",
+            "blob",
+            f"{execution_git_sha}:{PHASE8_ADAPTER_PATH}",
+            binary=True,
+        )
+        cache_payload = _phase8_git(
+            repository_root,
+            "cat-file",
+            "blob",
+            f"{execution_git_sha}:{PHASE8_CACHE_PATH}",
+            binary=True,
+        )
+        if not isinstance(adapter_payload, bytes) or not isinstance(
+            cache_payload, bytes
+        ):
+            raise UnicodeError("historical source payload is not bytes")
+        adapter_source_text = adapter_payload.decode("utf-8")
+        cache_source_text = cache_payload.decode("utf-8")
+    except (KIVIAdmissionError, UnicodeError) as error:
         raise KIVIAdmissionError(
             "KIVI execution-path source is unreadable"
         ) from error
@@ -2729,12 +2940,15 @@ def derive_phase8_admission_evidence(
             "inner bundle Git or root-run identity differs"
         )
     summarize_phase8_accounting(records)
-    _require_source_digest(
-        repository_root=root,
-        relative_path=PHASE8_ADAPTER_PATH,
-        observed_sha256=records[0].adapter_source_sha256,
-        label="KIVI adapter",
-    )
+    if (
+        _phase8_git_blob_sha256(
+            root,
+            revision=creation_git_sha,
+            relative_path=PHASE8_ADAPTER_PATH,
+        )
+        != records[0].adapter_source_sha256
+    ):
+        raise KIVIAdmissionError("KIVI adapter identity differs")
     if any(
         record.adapter_source_sha256
         != records[0].adapter_source_sha256
@@ -2786,11 +3000,13 @@ def derive_phase8_admission_evidence(
     _, sanitizer_relatives = _validate_sanitizer_result(
         bundle_root=bundle,
         repository_root=root,
+        execution_git_sha=creation_git_sha,
     )
     execution_audit, execution_relatives = _execution_audit_from_bundle(
         bundle_root=bundle,
         repository_root=root,
         points=points,
+        execution_git_sha=creation_git_sha,
     )
     durable = _parse_publication_receipt(
         receipt_path=publication_receipt_path,
@@ -3147,7 +3363,7 @@ def build_phase8_method_admission_report(
     adapter_sources = {record.adapter_source_sha256 for record in records}
     creation_shas = {record.git_sha for record in records}
     if (
-        adapter_versions != {KIVI_ADAPTER_VERSION}
+        adapter_versions != {PHASE8_HISTORICAL_ADAPTER_VERSION}
         or len(adapter_sources) != 1
         or creation_shas != {creation_git_sha}
     ):
@@ -3188,7 +3404,7 @@ def build_phase8_method_admission_report(
         cache_layout_fingerprints=_aggregate_fingerprints(
             records, "cache_layout_fingerprint"
         ),
-        adapter_version=KIVI_ADAPTER_VERSION,
+        adapter_version=PHASE8_HISTORICAL_ADAPTER_VERSION,
         adapter_source_sha256=next(iter(adapter_sources)),
         official_base_commit=PHASE8_OFFICIAL_COMMIT,
         official_base_tree=PHASE8_BASE_TREE,
