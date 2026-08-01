@@ -212,6 +212,38 @@ def _run_cuda_matrix(*, output: Path, git_sha: str) -> dict[str, Any]:
             or control_audit.allocated_after != control_audit.allocated_before
             or control_audit.reserved_after != control_audit.reserved_before
         ):
+            failure_payload = {
+                "schema_version": MATRIX_SCHEMA,
+                "status": "FAIL",
+                "created_at_utc": _utc_now(),
+                "creation_git_sha": git_sha,
+                "authorized_container_digest": (
+                    PHASE13B_AUTHORIZED_CONTAINER_DIGEST
+                ),
+                "container_attestation": attestation,
+                "decision": "0030",
+                "configurations": list(PHASE13B_CONFIGURATIONS),
+                "batch_sizes": list(PHASE13B_BATCH_SIZES),
+                "context_length": PHASE13B_CONTEXT_LENGTH,
+                "point_count": 0,
+                "source_hashes": source_hashes,
+                "records": [],
+                "outer_allocation_controls": {
+                    **outer_allocation_controls,
+                    batch: control_record,
+                },
+                "failed_point": {
+                    "configuration": "bf16_outer_allocation_control",
+                    "batch_size": batch,
+                    "failed_checks": [
+                        "audit_available_or_persistent_delta"
+                    ],
+                },
+                "cuda_source_changed": False,
+                "timing_collected": False,
+                "performance_claim_eligible": False,
+            }
+            _write_exclusive(output, failure_payload)
             raise Phase13BBatchAdmissionError(
                 f"BF16 outer allocation control failed for B={batch}"
             )
