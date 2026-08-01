@@ -1460,6 +1460,7 @@ pilot: override MEASUREMENT_IMAGE_CONFIG_DIGEST := $(PHASE13_AUTHORIZED_IMAGE_CO
 pilot: verify-measurement-container
 	@test "$(MEASUREMENT_IMAGE_CONFIG_DIGEST)" = "$(PHASE13_AUTHORIZED_IMAGE_CONFIG_DIGEST)" || { echo '{"status":"BLOCKED","reason":"authorized_phase13_image_digest_required"}' >&2; exit 2; }
 	@test -z "$$(git status --porcelain=v1 --untracked-files=all)" || { echo '{"status":"BLOCKED","reason":"clean_committed_phase13_tree_required"}' >&2; exit 2; }
+	@$(PHASE13_HOST_PYTHON) -m scripts.phase13_pilot --validate-phase13b-entry
 	@task_root="$$(mktemp -d /tmp/kvbench-phase13-pilot.XXXXXX)"; \
 		cid=""; reference_cid=""; analysis_cid=""; stage=""; campaign_id=""; final_root=""; head=""; preserve=1; \
 		cleanup() { \

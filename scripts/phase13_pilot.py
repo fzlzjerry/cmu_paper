@@ -31,6 +31,11 @@ from kvbench.runtime.artifacts import sha256_file
 from kvbench.runtime.method_harness import execution_path_audit_facade
 from kvbench.runtime.process_supervision import run_supervised_command
 from kvbench.schema import GraphMode, RunnerKind, canonical_json_bytes, sha256_hex
+from kvbench.schema.phase13b import (
+    PHASE13B_BATCH_SIZES,
+    PHASE13B_FAMILY_CONFIGURATIONS,
+    Phase13BMethodAdmissionReport,
+)
 from scripts.r2_artifact import validate_local_artifact
 import scripts.phase12_unified_admission as phase12
 
@@ -40,6 +45,47 @@ ARTIFACT_ROOT = REPOSITORY_ROOT / "artifacts" / "phase13"
 STAGING_ROOT = ARTIFACT_ROOT / ".kvbench-staging"
 PLAN_PATH = Path("docs/plans/phase13-pilot-scan.md")
 ORDER_PATH = Path("docs/plans/phase13-pilot-execution-order.json")
+PHASE13B_DECISION_PATH = Path(
+    "docs/decisions/0030-compressed-static-cache-batch-geometry.md"
+)
+PHASE13B_DECISION_SHA256 = (
+    "84c2eb943b35afba312eaf599f8ec8f1d4a82169daa2d5c5fc5d127f0a965e62"
+)
+PHASE13B_SOURCE_AUTHORITY_COMMIT = (
+    "b862af64346a0dba2650b2c213ebd1d3b5b99ef2"
+)
+PHASE13B_SUCCESSOR_REPORTS = {
+    "turboquant": (
+        Path("docs/evidence/phase13b/turboquant-method-admission.json"),
+        "49799ef89646ec008a530c5180fdcef6cd4af9ca0d5772fe2b01d6e775e3b1c0",
+    ),
+    "kivi": (
+        Path("docs/evidence/phase13b/kivi-method-admission.json"),
+        "1e91730ac56af37e03d80edce7979a509d52049428faad89f61e61dc6bd48c51",
+    ),
+    "kvquant": (
+        Path("docs/evidence/phase13b/kvquant-method-admission.json"),
+        "e1cee8e1c514f9cf6323b5e710480c1fefab2804e5f4eafe6c473b29f4768481",
+    ),
+}
+PHASE13B_PUBLICATION_RECEIPT_PATH = Path(
+    "docs/evidence/phase13b/r2-publication.json"
+)
+PHASE13B_PUBLICATION_RECEIPT_SHA256 = (
+    "86ac8259aa2fbf35ad6a525291756c80ba37fc8e1681a31ca4eccc60ef65a768"
+)
+PHASE13B_LOCAL_BUNDLE_PATH = Path(
+    "artifacts/phase13b/phase13b-20260801t143138050263z-b862af64-batch-admission"
+)
+PHASE13B_LOCAL_ROOT_SHA256 = (
+    "f1c96eaacbbace1c23b249d1afe8d892aa26c3f6b8d04e07f373a2becafba1fe"
+)
+PHASE13B_CHECKSUM_LEDGER_SHA256 = (
+    "456cbc1d23a6cc94934b960c2ed30554aeb84faa5fde267defc899a1d09c38a2"
+)
+PHASE13B_R2_ROOT_SHA256 = (
+    "f1c96eaacbbace1c23b249d1afe8d892aa26c3f6b8d04e07f373a2becafba1fe"
+)
 
 AUTHORIZED_CONTAINER_DIGEST = phase12.PHASE12_AUTHORIZED_CONTAINER_DIGEST
 GPU_UUID = phase12.PHASE12_GPU_UUID
@@ -77,6 +123,115 @@ _FORBIDDEN_ENVIRONMENT = phase12._FORBIDDEN_CHILD_ENVIRONMENT
 
 class Phase13PilotError(RuntimeError):
     """The Pilot contract or evidence failed closed."""
+
+
+def _phase13b_successor_authority() -> dict[str, Any]:
+    """Validate the exact Decision 0030 successor reports in the source tree."""
+
+    decision = REPOSITORY_ROOT / PHASE13B_DECISION_PATH
+    if sha256_file(decision) != PHASE13B_DECISION_SHA256:
+        raise Phase13PilotError("Decision 0030 checksum differs")
+    families: dict[str, Any] = {}
+    for family, (relative, expected_sha256) in PHASE13B_SUCCESSOR_REPORTS.items():
+        path = REPOSITORY_ROOT / relative
+        if sha256_file(path) != expected_sha256:
+            raise Phase13PilotError(
+                f"Phase 13B {family} successor report checksum differs"
+            )
+        try:
+            report = Phase13BMethodAdmissionReport.from_dict(_strict_json(path))
+        except (TypeError, ValueError) as error:
+            raise Phase13PilotError(
+                f"Phase 13B {family} successor report schema differs"
+            ) from error
+        if (
+            report.method_family != family
+            or report.configurations != PHASE13B_FAMILY_CONFIGURATIONS[family]
+            or report.batch_sizes != PHASE13B_BATCH_SIZES
+            or report.creation_git_sha != PHASE13B_SOURCE_AUTHORITY_COMMIT
+            or report.decision_id != "0030"
+            or not report.b1_numerical_preserved
+            or report.cuda_source_changed
+        ):
+            raise Phase13PilotError(
+                f"Phase 13B {family} successor authority differs"
+            )
+        for relative_source, expected_source_sha256 in report.source_hashes.items():
+            source = REPOSITORY_ROOT / relative_source
+            if sha256_file(source) != expected_source_sha256:
+                raise Phase13PilotError(
+                    f"Phase 13B {family} admitted source differs: {relative_source}"
+                )
+        families[family] = {
+            "report_path": relative.as_posix(),
+            "report_sha256": expected_sha256,
+            "creation_git_sha": report.creation_git_sha,
+            "configurations": list(report.configurations),
+            "batch_sizes": list(report.batch_sizes),
+            "adapter_versions": dict(report.adapter_versions),
+            "adapter_config_fingerprints_l128": dict(
+                report.adapter_config_fingerprints
+            ),
+            "cache_layout_fingerprints_l128": dict(
+                report.cache_layout_fingerprints
+            ),
+            "source_hashes": dict(report.source_hashes),
+            "b1_numerical_preserved": True,
+        }
+    return {
+        "schema_version": "kvbench-phase13r-successor-authority-1.0.0",
+        "decision": "0030",
+        "decision_path": PHASE13B_DECISION_PATH.as_posix(),
+        "decision_sha256": PHASE13B_DECISION_SHA256,
+        "source_authority_commit": PHASE13B_SOURCE_AUTHORITY_COMMIT,
+        "families": families,
+    }
+
+
+def validate_phase13b_entry() -> dict[str, Any]:
+    """Validate local successor admission and its checksum-bound R2 receipt."""
+
+    authority = _phase13b_successor_authority()
+    local_bundle = REPOSITORY_ROOT / PHASE13B_LOCAL_BUNDLE_PATH
+    artifact = validate_local_artifact(local_bundle, environ={})
+    if (
+        artifact.root_sha256 != PHASE13B_LOCAL_ROOT_SHA256
+        or sha256_file(local_bundle / "checksums.sha256")
+        != PHASE13B_CHECKSUM_LEDGER_SHA256
+    ):
+        raise Phase13PilotError("Phase 13B local admission root differs")
+    receipt_path = REPOSITORY_ROOT / PHASE13B_PUBLICATION_RECEIPT_PATH
+    if sha256_file(receipt_path) != PHASE13B_PUBLICATION_RECEIPT_SHA256:
+        raise Phase13PilotError("Phase 13B publication receipt checksum differs")
+    receipt = _strict_json(receipt_path)
+    publication = receipt.get("publication")
+    retrieval = receipt.get("clean_retrieval")
+    if (
+        not isinstance(publication, Mapping)
+        or not isinstance(retrieval, Mapping)
+        or publication.get("root_sha256") != PHASE13B_R2_ROOT_SHA256
+        or publication.get("complete_last") is not True
+        or publication.get("conditional_writes") is not True
+        or retrieval.get("root_sha256") != PHASE13B_R2_ROOT_SHA256
+        or retrieval.get("result") != "PASS"
+        or retrieval.get("destination_initially_empty") is not True
+        or retrieval.get("checksum_ledger_valid") is not True
+        or retrieval.get("inventory_valid") is not True
+        or receipt.get("clean_retrieval_count") != 1
+    ):
+        raise Phase13PilotError("Phase 13B durable publication evidence differs")
+    authority["local_bundle_path"] = PHASE13B_LOCAL_BUNDLE_PATH.as_posix()
+    authority["local_root_sha256"] = PHASE13B_LOCAL_ROOT_SHA256
+    authority["publication_receipt_path"] = (
+        PHASE13B_PUBLICATION_RECEIPT_PATH.as_posix()
+    )
+    authority["publication_receipt_sha256"] = (
+        PHASE13B_PUBLICATION_RECEIPT_SHA256
+    )
+    authority["r2_root_sha256"] = PHASE13B_R2_ROOT_SHA256
+    authority["r2_uri"] = publication.get("uri")
+    authority["clean_retrieval"] = "PASS"
+    return authority
 
 
 def _utc_now() -> str:
@@ -216,7 +371,7 @@ def _turboquant_cache_bytes(configuration: str, batch: int, capacity: int) -> in
     skipped_bf16 = 2 * 4 * 8 * rounded * 128 * 2
     mapping = math.ceil(capacity / 16) * 4 + rounded * 8
     hadamard = 2 * 128 * 128 * 4
-    levels = {"tq_4bit_nc": 16, "tq_k3v4_nc": 16, "tq_3bit_nc": 8}[
+    levels = {"tq_4bit_nc": 16, "tq_k3v4_nc": 8, "tq_3bit_nc": 8}[
         configuration
     ]
     quantizer = (levels + max(0, levels - 1)) * 4
@@ -224,9 +379,6 @@ def _turboquant_cache_bytes(configuration: str, batch: int, capacity: int) -> in
     decode = batch * (
         2 * 32 * 128 * 4 + 32 * 4 * 129 * 4 + 32 * 128 * 2 + 32 * 4
     )
-    # Compressed storage is source-defined only for B=1.  The batch multiplier
-    # is a conservative memory projection; the separate authority flag remains
-    # false for B>1 and the real factory attempt is still required.
     batch_scaled_history = batch * (packed + skipped_bf16 + mapping + store)
     return batch_scaled_history + hadamard + quantizer + decode
 
@@ -298,24 +450,27 @@ def _kvquant_cache_bytes(configuration: str, batch: int, capacity: int) -> int:
         + 3 * layers * heads * dimension * 4
         + 64 * 4
     )
-    value_metadata = batch * (layers * levels * 4 + layers * capacity * levels * 4)
+    value_metadata = (
+        layers * levels * 4
+        + layers * batch * capacity * levels * 4
+    )
     sparse = batch * layers * capacity * 12 * 4
-    count_mask = batch * (2 * layers * capacity * 4 + capacity)
+    count_mask = 2 * layers * batch * capacity * 4 + capacity
     sink = layers * batch * heads * dimension * 5 * 2
     staging = (
         3 * kv_elements * 2
-        + 4 * kv_elements * 4
+        + 4 * heads * dimension * 4
         + query_elements * 2
         + query_elements * 4
         + query_elements * 2
         + 2 * 12 * 4
         + 3 * 4
         + 1
-        + kv_elements * 4
-        + 2 * kv_elements * 4
+        + heads * dimension * 4
+        + 2 * heads * dimension * 4
         + levels * 4
         + 5 * 4
-        + 2 * capacity * 4
+        + 2 * batch * capacity * 4
         + 3 * 4
         + 8
     )
@@ -327,6 +482,9 @@ def _kvquant_cache_bytes(configuration: str, batch: int, capacity: int) -> int:
         + query_elements * 2
         + (batch * 32 * 32 * 128 * 4 if configuration == "kvq4" else 0)
     )
+    endpoint_rope_scratch = (
+        layers * batch * (query_heads + heads) * 64 * 2
+    )
     return (
         2 * dense
         + key_metadata
@@ -336,6 +494,7 @@ def _kvquant_cache_bytes(configuration: str, batch: int, capacity: int) -> int:
         + 2 * sink
         + staging
         + workspace
+        + endpoint_rope_scratch
     )
 
 
@@ -350,9 +509,9 @@ def cache_allocated_bytes(configuration: str, batch: int, capacity: int) -> int:
 
 
 def adapter_geometry_supported(configuration: str, batch: int) -> bool:
-    """Reflect the current factory/cache boundary without weakening the grid."""
+    """Reflect Decision 0030's admitted static-cache batch geometry."""
 
-    return configuration == "bf16" or batch == 1
+    return configuration in CONFIGURATIONS and batch in BATCH_SIZES
 
 
 def feasibility_record(order_record: Mapping[str, Any]) -> dict[str, Any]:
@@ -742,6 +901,36 @@ def _run_worker(
         geometry = session.gqa_cache_geometry()
         prior_g3 = phase12._expected_prior_g3_binding(family)
         phase12._validate_prior_g3_binding(prior_g3, family=family)
+        successor_binding = None
+        if family != "bf16":
+            successor = _phase13b_successor_authority()["families"][family]
+            geometry_key = f"{configuration}/B{batch}"
+            if (
+                successor["adapter_versions"].get(configuration)
+                != session.method.adapter_version
+                or geometry_key
+                not in successor["adapter_config_fingerprints_l128"]
+                or geometry_key
+                not in successor["cache_layout_fingerprints_l128"]
+            ):
+                raise Phase13PilotError(
+                    "Phase 13B runtime batch authority differs"
+                )
+            successor_binding = {
+                "decision": "0030",
+                "report_path": successor["report_path"],
+                "report_sha256": successor["report_sha256"],
+                "source_authority_commit": successor["creation_git_sha"],
+                "geometry_key": geometry_key,
+                "adapter_version": session.method.adapter_version,
+                "admission_adapter_fingerprint_l128": successor[
+                    "adapter_config_fingerprints_l128"
+                ][geometry_key],
+                "admission_cache_fingerprint_l128": successor[
+                    "cache_layout_fingerprints_l128"
+                ][geometry_key],
+                "pilot_capacity": operation.capacity,
+            }
         live_fingerprint = phase12._validate_runtime_adapter_fingerprint(
             method=session.method,
             cache=session.cache,
@@ -826,6 +1015,14 @@ def _run_worker(
     process_median = statistics.median(
         float(sample["cuda_ms_per_operation"]) for sample in timing_samples
     )
+    host_cuda_ratios = [
+        (float(sample["host_ns_per_operation"]) / 1_000_000.0)
+        / float(sample["cuda_ms_per_operation"])
+        for sample in timing_samples
+    ]
+    if any(not math.isfinite(value) or value <= 0 for value in host_cuda_ratios):
+        raise Phase13PilotError("host-wall/CUDA-event ratio is invalid")
+    host_wall_cuda_event_ratio = statistics.median(host_cuda_ratios)
     telemetry_before = runner["telemetry_before"]
     telemetry_after = runner["telemetry_after"]
     temperature = phase12._telemetry_range(
@@ -848,6 +1045,7 @@ def _run_worker(
             "configuration": configuration,
             "operation": operation.operation_fingerprint_sha256,
             "prior_g3": prior_g3,
+            "phase13b_successor": successor_binding,
             "runtime_adapter_fingerprint": runner["adapter_config_fingerprint"],
             "cache_layout_fingerprint": runner["cache_layout_fingerprint"],
             "backend": runtime_context.backend_fingerprint,
@@ -878,7 +1076,10 @@ def _run_worker(
         "authorized_container_digest": AUTHORIZED_CONTAINER_DIGEST,
         "gpu_uuid": GPU_UUID,
         "operation_fingerprint_sha256": operation.operation_fingerprint_sha256,
+        "phase13b_successor_binding": successor_binding,
         "process_median_ms": process_median,
+        "host_wall_cuda_event_ratio": host_wall_cuda_event_ratio,
+        "kernel_count": int(graph_path_before["kernel_node_count"]),
         "output_checksum": runner["output_checksum"],
         "kernel_path_fingerprint": kernel_path_fingerprint,
         "allocation_fingerprint": allocation_fingerprint,
@@ -1143,6 +1344,7 @@ def run_campaign(*, stage: Path, campaign_id: str, git_sha: str) -> dict[str, An
     ).stdout
     if head != git_sha or status:
         raise Phase13PilotError("container source is not the clean execution commit")
+    successor_authority = _phase13b_successor_authority()
     order = _strict_json(REPOSITORY_ROOT / ORDER_PATH)
     validate_execution_order(order)
     feasibility = build_feasibility_records(order)
@@ -1159,6 +1361,7 @@ def run_campaign(*, stage: Path, campaign_id: str, git_sha: str) -> dict[str, An
                 "campaign_id": identifier,
                 "execution_git_sha": git_sha,
                 "authorized_container_digest": AUTHORIZED_CONTAINER_DIGEST,
+                "phase13b_successor_authority": successor_authority,
                 "configurations": list(CONFIGURATIONS),
                 "fingerprints": CONFIG_FINGERPRINTS,
                 "batch_sizes": list(BATCH_SIZES),
@@ -1258,6 +1461,23 @@ def _run_records(root: Path) -> list[dict[str, Any]]:
                 "process_median_ms": (
                     float(result["process_median_ms"]) if result is not None else None
                 ),
+                "host_wall_cuda_event_ratio": (
+                    float(result["host_wall_cuda_event_ratio"])
+                    if result is not None
+                    else None
+                ),
+                "kernel_count": result.get("kernel_count") if result else None,
+                "finite_output": result.get("finite_output") if result else None,
+                "no_backend_fallback": (
+                    result.get("no_backend_fallback") if result else None
+                ),
+                "allocation_stable": (
+                    result.get("allocation_stable") if result else None
+                ),
+                "kernel_path_stable": (
+                    result.get("kernel_path_stable") if result else None
+                ),
+                "gpu_exclusive": result.get("gpu_exclusive") if result else None,
                 "output_checksum": result.get("output_checksum") if result else None,
                 "kernel_path_fingerprint": (
                     result.get("kernel_path_fingerprint") if result else None
@@ -1289,6 +1509,175 @@ def _run_records(root: Path) -> list[dict[str, Any]]:
     return records
 
 
+def _nominal_ratio(configuration: str) -> float:
+    if configuration == "bf16":
+        return 1.0
+    if configuration.startswith("tq_"):
+        key_bits, value_bits = {
+            "tq_4bit_nc": (4, 4),
+            "tq_k3v4_nc": (3, 4),
+            "tq_3bit_nc": (3, 3),
+        }[configuration]
+        return (32 * 32) / (28 * (key_bits + value_bits) + 4 * 32)
+    if configuration in {"k4v4", "k2v4", "k2v2"}:
+        key_bits, value_bits = {
+            "k4v4": (4, 4),
+            "k2v4": (2, 4),
+            "k2v2": (2, 2),
+        }[configuration]
+        return 32 / (key_bits + value_bits)
+    bits = {"kvq4": 4, "kvq3": 3, "kvq2": 2}[configuration]
+    return 16 / bits
+
+
+def _point_byte_features(completed: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    if not completed:
+        return {
+            key: None
+            for key in (
+                "data_payload_bytes",
+                "logical_bf16_bytes",
+                "allocated_bytes",
+                "active_storage_bytes",
+                "metadata_bytes",
+                "residual_bytes",
+                "sink_bytes",
+                "outlier_value_bytes",
+                "outlier_index_bytes",
+                "padding_bytes",
+                "workspace_bytes",
+                "rho_alloc",
+                "r_alloc",
+                "r_nominal",
+                "reciprocal_error",
+                "kernel_count",
+            )
+        } | {"r_hbm": None}
+    configuration = str(completed[0]["method_config_id"])
+    runner = completed[0].get("runner")
+    if not isinstance(runner, Mapping):
+        raise Phase13PilotError("completed Pilot run lacks runner evidence")
+    accounting = runner.get("cache_accounting")
+    breakdown = runner.get("cache_byte_breakdown")
+    if not isinstance(accounting, Mapping) or not isinstance(breakdown, Mapping):
+        raise Phase13PilotError("completed Pilot run lacks byte accounting")
+    if runner.get("r_hbm") is not None:
+        raise Phase13PilotError("Pilot runner populated r_hbm")
+    allocated = int(accounting["allocated_bytes"])
+    if sum(int(value) for value in breakdown.values()) != allocated:
+        raise Phase13PilotError("Pilot byte breakdown does not sum to allocation")
+    batch = int(completed[0]["batch_size"])
+    capacity = int(accounting["capacity"])
+    logical = int(
+        accounting.get(
+            "logical_bf16_allocated_bytes",
+            2 * 32 * batch * 8 * capacity * 128 * 2,
+        )
+    )
+    family = phase12._method_family(configuration)
+    metadata = residual = sink = outlier_values = outlier_indices = 0
+    padding = workspace = data = 0
+    if family == "bf16":
+        data = int(breakdown["data_bytes"])
+        metadata = sum(
+            int(breakdown[key])
+            for key in ("metadata_bytes", "scale_bytes", "zero_point_bytes")
+        )
+        padding = int(breakdown["padding_bytes"])
+        workspace = int(breakdown["workspace_bytes"])
+    elif family == "turboquant":
+        data = sum(
+            int(breakdown[key])
+            for key in (
+                "compressed_key_payload_bytes",
+                "compressed_value_payload_bytes",
+            )
+        )
+        metadata = sum(
+            int(breakdown[key])
+            for key in (
+                "key_norm_metadata_bytes",
+                "value_scale_metadata_bytes",
+                "value_zero_point_metadata_bytes",
+                "mapping_metadata_bytes",
+            )
+        )
+        residual = int(breakdown["skipped_layer_bf16_key_bytes"]) + int(
+            breakdown["skipped_layer_bf16_value_bytes"]
+        )
+        padding = int(breakdown["slot_padding_alignment_bytes"]) + int(
+            breakdown["block_rounding_overhead_bytes"]
+        )
+        workspace = int(breakdown["persistent_workspace_bytes"])
+    elif family == "kivi":
+        data = int(breakdown["quantized_k_payload"]) + int(
+            breakdown["quantized_v_payload"]
+        )
+        metadata = sum(
+            int(breakdown[key])
+            for key in (
+                "key_scales",
+                "key_zero_points",
+                "value_scales",
+                "value_zero_points",
+                "other_metadata",
+            )
+        )
+        residual = int(breakdown["residual_k"]) + int(breakdown["residual_v"])
+        padding = int(breakdown["padding_alignment"]) + int(
+            breakdown["block_group_rounding_bytes"]
+        )
+        workspace = sum(
+            int(breakdown[key])
+            for key in (
+                "fp16_staging",
+                "quantization_staging",
+                "persistent_workspace",
+                "value_rollover_shift_scratch",
+            )
+        )
+    else:
+        data = int(breakdown["dense_k_payload"]) + int(
+            breakdown["dense_v_payload"]
+        )
+        metadata = sum(
+            int(breakdown[key])
+            for key in ("key_metadata", "value_metadata", "active_count_mask")
+        )
+        sink = int(breakdown["sink_k"]) + int(breakdown["sink_v"])
+        outlier_values = int(breakdown["key_sparse_values"]) + int(
+            breakdown["value_sparse_values"]
+        )
+        outlier_indices = int(breakdown["key_sparse_indices"]) + int(
+            breakdown["value_sparse_indices"]
+        )
+        padding = int(breakdown["padding_alignment"])
+        workspace = int(breakdown["staging"]) + int(
+            breakdown["persistent_workspace"]
+        )
+    rho = allocated / logical
+    r_alloc = logical / allocated
+    return {
+        "data_payload_bytes": data,
+        "logical_bf16_bytes": logical,
+        "allocated_bytes": allocated,
+        "active_storage_bytes": accounting.get("active_storage_bytes"),
+        "metadata_bytes": metadata,
+        "residual_bytes": residual,
+        "sink_bytes": sink,
+        "outlier_value_bytes": outlier_values,
+        "outlier_index_bytes": outlier_indices,
+        "padding_bytes": padding,
+        "workspace_bytes": workspace,
+        "rho_alloc": rho,
+        "r_alloc": r_alloc,
+        "r_nominal": _nominal_ratio(configuration),
+        "reciprocal_error": abs(rho * r_alloc - 1.0),
+        "kernel_count": int(completed[0]["kernel_count"]),
+        "r_hbm": None,
+    }
+
+
 def _point_summaries(records: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
     grouped: dict[tuple[str, int, int], list[Mapping[str, Any]]] = defaultdict(list)
     for record in records:
@@ -1306,6 +1695,7 @@ def _point_summaries(records: Sequence[Mapping[str, Any]]) -> list[dict[str, Any
                 matching = grouped[(configuration, batch, label)]
                 statuses = [str(item["status"]) for item in matching]
                 completed = [item for item in matching if item["status"] == "completed"]
+                byte_features = _point_byte_features(completed)
                 if len(completed) == REPLICATES:
                     stats = point_statistics(
                         [float(item["process_median_ms"]) for item in completed]
@@ -1319,10 +1709,72 @@ def _point_summaries(records: Sequence[Mapping[str, Any]]) -> list[dict[str, Any
                     allocation_agreement = len(
                         {str(item["allocation_fingerprint"]) for item in completed}
                     ) == 1
+                    kernel_count_agreement = len(
+                        {int(item["kernel_count"]) for item in completed}
+                    ) == 1
+                    finite = all(item["finite_output"] is True for item in completed)
+                    no_fallback = all(
+                        item["no_backend_fallback"] is True for item in completed
+                    )
+                    gpu_exclusive = all(
+                        item["gpu_exclusive"] is True for item in completed
+                    )
+                    run_stability = all(
+                        item["allocation_stable"] is True
+                        and item["kernel_path_stable"] is True
+                        for item in completed
+                    )
+                    agreements = (
+                        output_agreement
+                        and path_agreement
+                        and allocation_agreement
+                        and kernel_count_agreement
+                        and finite
+                        and no_fallback
+                        and gpu_exclusive
+                        and run_stability
+                    )
                     disposition = classify_point(
                         statistics_record=stats,
-                        agreements=output_agreement and path_agreement and allocation_agreement,
+                        agreements=agreements,
                     )
+                    host_ratio = statistics.median(
+                        float(item["host_wall_cuda_event_ratio"])
+                        for item in completed
+                    )
+                    process_medians = [
+                        float(item["process_median_ms"])
+                        for item in sorted(
+                            completed,
+                            key=lambda candidate: int(candidate["replicate_index"]),
+                        )
+                    ]
+                    telemetry = {
+                        "temperature_min_c": min(
+                            float(item["temperature_min_c"]) for item in completed
+                        ),
+                        "temperature_max_c": max(
+                            float(item["temperature_max_c"]) for item in completed
+                        ),
+                        "sm_clock_min_mhz": min(
+                            int(item["sm_clock_min_mhz"]) for item in completed
+                        ),
+                        "sm_clock_max_mhz": max(
+                            int(item["sm_clock_max_mhz"]) for item in completed
+                        ),
+                        "memory_clock_min_mhz": min(
+                            int(item["memory_clock_min_mhz"]) for item in completed
+                        ),
+                        "memory_clock_max_mhz": max(
+                            int(item["memory_clock_max_mhz"]) for item in completed
+                        ),
+                        "power_min_w": min(
+                            float(item["power_min_w"]) for item in completed
+                        ),
+                        "power_max_w": max(
+                            float(item["power_max_w"]) for item in completed
+                        ),
+                    }
                 else:
                     stats = {
                         "median_ms": None,
@@ -1333,6 +1785,20 @@ def _point_summaries(records: Sequence[Mapping[str, Any]]) -> list[dict[str, Any
                         "cv": None,
                     }
                     output_agreement = path_agreement = allocation_agreement = False
+                    kernel_count_agreement = finite = no_fallback = gpu_exclusive = False
+                    run_stability = False
+                    host_ratio = None
+                    process_medians = []
+                    telemetry = {
+                        "temperature_min_c": None,
+                        "temperature_max_c": None,
+                        "sm_clock_min_mhz": None,
+                        "sm_clock_max_mhz": None,
+                        "memory_clock_min_mhz": None,
+                        "memory_clock_max_mhz": None,
+                        "power_min_w": None,
+                        "power_max_w": None,
+                    }
                     if all(status == "capacity_infeasible" for status in statuses):
                         disposition = "capacity_infeasible"
                     elif "runtime_failed" in statuses:
@@ -1349,10 +1815,20 @@ def _point_summaries(records: Sequence[Mapping[str, Any]]) -> list[dict[str, Any
                         "replicate_count": len(matching),
                         "completed_replicates": len(completed),
                         **stats,
+                        "process_medians_ms": process_medians,
+                        "host_wall_cuda_event_ratio": host_ratio,
+                        **telemetry,
+                        **byte_features,
                         "output_checksum_agreement": output_agreement,
                         "kernel_path_agreement": path_agreement,
                         "allocation_agreement": allocation_agreement,
+                        "kernel_count_agreement": kernel_count_agreement,
+                        "finite_outputs": finite,
+                        "no_backend_fallback": no_fallback,
+                        "gpu_exclusive": gpu_exclusive,
+                        "within_process_stability": run_stability,
                         "disposition": disposition,
+                        "monotonicity_warning": False,
                         "monotonicity_warning_only": True,
                         "quality_status": "unvalidated",
                         "performance_claim_eligible": False,
@@ -1361,26 +1837,49 @@ def _point_summaries(records: Sequence[Mapping[str, Any]]) -> list[dict[str, Any
                 )
     if len(summaries) != 270:
         raise Phase13PilotError("Phase 13 point-summary cardinality differs")
+    for configuration in CONFIGURATIONS:
+        for batch in BATCH_SIZES:
+            available = [
+                item
+                for item in summaries
+                if item["method_config_id"] == configuration
+                and item["batch_size"] == batch
+                and item["disposition"] in {"stable", "unstable"}
+            ]
+            available.sort(key=lambda item: int(item["context_label"]))
+            previous = None
+            for item in available:
+                current = float(item["median_ms"])
+                if previous is not None and current < previous:
+                    item["monotonicity_warning"] = True
+                previous = current
     return summaries
-
 
 def _fit_records(summaries: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
     records: list[dict[str, Any]] = []
     for configuration in CONFIGURATIONS:
         for batch in BATCH_SIZES:
-            matching = [
+            all_matching = [
                 item
                 for item in summaries
                 if item["method_config_id"] == configuration
                 and item["batch_size"] == batch
-                and item["disposition"] == "stable"
             ]
-            fit = provisional_knee_fit(
-                [
-                    (float(item["context_label"]), float(item["median_ms"]))
-                    for item in matching
-                ]
-            )
+            matching = [
+                item
+                for item in all_matching
+                if item["disposition"] == "stable"
+            ]
+            if any(item["disposition"] == "unstable" for item in all_matching):
+                fit = {"fit_status": "unstable_data"}
+            else:
+                fit = provisional_knee_fit(
+                    [
+                        (float(item["context_label"]), float(process_median))
+                        for item in matching
+                        for process_median in item["process_medians_ms"]
+                    ]
+                )
             knee_model = fit.get("knee_model")
             knee = (
                 knee_model.get("L_star")
@@ -1391,12 +1890,34 @@ def _fit_records(summaries: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]
                 [int(item["context_label"]) for item in matching],
                 float(knee) if isinstance(knee, (int, float)) else None,
             )
+            bootstrap = _session_bootstrap_knee(
+                matching,
+                seed=20260801 + 100 * CONFIGURATIONS.index(configuration) + batch,
+            )
+            constant = fit.get("constant_floor", {})
+            linear = fit.get("linear", {})
+            knee_fields = fit.get("knee_model", {})
             records.append(
                 {
                     "method_config_id": configuration,
                     "batch_size": batch,
                     "stable_point_count": len(matching),
+                    "session_observation_count": sum(
+                        len(item["process_medians_ms"]) for item in matching
+                    ),
                     "fit_status": fit["fit_status"],
+                    "constant_tau": constant.get("tau"),
+                    "linear_a": linear.get("a"),
+                    "linear_s": linear.get("s"),
+                    "knee_tau": knee_fields.get("tau"),
+                    "knee_a": knee_fields.get("a"),
+                    "knee_s": knee_fields.get("s"),
+                    "L_star": knee_fields.get("L_star"),
+                    "r_squared": knee_fields.get("r_squared"),
+                    "bootstrap_estimable": bootstrap["estimable"],
+                    "bootstrap_knee_lower_95": bootstrap["lower_95"],
+                    "bootstrap_knee_upper_95": bootstrap["upper_95"],
+                    "bootstrap_valid_draws": bootstrap["valid_draws"],
                     "fit_json": json.dumps(fit, sort_keys=True, separators=(",", ":")),
                     "density_json": json.dumps(
                         density, sort_keys=True, separators=(",", ":")
@@ -1407,6 +1928,73 @@ def _fit_records(summaries: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]
                 }
             )
     return records
+
+
+def _session_bootstrap_knee(
+    summaries: Sequence[Mapping[str, Any]],
+    *,
+    seed: int,
+    draws: int = 1000,
+) -> dict[str, Any]:
+    """Bootstrap process/session medians without treating decode steps as samples."""
+
+    if len(summaries) < 4:
+        return {
+            "estimable": False,
+            "draws": draws,
+            "valid_draws": 0,
+            "lower_95": None,
+            "upper_95": None,
+        }
+    generator = random.Random(seed)
+    estimates: list[float] = []
+    for _ in range(draws):
+        observations: list[tuple[float, float]] = []
+        for summary in summaries:
+            process_medians = [
+                float(value) for value in summary["process_medians_ms"]
+            ]
+            if len(process_medians) != REPLICATES:
+                raise Phase13PilotError("bootstrap input lacks three sessions")
+            observations.extend(
+                (
+                    float(summary["context_label"]),
+                    generator.choice(process_medians),
+                )
+                for _ in range(REPLICATES)
+            )
+        fit = provisional_knee_fit(observations)
+        knee_model = fit.get("knee_model")
+        knee = knee_model.get("L_star") if isinstance(knee_model, Mapping) else None
+        if isinstance(knee, (int, float)) and math.isfinite(knee) and knee > 0:
+            estimates.append(float(knee))
+    minimum_valid = max(100, draws // 2)
+    if len(estimates) < minimum_valid:
+        return {
+            "estimable": False,
+            "draws": draws,
+            "valid_draws": len(estimates),
+            "lower_95": None,
+            "upper_95": None,
+        }
+    estimates.sort()
+
+    def percentile(fraction: float) -> float:
+        position = fraction * (len(estimates) - 1)
+        lower = math.floor(position)
+        upper = math.ceil(position)
+        if lower == upper:
+            return estimates[lower]
+        weight = position - lower
+        return estimates[lower] * (1.0 - weight) + estimates[upper] * weight
+
+    return {
+        "estimable": True,
+        "draws": draws,
+        "valid_draws": len(estimates),
+        "lower_95": percentile(0.025),
+        "upper_95": percentile(0.975),
+    }
 
 
 def _ratio_records(summaries: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
@@ -1492,6 +2080,221 @@ def _svg_plot(path: Path, *, title: str, message: str) -> None:
     write_exclusive(path, svg.encode("utf-8"))
 
 
+def _svg_line_plot(
+    path: Path,
+    *,
+    title: str,
+    y_label: str,
+    series: Mapping[str, Sequence[tuple[float, float]]],
+    note: str = "Pilot-only; quality unvalidated; not claim eligible",
+) -> None:
+    colors = (
+        "#1f77b4",
+        "#ff7f0e",
+        "#2ca02c",
+        "#d62728",
+        "#9467bd",
+        "#8c564b",
+        "#e377c2",
+        "#7f7f7f",
+        "#bcbd22",
+        "#17becf",
+        "#3366cc",
+        "#dc3912",
+    )
+
+    def escape(value: str) -> str:
+        return (
+            value.replace("&", "&amp;")
+            .replace("<", "&lt;")
+            .replace(">", "&gt;")
+        )
+
+    normalized: dict[str, list[tuple[float, float]]] = {}
+    for name, points in series.items():
+        finite = sorted(
+            (
+                (float(x), float(y))
+                for x, y in points
+                if x > 0 and math.isfinite(float(x)) and math.isfinite(float(y))
+            ),
+            key=lambda item: item[0],
+        )
+        if finite:
+            normalized[name] = finite
+    if not normalized:
+        _svg_plot(path, title=title, message="No eligible Pilot observations.")
+        return
+    all_points = [point for points in normalized.values() for point in points]
+    transformed_x = [math.log2(point[0]) for point in all_points]
+    y_values = [point[1] for point in all_points]
+    x_min, x_max = min(transformed_x), max(transformed_x)
+    y_min, y_max = min(y_values), max(y_values)
+    if x_min == x_max:
+        x_min -= 0.5
+        x_max += 0.5
+    if y_min == y_max:
+        padding = max(abs(y_min) * 0.05, 1e-9)
+    else:
+        padding = (y_max - y_min) * 0.08
+    y_min -= padding
+    y_max += padding
+    left, right, top, bottom = 82.0, 790.0, 70.0, 520.0
+
+    def x_coordinate(value: float) -> float:
+        return left + (math.log2(value) - x_min) * (right - left) / (x_max - x_min)
+
+    def y_coordinate(value: float) -> float:
+        return bottom - (value - y_min) * (bottom - top) / (y_max - y_min)
+
+    elements = [
+        '<svg xmlns="http://www.w3.org/2000/svg" width="1100" height="640" '
+        'viewBox="0 0 1100 640">',
+        '<rect width="1100" height="640" fill="white"/>',
+        f'<text x="52" y="38" font-family="sans-serif" font-size="24">{escape(title)}</text>',
+        f'<text x="18" y="295" transform="rotate(-90 18 295)" font-family="sans-serif" font-size="14">{escape(y_label)}</text>',
+        '<text x="400" y="585" font-family="sans-serif" font-size="14">context length (log2 axis)</text>',
+    ]
+    for tick in range(6):
+        value = y_min + (y_max - y_min) * tick / 5
+        y = y_coordinate(value)
+        elements.extend(
+            (
+                f'<line x1="{left:.2f}" y1="{y:.2f}" x2="{right:.2f}" y2="{y:.2f}" stroke="#e5e5e5"/>',
+                f'<text x="{left - 8:.2f}" y="{y + 4:.2f}" text-anchor="end" font-family="monospace" font-size="11">{value:.4g}</text>',
+            )
+        )
+    x_ticks = sorted({point[0] for point in all_points})
+    for value in x_ticks:
+        x = x_coordinate(value)
+        label = f"{int(value // 1024)}K" if value >= 1024 else f"{int(value)}"
+        elements.extend(
+            (
+                f'<line x1="{x:.2f}" y1="{top:.2f}" x2="{x:.2f}" y2="{bottom:.2f}" stroke="#f0f0f0"/>',
+                f'<text x="{x:.2f}" y="{bottom + 22:.2f}" text-anchor="middle" font-family="monospace" font-size="10">{label}</text>',
+            )
+        )
+    elements.extend(
+        (
+            f'<line x1="{left:.2f}" y1="{bottom:.2f}" x2="{right:.2f}" y2="{bottom:.2f}" stroke="black"/>',
+            f'<line x1="{left:.2f}" y1="{top:.2f}" x2="{left:.2f}" y2="{bottom:.2f}" stroke="black"/>',
+        )
+    )
+    for index, (name, points) in enumerate(normalized.items()):
+        color = colors[index % len(colors)]
+        coordinates = [
+            (x_coordinate(x), y_coordinate(y)) for x, y in points
+        ]
+        path_data = " ".join(
+            f"{'M' if point_index == 0 else 'L'} {x:.2f} {y:.2f}"
+            for point_index, (x, y) in enumerate(coordinates)
+        )
+        elements.append(
+            f'<path d="{path_data}" fill="none" stroke="{color}" stroke-width="1.8"/>'
+        )
+        elements.extend(
+            f'<circle cx="{x:.2f}" cy="{y:.2f}" r="3" fill="{color}"/>'
+            for x, y in coordinates
+        )
+        legend_y = 86 + 25 * index
+        elements.extend(
+            (
+                f'<line x1="820" y1="{legend_y}" x2="846" y2="{legend_y}" stroke="{color}" stroke-width="2"/>',
+                f'<text x="854" y="{legend_y + 4}" font-family="sans-serif" font-size="12">{escape(name)}</text>',
+            )
+        )
+    elements.extend(
+        (
+            f'<text x="52" y="620" font-family="sans-serif" font-size="12">{escape(note)}</text>',
+            "</svg>",
+        )
+    )
+    write_exclusive(path, "".join(elements).encode("utf-8"))
+
+
+def _render_pilot_plots(
+    root: Path,
+    summaries: Sequence[Mapping[str, Any]],
+    ratios: Sequence[Mapping[str, Any]],
+) -> None:
+    eligible = [
+        item
+        for item in summaries
+        if item["disposition"] in {"stable", "unstable"}
+    ]
+
+    def summary_series(
+        rows: Sequence[Mapping[str, Any]],
+        *,
+        value_key: str,
+        include_batch: bool,
+    ) -> dict[str, list[tuple[float, float]]]:
+        result: dict[str, list[tuple[float, float]]] = defaultdict(list)
+        for row in rows:
+            value = row.get(value_key)
+            if not isinstance(value, (int, float)):
+                continue
+            name = str(row["method_config_id"])
+            if include_batch:
+                name = f"{name}/B{int(row['batch_size'])}"
+            result[name].append((float(row["context_label"]), float(value)))
+        return dict(sorted(result.items()))
+
+    for batch in BATCH_SIZES:
+        rows = [item for item in eligible if int(item["batch_size"]) == batch]
+        _svg_line_plot(
+            root / "pilot_plots" / f"latency-vs-context-b{batch}.svg",
+            title=f"Pilot T versus L, B={batch}",
+            y_label="median CUDA ms per operation",
+            series=summary_series(rows, value_key="median_ms", include_batch=False),
+        )
+    families = {
+        "bf16": ("bf16",),
+        "turboquant": ("tq_4bit_nc", "tq_k3v4_nc", "tq_3bit_nc"),
+        "kivi": ("k4v4", "k2v4", "k2v2"),
+        "kvquant": ("kvq4", "kvq3", "kvq2"),
+    }
+    for family, configurations in families.items():
+        rows = [
+            item
+            for item in eligible
+            if item["method_config_id"] in configurations
+        ]
+        _svg_line_plot(
+            root / "pilot_plots" / f"method-{family}.svg",
+            title=f"Pilot method view: {family}",
+            y_label="median CUDA ms per operation",
+            series=summary_series(rows, value_key="median_ms", include_batch=True),
+        )
+    _svg_line_plot(
+        root / "pilot_plots" / "cv-vs-context.svg",
+        title="Pilot CV versus context",
+        y_label="process-median CV",
+        series=summary_series(eligible, value_key="cv", include_batch=True),
+    )
+    _svg_line_plot(
+        root / "pilot_plots" / "allocated-ratio-vs-context.svg",
+        title="Pilot allocated-byte ratio versus context",
+        y_label="rho_alloc",
+        series=summary_series(eligible, value_key="rho_alloc", include_batch=True),
+    )
+    ratio_rows = [item for item in ratios if item["calculated"] is True]
+    _svg_line_plot(
+        root / "pilot_plots" / "pilot-only-same-work-ratio.svg",
+        title="Pilot-only same-work ratio versus context",
+        y_label="BF16 median / method median",
+        series=summary_series(
+            ratio_rows,
+            value_key="provisional_same_work_ratio",
+            include_batch=True,
+        ),
+        note=(
+            "Pilot-only; quality unvalidated; performance claim ineligible; "
+            "not quality-preserving speedup"
+        ),
+    )
+
+
 def materialize_analysis(root: Path) -> dict[str, Any]:
     campaign = _strict_json(root / "unified" / "local-campaign.json")
     runs = _run_records(root)
@@ -1519,24 +2322,154 @@ def materialize_analysis(root: Path) -> dict[str, Any]:
     _parquet_rows(root / "exclusions.parquet", exclusions)
     stable = [item for item in summaries if item["disposition"] == "stable"]
     unstable = [item for item in summaries if item["disposition"] == "unstable"]
-    maximum_cv = max((float(item["cv"]) for item in stable + unstable), default=None)
+    failed = [item for item in summaries if item["disposition"] == "failed"]
+    evaluated = stable + unstable + failed
+    maximum_cv = max((float(item["cv"]) for item in evaluated), default=None)
+    status_counts = {
+        str(key): int(value) for key, value in campaign["status_counts"].items()
+    }
+    feasible_records = sum(item["status"] == "feasible" for item in feasibility)
+    capacity_records = sum(
+        item["status"] == "capacity_infeasible" for item in feasibility
+    )
+    fit_status_counts = dict(
+        sorted(
+            {
+                status: sum(item["fit_status"] == status for item in fits)
+                for status in {str(item["fit_status"]) for item in fits}
+            }.items()
+        )
+    )
+    density_records = [json.loads(str(item["density_json"])) for item in fits]
+    assessed_density = [item for item in density_records if item["assessed"] is True]
+    insufficient_density = [
+        item for item in assessed_density if item["sufficient"] is not True
+    ]
+    complete_status_contract = bool(
+        status_counts.get("completed", 0) == feasible_records
+        and status_counts.get("capacity_infeasible", 0) == capacity_records
+        and sum(status_counts.values()) == PLANNED_RECORD_COUNT
+        and not any(
+            status_counts.get(status, 0)
+            for status in (
+                "runtime_failed",
+                "graph_capture_failed",
+                "allocation_failed",
+                "backend_fallback",
+                "aborted",
+            )
+        )
+    )
+    local_pass = bool(
+        campaign["phase13_status"] == "LOCAL_COMPLETE"
+        and complete_status_contract
+        and not unstable
+        and not failed
+    )
+    if campaign["stop_reason"]:
+        blocker = campaign["stop_reason"]
+    elif unstable:
+        blocker = f"{len(unstable)} Pilot points exceed the frozen CV threshold"
+    elif failed:
+        blocker = f"{len(failed)} Pilot points fail agreement or execution-path QC"
+    elif not complete_status_contract:
+        blocker = "Pilot run statuses do not account for the frozen grid"
+    else:
+        blocker = None
+    phase13_status = "LOCAL_PASS_PENDING_PUBLICATION" if local_pass else "BLOCKED"
+
+    def observed_range(minimum_key: str, maximum_key: str) -> list[float] | None:
+        minimums = [
+            float(item[minimum_key])
+            for item in evaluated
+            if isinstance(item.get(minimum_key), (int, float))
+        ]
+        maximums = [
+            float(item[maximum_key])
+            for item in evaluated
+            if isinstance(item.get(maximum_key), (int, float))
+        ]
+        return [min(minimums), max(maximums)] if minimums and maximums else None
+
     qc = {
         "schema_version": "kvbench-phase13-pilot-qc-1.0.0",
         "campaign_id": campaign["campaign_id"],
-        "phase13_status": campaign["phase13_status"],
+        "campaign_execution_status": campaign["phase13_status"],
+        "phase13_status": phase13_status,
         "planned_point_records": PLANNED_RECORD_COUNT,
-        "status_counts": campaign["status_counts"],
+        "feasible_gpu_run_records": feasible_records,
+        "capacity_infeasible_run_records": capacity_records,
+        "capacity_infeasible_points": sum(
+            item["disposition"] == "capacity_infeasible" for item in summaries
+        ),
+        "status_counts": status_counts,
         "stable_points": len(stable),
         "unstable_points": len(unstable),
+        "failed_points": len(failed),
         "maximum_cv": maximum_cv,
-        "fit_status_counts": dict(
-            sorted(
-                {
-                    status: sum(item["fit_status"] == status for item in fits)
-                    for status in {str(item["fit_status"]) for item in fits}
-                }.items()
-            )
+        "output_mismatches": sum(
+            item["output_checksum_agreement"] is not True for item in evaluated
         ),
+        "kernel_path_drift": sum(
+            item["kernel_path_agreement"] is not True for item in evaluated
+        ),
+        "allocation_drift": sum(
+            item["allocation_agreement"] is not True for item in evaluated
+        ),
+        "nan_or_inf_points": sum(
+            item["finite_outputs"] is not True for item in evaluated
+        ),
+        "backend_fallback_points": sum(
+            item["no_backend_fallback"] is not True for item in evaluated
+        ),
+        "gpu_exclusivity_failures": sum(
+            item["gpu_exclusive"] is not True for item in evaluated
+        ),
+        "monotonicity_warnings": sum(
+            item["monotonicity_warning"] is True for item in summaries
+        ),
+        "host_wall_cuda_event_ratio_range": observed_range(
+            "host_wall_cuda_event_ratio", "host_wall_cuda_event_ratio"
+        ),
+        "temperature_range_c": observed_range(
+            "temperature_min_c", "temperature_max_c"
+        ),
+        "sm_clock_range_mhz": observed_range(
+            "sm_clock_min_mhz", "sm_clock_max_mhz"
+        ),
+        "memory_clock_range_mhz": observed_range(
+            "memory_clock_min_mhz", "memory_clock_max_mhz"
+        ),
+        "power_range_w": observed_range("power_min_w", "power_max_w"),
+        "maximum_reciprocal_error": max(
+            (
+                float(item["reciprocal_error"])
+                for item in evaluated
+                if isinstance(item.get("reciprocal_error"), (int, float))
+            ),
+            default=None,
+        ),
+        "byte_features_complete": all(
+            item["r_hbm"] is None
+            and isinstance(item.get("allocated_bytes"), int)
+            and isinstance(item.get("logical_bf16_bytes"), int)
+            for item in evaluated
+        ),
+        "fit_status_counts": fit_status_counts,
+        "fit_records": len(fits),
+        "session_bootstrap_unit": "independent_process_median",
+        "bootstrap_intervals_estimable": sum(
+            item["bootstrap_estimable"] is True for item in fits
+        ),
+        "valid_provisional_knees": sum(
+            item["fit_status"]
+            in {"knee_observed", "knee_below_range", "knee_above_range"}
+            for item in fits
+        ),
+        "knee_density_assessed": len(assessed_density),
+        "knee_density_sufficient": len(assessed_density) - len(insufficient_density),
+        "knee_density_insufficient": len(insufficient_density),
+        "densification_required": bool(insufficient_density),
         "provisional_ratio_records": len(ratios),
         "provisional_ratios_calculated": sum(item["calculated"] for item in ratios),
         "selective_reruns": 0,
@@ -1546,7 +2479,14 @@ def materialize_analysis(root: Path) -> dict[str, Any]:
         "quality_execution": "LOCKED",
         "performance_data_frozen": False,
         "performance_claim_eligible": False,
-        "blocker": campaign["stop_reason"],
+        "phase14_readiness": (
+            "DENSIFICATION_REQUIRED"
+            if local_pass and insufficient_density
+            else "READY"
+            if local_pass
+            else "NOT_READY"
+        ),
+        "blocker": blocker,
     }
     write_exclusive(root / "pilot_qc.json", json_bytes(qc))
     report = "\n".join(
@@ -1554,10 +2494,15 @@ def materialize_analysis(root: Path) -> dict[str, Any]:
             "# Phase 13 Pilot QC",
             "",
             f"- Campaign: `{campaign['campaign_id']}`",
-            f"- Status: `{campaign['phase13_status']}`",
+            f"- Status: `{phase13_status}`",
             f"- Planned point records: {PLANNED_RECORD_COUNT}",
-            f"- Status counts: `{json.dumps(campaign['status_counts'], sort_keys=True)}`",
-            f"- Blocker: `{campaign['stop_reason']}`",
+            f"- Status counts: `{json.dumps(status_counts, sort_keys=True)}`",
+            f"- Stable/unstable/failed points: {len(stable)}/{len(unstable)}/{len(failed)}",
+            f"- Maximum process CV: `{maximum_cv}`",
+            f"- Fit statuses: `{json.dumps(fit_status_counts, sort_keys=True)}`",
+            f"- Knee-density insufficiencies: {len(insufficient_density)}",
+            f"- Phase 14 readiness: `{qc['phase14_readiness']}`",
+            f"- Blocker: `{blocker}`",
             "- Full Scan: `CLOSED`",
             "- Quality execution: `LOCKED`",
             "- No speedup, HBM, capacity, quality, or final-knee claim is made.",
@@ -1565,30 +2510,7 @@ def materialize_analysis(root: Path) -> dict[str, Any]:
         )
     )
     write_exclusive(root / "pilot_qc_report.md", report.encode("utf-8"))
-    no_data = "No complete stable point set is available because the Pilot stopped on the recorded method boundary."
-    for batch in BATCH_SIZES:
-        _svg_plot(
-            root / "pilot_plots" / f"latency-vs-context-b{batch}.svg",
-            title=f"Pilot T versus L, B={batch}",
-            message=no_data,
-        )
-    for method in ("bf16", "turboquant", "kivi", "kvquant"):
-        _svg_plot(
-            root / "pilot_plots" / f"method-{method}.svg",
-            title=f"Pilot method view: {method}",
-            message=no_data,
-        )
-    _svg_plot(root / "pilot_plots" / "cv-vs-context.svg", title="Pilot CV versus context", message=no_data)
-    _svg_plot(
-        root / "pilot_plots" / "allocated-ratio-vs-context.svg",
-        title="Pilot allocated-byte ratio versus context",
-        message=no_data,
-    )
-    _svg_plot(
-        root / "pilot_plots" / "pilot-only-same-work-ratio.svg",
-        title="Pilot-only same-work ratio versus context",
-        message=no_data,
-    )
+    _render_pilot_plots(root, summaries, ratios)
     inventory = {
         "schema_version": "kvbench-phase13-scientific-inventory-1.0.0",
         "campaign_id": campaign["campaign_id"],
@@ -1734,6 +2656,7 @@ def _parse_arguments(argv: Sequence[str] | None = None) -> argparse.Namespace:
     actions = parser.add_mutually_exclusive_group(required=True)
     actions.add_argument("--write-execution-order", action="store_true")
     actions.add_argument("--validate-execution-order", action="store_true")
+    actions.add_argument("--validate-phase13b-entry", action="store_true")
     actions.add_argument("--print-feasibility-summary", action="store_true")
     actions.add_argument("--new-campaign-id", action="store_true")
     actions.add_argument("--reserve-campaign", action="store_true")
@@ -1768,6 +2691,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         path = ORDER_PATH if args.output is None else args.output
         validate_execution_order(json.loads(path.read_text(encoding="utf-8")))
         print(json.dumps({"status": "PASS", "records": PLANNED_RECORD_COUNT}))
+        return 0
+    if args.validate_phase13b_entry:
+        print(json.dumps(validate_phase13b_entry(), sort_keys=True))
         return 0
     if args.print_feasibility_summary:
         order = json.loads((ORDER_PATH if args.output is None else args.output).read_text())

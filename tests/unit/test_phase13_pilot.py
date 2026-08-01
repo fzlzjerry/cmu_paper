@@ -6,6 +6,7 @@ import copy
 import hashlib
 import json
 from pathlib import Path
+import tempfile
 import unittest
 
 from scripts import phase13_pilot
@@ -59,14 +60,43 @@ class Phase13PilotTests(unittest.TestCase):
         unsupported = [
             item for item in records if not item["adapter_geometry_supported_at_entry"]
         ]
-        self.assertEqual(len(unsupported), 486)
+        self.assertEqual(unsupported, [])
         self.assertTrue(
-            all(item["unsupported_geometry_is_not_reclassified_as_capacity"] for item in records)
+            all(
+                item["unsupported_geometry_is_not_reclassified_as_capacity"]
+                for item in records
+            )
         )
-        self.assertTrue(
-            any(item["status"] == "feasible" for item in unsupported),
-            "unsupported geometry must still receive the real factory attempt",
+
+    def test_phase13b_successors_and_allocation_formulas_are_exact(self) -> None:
+        authority = phase13_pilot.validate_phase13b_entry()
+        self.assertEqual(authority["decision"], "0030")
+        self.assertEqual(authority["clean_retrieval"], "PASS")
+        self.assertEqual(set(authority["families"]), {"turboquant", "kivi", "kvquant"})
+        matrix = json.loads(
+            (ROOT / "docs/evidence/phase13b/cuda-validation.json").read_text(
+                encoding="utf-8"
+            )
         )
+        for record in matrix["records"]:
+            configuration = record["configuration"]
+            batch = record["batch_size"]
+            self.assertEqual(
+                phase13_pilot.cache_allocated_bytes(configuration, batch, 129),
+                record["accounting"]["allocated_bytes"],
+                f"{configuration}/B{batch}",
+            )
+            family = record["method_family"]
+            geometry_key = f"{configuration}/B{batch}"
+            successor = authority["families"][family]
+            self.assertEqual(
+                successor["adapter_config_fingerprints_l128"][geometry_key],
+                record["adapter_config_fingerprint"],
+            )
+            self.assertEqual(
+                successor["cache_layout_fingerprints_l128"][geometry_key],
+                record["cache_layout_fingerprint"],
+            )
 
     def test_cv_uses_sample_standard_deviation_and_frozen_boundary(self) -> None:
         equal = phase13_pilot.point_statistics((1.0, 1.0, 1.0))
@@ -117,6 +147,45 @@ class Phase13PilotTests(unittest.TestCase):
         density = phase13_pilot.knee_density((4096, 8192, 16384), 32768.0)
         self.assertFalse(density["sufficient"])
         self.assertIsNotNone(density["missing_interval"])
+
+    def test_bootstrap_uses_process_medians_and_is_deterministic(self) -> None:
+        summaries = [
+            {
+                "context_label": context,
+                "process_medians_ms": [value, value * 1.001, value * 0.999],
+            }
+            for context, value in (
+                (4096, 1.0),
+                (8192, 1.0),
+                (16384, 1.2),
+                (32768, 1.8),
+                (65536, 3.0),
+            )
+        ]
+        first = phase13_pilot._session_bootstrap_knee(
+            summaries, seed=20260801, draws=100
+        )
+        second = phase13_pilot._session_bootstrap_knee(
+            summaries, seed=20260801, draws=100
+        )
+        self.assertEqual(first, second)
+        self.assertTrue(first["estimable"])
+        self.assertEqual(first["valid_draws"], 100)
+
+    def test_svg_plot_contains_data_and_claim_boundary(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "plot.svg"
+            phase13_pilot._svg_line_plot(
+                path,
+                title="Pilot",
+                y_label="milliseconds",
+                series={"bf16": [(4096.0, 1.0), (8192.0, 2.0)]},
+            )
+            rendered = path.read_text(encoding="utf-8")
+        self.assertIn("<path", rendered)
+        self.assertIn("bf16", rendered)
+        self.assertIn("quality unvalidated", rendered)
+        self.assertNotIn("No eligible", rendered)
 
     def test_governance_and_historical_phase12_evidence_are_unchanged(self) -> None:
         config = json.loads((ROOT / "configs/plans/pilot.yaml").read_text())

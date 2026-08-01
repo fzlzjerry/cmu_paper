@@ -1,4 +1,4 @@
-# Phase 13 — Pilot Scan
+# Phase 13R — Fresh Pilot Scan after Phase 13B
 
 ## Frozen scope and authority
 
@@ -8,9 +8,23 @@ lifecycle, and R2 publisher. All CUDA work runs in Measurement Container
 `sha256:059bc9be89387369d7de9e3e9b26d85b6e9902c41e7dbf002ebc45edd188fb7e`.
 Adapters, CUDA, cache layouts, calibration, fixtures, tolerances, and timing
 boundaries remain unchanged. Phase 14, Full Scan, profiling, and quality work
-are deferred.
+are deferred. The stopped campaign
+`phase13-20260801t080641686374z-009dfd71-14b7e3` remains immutable and is never
+resumed, amended, or used as timing input; Phase 13R always creates a fresh
+append-only campaign ID.
 
-The main IDs and Phase 12 fingerprints are exactly:
+Decision 0030 and the checksum-bound Phase 13B successor reports are the static
+B=1/4/8 execution authority: TurboQuant
+`49799ef89646ec008a530c5180fdcef6cd4af9ca0d5772fe2b01d6e775e3b1c0`, KIVI
+`1e91730ac56af37e03d80edce7979a509d52049428faad89f61e61dc6bd48c51`, and
+KVQuant `e1cee8e1c514f9cf6323b5e710480c1fefab2804e5f4eafe6c473b29f4768481`.
+Their durable root is
+`f1c96eaacbbace1c23b249d1afe8d892aa26c3f6b8d04e07f373a2becafba1fe`.
+Each compressed worker binds the applicable successor report, admitted batch,
+adapter version, current source hashes, and live capacity-specific layout
+fingerprint. B=1 preservation remains part of that authority.
+
+The main IDs and Phase 12 configuration fingerprints are exactly:
 
 | ID | Fingerprint |
 | --- | --- |
@@ -39,8 +53,11 @@ The fixed-L runner defines context as historical prefix length, so only label
 Before CUDA, every record receives a source-formula allocation prediction:
 model weights + adapter-owned cache/workspace + a conservative graph reserve
 scaled from the checksum-bound Phase 12 point. The limit is the frozen
-`0.88 * 101970345984` bytes. Known capacity-infeasible records are preserved
-and not launched; unsupported geometry is never relabeled as a memory failure.
+`0.88 * 101970345984` bytes. The source formulas replay the exact Phase 13B
+B=1/4/8 owned allocations at L=128 before extrapolation. Known
+capacity-infeasible records are preserved and not launched; all ten
+configurations are admitted at B=1/4/8, and geometry rejection is never
+relabeled as a memory failure.
 
 The complete immutable order is
 `docs/plans/phase13-pilot-execution-order.json`, SHA-256
@@ -70,7 +87,9 @@ null.
 
 Stable session observations feed only the preregistered constant, linear, and
 `max(tau,a+sL)` provisional fits. A knee is not forced; fit failures and
-insufficient span remain explicit. Near-knee diagnostics use
+insufficient span remain explicit. A deterministic 1,000-draw bootstrap
+resamples independent process medians within each observed context; it never
+resamples individual decode operations. Near-knee diagnostics use
 `[0.75 L_star,1.25 L_star]`. Same-work ratios require matching BF16 work and
 are labeled Pilot-only, quality-unvalidated, and claim-ineligible.
 

@@ -39,6 +39,22 @@ EXPECTED_PHASE13_PATHS = frozenset(
         "tests/unit/test_phase13_scope.py",
     }
 )
+EXPECTED_PHASE13R_PATHS = frozenset(
+    {
+        "Makefile",
+        "docs/evidence/phase13r/pilot_qc.json",
+        "docs/evidence/phase13r/r2-publication.json",
+        "docs/phase_reports/phase13r-pilot-scan.md",
+        "docs/plans/phase13-pilot-scan.md",
+        "docs/risk_register.md",
+        "docs/status.md",
+        "docs/tasks.md",
+        "scripts/phase13_pilot.py",
+        "scripts/validate_phase2.py",
+        "tests/unit/test_phase13_pilot.py",
+        "tests/unit/test_phase13_scope.py",
+    }
+)
 
 
 class Phase13ScopeTests(unittest.TestCase):
@@ -70,6 +86,33 @@ class Phase13ScopeTests(unittest.TestCase):
         ):
             self.assertFalse(
                 validate_phase2.phase13_path_is_allowed(relative)
+            )
+
+    def test_phase13r_segment_and_allowlist_are_exact(self) -> None:
+        self.assertEqual(
+            validate_phase2.PHASE13R_ENTRY_COMMIT,
+            "3dcd075d987db2452793408f8dd2b8f97f87530b",
+        )
+        self.assertEqual(
+            validate_phase2.PHASE13R_ALLOWED_PATHS,
+            EXPECTED_PHASE13R_PATHS,
+        )
+        for relative in EXPECTED_PHASE13R_PATHS:
+            self.assertTrue(validate_phase2.phase13r_path_is_allowed(relative))
+
+    def test_phase13r_near_miss_and_broad_paths_are_rejected(self) -> None:
+        for relative in (
+            "docs/evidence/phase13r",
+            "docs/evidence/phase13r/pilot_qc.json.backup",
+            "scripts/phase13_pilot.py.backup",
+            "artifacts/phase13",
+            "artifacts/phase13/*",
+            "../scripts/phase13_pilot.py",
+            "/scripts/phase13_pilot.py",
+            "scripts\\phase13_pilot.py",
+        ):
+            self.assertFalse(
+                validate_phase2.phase13r_path_is_allowed(relative)
             )
 
     def test_phase3_backup_root_allowlist_is_exact(self) -> None:
