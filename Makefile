@@ -1589,7 +1589,7 @@ pilot: verify-measurement-container
 			--mount "type=bind,src=$$stage,dst=/home/rockrock/cmu_paper/$$stage_relative" \
 			--env PYTHONDONTWRITEBYTECODE=1 --env PYTHONNOUSERSITE=1 \
 			--env PYTHONPATH=/home/rockrock/cmu_paper/src:/home/rockrock/cmu_paper \
-			--workdir /home/rockrock/cmu_paper --entrypoint /usr/bin/python3 "$$analysis_image" \
+			--workdir /home/rockrock/cmu_paper --entrypoint /opt/kvbench/.venv/bin/python3 "$$analysis_image" \
 			-m scripts.phase13_pilot --materialize-analysis --stage "/home/rockrock/cmu_paper/$$stage_relative")"; \
 		[[ "$$analysis_cid" =~ ^[0-9a-f]{64}$$ ]]; \
 		docker start --attach "$$analysis_cid"; \

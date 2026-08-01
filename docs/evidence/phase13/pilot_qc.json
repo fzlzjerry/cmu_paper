@@ -1,0 +1,43 @@
+{
+  "artifact_pilot_qc_sha256": "1c30c0b98296caa2a4ba352cea0c98fc8f4f894ad2b12f20a362ee5c2c4a94d7",
+  "authorized_container_digest": "sha256:059bc9be89387369d7de9e3e9b26d85b6e9902c41e7dbf002ebc45edd188fb7e",
+  "blocker": {
+    "code": "adapter_static_cache_rejects_batch_greater_than_one",
+    "configuration": "tq_3bit_nc",
+    "exact_error": "TurboQuant cache requires frozen B=1 Llama GQA geometry",
+    "failed_run_id": "phase13-20260801t080641686374z-009dfd71-14b7e3-r0-o000-tq_3bit_nc-b8-l24576",
+    "point": {
+      "batch_size": 8,
+      "context_label": 24576,
+      "graph_mode": "cuda_graph",
+      "historical_context": 24576,
+      "replicate_index": 0,
+      "total_attended_context": 24577
+    }
+  },
+  "campaign_id": "phase13-20260801t080641686374z-009dfd71-14b7e3",
+  "campaign_root_sha256": "be8680d3d94dba35d58a98ac13aa5ae3aa2ba47e767c301418b129060466babc",
+  "execution_git_sha": "009dfd7128a029bdbb941d7d55a4fcc017eff588",
+  "fit_status_counts": {
+    "insufficient_feasible_span": 30
+  },
+  "full_scan": "CLOSED",
+  "maximum_cv": null,
+  "performance_claim_eligible": false,
+  "performance_data_frozen": false,
+  "phase13_status": "BLOCKED",
+  "planned_point_records": 810,
+  "provisional_ratio_records": 243,
+  "provisional_ratios_calculated": 0,
+  "quality_execution": "LOCKED",
+  "r_hbm": null,
+  "schema_version": "kvbench-phase13-external-pilot-qc-1.0.0",
+  "selective_reruns": 0,
+  "stable_points": 0,
+  "status_counts": {
+    "aborted": 791,
+    "capacity_infeasible": 18,
+    "runtime_failed": 1
+  },
+  "unstable_points": 0
+}

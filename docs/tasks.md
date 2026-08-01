@@ -19,7 +19,7 @@ authoritative local task index until issues are created elsewhere.
 | E10 | KVQuant reference lane | E09 | dense/sparse/sink fixtures for 4/3/2-bit and source-faithful Key occupancy cases | complete: Decisions 0021/0023; nine deterministic source-authoritative fixtures; Key counts 0/6/12; non-sink Value fixed-extrema count 12 and sink count 0; native SM120/PTX/JIT and sanitizer PASS; fixture ID `kvqref-a50af6511c314b6394e58a7f81ceefb8`, 113-object root `32cdf465a361dd6695b66ccbea0a462bddc075fd9778d0aa8cdaa3f94e6f63ab` COMPLETE-last and cleanly retrieved; G2-KVQ remains NOT EVALUATED |
 | E11 | KVQuant measurement adapter | E10 | fixed sparse buffers; byte breakdown; graph/path tests; G2-KVQ | complete: Decision 0027 deterministic q4 decode binding; all nine corrected fixtures; exact byte/path/allocation/GQA controls; Graph and sanitizer PASS; bounded grid 9/9; 165-object inner root `0834410509ea7324a41715e0e84e09617bf9b188b10394a234f9a57e804dd1f2` COMPLETE-last and cleanly retrieved; G2-KVQ PASS. Decision 0029 successor current-source re-admission preserves that historical report and the unchanged Adapter/cache/session, replays all nine fixtures, passes a fresh bounded grid 9/9 plus path/allocation/GQA/Graph/sanitizer controls, and binds successor report SHA-256 `9cfed618cee9514a1071392d0a2dca327dcf6acd33d81ac72cc477c7880c09e2` to 212-object inner root `8ea533b9544e99140aec04b4cb9b1ad26f271273206d170e7abefa195c0581aa`, COMPLETE-last and cleanly retrieved; G2-KVQ remains PASS. |
 | E12 | Admission gates | E02-E11 | machine-readable G1-G5 report for every main configuration | complete: Phase 12R campaign `phase12-20260731t062914664948z-6165f78d-c78b9a` completed 30/30 runs across the exact 10 main configurations; G0-G5 PASS; 391-object root `42ab15b6617d072f9b0825b701d1df4519caa110166b8edd48b8359fe8e588e5` is COMPLETE-last and cleanly retrieved; no speedup or comparative claim calculated |
-| E13 | Pilot scan | E12 PASS | immutable randomized samples; QC; provisional knees; pilot gate | ready; not started |
+| E13 | Pilot scan | E12 PASS | immutable randomized samples; QC; provisional knees; pilot gate | blocked at the B>1 static-cache geometry boundary: complete 810-record campaign preserved; first feasible TurboQuant B=8 point rejected by unchanged B=1-only static cache; root `be8680d3d94dba35d58a98ac13aa5ae3aa2ba47e767c301418b129060466babc` COMPLETE-last and cleanly retrieved |
 | E14 | Nsight Systems integration | E13 | nsys-only runs around knees; launch/sync/kernel evidence | pending |
 | E15 | Nsight Compute integration | E13 | current-SM metric discovery; measured traffic; ncu-only runs | pending |
 | E16 | Full scan | pilot gate, M14-GRAPH-AB, E14-E15 | preregistered grid; feasibility/exclusion records; immutable samples | pending |
@@ -73,8 +73,10 @@ task list. E16 remains closed until its evidence is reviewed.
   `8ea533b9544e99140aec04b4cb9b1ad26f271273206d170e7abefa195c0581aa`
   is durably retrieved. E12 is complete: its exact 30-run common-point campaign
   passes G0-G5 and its 391-object root is COMPLETE-last and cleanly retrieved.
-  E13 Pilot is READY but not started; performance profiling, Full Scan, and
-  quality execution remain unopened and require separate authorization.
+  E13 Pilot is BLOCKED at the B>1 static-cache geometry boundary. Its complete design and stopped campaign are
+  immutable and durably retrieved; no timing point completed. Phase 14,
+  performance profiling, Full Scan, and quality execution remain unopened and
+  require separate authorization after the method-geometry blocker is resolved.
 - E12 includes an operator-level MHA control with identical head dimension and
   no GQA repetition.
 - B-011 through B-017 are resolved for native-host BF16 G1. The reporting-only

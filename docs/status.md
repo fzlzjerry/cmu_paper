@@ -1,6 +1,6 @@
 # Project status
 
-Last updated: 2026-07-31
+Last updated: 2026-08-01
 Authoritative contracts: CODEX_WORKFLOW.md for active performance engineering;
 CODEX_POST_PERFORMANCE_QUALITY_VALIDATION.md for post-performance quality
 scheduling; CODEX_QUALITY_EVALUATION_ADDENDUM.md for non-conflicting quality
@@ -8,21 +8,17 @@ requirements; and AGENTS.md. Decision 0005 records precedence.
 
 ## Current state
 
-- Latest completed scoped phase: Phase 12R Unified Admission Gates PASS.
-  Campaign `phase12-20260731t062914664948z-6165f78d-c78b9a` ran the frozen
-  30-point G5 matrix inside the unchanged authorized Measurement Container
-  digest
-  `sha256:059bc9be89387369d7de9e3e9b26d85b6e9902c41e7dbf002ebc45edd188fb7e`.
-  All 10 main configurations completed exactly three independent processes;
-  every CV is at most 3%, and output checksum, kernel path, and allocation
-  agreement pass without fallback or selective rerun. Existing immutable
-  method evidence proves G1-G4. Global G0-G5 are PASS, Pilot is READY but has
-  not started, Full Scan remains CLOSED, quality remains LOCKED, and
-  `PERFORMANCE_DATA_FROZEN` remains absent. The 391-object root
-  `42ab15b6617d072f9b0825b701d1df4519caa110166b8edd48b8359fe8e588e5`
-  was published with `COMPLETE` last and passed one clean retrieval. Official
-  vLLM `v0.25.1` commit `752a3a504485790a2e8491cacbb35c137339ad34`
-  remains pinned.
+- Latest scoped phase: Phase 13 Pilot Scan BLOCKED. Global G0-G5 and all ten
+  Phase 12 admissions remain PASS, but the first preregistered feasible Pilot
+  point (`tq_3bit_nc`, B=8, L=24576) reached the unchanged method factory and
+  was rejected by `TurboQuantStaticCache`, which supports only the frozen B=1
+  Llama GQA geometry. The campaign preserved all 810 planned records as one
+  runtime failure, 18 capacity-infeasible records, and 791 aborted records;
+  no timing point completed and no selective rerun occurred. Root
+  `be8680d3d94dba35d58a98ac13aa5ae3aa2ba47e767c301418b129060466babc`
+  contains 1653 objects, was published with `COMPLETE` last, and passed one
+  clean retrieval. Phase 14 is NOT READY, Full Scan remains CLOSED, quality
+  remains LOCKED, and `PERFORMANCE_DATA_FROZEN` remains absent.
 - Phase 6 status: PASS for method-specific G2-TQ at execution commit
   `0df5bb4d445d48e6cba17e30723733f8de35cb14`. The approved admission driver
   reran all three mandatory Compute Sanitizer probes against that clean HEAD
@@ -750,7 +746,7 @@ reference execution is recorded separately above.
 | Phase 11R-Q23 KVQuant current-source re-admission | PASS | Decision 0029 source and extension binding; unchanged Adapter/cache/session; all nine corrected fixtures; fresh bounded grid 9/9; path/allocation/GQA/Graph/sanitizer PASS; successor MethodAdmissionReport SHA-256 `9cfed618cee9514a1071392d0a2dca327dcf6acd33d81ac72cc477c7880c09e2`; 212-object inner root `8ea533b9544e99140aec04b4cb9b1ad26f271273206d170e7abefa195c0581aa` COMPLETE-last and cleanly retrieved. |
 | G2-KVQ | PASS | All three bit widths satisfy the current Decision 0029 method-specific admission criteria. The successor MethodAdmissionReport SHA-256 is `9cfed618cee9514a1071392d0a2dca327dcf6acd33d81ac72cc477c7880c09e2`; historical Decision 0027 report SHA-256 `59ef5bfc581a68cdc4d21c4c0a840f046e698633f7475f79906063c6e333ae6a` remains unchanged. |
 | G1-G5 unified admission | PASS | Phase 12R campaign `phase12-20260731t062914664948z-6165f78d-c78b9a`; 30/30 completed, all 10 configurations stable, root `42ab15b6617d072f9b0825b701d1df4519caa110166b8edd48b8359fe8e588e5` COMPLETE-last and cleanly retrieved |
-| Pilot/full-scan gates | READY / CLOSED | Pilot may be proposed separately; neither Pilot nor Full Scan has started |
+| Pilot/full-scan gates | BLOCKED / CLOSED | Phase 13 preserved the complete 810-record design and stopped at the unchanged TurboQuant B=1-only cache boundary; Phase 14 is not ready |
 | Post-performance quality validation | LOCKED | Decision 0005; `PERFORMANCE_DATA_FROZEN` absent |
 
 ## Phase 0 acceptance
@@ -772,13 +768,10 @@ Decision 0016 continues to authorize Measurement Lane CUDA only in the exact
 recorded image digest. All earlier failed and passing reports, campaigns,
 runs, fixtures, and publication roots remain unchanged.
 
-Phase 12R is complete. Its immutable 30-run campaign establishes PASS for
-global G0-G5 across the exact 10 main configurations at the preregistered
-common point. The final 391-object root
-`42ab15b6617d072f9b0825b701d1df4519caa110166b8edd48b8359fe8e588e5`
-is COMPLETE-last and cleanly retrieved from
-`r2://kvbench-artifacts/kvbench/sha256/42ab15b6617d072f9b0825b701d1df4519caa110166b8edd48b8359fe8e588e5/`.
-All adapters, CUDA sources, cache layouts, fixtures, calibration, and
-method-specific evidence remain unchanged. Pilot is READY and may be proposed
-only as a separate Phase 13 task; Pilot, profiling, fitting, figures, Full Scan,
-performance claims, and quality execution have not started.
+Phase 13 is BLOCKED at the recorded B>1 static-cache geometry boundary. Preserve campaign
+`phase13-20260801t080641686374z-009dfd71-14b7e3` and its R2 root
+`be8680d3d94dba35d58a98ac13aa5ae3aa2ba47e767c301418b129060466babc`.
+The minimum next action is a separately authorized method-geometry remediation
+or an explicit Pilot-contract revision followed by a completely new campaign.
+Do not selectively resume the stopped campaign. Phase 14, profiling, Full Scan,
+performance claims, and quality execution remain closed.
