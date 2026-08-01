@@ -962,17 +962,22 @@ def _static_execution_path() -> tuple[Phase11ExecutionPathEvidence, ...]:
         }
         getattr_templates: set[str] = set()
         for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            getattr_call = (
+                node.func
+                if isinstance(node.func, ast.Call)
+                else node
+            )
             if (
-                not isinstance(node, ast.Call)
-                or not isinstance(node.func, ast.Call)
-                or not isinstance(node.func.func, ast.Name)
-                or node.func.func.id != "getattr"
-                or len(node.func.args) != 2
-                or not isinstance(node.func.args[1], ast.JoinedStr)
+                not isinstance(getattr_call.func, ast.Name)
+                or getattr_call.func.id != "getattr"
+                or len(getattr_call.args) != 2
+                or not isinstance(getattr_call.args[1], ast.JoinedStr)
             ):
                 continue
             parts: list[str] = []
-            for value in node.func.args[1].values:
+            for value in getattr_call.args[1].values:
                 if isinstance(value, ast.Constant) and isinstance(
                     value.value,
                     str,
@@ -2350,7 +2355,7 @@ def _validate_authority_environment_and_gqa(
         set(path_payload) != expected_path_keys
         or path_payload.get("schema_version")
         != "kvbench-phase11-execution-path-set-1.0.0"
-        or path_payload.get("adapter_version") != KVQUANT_ADAPTER_VERSION
+        or path_payload.get("adapter_version") != manifest.adapter_version
     ):
         raise Phase11KVQuantDriverError(
             "Phase 11 execution-path wrapper differs"

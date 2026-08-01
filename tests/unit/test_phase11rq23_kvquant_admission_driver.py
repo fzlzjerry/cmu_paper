@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import inspect
 import runpy
 import shutil
 from pathlib import Path
@@ -113,6 +114,29 @@ class Phase11RQ23AdmissionDriverTests(unittest.TestCase):
         self.assertIn("q23_summary", checks["compute_sanitizer"])
         self.assertIn("q23_binding", checks["execution_path"])
         self.assertIn("q23_checksum_ledger", checks["immutable_checksums"])
+
+    def test_historical_wrapper_version_is_manifest_bound(self) -> None:
+        source = inspect.getsource(
+            admission._validate_authority_environment_and_gqa
+        )
+        self.assertIn(
+            'path_payload.get("adapter_version") != manifest.adapter_version',
+            source,
+        )
+        self.assertNotIn(
+            'path_payload.get("adapter_version") != KVQUANT_ADAPTER_VERSION',
+            source,
+        )
+
+    def test_static_path_audit_accepts_exact_assigned_getattr_binding(
+        self,
+    ) -> None:
+        admission._activate_authority_profile("decision0029")
+        evidence = admission._static_execution_path()
+        self.assertEqual(
+            tuple(item.configuration for item in evidence),
+            admission.PHASE11_CONFIGURATIONS,
+        )
 
     def test_legacy_profile_remains_default_and_restorable(self) -> None:
         admission._activate_authority_profile("decision0029")
