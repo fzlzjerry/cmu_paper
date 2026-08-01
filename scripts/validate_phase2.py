@@ -1034,6 +1034,7 @@ PHASE13_ALLOWED_PATHS = frozenset(
         "docs/evidence/phase13/r2-publication.json",
         "docs/phase_reports/phase13-pilot-scan.md",
         "docs/plans/phase13-pilot-scan.md",
+        "docs/plans/phase13-pilot-execution-order.json",
         "docs/risk_register.md",
         "docs/status.md",
         "docs/tasks.md",
