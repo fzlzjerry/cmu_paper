@@ -57,7 +57,9 @@ EAGER_ALLOCATION_AUTHORITY = {
         ),
         "b1_event_count": 874,
         "b1_event_bytes": 9_637_132,
-        "batch_invariant_event_bytes": 768,
+        # Caller-owned KVQuant kernels add no allocator events; the observed
+        # outer-model event bytes are entirely batch-shaped.
+        "batch_invariant_event_bytes": 0,
     },
 }
 

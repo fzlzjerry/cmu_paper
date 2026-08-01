@@ -53,6 +53,7 @@ class Phase13BStaticBatchGeometryTests(unittest.TestCase):
     def test_eager_allocation_scaling_is_family_bound(self) -> None:
         turboquant = _eager_control(family="turboquant", batch=4)
         kivi = _eager_control(family="kivi", batch=4)
+        kvquant = _eager_control(family="kvquant", batch=4)
         self.assertEqual(turboquant["batch_invariant_event_bytes"], 96)
         self.assertEqual(
             turboquant["expected_allocation_event_bytes"], 39_210_128
@@ -60,6 +61,10 @@ class Phase13BStaticBatchGeometryTests(unittest.TestCase):
         self.assertEqual(kivi["batch_invariant_event_bytes"], 0)
         self.assertEqual(
             kivi["expected_allocation_event_bytes"], 38_548_528
+        )
+        self.assertEqual(kvquant["batch_invariant_event_bytes"], 0)
+        self.assertEqual(
+            kvquant["expected_allocation_event_bytes"], 38_548_528
         )
 
     def test_turboquant_bank_control_detects_one_bank_tamper(self) -> None:
