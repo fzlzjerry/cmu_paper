@@ -29,6 +29,33 @@ from scripts import phase13_pilot as phase13
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 MATRIX_SCHEMA = "kvbench-phase13b-cuda-validation-1.0.0"
 _SHA256_RE = re.compile(r"[0-9a-f]{64}")
+_UNSCALED_COMMON_EAGER_BYTES = 768
+EAGER_ALLOCATION_AUTHORITY = {
+    "turboquant": {
+        "report": "docs/evidence/phase6/turboquant-method-admission.json",
+        "report_sha256": (
+            "388e8107b649a9093491699357c8b1ad1d8e12c8c75378bce658f8a09bf9ab2a"
+        ),
+        "b1_event_count": 898,
+        "b1_event_bytes": 9_802_604,
+    },
+    "kivi": {
+        "report": "docs/evidence/phase8/kivi-method-admission.json",
+        "report_sha256": (
+            "3a4b63b9da0eab12db9a916ebdc1cffd788ea6f93678d87964a8332ae7cec83a"
+        ),
+        "b1_event_count": 874,
+        "b1_event_bytes": 9_637_132,
+    },
+    "kvquant": {
+        "report": "docs/evidence/phase11rq23/kvquant-method-admission.json",
+        "report_sha256": (
+            "9cfed618cee9514a1071392d0a2dca327dcf6acd33d81ac72cc477c7880c09e2"
+        ),
+        "b1_event_count": 874,
+        "b1_event_bytes": 9_637_132,
+    },
+}
 
 
 class Phase13BBatchAdmissionError(RuntimeError):
@@ -97,18 +124,41 @@ def _allocation_passed(record: Any) -> bool:
     )
 
 
+def _eager_control(*, family: str, batch: int) -> dict[str, Any]:
+    """Scale only the batch-dependent bytes in an admitted B=1 event set."""
+
+    authority = EAGER_ALLOCATION_AUTHORITY[family]
+    b1_bytes = int(authority["b1_event_bytes"])
+    expected_bytes = _UNSCALED_COMMON_EAGER_BYTES + batch * (
+        b1_bytes - _UNSCALED_COMMON_EAGER_BYTES
+    )
+    count = int(authority["b1_event_count"])
+    return {
+        **authority,
+        "batch_size": batch,
+        "expected_allocation_event_count": count,
+        "expected_allocation_event_bytes": expected_bytes,
+        "expected_event_counts": {
+            "alloc": count,
+            "free_completed": count,
+            "free_requested": count,
+        },
+        "formula": "fixed_768_plus_batch_times_admitted_b1_remainder",
+    }
+
+
 def _eager_matches_outer_control(observed: Any, control: Mapping[str, Any]) -> bool:
-    """Require the compressed path to add no CUDA storage events."""
+    """Require exact admitted event topology with no persistent growth."""
 
     return bool(
         observed.audit_available
         and observed.allocated_after == observed.allocated_before
         and observed.reserved_after == observed.reserved_before
         and observed.allocation_event_count
-        == control["allocation_event_count"]
+        == control["expected_allocation_event_count"]
         and observed.allocation_event_bytes
-        == control["allocation_event_bytes"]
-        and observed.event_counts == control["event_counts"]
+        == control["expected_allocation_event_bytes"]
+        and observed.event_counts == control["expected_event_counts"]
     )
 
 
@@ -165,7 +215,12 @@ def _run_cuda_matrix(*, output: Path, git_sha: str) -> dict[str, Any]:
     )
     records: list[dict[str, Any]] = []
     b1_outputs: dict[str, Any] = {}
-    outer_allocation_controls: dict[int, dict[str, Any]] = {}
+    for authority in EAGER_ALLOCATION_AUTHORITY.values():
+        report = REPOSITORY_ROOT / str(authority["report"])
+        if _sha256_file(report) != authority["report_sha256"]:
+            raise Phase13BBatchAdmissionError(
+                "historical eager-allocation authority differs"
+            )
     source_hashes = {
         relative: _sha256_file(REPOSITORY_ROOT / relative)
         for relative in (
@@ -178,79 +233,6 @@ def _run_cuda_matrix(*, output: Path, git_sha: str) -> dict[str, Any]:
             "src/kvbench/runtime/kvquant_session.py",
         )
     }
-
-    for batch in PHASE13B_BATCH_SIZES:
-        phase13._patch_phase12_point_globals(
-            batch=batch,
-            historical=PHASE13B_CONTEXT_LENGTH,
-        )
-        control_operation = phase13.Phase13OperationKey.create(
-            "bf16",
-            batch,
-            PHASE13B_CONTEXT_LENGTH,
-        )
-        control_prefix = base_prefix.expand(batch, -1).clone()
-        control_decode = base_decode.expand(batch, -1).clone()
-        with torch.inference_mode(), forced_flash_execution():
-            control_session = phase12._build_phase12_session(
-                loaded=loaded,
-                operation_key=control_operation,
-                prefix_input_ids=control_prefix,
-                decode_input_ids=control_decode,
-            )
-            if control_session.graph is None or control_session._fixed_operation is None:
-                raise Phase13BBatchAdmissionError(
-                    "BF16 outer allocation control is unavailable"
-                )
-            control_audit = audit_cuda_allocations(
-                control_session._fixed_operation,
-                device=control_session.cache_device,
-            )
-        control_record = control_audit.to_dict()
-        if (
-            not control_audit.audit_available
-            or control_audit.allocated_after != control_audit.allocated_before
-            or control_audit.reserved_after != control_audit.reserved_before
-        ):
-            failure_payload = {
-                "schema_version": MATRIX_SCHEMA,
-                "status": "FAIL",
-                "created_at_utc": _utc_now(),
-                "creation_git_sha": git_sha,
-                "authorized_container_digest": (
-                    PHASE13B_AUTHORIZED_CONTAINER_DIGEST
-                ),
-                "container_attestation": attestation,
-                "decision": "0030",
-                "configurations": list(PHASE13B_CONFIGURATIONS),
-                "batch_sizes": list(PHASE13B_BATCH_SIZES),
-                "context_length": PHASE13B_CONTEXT_LENGTH,
-                "point_count": 0,
-                "source_hashes": source_hashes,
-                "records": [],
-                "outer_allocation_controls": {
-                    **outer_allocation_controls,
-                    batch: control_record,
-                },
-                "failed_point": {
-                    "configuration": "bf16_outer_allocation_control",
-                    "batch_size": batch,
-                    "failed_checks": [
-                        "audit_available_or_persistent_delta"
-                    ],
-                },
-                "cuda_source_changed": False,
-                "timing_collected": False,
-                "performance_claim_eligible": False,
-            }
-            _write_exclusive(output, failure_payload)
-            raise Phase13BBatchAdmissionError(
-                f"BF16 outer allocation control failed for B={batch}"
-            )
-        outer_allocation_controls[batch] = control_record
-        control_session.graph.graph.reset()
-        del control_decode, control_prefix, control_session
-        torch.cuda.empty_cache()
 
     for configuration in PHASE13B_CONFIGURATIONS:
         for batch in PHASE13B_BATCH_SIZES:
@@ -276,6 +258,10 @@ def _run_cuda_matrix(*, output: Path, git_sha: str) -> dict[str, Any]:
                     raise Phase13BBatchAdmissionError(
                         "fixed eager/graph operations are unavailable"
                     )
+                family = phase12._method_family(configuration)
+                eager_control = _eager_control(family=family, batch=batch)
+                session._fixed_operation()
+                torch.cuda.synchronize(device=device)
                 pointers_before = phase12._phase12_session_pointers(session)
                 history_before = session.current_historical_prefix_sha256()
                 eager_allocation = audit_cuda_allocations(
@@ -314,7 +300,6 @@ def _run_cuda_matrix(*, output: Path, git_sha: str) -> dict[str, Any]:
                 )
                 torch.cuda.synchronize(device=device)
 
-            family = phase12._method_family(configuration)
             atol, rtol = _frozen_tolerance(family)
             eager_graph = compare_tensors_untimed(
                 graph_output,
@@ -374,7 +359,7 @@ def _run_cuda_matrix(*, output: Path, git_sha: str) -> dict[str, Any]:
             )
             eager_passed = _eager_matches_outer_control(
                 eager_allocation,
-                outer_allocation_controls[batch],
+                eager_control,
             )
             graph_alloc_passed = _allocation_passed(graph_allocation)
             graph_passed = bool(
@@ -442,7 +427,7 @@ def _run_cuda_matrix(*, output: Path, git_sha: str) -> dict[str, Any]:
                 "eager_graph_comparison": eager_graph.to_dict(),
                 "non_default_stream_comparison": stream_comparison.to_dict(),
                 "eager_allocation": eager_allocation.to_dict(),
-                "eager_outer_control": outer_allocation_controls[batch],
+                "eager_outer_control": eager_control,
                 "graph_allocation": graph_allocation.to_dict(),
                 "graph": dict(session.graph_evidence or {}),
                 "gqa": geometry,
@@ -491,7 +476,7 @@ def _run_cuda_matrix(*, output: Path, git_sha: str) -> dict[str, Any]:
                     "point_count": len(records),
                     "source_hashes": source_hashes,
                     "records": records,
-                    "outer_allocation_controls": outer_allocation_controls,
+                    "eager_allocation_authority": EAGER_ALLOCATION_AUTHORITY,
                     "failed_point": {
                         "configuration": configuration,
                         "batch_size": batch,
@@ -526,7 +511,7 @@ def _run_cuda_matrix(*, output: Path, git_sha: str) -> dict[str, Any]:
         "point_count": len(records),
         "source_hashes": source_hashes,
         "records": records,
-        "outer_allocation_controls": outer_allocation_controls,
+        "eager_allocation_authority": EAGER_ALLOCATION_AUTHORITY,
         "cuda_source_changed": False,
         "timing_collected": False,
         "performance_claim_eligible": False,
