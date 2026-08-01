@@ -24,7 +24,10 @@ from kvbench.schema.phase13b import (
     PHASE13B_AUTHORIZED_CONTAINER_DIGEST,
     PHASE13B_BATCH_SIZES,
     PHASE13B_CONFIGURATIONS,
+    PHASE13B_SUCCESSOR_CHECK_IDS,
+    PHASE13B_SUCCESSOR_EVIDENCE_IDS,
     Phase13BBatchAdmissionManifest,
+    Phase13BMethodAdmissionReport,
 )
 from scripts.phase13b_compressed_batch_admission import (
     MATRIX_SCHEMA,
@@ -249,6 +252,62 @@ class Phase13BStaticBatchGeometryTests(unittest.TestCase):
             artifact.write_text(json.dumps(payload), encoding="utf-8")
             with self.assertRaises(Phase13BBatchAdmissionError):
                 validate_cuda_matrix(artifact)
+
+    def test_successor_report_binds_every_family_geometry(self) -> None:
+        configurations = ("tq_4bit_nc", "tq_k3v4_nc", "tq_3bit_nc")
+        geometry_keys = {
+            f"{configuration}/B{batch}"
+            for configuration in configurations
+            for batch in PHASE13B_BATCH_SIZES
+        }
+        payload = {
+            "schema_version": Phase13BMethodAdmissionReport.SCHEMA_VERSION,
+            "created_at_utc": "2026-08-01T00:00:00Z",
+            "status": "PASS",
+            "method_family": "turboquant",
+            "configurations": list(configurations),
+            "batch_sizes": list(PHASE13B_BATCH_SIZES),
+            "authorized_container_digest": PHASE13B_AUTHORIZED_CONTAINER_DIGEST,
+            "decision_id": "0030",
+            "creation_git_sha": "1" * 40,
+            "historical_report_path": (
+                "docs/evidence/phase6/turboquant-method-admission.json"
+            ),
+            "historical_report_sha256": "2" * 64,
+            "source_hashes": {
+                "src/kvbench/adapters/turboquant.py": "3" * 64,
+                "src/kvbench/runtime/turboquant_cache.py": "4" * 64,
+            },
+            "adapter_versions": {
+                configuration: "phase13b" for configuration in configurations
+            },
+            "adapter_config_fingerprints": {
+                key: "5" * 64 for key in geometry_keys
+            },
+            "cache_layout_fingerprints": {
+                key: "6" * 64 for key in geometry_keys
+            },
+            "checks": {
+                check_id: "PASS" for check_id in PHASE13B_SUCCESSOR_CHECK_IDS
+            },
+            "evidence_references": {
+                evidence_id: "7" * 64
+                for evidence_id in PHASE13B_SUCCESSOR_EVIDENCE_IDS
+            },
+            "b1_numerical_preserved": True,
+            "cuda_source_changed": False,
+            "timing_collected": False,
+            "performance_claim_eligible": False,
+            "quality_execution": "LOCKED",
+            "full_scan_state": "CLOSED",
+            "r_hbm": None,
+            "blockers": [],
+        }
+        parsed = Phase13BMethodAdmissionReport.from_dict(payload)
+        self.assertEqual(parsed.method_family, "turboquant")
+        payload["cache_layout_fingerprints"].pop("tq_3bit_nc/B8")
+        with self.assertRaises(Exception):
+            Phase13BMethodAdmissionReport.from_dict(payload)
 
     def test_phase13b_uses_existing_complete_last_lifecycle(self) -> None:
         created_at = "2026-08-01T00:00:00Z"
