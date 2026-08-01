@@ -194,7 +194,8 @@ def _run(configuration: str, batch: int) -> dict[str, Any]:
     position_dtype = torch.int32 if family == "turboquant" else torch.int64
     positions = torch.arange(capacity, dtype=position_dtype, device=device)
     method = adapter_class(_runtime_context(configuration), adapter_configuration)
-    method.prepare_runtime()
+    if hasattr(method, "prepare_runtime"):
+        method.prepare_runtime()
     cache = method.allocate(batch_size=batch, capacity=capacity, device=device)
     if family == "kvquant":
         method.initialize_cache_untimed(cache)
