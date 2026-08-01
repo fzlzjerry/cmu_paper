@@ -1087,6 +1087,7 @@ PHASE13B_ALLOWED_PATHS = frozenset(
         "tests/unit/test_phase13_scope.py",
         "tests/unit/test_phase13b_batch_geometry.py",
         "tests/unit/test_phase13b_scope.py",
+        "tests/unit/test_phase7_kivi_b019_remediation.py",
         "tests/unit/test_phase7_kivi_source_audit.py",
     }
 )

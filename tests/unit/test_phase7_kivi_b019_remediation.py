@@ -10,6 +10,10 @@ import unittest
 
 from scripts.validate_phase2 import PHASE8_ENTRY_COMMIT
 from scripts.validate_kivi_b019_patch import _run_git, validate
+from scripts.phase12_unified_admission import (
+    PHASE12_TURBOQUANT_EXECUTION_COMMIT,
+    _validate_phase13b_turboquant_successor_transition,
+)
 
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
@@ -202,7 +206,6 @@ class Phase7KiviB019RemediationTests(unittest.TestCase):
         protected = (
             "docker/measurement.Dockerfile",
             "reference/turboquant",
-            "src/kvbench/adapters/turboquant.py",
             "src/kvbench/runtime/cuda_graph.py",
             "src/kvbench/runtime/fixed_l_runner.py",
             "src/kvbench/runtime/growing_context_runner.py",
@@ -227,6 +230,25 @@ class Phase7KiviB019RemediationTests(unittest.TestCase):
             stderr=subprocess.DEVNULL,
         )
         self.assertEqual(result.returncode, 0)
+
+        # TurboQuant remained byte-identical through its original admission;
+        # the only later source transition is the checksum-bound Decision 0030
+        # static-batch successor admitted by Phase 13B.
+        self.assertEqual(
+            _file_at_commit(
+                B019_ENTRY_COMMIT,
+                "src/kvbench/adapters/turboquant.py",
+            ),
+            _file_at_commit(
+                PHASE12_TURBOQUANT_EXECUTION_COMMIT,
+                "src/kvbench/adapters/turboquant.py",
+            ),
+        )
+        authority = _validate_phase13b_turboquant_successor_transition(
+            REPOSITORY_ROOT,
+            execution_commit=PHASE12_TURBOQUANT_EXECUTION_COMMIT,
+        )
+        self.assertEqual(authority["decision"], "0030")
 
     def test_phase8_entry_kivi_measurement_adapter_was_fail_closed(
         self,
