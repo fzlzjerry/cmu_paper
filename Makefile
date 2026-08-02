@@ -117,6 +117,7 @@ override PHASE13_ANALYSIS_IMAGE_CONFIG_DIGEST := sha256:127759078f2c70c9e795c7a1
 PHASE13_CAMPAIGN_ARTIFACT ?=
 PHASE13_HOST_PYTHON := $(PHASE12_HOST_PYTHON)
 PHASE13F_ARTIFACT ?=
+PHASE13T_ARTIFACT ?=
 KIVI_REFERENCE_IMAGE := kvbench-reference-kivi:phase7
 KIVI_REFERENCE_PARENT_CONFIG := sha256:059bc9be89387369d7de9e3e9b26d85b6e9902c41e7dbf002ebc45edd188fb7e
 KIVI_REFERENCE_IMAGE_MANIFEST := sha256:f27e4cdef6bd15f18ab76b1fe0e4413ede004b42538c74e3dd90d04172406f75
@@ -129,6 +130,7 @@ KIVI_REFERENCE_BUILD_REVISION := 3417ea0e7f322369eed21bb787a9a9a19b0a69bd
 .PHONY: phase3-package-lock-check test-cuda test-graph test-allocation
 .PHONY: smoke pilot full-scan profile-subset
 .PHONY: test-phase13f remediate-phase13-feasibility validate-phase13-feasibility
+.PHONY: test-phase13t validate-phase13-timeout
 .PHONY: fit figures reproduce
 .PHONY: reference-turboquant validate-reference-turboquant
 .PHONY: measurement-container observe-measurement-container-lock
@@ -1688,6 +1690,28 @@ validate-phase13-feasibility:
 		test -d "$$artifact" && test ! -L "$(PHASE13F_ARTIFACT)"; \
 		test "$$(dirname "$$artifact")" = "$$repository_root/artifacts/phase13f"; \
 		$(PHASE13_HOST_PYTHON) -m scripts.phase13f_feasibility validate "$$artifact"
+
+test-phase13t:
+	@$(MAKE) MEASUREMENT_IMAGE_CONFIG_DIGEST="$(PHASE13_AUTHORIZED_IMAGE_CONFIG_DIGEST)" verify-measurement-container
+	@docker run --rm --read-only --network=none \
+		--tmpfs /tmp:rw,nosuid,nodev,size=512m \
+		--mount "type=bind,src=$(CURDIR),dst=/workspace,readonly" \
+		--mount "type=bind,src=$(CURDIR)/artifacts/phase13,dst=/workspace/artifacts/phase13,readonly" \
+		--env PYTHONDONTWRITEBYTECODE=1 --env PYTHONNOUSERSITE=1 \
+		--env PYTHONPATH=/opt/kvbench/.phase3/site-packages:/workspace/src:/workspace \
+		--env KVBENCH_AUTHORIZED_IMAGE_DIGEST="$(PHASE13_AUTHORIZED_IMAGE_CONFIG_DIGEST)" \
+		--env KVBENCH_EXECUTION_ENVIRONMENT=measurement_container \
+		--workdir /workspace --entrypoint /opt/kvbench/.venv/bin/python3 \
+		"$(PHASE13_AUTHORIZED_IMAGE_CONFIG_DIGEST)" \
+		-m unittest tests.unit.test_phase13t_timeout tests.unit.test_phase8_process_supervision -v
+
+validate-phase13-timeout:
+	@test -n "$(PHASE13T_ARTIFACT)" || { echo '{"status":"BLOCKED","reason":"PHASE13T_ARTIFACT_required"}' >&2; exit 2; }
+	@artifact="$$(realpath -e "$(PHASE13T_ARTIFACT)")"; \
+		repository_root="$$(git rev-parse --show-toplevel)"; \
+		test -d "$$artifact" && test ! -L "$(PHASE13T_ARTIFACT)"; \
+		test "$$(dirname "$$artifact")" = "$$repository_root/artifacts/phase13t"; \
+		$(PHASE13_HOST_PYTHON) -m scripts.phase13t_timeout validate "$$artifact"
 
 full-scan:
 	@$(PHASE2_CLI) run --plan configs/plans/full_scan.yaml --dry-run

@@ -89,6 +89,29 @@ EXPECTED_PHASE13R2_PATHS = frozenset(
         "tests/unit/test_phase13_scope.py",
     }
 )
+EXPECTED_PHASE13T_PATHS = frozenset(
+    {
+        "Makefile",
+        "docs/blockers.md",
+        "docs/decisions/0032-phase13-stage-aware-supervision.md",
+        "docs/evidence/phase13t/r2-publication.json",
+        "docs/evidence/phase13t/timeout-validation.json",
+        "docs/evidence/phase13tr/pilot_qc.json",
+        "docs/evidence/phase13tr/r2-publication.json",
+        "docs/phase_reports/phase13t-supervisor-timeout.md",
+        "docs/phase_reports/phase13tr-pilot-scan.md",
+        "docs/plans/phase13t-supervisor-timeout.md",
+        "docs/risk_register.md",
+        "docs/status.md",
+        "docs/tasks.md",
+        "scripts/phase13_pilot.py",
+        "scripts/phase13t_timeout.py",
+        "scripts/validate_phase2.py",
+        "src/kvbench/runtime/process_supervision.py",
+        "tests/unit/test_phase13_scope.py",
+        "tests/unit/test_phase13t_timeout.py",
+    }
+)
 
 
 class Phase13ScopeTests(unittest.TestCase):
@@ -230,6 +253,41 @@ class Phase13ScopeTests(unittest.TestCase):
         ):
             self.assertFalse(
                 validate_phase2.phase13r2_path_is_allowed(relative)
+            )
+
+    def test_phase13t_segment_and_allowlist_are_exact(self) -> None:
+        self.assertEqual(
+            validate_phase2.PHASE13T_ENTRY_COMMIT,
+            "fb6a1fedc0cc01abbfbd974005f7567fbd291fd7",
+        )
+        self.assertEqual(
+            validate_phase2.PHASE13T_ALLOWED_PATHS,
+            EXPECTED_PHASE13T_PATHS,
+        )
+        self.assertEqual(
+            validate_phase2.PHASE13T_APPROVED_ARTIFACT_ROOT_NAMES,
+            frozenset({"phase13t"}),
+        )
+        for relative in EXPECTED_PHASE13T_PATHS:
+            self.assertTrue(
+                validate_phase2.phase13t_path_is_allowed(relative)
+            )
+
+    def test_phase13t_near_miss_and_broad_paths_are_rejected(self) -> None:
+        for relative in (
+            "docs/evidence/phase13t",
+            "docs/evidence/phase13t/timeout-validation.json.backup",
+            "docs/evidence/phase13tr",
+            "scripts/phase13t_timeout.py.backup",
+            "artifacts/phase13",
+            "artifacts/phase13t",
+            "artifacts/phase13t/*",
+            "../scripts/phase13_pilot.py",
+            "/src/kvbench/runtime/process_supervision.py",
+            "docs\\phase_reports\\phase13tr-pilot-scan.md",
+        ):
+            self.assertFalse(
+                validate_phase2.phase13t_path_is_allowed(relative)
             )
 
     def test_phase3_backup_root_allowlist_is_exact(self) -> None:

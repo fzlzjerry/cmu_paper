@@ -20,7 +20,8 @@ import re
 import signal
 import stat
 import subprocess
-from typing import ClassVar, Mapping, Sequence
+import time
+from typing import Callable, ClassVar, Mapping, Sequence
 
 
 _SHA256 = re.compile(r"[0-9a-f]{64}\Z")
@@ -368,6 +369,202 @@ class SupervisedCommandResult:
         }
 
 
+@dataclass(frozen=True)
+class StageSupervisedCommandResult:
+    """Immutable direct-child result with bounded stage supervision."""
+
+    SCHEMA_VERSION: ClassVar[str] = (
+        "kvbench-stage-supervised-command-result-1.0.0"
+    )
+
+    command: SupervisedCommandResult
+    stage_timeouts: tuple[tuple[str, float], ...]
+    stage_observations: tuple[tuple[int, str, str, int, str], ...]
+    timeout_stage: str | None
+    timeout_stage_elapsed_seconds: float | None
+    observer_poll_seconds: float
+
+    def __post_init__(self) -> None:
+        if not self.stage_timeouts:
+            raise ProcessSupervisionError("stage timeout contract is empty")
+        names: set[str] = set()
+        for name, seconds in self.stage_timeouts:
+            _require_identifier(name, "supervised stage")
+            if name in names:
+                raise ProcessSupervisionError("supervised stage is duplicated")
+            names.add(name)
+            if (
+                not isinstance(seconds, (int, float))
+                or isinstance(seconds, bool)
+                or not math.isfinite(float(seconds))
+                or seconds <= 0
+            ):
+                raise ProcessSupervisionError(
+                    "supervised stage timeout must be finite and positive"
+                )
+        previous_sequence = 0
+        started: set[str] = set()
+        completed: set[str] = set()
+        for sequence, stage, state, monotonic_ns, event_sha256 in self.stage_observations:
+            if sequence != previous_sequence + 1:
+                raise ProcessSupervisionError(
+                    "supervised stage observation sequence differs"
+                )
+            previous_sequence = sequence
+            _require_identifier(stage, "supervised observed stage")
+            if stage not in names or state not in {"started", "completed"}:
+                raise ProcessSupervisionError(
+                    "supervised stage observation is outside the contract"
+                )
+            _require_nonnegative_integer(monotonic_ns, "stage monotonic time")
+            _require_sha256(event_sha256, "stage event")
+            if state == "started":
+                if stage in started or stage in completed:
+                    raise ProcessSupervisionError(
+                        "supervised stage starts more than once"
+                    )
+                started.add(stage)
+            else:
+                if stage not in started or stage in completed:
+                    raise ProcessSupervisionError(
+                        "supervised stage completion is out of order"
+                    )
+                completed.add(stage)
+        if self.timeout_stage is None:
+            if self.timeout_stage_elapsed_seconds is not None:
+                raise ProcessSupervisionError(
+                    "stage timeout duration exists without a stage"
+                )
+        else:
+            if self.timeout_stage not in names or not self.command.timed_out:
+                raise ProcessSupervisionError(
+                    "stage timeout identity is inconsistent"
+                )
+            if (
+                not isinstance(self.timeout_stage_elapsed_seconds, (int, float))
+                or isinstance(self.timeout_stage_elapsed_seconds, bool)
+                or not math.isfinite(float(self.timeout_stage_elapsed_seconds))
+                or self.timeout_stage_elapsed_seconds <= 0
+            ):
+                raise ProcessSupervisionError(
+                    "stage timeout duration must be finite and positive"
+                )
+        if self.command.timed_out != (self.timeout_stage is not None):
+            raise ProcessSupervisionError(
+                "command and stage timeout verdicts differ"
+            )
+        if (
+            not isinstance(self.observer_poll_seconds, (int, float))
+            or isinstance(self.observer_poll_seconds, bool)
+            or not math.isfinite(float(self.observer_poll_seconds))
+            or self.observer_poll_seconds <= 0
+        ):
+            raise ProcessSupervisionError(
+                "stage observer poll interval must be finite and positive"
+            )
+
+    @property
+    def returncode(self) -> int:
+        return self.command.returncode
+
+    @property
+    def timed_out(self) -> bool:
+        return self.command.timed_out
+
+    @property
+    def stdout(self) -> bytes:
+        return self.command.stdout
+
+    @property
+    def stderr(self) -> bytes:
+        return self.command.stderr
+
+    def to_dict(self) -> dict[str, object]:
+        payload = self.command.to_dict()
+        payload["schema_version"] = self.SCHEMA_VERSION
+        payload["stage_supervision"] = {
+            "timeouts_seconds": {
+                name: float(seconds) for name, seconds in self.stage_timeouts
+            },
+            "observer_poll_seconds": float(self.observer_poll_seconds),
+            "observations": [
+                {
+                    "sequence": sequence,
+                    "stage": stage,
+                    "state": state,
+                    "monotonic_ns": monotonic_ns,
+                    "event_sha256": event_sha256,
+                }
+                for sequence, stage, state, monotonic_ns, event_sha256
+                in self.stage_observations
+            ],
+            "timeout_stage": self.timeout_stage,
+            "timeout_stage_elapsed_seconds": (
+                float(self.timeout_stage_elapsed_seconds)
+                if self.timeout_stage_elapsed_seconds is not None
+                else None
+            ),
+            "no_heartbeat_extension": True,
+        }
+        return payload
+
+
+def _normalize_stage_observations(
+    raw: Sequence[Mapping[str, object]],
+    *,
+    allowed_stages: frozenset[str],
+) -> tuple[tuple[int, str, str, int, str], ...]:
+    if isinstance(raw, (str, bytes)):
+        raise ProcessSupervisionError("stage observations must be a sequence")
+    normalized: list[tuple[int, str, str, int, str]] = []
+    started: set[str] = set()
+    completed: set[str] = set()
+    for item in raw:
+        if not isinstance(item, Mapping) or set(item) != {
+            "sequence",
+            "stage",
+            "state",
+            "monotonic_ns",
+            "event_sha256",
+        }:
+            raise ProcessSupervisionError("stage observation fields differ")
+        sequence = item.get("sequence")
+        stage = item.get("stage")
+        state = item.get("state")
+        monotonic_ns = item.get("monotonic_ns")
+        event_sha256 = item.get("event_sha256")
+        if (
+            not isinstance(sequence, int)
+            or isinstance(sequence, bool)
+            or sequence != len(normalized) + 1
+            or not isinstance(stage, str)
+            or stage not in allowed_stages
+            or state not in {"started", "completed"}
+            or not isinstance(monotonic_ns, int)
+            or isinstance(monotonic_ns, bool)
+            or monotonic_ns < 0
+            or not isinstance(event_sha256, str)
+            or _SHA256.fullmatch(event_sha256) is None
+        ):
+            raise ProcessSupervisionError("stage observation value differs")
+        if state == "started":
+            if stage in started or stage in completed:
+                raise ProcessSupervisionError(
+                    "supervised stage starts more than once"
+                )
+            started.add(stage)
+        else:
+            if stage not in started or stage in completed:
+                raise ProcessSupervisionError(
+                    "supervised stage completion is out of order"
+                )
+            completed.add(stage)
+        normalized.append(
+            (sequence, stage, str(state), monotonic_ns, event_sha256)
+        )
+    return tuple(normalized)
+
+
 def read_process_identity(
     pid: int,
     *,
@@ -613,6 +810,290 @@ def run_supervised_command(
         process_handle_retained=True,
         final_reap_completed=final_reap_count == 1,
         final_reap_count=final_reap_count,
+    )
+
+
+def run_stage_supervised_command(
+    argv: Sequence[str],
+    *,
+    working_directory: str,
+    environment: Mapping[str, str],
+    stage_timeouts: Mapping[str, float],
+    stage_observer: Callable[[], Sequence[Mapping[str, object]]],
+    startup_stage: str,
+    transition_stage: str,
+    observer_poll_seconds: float = 5.0,
+    termination_grace_seconds: float = 5.0,
+) -> StageSupervisedCommandResult:
+    """Run one child with immutable, non-heartbeat stage deadlines."""
+
+    if (
+        isinstance(argv, (str, bytes))
+        or not argv
+        or any(not isinstance(item, str) or not item for item in argv)
+    ):
+        raise ProcessSupervisionError(
+            "stage-supervised argv must be a nonempty string list"
+        )
+    if (
+        not isinstance(working_directory, str)
+        or not Path(working_directory).is_absolute()
+        or not Path(working_directory).is_dir()
+    ):
+        raise ProcessSupervisionError(
+            "stage-supervised working directory must be an existing absolute directory"
+        )
+    if not isinstance(stage_timeouts, Mapping) or not stage_timeouts:
+        raise ProcessSupervisionError("stage timeout contract is empty")
+    normalized_timeouts: list[tuple[str, float]] = []
+    seen_stages: set[str] = set()
+    for stage, timeout in stage_timeouts.items():
+        _require_identifier(stage, "supervised stage")
+        if stage in seen_stages:
+            raise ProcessSupervisionError("supervised stage is duplicated")
+        if (
+            not isinstance(timeout, (int, float))
+            or isinstance(timeout, bool)
+            or not math.isfinite(float(timeout))
+            or timeout <= 0
+        ):
+            raise ProcessSupervisionError(
+                "stage timeout must be finite and positive"
+            )
+        seen_stages.add(stage)
+        normalized_timeouts.append((stage, float(timeout)))
+    for stage, label in (
+        (startup_stage, "startup stage"),
+        (transition_stage, "transition stage"),
+    ):
+        _require_identifier(stage, label)
+        if stage not in seen_stages:
+            raise ProcessSupervisionError(
+                f"{label} is absent from the timeout contract"
+            )
+    for value, label in (
+        (observer_poll_seconds, "observer poll interval"),
+        (termination_grace_seconds, "termination grace"),
+    ):
+        if (
+            not isinstance(value, (int, float))
+            or isinstance(value, bool)
+            or not math.isfinite(float(value))
+            or value <= 0
+        ):
+            raise ProcessSupervisionError(
+                f"stage-supervised {label} must be finite and positive"
+            )
+    if not callable(stage_observer):
+        raise ProcessSupervisionError("stage observer is not callable")
+
+    timeout_by_stage = dict(normalized_timeouts)
+    allowed_stages = frozenset(timeout_by_stage)
+    environment_sha256 = environment_fingerprint(environment)
+    argv_tuple = tuple(argv)
+    command_sha256 = command_fingerprint(
+        argv_tuple,
+        working_directory=working_directory,
+        environment_sha256=environment_sha256,
+    )
+    supervisor_pid = os.getpid()
+    process_started_ns = time.monotonic_ns()
+    process = subprocess.Popen(
+        argv_tuple,
+        cwd=working_directory,
+        env=dict(environment),
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        shell=False,
+    )
+    pidfd_supported, pidfd = _open_supervised_pidfd(process.pid)
+    pidfd_closed = False
+    identity: ProcessIdentity | None = None
+    observations: tuple[tuple[int, str, str, int, str], ...] = ()
+    active_stage = startup_stage
+    active_stage_started_ns = process_started_ns
+    timeout_stage: str | None = None
+    timeout_stage_elapsed_seconds: float | None = None
+    final_reap_count = 0
+    terminate_requested = False
+    kill_requested = False
+    stdout = b""
+    stderr = b""
+
+    def observe() -> None:
+        nonlocal observations, active_stage, active_stage_started_ns
+        current = _normalize_stage_observations(
+            stage_observer(),
+            allowed_stages=allowed_stages,
+        )
+        if (
+            len(current) < len(observations)
+            or current[: len(observations)] != observations
+        ):
+            raise ProcessSupervisionError(
+                "stage evidence changed after observation"
+            )
+        now_ns = time.monotonic_ns()
+        for event in current[len(observations) :]:
+            _, stage, state, event_ns, _ = event
+            if event_ns < process_started_ns or event_ns > now_ns:
+                raise ProcessSupervisionError(
+                    "stage event monotonic time is outside process lifetime"
+                )
+            if state == "started":
+                active_stage = stage
+                active_stage_started_ns = event_ns
+            else:
+                active_stage = transition_stage
+                active_stage_started_ns = event_ns
+        observations = current
+
+    try:
+        try:
+            identity = read_process_identity(process.pid)
+            if (
+                identity.pid != process.pid
+                or identity.parent_pid != supervisor_pid
+            ):
+                raise ProcessSupervisionError(
+                    "spawned command is not the supervisor's direct child"
+                )
+        except ProcessSupervisionError:
+            process.kill()
+            process.communicate()
+            final_reap_count = 1
+            raise
+
+        try:
+            while True:
+                observe()
+                elapsed_seconds = (
+                    time.monotonic_ns() - active_stage_started_ns
+                ) / 1_000_000_000.0
+                remaining_seconds = (
+                    timeout_by_stage[active_stage] - elapsed_seconds
+                )
+                if remaining_seconds <= 0:
+                    timeout_stage = active_stage
+                    timeout_stage_elapsed_seconds = elapsed_seconds
+                    break
+                try:
+                    stdout, stderr = process.communicate(
+                        timeout=min(
+                            float(observer_poll_seconds),
+                            remaining_seconds,
+                        )
+                    )
+                    final_reap_count = 1
+                    observe()
+                    break
+                except subprocess.TimeoutExpired:
+                    continue
+        except BaseException:
+            if process.returncode is None and identity is not None:
+                _signal_supervised_child(
+                    process,
+                    expected_identity=identity,
+                    pidfd=pidfd,
+                    requested_signal=signal.SIGKILL,
+                )
+            try:
+                process.communicate(timeout=float(termination_grace_seconds))
+                final_reap_count = 1
+            except subprocess.TimeoutExpired as error:
+                raise ProcessSupervisionError(
+                    "stage-supervised child did not exit after verified SIGKILL"
+                ) from error
+            raise
+
+        if timeout_stage is not None:
+            terminate_requested = True
+            _signal_supervised_child(
+                process,
+                expected_identity=identity,
+                pidfd=pidfd,
+                requested_signal=signal.SIGTERM,
+            )
+            try:
+                stdout, stderr = process.communicate(
+                    timeout=float(termination_grace_seconds)
+                )
+            except subprocess.TimeoutExpired:
+                kill_requested = True
+                _signal_supervised_child(
+                    process,
+                    expected_identity=identity,
+                    pidfd=pidfd,
+                    requested_signal=signal.SIGKILL,
+                )
+                try:
+                    stdout, stderr = process.communicate(
+                        timeout=float(termination_grace_seconds)
+                    )
+                except subprocess.TimeoutExpired as error:
+                    raise ProcessSupervisionError(
+                        "stage-supervised child did not exit after verified SIGKILL"
+                    ) from error
+            final_reap_count = 1
+            observe()
+        if not isinstance(process.returncode, int) or isinstance(
+            process.returncode, bool
+        ):
+            raise ProcessSupervisionError(
+                "stage-supervised child lacks a final return code"
+            )
+        if type(stdout) is not bytes or type(stderr) is not bytes:
+            raise ProcessSupervisionError(
+                "stage-supervised child output was not captured as bytes"
+            )
+    finally:
+        if pidfd is not None:
+            os.close(pidfd)
+            pidfd_closed = True
+
+    if identity is None:
+        raise ProcessSupervisionError(
+            "stage-supervised child identity was not retained"
+        )
+    nontransition_stage_total = sum(
+        timeout for stage, timeout in normalized_timeouts
+        if stage != transition_stage
+    )
+    evidence_total_timeout = (
+        nontransition_stage_total
+        + timeout_by_stage[transition_stage] * len(normalized_timeouts)
+    )
+    command = SupervisedCommandResult(
+        argv=argv_tuple,
+        working_directory=working_directory,
+        environment_sha256=environment_sha256,
+        command_sha256=command_sha256,
+        process_identity=identity,
+        supervisor_pid=supervisor_pid,
+        timeout_seconds=evidence_total_timeout,
+        timed_out=timeout_stage is not None,
+        terminate_requested=terminate_requested,
+        kill_requested=kill_requested,
+        returncode=process.returncode,
+        stdout=stdout,
+        stderr=stderr,
+        pidfd_supported=pidfd_supported,
+        pidfd_opened=pidfd is not None,
+        pidfd=pidfd,
+        pidfd_closed=pidfd_closed,
+        direct_child_verified=True,
+        process_handle_retained=True,
+        final_reap_completed=final_reap_count == 1,
+        final_reap_count=final_reap_count,
+    )
+    return StageSupervisedCommandResult(
+        command=command,
+        stage_timeouts=tuple(normalized_timeouts),
+        stage_observations=observations,
+        timeout_stage=timeout_stage,
+        timeout_stage_elapsed_seconds=timeout_stage_elapsed_seconds,
+        observer_poll_seconds=float(observer_poll_seconds),
     )
 
 

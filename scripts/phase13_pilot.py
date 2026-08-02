@@ -24,12 +24,13 @@ import stat
 import statistics
 import subprocess
 import sys
+import time
 from typing import Any
 
 from preflight.run_preflight import json_bytes, rename_noreplace, write_exclusive
 from kvbench.runtime.artifacts import sha256_file
 from kvbench.runtime.method_harness import execution_path_audit_facade
-from kvbench.runtime.process_supervision import run_supervised_command
+from kvbench.runtime.process_supervision import run_stage_supervised_command
 from kvbench.schema import GraphMode, RunnerKind, canonical_json_bytes, sha256_hex
 from kvbench.schema.phase13b import (
     PHASE13B_BATCH_SIZES,
@@ -116,7 +117,31 @@ INPUT_RECIPE_SCHEMA = "kvbench-phase13-pilot-input-1.0.0"
 CAMPAIGN_SCHEMA = "kvbench-phase13-pilot-campaign-1.0.0"
 RUN_SCHEMA = "kvbench-phase13-pilot-process-run-1.0.0"
 WORKER_PREFIX = "PHASE13_WORKER_RESULT="
-CHILD_TIMEOUT_SECONDS = 7_200.0
+STAGE_EVENT_SCHEMA = "kvbench-phase13-stage-event-1.0.0"
+STAGE_OBSERVER_POLL_SECONDS = 5.0
+STAGE_SEQUENCE = (
+    ("model_load", "started"),
+    ("model_load", "completed"),
+    ("prefix_construction", "started"),
+    ("prefix_construction", "completed"),
+    ("graph_capture", "started"),
+    ("graph_capture", "completed"),
+    ("warmup_and_audit", "started"),
+    ("warmup_and_audit", "completed"),
+    ("measurement", "started"),
+    ("measurement", "completed"),
+    ("finalization", "started"),
+    ("finalization", "completed"),
+)
+FIXED_STAGE_TIMEOUTS_SECONDS = {
+    "startup": 600.0,
+    "transition": 600.0,
+    "model_load": 900.0,
+    "graph_capture": 7_200.0,
+    "warmup_and_audit": 7_200.0,
+    "measurement": 7_200.0,
+    "finalization": 1_800.0,
+}
 
 _CAMPAIGN_RE = re.compile(
     r"phase13-[0-9]{8}t[0-9]{12}z-[0-9a-f]{8}-[0-9a-f]{6}\Z"
@@ -130,6 +155,136 @@ _FORBIDDEN_ENVIRONMENT = phase12._FORBIDDEN_CHILD_ENVIRONMENT
 
 class Phase13PilotError(RuntimeError):
     """The Pilot contract or evidence failed closed."""
+
+
+def prefix_construction_timeout_seconds(*, batch: int, historical: int) -> float:
+    """Return the frozen point-scaled, finite prefix-construction deadline."""
+
+    if (
+        not isinstance(batch, int)
+        or isinstance(batch, bool)
+        or batch not in BATCH_SIZES
+        or not isinstance(historical, int)
+        or isinstance(historical, bool)
+        or historical
+        not in {
+            actual_historical_context(label) for label in CONTEXT_LABELS
+        }
+    ):
+        raise Phase13PilotError("prefix timeout geometry is invalid")
+    return float(max(3_600, 1_800 + math.ceil(batch * historical / 4)))
+
+
+def stage_timeout_contract(*, batch: int, historical: int) -> dict[str, float]:
+    """Bind every worker stage without allowing heartbeat-based extensions."""
+
+    return {
+        **FIXED_STAGE_TIMEOUTS_SECONDS,
+        "prefix_construction": prefix_construction_timeout_seconds(
+            batch=batch,
+            historical=historical,
+        ),
+    }
+
+
+class _WorkerStageRecorder:
+    """Write one exclusive, ordered file for each worker stage transition."""
+
+    def __init__(self, *, root: Path, run_id: str) -> None:
+        self.root = root.resolve(strict=True)
+        if (
+            self.root.name != "stage-progress"
+            or self.root.is_symlink()
+            or any(self.root.iterdir())
+            or _RUN_RE.fullmatch(run_id) is None
+        ):
+            raise Phase13PilotError("worker stage-progress root differs")
+        self.run_id = run_id
+        self.next_sequence = 1
+
+    def record(self, stage: str, state: str) -> None:
+        if self.next_sequence > len(STAGE_SEQUENCE):
+            raise Phase13PilotError("worker stage sequence overflowed")
+        if (stage, state) != STAGE_SEQUENCE[self.next_sequence - 1]:
+            raise Phase13PilotError("worker stage transition differs")
+        payload = {
+            "schema_version": STAGE_EVENT_SCHEMA,
+            "sequence": self.next_sequence,
+            "run_id": self.run_id,
+            "stage": stage,
+            "state": state,
+            "recorded_at_utc": _utc_now(),
+            "monotonic_ns": time.monotonic_ns(),
+        }
+        write_exclusive(
+            self.root
+            / f"{self.next_sequence:02d}-{stage}-{state}.json",
+            json_bytes(payload),
+        )
+        self.next_sequence += 1
+
+
+def _read_stage_observations(
+    *, root: Path, run_id: str
+) -> list[dict[str, object]]:
+    """Read exact append-only stage events for the direct-child supervisor."""
+
+    if (
+        not root.is_dir()
+        or root.is_symlink()
+        or root.name != "stage-progress"
+        or _RUN_RE.fullmatch(run_id) is None
+    ):
+        raise Phase13PilotError("stage observation root differs")
+    paths = sorted(root.iterdir())
+    if len(paths) > len(STAGE_SEQUENCE):
+        raise Phase13PilotError("stage observation count overflowed")
+    observations: list[dict[str, object]] = []
+    for index, path in enumerate(paths, start=1):
+        stage, state = STAGE_SEQUENCE[index - 1]
+        expected_name = f"{index:02d}-{stage}-{state}.json"
+        try:
+            mode = path.lstat().st_mode
+        except OSError as error:
+            raise Phase13PilotError("stage observation stat failed") from error
+        if (
+            path.name != expected_name
+            or path.is_symlink()
+            or not stat.S_ISREG(mode)
+        ):
+            raise Phase13PilotError("stage observation path differs")
+        payload = _strict_json(path)
+        if (
+            set(payload)
+            != {
+                "schema_version",
+                "sequence",
+                "run_id",
+                "stage",
+                "state",
+                "recorded_at_utc",
+                "monotonic_ns",
+            }
+            or payload.get("schema_version") != STAGE_EVENT_SCHEMA
+            or payload.get("sequence") != index
+            or payload.get("run_id") != run_id
+            or payload.get("stage") != stage
+            or payload.get("state") != state
+            or not isinstance(payload.get("recorded_at_utc"), str)
+            or not isinstance(payload.get("monotonic_ns"), int)
+            or isinstance(payload.get("monotonic_ns"), bool)
+        ):
+            raise Phase13PilotError("stage observation payload differs")
+        observations.append(
+            {
+                "sequence": index,
+                "stage": stage,
+                "state": state,
+                "monotonic_ns": int(payload["monotonic_ns"]),
+                "event_sha256": sha256_file(path),
+            }
+        )
+    return observations
 
 
 def _phase13b_successor_authority() -> dict[str, Any]:
@@ -941,9 +1096,15 @@ def _run_worker(
         raise Phase13PilotError("worker Git source authority or cleanliness differs")
 
     historical = actual_historical_context(context_label)
+    stage_recorder = _WorkerStageRecorder(
+        root=run_artifact_root / "stage-progress",
+        run_id=run_id,
+    )
     _patch_phase12_point_globals(batch=batch, historical=historical)
     device = torch.device("cuda:0")
+    stage_recorder.record("model_load", "started")
     loaded = load_frozen_model(device=device)
+    stage_recorder.record("model_load", "completed")
     prefix = (
         torch.arange(batch * historical, dtype=torch.long, device=device)
         .reshape(batch, historical)
@@ -959,14 +1120,37 @@ def _run_worker(
         .add(1_000)
     )
     operation = Phase13OperationKey.create(configuration, batch, historical)
+    stage_recorder.record("prefix_construction", "started")
+    import kvbench.runtime.cuda_graph as cuda_graph_module
+
+    original_capture_fixed_graph = cuda_graph_module.capture_fixed_graph
+    graph_capture_started = False
+
+    def observed_capture_fixed_graph(*args: Any, **kwargs: Any) -> Any:
+        nonlocal graph_capture_started
+        if graph_capture_started:
+            raise Phase13PilotError("graph capture began more than once")
+        stage_recorder.record("prefix_construction", "completed")
+        stage_recorder.record("graph_capture", "started")
+        graph_capture_started = True
+        return original_capture_fixed_graph(*args, **kwargs)
+
+    cuda_graph_module.capture_fixed_graph = observed_capture_fixed_graph
     with torch.inference_mode(), forced_flash_execution():
-        with phase12._observable_cuda_graph_factory(torch) as observed_graphs:
-            session = phase12._build_phase12_session(
-                loaded=loaded,
-                operation_key=operation,
-                prefix_input_ids=prefix,
-                decode_input_ids=decode,
-            )
+        try:
+            with phase12._observable_cuda_graph_factory(torch) as observed_graphs:
+                session = phase12._build_phase12_session(
+                    loaded=loaded,
+                    operation_key=operation,
+                    prefix_input_ids=prefix,
+                    decode_input_ids=decode,
+                )
+        finally:
+            cuda_graph_module.capture_fixed_graph = original_capture_fixed_graph
+        if not graph_capture_started:
+            raise Phase13PilotError("graph capture stage was not observed")
+        stage_recorder.record("graph_capture", "completed")
+        stage_recorder.record("warmup_and_audit", "started")
         if session.graph is None or len(observed_graphs) != 1:
             raise Phase13PilotError("captured graph is absent or ambiguous")
         graph_exec_before = int(session.graph.graph.raw_cuda_graph_exec())
@@ -1095,11 +1279,15 @@ def _run_worker(
             allocation_passed=allocation_passed,
             graph_passed=graph_passed,
         )
+        stage_recorder.record("warmup_and_audit", "completed")
+        stage_recorder.record("measurement", "started")
         raw_runner = run_fixed_l(
             session,
             measured_steps=MEASURED_STEPS,
             measured_batches=MEASURED_BATCHES,
         ).to_dict()
+        stage_recorder.record("measurement", "completed")
+        stage_recorder.record("finalization", "started")
     runner = phase12._normalize_runner_result(raw_runner)
     graph_exec_after = int(session.graph.graph.raw_cuda_graph_exec())
     graph_path_after = phase12._write_cuda_graph_path_witness(
@@ -1175,7 +1363,7 @@ def _run_worker(
             "replay_allocation": allocation_record,
         }
     )
-    return {
+    payload = {
         "schema_version": RUN_SCHEMA,
         "run_id": run_id,
         "method_config_id": configuration,
@@ -1226,6 +1414,8 @@ def _run_worker(
         "performance_claim_eligible": False,
         "r_hbm": None,
     }
+    stage_recorder.record("finalization", "completed")
+    return payload
 
 
 def _run_id(campaign_id: str, record: Mapping[str, Any]) -> str:
@@ -1325,6 +1515,8 @@ def _run_one_process(
     run_id = _run_id(campaign_id, record)
     run_root = stage / "runs" / run_id
     run_root.mkdir()
+    stage_progress = run_root / "stage-progress"
+    stage_progress.mkdir()
     write_exclusive(
         run_root / "started.json",
         json_bytes(
@@ -1359,11 +1551,22 @@ def _run_one_process(
         "--run-artifact-root",
         str(run_root),
     )
-    result = run_supervised_command(
+    timeouts = stage_timeout_contract(
+        batch=int(record["batch_size"]),
+        historical=int(record["historical_context"]),
+    )
+    result = run_stage_supervised_command(
         command,
         working_directory=str(REPOSITORY_ROOT),
         environment=phase12._child_environment(),
-        timeout_seconds=CHILD_TIMEOUT_SECONDS,
+        stage_timeouts=timeouts,
+        stage_observer=lambda: _read_stage_observations(
+            root=stage_progress,
+            run_id=run_id,
+        ),
+        startup_stage="startup",
+        transition_stage="transition",
+        observer_poll_seconds=STAGE_OBSERVER_POLL_SECONDS,
     )
     post = phase12._capture_process_snapshot()
     phase12._require_idle_snapshot(post)
@@ -1376,7 +1579,9 @@ def _run_one_process(
     )
     if not _supervision_passed(result):
         stderr = result.stderr.decode("utf-8", errors="replace")
-        if "requires frozen B=1" in stderr or "requires frozen layers=32 B=1" in stderr:
+        if result.timeout_stage is not None:
+            reason = f"supervisor_stage_timeout:{result.timeout_stage}"
+        elif "requires frozen B=1" in stderr or "requires frozen layers=32 B=1" in stderr:
             reason = "adapter_static_cache_rejects_batch_greater_than_one"
         else:
             reason = "supervised_worker_failed"
@@ -1388,6 +1593,11 @@ def _run_one_process(
                     "run_id": run_id,
                     "failure_reason": reason,
                     "worker_returncode": result.returncode,
+                    "timeout_stage": result.timeout_stage,
+                    "timeout_stage_elapsed_seconds": (
+                        result.timeout_stage_elapsed_seconds
+                    ),
+                    "stage_timeout_contract_seconds": timeouts,
                     "selective_retry_permitted": False,
                     "campaign_preserved": True,
                 }
