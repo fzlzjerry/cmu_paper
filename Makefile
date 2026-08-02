@@ -1675,7 +1675,6 @@ remediate-phase13-feasibility:
 			--workdir /workspace --entrypoint /opt/kvbench/.venv/bin/python3 \
 			"$(PHASE13_AUTHORIZED_IMAGE_CONFIG_DIGEST)" \
 			-m scripts.phase13f_feasibility generate --output "/evidence/$$identifier" --git-sha "$$head"; \
-		chmod -R u+rwX "$$stage"; \
 		$(PHASE13_HOST_PYTHON) -m scripts.phase13f_feasibility validate "$$stage"; \
 		final="$$( $(PHASE13_HOST_PYTHON) -m scripts.phase13f_feasibility promote "$$stage" | $(PHASE2_PYTHON) -c 'import json,sys; print(json.load(sys.stdin)["artifact_path"])' )"; \
 		test -d "$$final" && test ! -L "$$final"; \
