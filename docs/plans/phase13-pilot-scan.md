@@ -1,4 +1,4 @@
-# Phase 13R — Fresh Pilot Scan after Phase 13B
+# Phase 13R2 — Fresh Pilot Scan after Phase 13F
 
 ## Frozen scope and authority
 
@@ -8,9 +8,10 @@ lifecycle, and R2 publisher. All CUDA work runs in Measurement Container
 `sha256:059bc9be89387369d7de9e3e9b26d85b6e9902c41e7dbf002ebc45edd188fb7e`.
 Adapters, CUDA, cache layouts, calibration, fixtures, tolerances, and timing
 boundaries remain unchanged. Phase 14, Full Scan, profiling, and quality work
-are deferred. The stopped campaign
-`phase13-20260801t080641686374z-009dfd71-14b7e3` remains immutable and is never
-resumed, amended, or used as timing input; Phase 13R always creates a fresh
+are deferred. The stopped campaigns
+`phase13-20260801t080641686374z-009dfd71-14b7e3` and
+`phase13-20260801t184243094922z-e886592f-99b6ca` remain immutable and are never
+resumed, amended, or used as timing input; Phase 13R2 always creates a fresh
 append-only campaign ID.
 
 Decision 0030 and the checksum-bound Phase 13B successor reports are the static
@@ -50,14 +51,18 @@ and three independent processes. This creates exactly 810 planned records.
 The fixed-L runner defines context as historical prefix length, so only label
 131072 maps to historical prefix 131071 and total attended length 131072.
 
-Before CUDA, every record receives a source-formula allocation prediction:
-model weights + adapter-owned cache/workspace + a conservative graph reserve
-scaled from the checksum-bound Phase 12 point. The limit is the frozen
-`0.88 * 101970345984` bytes. The source formulas replay the exact Phase 13B
-B=1/4/8 owned allocations at L=128 before extrapolation. Known
-capacity-infeasible records are preserved and not launched; all ten
-configurations are admitted at B=1/4/8, and geometry rejection is never
-relabeled as a memory failure.
+Before CUDA, every record uses Decision 0031's end-to-end allocator high-water
+formula. It includes exact model weights, adapter-owned cache and persistent
+workspace, endpoint workspace, prefix control tensors, the larger of the
+source-derived attention/output-projection and MLP prefix peaks, and the net
+Graph reserve. The limit is exactly `floor(0.88 * 101970345984) = 89733904465`
+bytes. The checksum-bound Phase 13F root
+`5090b193c046637cb3836f7d5a3ee5ebbad95d9a459672ab4aa3ff0ddb756589`
+freezes 684 feasible and 126 `capacity_infeasible` records across the 810-record
+order. Only the 684 feasible records launch. In particular,
+`tq_3bit_nc`, B=8, L=98304 remains `capacity_infeasible`. Replicate identity
+cannot change classification, and geometry rejection is never relabeled as a
+memory failure.
 
 The complete immutable order is
 `docs/plans/phase13-pilot-execution-order.json`, SHA-256
