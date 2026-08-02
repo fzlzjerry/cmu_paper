@@ -1,0 +1,57 @@
+{
+  "artifact": {
+    "complete_written_last": true,
+    "id": "phase13f-20260802t035116023475z-43e0065e-32d26f",
+    "object_count": 9,
+    "path": "artifacts/phase13f/phase13f-20260802t035116023475z-43e0065e-32d26f",
+    "root_sha256": "5090b193c046637cb3836f7d5a3ee5ebbad95d9a459672ab4aa3ff0ddb756589"
+  },
+  "authorized_container_digest": "sha256:059bc9be89387369d7de9e3e9b26d85b6e9902c41e7dbf002ebc45edd188fb7e",
+  "classification": {
+    "capacity_infeasible_records": 126,
+    "feasible_records": 684,
+    "planned_records": 810,
+    "replicates_per_point": 3,
+    "unique_capacity_infeasible_points": 42,
+    "unique_feasible_points": 228,
+    "unique_points": 270
+  },
+  "decision": "Decision 0031",
+  "deterministic": true,
+  "formula": {
+    "additive_components": [
+      "model_weight_bytes",
+      "cache_allocated_bytes_including_persistent_workspace",
+      "endpoint_workspace_bytes",
+      "prefix_control_tensor_bytes",
+      "max_attention_output_projection_or_mlp_peak_bytes",
+      "graph_pool_or_capture_reserve_bytes"
+    ],
+    "formula_id": "phase13f-source-prefix-peak-v1",
+    "gpu_total_memory_bytes": 101970345984,
+    "limit_bytes": 89733904465,
+    "max_memory_fraction": 0.88
+  },
+  "former_point": {
+    "attention_output_projection_allocation_bytes": 6442450944,
+    "batch_size": 8,
+    "configuration": "tq_3bit_nc",
+    "context_label": 98304,
+    "corrected_predicted_required_bytes": 150255517718,
+    "corrected_status": "capacity_infeasible",
+    "old_predicted_required_bytes": 69697610000,
+    "old_status": "feasible",
+    "source_faithful": true
+  },
+  "historical_custody": {
+    "both_stopped_campaigns_unchanged": true,
+    "roots": [
+      "be8680d3d94dba35d58a98ac13aa5ae3aa2ba47e767c301418b129060466babc",
+      "94104865452017fbfd3c87fffd34e82b12248e379ef2680b22153dd5b71d90b8"
+    ]
+  },
+  "pilot_executed": false,
+  "schema_version": "kvbench-phase13f-feasibility-summary-1.0.0",
+  "source_git_sha": "43e00659340b38f77708c8d2d37c82a2cb7035a0",
+  "status": "PASS"
+}

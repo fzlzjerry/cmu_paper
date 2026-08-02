@@ -146,6 +146,10 @@ class Phase13ScopeTests(unittest.TestCase):
         )
         for relative in EXPECTED_PHASE13F_PATHS:
             self.assertTrue(validate_phase2.phase13f_path_is_allowed(relative))
+        self.assertEqual(
+            validate_phase2.PHASE13F_APPROVED_ARTIFACT_ROOT_NAMES,
+            frozenset({"phase13f"}),
+        )
 
     def test_phase13f_near_miss_and_broad_paths_are_rejected(self) -> None:
         for relative in (
@@ -161,6 +165,29 @@ class Phase13ScopeTests(unittest.TestCase):
             self.assertFalse(
                 validate_phase2.phase13f_path_is_allowed(relative)
             )
+
+    def test_exact_phase13f_artifact_root_is_accepted(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            artifacts = root / "artifacts"
+            artifacts.mkdir()
+            (artifacts / "phase13f").mkdir()
+            with mock.patch.object(validate_phase2, "ROOT", root):
+                errors = validate_phase2.validate_phase3_artifact_root()
+        self.assertEqual(errors, [])
+
+    def test_phase13f_artifact_root_near_miss_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            artifacts = root / "artifacts"
+            artifacts.mkdir()
+            (artifacts / "phase13f-copy").mkdir()
+            with mock.patch.object(validate_phase2, "ROOT", root):
+                errors = validate_phase2.validate_phase3_artifact_root()
+        self.assertIn(
+            "unapproved artifact roots: ['phase13f-copy']",
+            errors,
+        )
 
     def test_phase3_backup_root_allowlist_is_exact(self) -> None:
         self.assertEqual(

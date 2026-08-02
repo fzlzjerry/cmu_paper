@@ -8,7 +8,7 @@ requirements; and AGENTS.md. Decision 0005 records precedence.
 
 ## Current state
 
-- Latest scoped phase: Phase 13R BLOCKED. Fresh append-only campaign
+- Latest scoped phase: Phase 13F PASS. Phase 13R's fresh append-only campaign
   `phase13-20260801t184243094922z-e886592f-99b6ca` preserved all 810 planned
   records: 14 completed, one runtime-failed, 777 aborted after the fail-closed
   stop, and 18 preregistered capacity-infeasible records. The failed
@@ -16,9 +16,16 @@ requirements; and AGENTS.md. Decision 0005 records precedence.
   memory during prefix construction before Graph capture, warmup, or timing.
   No point was selectively rerun or reclassified. The 1807-object root
   `94104865452017fbfd3c87fffd34e82b12248e379ef2680b22153dd5b71d90b8`
-  is COMPLETE-last and cleanly retrieved from R2. G0-G5 remain PASS from
-  unified admission, but Phase 14 is NOT READY, Full Scan is CLOSED, quality
-  remains LOCKED, and `PERFORMANCE_DATA_FROZEN` is absent.
+  is COMPLETE-last and cleanly retrieved from R2. Decision 0031 then
+  recomputed all 810 records with end-to-end prefix, workspace, and Graph
+  high-water accounting: 684 are feasible and 126 are capacity-infeasible;
+  the former failed point is now source-faithfully capacity-infeasible. The
+  9-object remediation root
+  `5090b193c046637cb3836f7d5a3ee5ebbad95d9a459672ab4aa3ff0ddb756589`
+  is COMPLETE-last and cleanly retrieved. G0-G5 remain PASS from unified
+  admission, but Phase 13 is incomplete until a wholly new Pilot runs,
+  Phase 14 is NOT READY, Full Scan is CLOSED, quality remains LOCKED, and
+  `PERFORMANCE_DATA_FROZEN` is absent.
 - Phase 6 status: PASS for method-specific G2-TQ at execution commit
   `0df5bb4d445d48e6cba17e30723733f8de35cb14`. The approved admission driver
   reran all three mandatory Compute Sanitizer probes against that clean HEAD
@@ -748,7 +755,8 @@ reference execution is recorded separately above.
 | G1-G5 unified admission | PASS | Phase 12R campaign `phase12-20260731t062914664948z-6165f78d-c78b9a`; 30/30 completed, all 10 configurations stable, root `42ab15b6617d072f9b0825b701d1df4519caa110166b8edd48b8359fe8e588e5` COMPLETE-last and cleanly retrieved |
 | Phase 13B compressed batch geometry | PASS | All nine compressed configurations pass B=1/4/8 static-cache admission; 27/27 matrix, Graph, allocation, stream, and sanitizer checks pass; 52-object R2 root is COMPLETE-last and cleanly retrieved. |
 | Phase 13R Pilot | BLOCKED | Fresh 810-record campaign stopped fail-closed after 14 completed runs when precomputed-feasible `tq_3bit_nc` B=8/L=98304 exhausted memory during prefix construction; root `94104865452017fbfd3c87fffd34e82b12248e379ef2680b22153dd5b71d90b8` is COMPLETE-last and cleanly retrieved. |
-| Pilot/full-scan gates | BLOCKED / CLOSED | Preserve both stopped Phase 13 campaigns; Phase 14 remains not ready pending a separately authorized end-to-end peak-memory feasibility correction and a wholly new Pilot campaign. |
+| Phase 13F peak feasibility | PASS | Decision 0031 includes model, cache/workspace, prefix attention/MLP and control tensors, Graph reserve, and the frozen 0.88 limit; all 810 records deterministically classify 684 feasible and 126 capacity-infeasible. Root `5090b193c046637cb3836f7d5a3ee5ebbad95d9a459672ab4aa3ff0ddb756589` is COMPLETE-last and cleanly retrieved. |
+| Pilot/full-scan gates | NEW PILOT REQUIRED / CLOSED | Preserve both stopped Phase 13 campaigns; propose a wholly new preregistered Pilot campaign. Phase 14 remains not ready until that campaign passes. |
 | Post-performance quality validation | LOCKED | Decision 0005; `PERFORMANCE_DATA_FROZEN` absent |
 
 ## Phase 0 acceptance
@@ -770,10 +778,10 @@ Decision 0016 continues to authorize Measurement Lane CUDA only in the exact
 recorded image digest. All earlier failed and passing reports, campaigns,
 runs, fixtures, and publication roots remain unchanged.
 
-Phase 13B remains PASS under Decision 0030. Preserve both stopped Pilot
+Phase 13B remains PASS under Decision 0030 and Phase 13F passes under Decision
+0031. Preserve both stopped Pilot
 campaigns: `phase13-20260801t080641686374z-009dfd71-14b7e3` and Phase 13R
-`phase13-20260801t184243094922z-e886592f-99b6ca`. The next action is a
-separately authorized correction to peak-memory feasibility for prefix
-construction, followed by a wholly new preregistered Pilot campaign. Do not
-selectively resume either campaign. Phase 14, profiling, Full Scan,
+`phase13-20260801t184243094922z-e886592f-99b6ca`. The next action is a wholly
+new preregistered Pilot campaign using the corrected 810-record feasibility
+contract. Do not selectively resume either campaign. Phase 14, profiling, Full Scan,
 performance claims, and quality execution remain closed.

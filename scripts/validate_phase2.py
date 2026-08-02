@@ -2856,6 +2856,7 @@ PHASE3_BACKUP_ARTIFACT_ROOT_NAMES = frozenset(
 )
 PHASE13_APPROVED_ARTIFACT_ROOT_NAMES = frozenset({"phase13"})
 PHASE13B_APPROVED_ARTIFACT_ROOT_NAMES = frozenset({"phase13b"})
+PHASE13F_APPROVED_ARTIFACT_ROOT_NAMES = frozenset({"phase13f"})
 PHASE12_BLOCKED_ARTIFACT_ROOT_NAMES = frozenset({"phase12"})
 PHASE12_STOPPED_CAMPAIGN_ID = (
     "phase12-20260730t000000000000z-2bc6aaa1-abcdef"
@@ -3536,6 +3537,7 @@ def validate_phase3_artifact_root() -> list[str]:
                 | PHASE3_BACKUP_ARTIFACT_ROOT_NAMES
                 | PHASE13_APPROVED_ARTIFACT_ROOT_NAMES
                 | PHASE13B_APPROVED_ARTIFACT_ROOT_NAMES
+                | PHASE13F_APPROVED_ARTIFACT_ROOT_NAMES
                 | PHASE12_BLOCKED_ARTIFACT_ROOT_NAMES
             )
         )

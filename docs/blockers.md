@@ -257,3 +257,16 @@ reports are checksum-bound, and the 52-object root
 `f1c96eaacbbace1c23b249d1afe8d892aa26c3f6b8d04e07f373a2becafba1fe`
 is COMPLETE-last and cleanly retrieved. No Phase 13B blocker remains. Any Pilot
 must start as a completely new campaign; the stopped campaign cannot resume.
+
+## Phase 13F peak-feasibility disposition
+
+Decision 0031 corrects only the pre-launch feasibility contract. All 810
+records were deterministically recomputed with model weights, cache and
+persistent workspace, endpoint controls/workspace, source-derived prefix
+attention/MLP peak, Graph reserve, and the frozen 0.88 limit. The former
+`tq_3bit_nc` B=8/L=98304 failure is now source-faithfully
+`capacity_infeasible`. The 9-object root
+`5090b193c046637cb3836f7d5a3ee5ebbad95d9a459672ab4aa3ff0ddb756589`
+is COMPLETE-last and cleanly retrieved. No Phase 13F blocker remains. Both
+stopped campaigns remain immutable; Phase 13 still requires a wholly new
+Pilot campaign and neither stopped campaign may resume.
