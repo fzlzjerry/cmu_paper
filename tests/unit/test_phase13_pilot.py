@@ -53,9 +53,9 @@ class Phase13PilotTests(unittest.TestCase):
             phase13_pilot.derive_execution_order()
         )
         self.assertEqual(len(records), 810)
-        self.assertEqual(sum(item["status"] == "feasible" for item in records), 792)
+        self.assertEqual(sum(item["status"] == "feasible" for item in records), 684)
         self.assertEqual(
-            sum(item["status"] == "capacity_infeasible" for item in records), 18
+            sum(item["status"] == "capacity_infeasible" for item in records), 126
         )
         unsupported = [
             item for item in records if not item["adapter_geometry_supported_at_entry"]
@@ -66,6 +66,17 @@ class Phase13PilotTests(unittest.TestCase):
                 item["unsupported_geometry_is_not_reclassified_as_capacity"]
                 for item in records
             )
+        )
+        target = [
+            item
+            for item in records
+            if item["method_config_id"] == "tq_3bit_nc"
+            and item["batch_size"] == 8
+            and item["context_label"] == 98304
+        ]
+        self.assertEqual(len(target), 3)
+        self.assertTrue(
+            all(item["status"] == "capacity_infeasible" for item in target)
         )
 
     def test_phase13b_successors_and_allocation_formulas_are_exact(self) -> None:

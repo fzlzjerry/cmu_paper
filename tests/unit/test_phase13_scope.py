@@ -55,6 +55,26 @@ EXPECTED_PHASE13R_PATHS = frozenset(
         "tests/unit/test_phase13_scope.py",
     }
 )
+EXPECTED_PHASE13F_PATHS = frozenset(
+    {
+        "Makefile",
+        "docs/blockers.md",
+        "docs/decisions/0031-phase13-end-to-end-prefix-feasibility.md",
+        "docs/evidence/phase13f/feasibility-summary.json",
+        "docs/evidence/phase13f/r2-publication.json",
+        "docs/phase_reports/phase13f-prefix-feasibility.md",
+        "docs/plans/phase13f-prefix-feasibility.md",
+        "docs/risk_register.md",
+        "docs/status.md",
+        "docs/tasks.md",
+        "scripts/phase13_pilot.py",
+        "scripts/phase13f_feasibility.py",
+        "scripts/validate_phase2.py",
+        "tests/unit/test_phase13_pilot.py",
+        "tests/unit/test_phase13_scope.py",
+        "tests/unit/test_phase13f_feasibility.py",
+    }
+)
 
 
 class Phase13ScopeTests(unittest.TestCase):
@@ -113,6 +133,33 @@ class Phase13ScopeTests(unittest.TestCase):
         ):
             self.assertFalse(
                 validate_phase2.phase13r_path_is_allowed(relative)
+            )
+
+    def test_phase13f_segment_and_allowlist_are_exact(self) -> None:
+        self.assertEqual(
+            validate_phase2.PHASE13F_ENTRY_COMMIT,
+            "50d7820e1feb986acecd78d1b58a3fff6e0bd713",
+        )
+        self.assertEqual(
+            validate_phase2.PHASE13F_ALLOWED_PATHS,
+            EXPECTED_PHASE13F_PATHS,
+        )
+        for relative in EXPECTED_PHASE13F_PATHS:
+            self.assertTrue(validate_phase2.phase13f_path_is_allowed(relative))
+
+    def test_phase13f_near_miss_and_broad_paths_are_rejected(self) -> None:
+        for relative in (
+            "docs/evidence/phase13f",
+            "docs/evidence/phase13f/feasibility-summary.json.backup",
+            "scripts/phase13f_feasibility.py.backup",
+            "artifacts/phase13f",
+            "artifacts/phase13f/*",
+            "../scripts/phase13f_feasibility.py",
+            "/scripts/phase13f_feasibility.py",
+            "scripts\\phase13f_feasibility.py",
+        ):
+            self.assertFalse(
+                validate_phase2.phase13f_path_is_allowed(relative)
             )
 
     def test_phase3_backup_root_allowlist_is_exact(self) -> None:

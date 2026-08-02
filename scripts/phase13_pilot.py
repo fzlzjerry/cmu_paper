@@ -105,6 +105,13 @@ GPU_TOTAL_MEMORY_BYTES = 101_970_345_984
 MODEL_WEIGHT_BYTES = 16_060_556_288
 REFERENCE_CAPACITY = 4097
 PLANNED_RECORD_COUNT = 810
+PREFIX_HIDDEN_WIDTH = 4096
+PREFIX_INTERMEDIATE_WIDTH = 14_336
+PREFIX_QUERY_HEADS = 32
+PREFIX_KV_HEADS = 8
+PREFIX_HEAD_DIM = 128
+PREFIX_DTYPE_BYTES = 2
+PREFIX_INDEX_BYTES = 8
 INPUT_RECIPE_SCHEMA = "kvbench-phase13-pilot-input-1.0.0"
 CAMPAIGN_SCHEMA = "kvbench-phase13-pilot-campaign-1.0.0"
 RUN_SCHEMA = "kvbench-phase13-pilot-process-run-1.0.0"
@@ -362,6 +369,84 @@ def _reference_graph_reserve_bytes(configuration: str) -> int:
     return reserve
 
 
+def prefix_construction_memory(
+    *,
+    batch: int,
+    historical_context: int,
+) -> dict[str, int | str]:
+    """Return the source-derived full-prefix construction high-water mark.
+
+    ``BF16DecodeEndpoint.prefill`` keeps the prefix token IDs, position tensor,
+    RoPE tables, residual, and normalized hidden state live while a layer is
+    evaluated.  The attention projection peak includes Q/K/V, the temporary
+    RoPE halves, the Flash output and the output-projection result.  The larger
+    Llama MLP peak is the two live hidden tensors plus the two intermediate
+    operands and their out-of-place product.  These are setup-only bytes; they
+    are never benchmark timing or adapter-owned cache storage.
+    """
+
+    if batch not in BATCH_SIZES or historical_context <= 0:
+        raise Phase13PilotError("prefix construction geometry differs")
+    token_rows = batch * historical_context
+    hidden = token_rows * PREFIX_HIDDEN_WIDTH * PREFIX_DTYPE_BYTES
+    intermediate = (
+        token_rows * PREFIX_INTERMEDIATE_WIDTH * PREFIX_DTYPE_BYTES
+    )
+    query = hidden
+    key_or_value = (
+        token_rows * PREFIX_KV_HEADS * PREFIX_HEAD_DIM * PREFIX_DTYPE_BYTES
+    )
+    query_rope_half = query // 2
+    key_rope_half = key_or_value // 2
+    attention_peak = (
+        2 * hidden
+        + query
+        + 2 * key_or_value
+        + query_rope_half
+        + key_rope_half
+        + 2 * hidden
+    )
+    mlp_peak = 2 * hidden + 3 * intermediate
+    token_ids = token_rows * PREFIX_INDEX_BYTES
+    cache_positions = historical_context * PREFIX_INDEX_BYTES
+    rope_tables = (
+        2 * historical_context * PREFIX_HEAD_DIM * PREFIX_DTYPE_BYTES
+    )
+    fixed_decode_inputs = batch * PREFIX_INDEX_BYTES + PREFIX_INDEX_BYTES + (
+        2 * PREFIX_HEAD_DIM * PREFIX_DTYPE_BYTES
+    )
+    control_tensors = (
+        token_ids + cache_positions + rope_tables + fixed_decode_inputs
+    )
+    return {
+        "formula_id": "phase13f-source-prefix-peak-v1",
+        "prefix_token_id_bytes": token_ids,
+        "prefix_cache_position_bytes": cache_positions,
+        "prefix_rope_table_bytes": rope_tables,
+        "fixed_decode_input_bytes": fixed_decode_inputs,
+        "prefix_control_tensor_bytes": control_tensors,
+        "hidden_bf16_bytes": hidden,
+        "intermediate_bf16_bytes": intermediate,
+        "attention_output_projection_peak_bytes": attention_peak,
+        "mlp_peak_bytes": mlp_peak,
+        "prefix_compute_peak_bytes": max(attention_peak, mlp_peak),
+    }
+
+
+def endpoint_workspace_bytes(batch: int) -> int:
+    """Caller-owned query/Key RoPE scratch retained by the endpoint."""
+
+    if batch not in BATCH_SIZES:
+        raise Phase13PilotError("endpoint workspace batch differs")
+    return (
+        32
+        * batch
+        * (PREFIX_QUERY_HEADS + PREFIX_KV_HEADS)
+        * (PREFIX_HEAD_DIM // 2)
+        * PREFIX_DTYPE_BYTES
+    )
+
+
 def _turboquant_cache_bytes(configuration: str, batch: int, capacity: int) -> int:
     slot_size = {"tq_4bit_nc": 134, "tq_k3v4_nc": 118, "tq_3bit_nc": 102}[
         configuration
@@ -521,28 +606,58 @@ def feasibility_record(order_record: Mapping[str, Any]) -> dict[str, Any]:
     capacity = historical + 1
     cache_bytes = cache_allocated_bytes(configuration, batch, capacity)
     reference_reserve = _reference_graph_reserve_bytes(configuration)
+    reference_endpoint_workspace = endpoint_workspace_bytes(1)
+    if reference_reserve <= reference_endpoint_workspace:
+        raise Phase13PilotError("Phase 12 graph reserve lacks a net graph pool")
     graph_reserve = math.ceil(
-        reference_reserve * batch * capacity / REFERENCE_CAPACITY
+        (reference_reserve - reference_endpoint_workspace)
+        * batch
+        * capacity
+        / REFERENCE_CAPACITY
+    )
+    endpoint_workspace = endpoint_workspace_bytes(batch)
+    prefix = prefix_construction_memory(
+        batch=batch,
+        historical_context=historical,
     )
     limit = math.floor(GPU_TOTAL_MEMORY_BYTES * MAX_MEMORY_FRACTION)
-    required = MODEL_WEIGHT_BYTES + cache_bytes + graph_reserve
+    required = (
+        MODEL_WEIGHT_BYTES
+        + cache_bytes
+        + endpoint_workspace
+        + int(prefix["prefix_control_tensor_bytes"])
+        + int(prefix["prefix_compute_peak_bytes"])
+        + graph_reserve
+    )
     feasible = required <= limit
     return {
         **dict(order_record),
-        "schema_version": "kvbench-phase13-feasibility-record-1.0.0",
+        "schema_version": "kvbench-phase13-feasibility-record-2.0.0",
         "capacity": capacity,
         "model_weight_bytes": MODEL_WEIGHT_BYTES,
         "cache_allocated_bytes": cache_bytes,
         "persistent_workspace_included_in_cache": True,
+        "endpoint_workspace_bytes": endpoint_workspace,
+        **prefix,
         "graph_pool_or_capture_reserve_bytes": graph_reserve,
         "graph_reserve_reference_bytes": reference_reserve,
+        "graph_reserve_reference_endpoint_workspace_bytes": (
+            reference_endpoint_workspace
+        ),
+        "graph_reserve_scaling": "net_reference_x_batch_x_capacity",
         "gpu_total_memory_bytes": GPU_TOTAL_MEMORY_BYTES,
         "max_memory_fraction": MAX_MEMORY_FRACTION,
         "configured_safety_margin_bytes": GPU_TOTAL_MEMORY_BYTES - limit,
         "limit_bytes": limit,
         "predicted_required_bytes": required,
         "status": "feasible" if feasible else "capacity_infeasible",
-        "reason": None if feasible else "predicted_required_bytes_exceed_0.88_limit",
+        "reason": (
+            None
+            if feasible
+            else "end_to_end_prefix_and_graph_peak_exceeds_0.88_limit"
+        ),
+        "prefix_allocator_blocks_retained_until_graph_capture": True,
+        "formula_components_additive": True,
         "adapter_geometry_supported_at_entry": adapter_geometry_supported(
             configuration, batch
         ),

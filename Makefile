@@ -116,6 +116,7 @@ override PHASE13_AUTHORIZED_IMAGE_CONFIG_DIGEST := $(PHASE12_AUTHORIZED_IMAGE_CO
 override PHASE13_ANALYSIS_IMAGE_CONFIG_DIGEST := sha256:127759078f2c70c9e795c7a1bb3408df1eaee8fa019319299d283dc8075b216d
 PHASE13_CAMPAIGN_ARTIFACT ?=
 PHASE13_HOST_PYTHON := $(PHASE12_HOST_PYTHON)
+PHASE13F_ARTIFACT ?=
 KIVI_REFERENCE_IMAGE := kvbench-reference-kivi:phase7
 KIVI_REFERENCE_PARENT_CONFIG := sha256:059bc9be89387369d7de9e3e9b26d85b6e9902c41e7dbf002ebc45edd188fb7e
 KIVI_REFERENCE_IMAGE_MANIFEST := sha256:f27e4cdef6bd15f18ab76b1fe0e4413ede004b42538c74e3dd90d04172406f75
@@ -127,6 +128,7 @@ KIVI_REFERENCE_BUILD_REVISION := 3417ea0e7f322369eed21bb787a9a9a19b0a69bd
 .PHONY: provenance-check scope-check immutable-check package-lock-check
 .PHONY: phase3-package-lock-check test-cuda test-graph test-allocation
 .PHONY: smoke pilot full-scan profile-subset
+.PHONY: test-phase13f remediate-phase13-feasibility validate-phase13-feasibility
 .PHONY: fit figures reproduce
 .PHONY: reference-turboquant validate-reference-turboquant
 .PHONY: measurement-container observe-measurement-container-lock
@@ -1611,6 +1613,84 @@ validate-pilot:
 		test "$$(dirname "$$artifact")" = "$$repository_root/artifacts/phase13"; \
 		[[ "$$(basename "$$artifact")" =~ ^phase13-[0-9]{8}t[0-9]{12}z-[0-9a-f]{8}-[0-9a-f]{6}$$ ]]; \
 		$(PHASE13_HOST_PYTHON) -m scripts.phase13_pilot --validate-campaign --artifact "$$artifact"
+
+test-phase13f: override MEASUREMENT_IMAGE_CONFIG_DIGEST := $(PHASE13_AUTHORIZED_IMAGE_CONFIG_DIGEST)
+test-phase13f: verify-measurement-container
+	@test "$(MEASUREMENT_IMAGE_CONFIG_DIGEST)" = "$(PHASE13_AUTHORIZED_IMAGE_CONFIG_DIGEST)"
+	@task_root="$$(mktemp -d /tmp/kvbench-phase13f-tests.XXXXXX)"; \
+		trap 'chmod -R u+w "$$task_root" 2>/dev/null || true; rm -rf -- "$$task_root"' EXIT; \
+		head="$$(git rev-parse HEAD)"; \
+		git clone --quiet --no-local --no-checkout "$(CURDIR)" "$$task_root/repository"; \
+		git -C "$$task_root/repository" checkout --quiet --detach "$$head"; \
+		git -C "$$task_root/repository" remote remove origin; \
+		test -z "$$(git -C "$$task_root/repository" status --porcelain=v1 --untracked-files=all)"; \
+		test ! -e "$$task_root/repository/.env" && test ! -L "$$task_root/repository/.env"; \
+		mkdir -p "$$task_root/repository/artifacts/phase12" "$$task_root/repository/artifacts/phase13" "$$task_root/repository/artifacts/phase13b"; \
+		docker run --rm --read-only --network=none \
+			--tmpfs /tmp:rw,nosuid,nodev,size=512m \
+			--mount "type=bind,src=$$task_root/repository,dst=/workspace,readonly" \
+			--mount "type=bind,src=$(CURDIR)/artifacts/phase12,dst=/workspace/artifacts/phase12,readonly" \
+			--mount "type=bind,src=$(CURDIR)/artifacts/phase13,dst=/workspace/artifacts/phase13,readonly" \
+			--mount "type=bind,src=$(CURDIR)/artifacts/phase13b,dst=/workspace/artifacts/phase13b,readonly" \
+			--env PYTHONDONTWRITEBYTECODE=1 --env PYTHONNOUSERSITE=1 \
+			--env PYTHONPATH=/opt/kvbench/.phase3/site-packages:/workspace/src:/workspace \
+			--env KVBENCH_AUTHORIZED_IMAGE_DIGEST="$(PHASE13_AUTHORIZED_IMAGE_CONFIG_DIGEST)" \
+			--env KVBENCH_EXECUTION_ENVIRONMENT=measurement_container \
+			--workdir /workspace --entrypoint /opt/kvbench/.venv/bin/python3 \
+			"$(PHASE13_AUTHORIZED_IMAGE_CONFIG_DIGEST)" \
+			-m unittest tests.unit.test_phase13f_feasibility tests.unit.test_phase13_pilot -v
+
+remediate-phase13-feasibility: override MEASUREMENT_IMAGE_CONFIG_DIGEST := $(PHASE13_AUTHORIZED_IMAGE_CONFIG_DIGEST)
+remediate-phase13-feasibility: verify-measurement-container
+	@test "$(MEASUREMENT_IMAGE_CONFIG_DIGEST)" = "$(PHASE13_AUTHORIZED_IMAGE_CONFIG_DIGEST)"
+	@test -z "$$(git status --porcelain=v1 --untracked-files=all)" || { echo '{"status":"BLOCKED","reason":"clean_committed_phase13f_tree_required"}' >&2; exit 2; }
+	@task_root="$$(mktemp -d /tmp/kvbench-phase13f.XXXXXX)"; \
+		stage=""; preserve=1; \
+		cleanup() { \
+			status=$$?; \
+			if (( preserve == 0 )); then chmod -R u+w "$$task_root" 2>/dev/null || true; rm -rf -- "$$task_root"; \
+			else printf '{"status":"PHASE13F_DIAGNOSTIC_PRESERVED","path":"%s"}\n' "$$task_root" >&2; fi; \
+			trap - EXIT; exit $$status; \
+		}; \
+		trap cleanup EXIT; \
+		head="$$(git rev-parse HEAD)"; \
+		identifier="phase13f-$$(date -u +%Y%m%dt%H%M%S%6Nz)-$${head:0:8}-$$(openssl rand -hex 3)"; \
+		[[ "$$identifier" =~ ^phase13f-[0-9]{8}t[0-9]{12}z-[0-9a-f]{8}-[0-9a-f]{6}$$ ]]; \
+		git clone --quiet --no-local --no-checkout "$(CURDIR)" "$$task_root/repository"; \
+		git -C "$$task_root/repository" checkout --quiet --detach "$$head"; \
+		git -C "$$task_root/repository" remote remove origin; \
+		test -z "$$(git -C "$$task_root/repository" status --porcelain=v1 --untracked-files=all)"; \
+		test ! -e "$$task_root/repository/.env" && test ! -L "$$task_root/repository/.env"; \
+		mkdir -p "$$task_root/repository/artifacts/phase12" "$$task_root/repository/artifacts/phase13" "$$task_root/repository/artifacts/phase13b"; \
+		mkdir "$$task_root/output"; stage="$$task_root/output/$$identifier"; mkdir "$$stage"; \
+		docker run --rm --read-only --network=none \
+			--tmpfs /tmp:rw,nosuid,nodev,size=512m \
+			--mount "type=bind,src=$$task_root/repository,dst=/workspace,readonly" \
+			--mount "type=bind,src=$(CURDIR)/artifacts/phase12,dst=/workspace/artifacts/phase12,readonly" \
+			--mount "type=bind,src=$(CURDIR)/artifacts/phase13,dst=/workspace/artifacts/phase13,readonly" \
+			--mount "type=bind,src=$(CURDIR)/artifacts/phase13b,dst=/workspace/artifacts/phase13b,readonly" \
+			--mount "type=bind,src=$$task_root/output,dst=/evidence" \
+			--env PYTHONDONTWRITEBYTECODE=1 --env PYTHONNOUSERSITE=1 \
+			--env PYTHONPATH=/opt/kvbench/.phase3/site-packages:/workspace/src:/workspace \
+			--env KVBENCH_AUTHORIZED_IMAGE_DIGEST="$(PHASE13_AUTHORIZED_IMAGE_CONFIG_DIGEST)" \
+			--env KVBENCH_EXECUTION_ENVIRONMENT=measurement_container \
+			--workdir /workspace --entrypoint /opt/kvbench/.venv/bin/python3 \
+			"$(PHASE13_AUTHORIZED_IMAGE_CONFIG_DIGEST)" \
+			-m scripts.phase13f_feasibility generate --output "/evidence/$$identifier" --git-sha "$$head"; \
+		chmod -R u+rwX "$$stage"; \
+		$(PHASE13_HOST_PYTHON) -m scripts.phase13f_feasibility validate "$$stage"; \
+		final="$$( $(PHASE13_HOST_PYTHON) -m scripts.phase13f_feasibility promote "$$stage" | $(PHASE2_PYTHON) -c 'import json,sys; print(json.load(sys.stdin)["artifact_path"])' )"; \
+		test -d "$$final" && test ! -L "$$final"; \
+		preserve=0; \
+		printf 'PHASE13F_ARTIFACT=%s\n' "$$final"
+
+validate-phase13-feasibility:
+	@test -n "$(PHASE13F_ARTIFACT)" || { echo '{"status":"BLOCKED","reason":"PHASE13F_ARTIFACT_required"}' >&2; exit 2; }
+	@artifact="$$(realpath -e "$(PHASE13F_ARTIFACT)")"; \
+		repository_root="$$(git rev-parse --show-toplevel)"; \
+		test -d "$$artifact" && test ! -L "$(PHASE13F_ARTIFACT)"; \
+		test "$$(dirname "$$artifact")" = "$$repository_root/artifacts/phase13f"; \
+		$(PHASE13_HOST_PYTHON) -m scripts.phase13f_feasibility validate "$$artifact"
 
 full-scan:
 	@$(PHASE2_CLI) run --plan configs/plans/full_scan.yaml --dry-run
