@@ -1614,8 +1614,8 @@ validate-pilot:
 		[[ "$$(basename "$$artifact")" =~ ^phase13-[0-9]{8}t[0-9]{12}z-[0-9a-f]{8}-[0-9a-f]{6}$$ ]]; \
 		$(PHASE13_HOST_PYTHON) -m scripts.phase13_pilot --validate-campaign --artifact "$$artifact"
 
-test-phase13f: override MEASUREMENT_IMAGE_CONFIG_DIGEST := $(PHASE13_AUTHORIZED_IMAGE_CONFIG_DIGEST)
-test-phase13f: verify-measurement-container
+test-phase13f:
+	@$(MAKE) MEASUREMENT_IMAGE_CONFIG_DIGEST="$(PHASE13_AUTHORIZED_IMAGE_CONFIG_DIGEST)" verify-measurement-container
 	@test "$(MEASUREMENT_IMAGE_CONFIG_DIGEST)" = "$(PHASE13_AUTHORIZED_IMAGE_CONFIG_DIGEST)"
 	@task_root="$$(mktemp -d /tmp/kvbench-phase13f-tests.XXXXXX)"; \
 		trap 'chmod -R u+w "$$task_root" 2>/dev/null || true; rm -rf -- "$$task_root"' EXIT; \
@@ -1640,8 +1640,8 @@ test-phase13f: verify-measurement-container
 			"$(PHASE13_AUTHORIZED_IMAGE_CONFIG_DIGEST)" \
 			-m unittest tests.unit.test_phase13f_feasibility tests.unit.test_phase13_pilot -v
 
-remediate-phase13-feasibility: override MEASUREMENT_IMAGE_CONFIG_DIGEST := $(PHASE13_AUTHORIZED_IMAGE_CONFIG_DIGEST)
-remediate-phase13-feasibility: verify-measurement-container
+remediate-phase13-feasibility:
+	@$(MAKE) MEASUREMENT_IMAGE_CONFIG_DIGEST="$(PHASE13_AUTHORIZED_IMAGE_CONFIG_DIGEST)" verify-measurement-container
 	@test "$(MEASUREMENT_IMAGE_CONFIG_DIGEST)" = "$(PHASE13_AUTHORIZED_IMAGE_CONFIG_DIGEST)"
 	@test -z "$$(git status --porcelain=v1 --untracked-files=all)" || { echo '{"status":"BLOCKED","reason":"clean_committed_phase13f_tree_required"}' >&2; exit 2; }
 	@task_root="$$(mktemp -d /tmp/kvbench-phase13f.XXXXXX)"; \
