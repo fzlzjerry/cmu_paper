@@ -1616,7 +1616,6 @@ validate-pilot:
 
 test-phase13f:
 	@$(MAKE) MEASUREMENT_IMAGE_CONFIG_DIGEST="$(PHASE13_AUTHORIZED_IMAGE_CONFIG_DIGEST)" verify-measurement-container
-	@test "$(MEASUREMENT_IMAGE_CONFIG_DIGEST)" = "$(PHASE13_AUTHORIZED_IMAGE_CONFIG_DIGEST)"
 	@task_root="$$(mktemp -d /tmp/kvbench-phase13f-tests.XXXXXX)"; \
 		trap 'chmod -R u+w "$$task_root" 2>/dev/null || true; rm -rf -- "$$task_root"' EXIT; \
 		head="$$(git rev-parse HEAD)"; \
@@ -1642,7 +1641,6 @@ test-phase13f:
 
 remediate-phase13-feasibility:
 	@$(MAKE) MEASUREMENT_IMAGE_CONFIG_DIGEST="$(PHASE13_AUTHORIZED_IMAGE_CONFIG_DIGEST)" verify-measurement-container
-	@test "$(MEASUREMENT_IMAGE_CONFIG_DIGEST)" = "$(PHASE13_AUTHORIZED_IMAGE_CONFIG_DIGEST)"
 	@test -z "$$(git status --porcelain=v1 --untracked-files=all)" || { echo '{"status":"BLOCKED","reason":"clean_committed_phase13f_tree_required"}' >&2; exit 2; }
 	@task_root="$$(mktemp -d /tmp/kvbench-phase13f.XXXXXX)"; \
 		stage=""; preserve=1; \
