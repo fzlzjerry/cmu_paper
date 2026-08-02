@@ -501,7 +501,7 @@ def validate(root: Path) -> dict[str, Any]:
         "status": "PASS",
         "artifact_path": resolved.as_posix(),
         "root_sha256": artifact.root_sha256,
-        "object_count": artifact.object_count,
+        "object_count": len(artifact.files),
         "planned_records": 810,
         "feasible_records": expected_summary["status_counts"]["feasible"],
         "capacity_infeasible_records": expected_summary["status_counts"][
