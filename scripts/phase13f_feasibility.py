@@ -464,6 +464,9 @@ def generate(root: Path, *, git_sha: str) -> dict[str, Any]:
             }
         ),
     )
+    for path in sorted(resolved.rglob("*"), reverse=True):
+        path.chmod(0o555 if path.is_dir() else 0o444)
+    resolved.chmod(0o555)
     return validate(resolved)
 
 
