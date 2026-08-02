@@ -75,6 +75,20 @@ EXPECTED_PHASE13F_PATHS = frozenset(
         "tests/unit/test_phase13f_feasibility.py",
     }
 )
+EXPECTED_PHASE13R2_PATHS = frozenset(
+    {
+        "docs/blockers.md",
+        "docs/evidence/phase13r2/pilot_qc.json",
+        "docs/evidence/phase13r2/r2-publication.json",
+        "docs/phase_reports/phase13r2-pilot-scan.md",
+        "docs/plans/phase13-pilot-scan.md",
+        "docs/risk_register.md",
+        "docs/status.md",
+        "docs/tasks.md",
+        "scripts/validate_phase2.py",
+        "tests/unit/test_phase13_scope.py",
+    }
+)
 
 
 class Phase13ScopeTests(unittest.TestCase):
@@ -188,6 +202,35 @@ class Phase13ScopeTests(unittest.TestCase):
             "unapproved artifact roots: ['phase13f-copy']",
             errors,
         )
+
+    def test_phase13r2_segment_and_allowlist_are_exact(self) -> None:
+        self.assertEqual(
+            validate_phase2.PHASE13R2_ENTRY_COMMIT,
+            "bdfcb5ba41f150b1f56ddc8ac3515cd5a0b7bde3",
+        )
+        self.assertEqual(
+            validate_phase2.PHASE13R2_ALLOWED_PATHS,
+            EXPECTED_PHASE13R2_PATHS,
+        )
+        for relative in EXPECTED_PHASE13R2_PATHS:
+            self.assertTrue(
+                validate_phase2.phase13r2_path_is_allowed(relative)
+            )
+
+    def test_phase13r2_near_miss_and_broad_paths_are_rejected(self) -> None:
+        for relative in (
+            "docs/evidence/phase13r2",
+            "docs/evidence/phase13r2/pilot_qc.json.backup",
+            "artifacts/phase13",
+            "artifacts/phase13/*",
+            "scripts/phase13_pilot.py",
+            "../docs/phase_reports/phase13r2-pilot-scan.md",
+            "/docs/phase_reports/phase13r2-pilot-scan.md",
+            "docs\\phase_reports\\phase13r2-pilot-scan.md",
+        ):
+            self.assertFalse(
+                validate_phase2.phase13r2_path_is_allowed(relative)
+            )
 
     def test_phase3_backup_root_allowlist_is_exact(self) -> None:
         self.assertEqual(

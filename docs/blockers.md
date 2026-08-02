@@ -1,6 +1,6 @@
 # Blockers
 
-Last updated: 2026-07-28.
+Last updated: 2026-08-02.
 
 ## Current disposition
 
@@ -81,6 +81,7 @@ quality execution remains LOCKED.
 
 | B-018 | The exact pinned TurboQuant store-append-decode probe completed functionally, but Compute Sanitizer memcheck reported 2,093,260 leaked bytes in 28 allocations and exited 99 in final run `phase6-20260725t065153714z-ace9261a-083f14-4bit_nc-fixed-l128-eager`. | G2-TQ and the bounded admission grid | Resolved without changing the algorithm, fixtures, container, runner, timing, or sanitizer criteria. Commit `aac794c21b01b3e43ff93e317286285d21dbcd47` explicitly releases sanitizer-only CUDA storages and library resources. New runs `phase6-b018-20260725t141636785z-aac794c2-6444b4-4bit_nc-sanitizer`, `phase6-b018-20260725t141640440z-aac794c2-eb5675-k3v4_nc-sanitizer`, and `phase6-b018-20260725t141643545z-aac794c2-4d7433-3bit_nc-sanitizer` each pass the probe, exit 0, and record zero errors and zero leaked bytes with valid COMPLETE/inventory/checksum ledgers. Current-HEAD admission at `0df5bb4d445d48e6cba17e30723733f8de35cb14` independently reran all three probes successfully before the frozen grid passed 9/9. | resolved 2026-07-25; current-HEAD confirmation 2026-07-26 |
 | B-019 | The selected official KIVI `main` implementation advertises Llama 3/GQA support but calls Transformers `repeat_kv` for recent key/value regions. At H_Q=32/H_KV=8 the exact expand/reshape helper creates a distinct contiguous 32-head tensor with four times the eight-head storage. | Phase 7 KIVI Reference Lane, E07, E08, and G2-KIVI | Decision 0018 authorizes one exact project patch on the Decision 0017 commit. The patched tree passes exact BF16 formula, native-eight-head operand, forbidden-operation, head-mapping, and unsupported-geometry checks on CPU and SM120. Phase 7 reference evidence and Phase 8 static-adapter admission both preserve that exact patched authority. | resolved under patched-source authority 2026-07-26; confirmed by G2-KIVI 2026-07-27 |
+| B-020 | A Decision 0031-feasible kvq2 B=1/L=131072 Pilot worker exceeded the frozen 7,200-second supervision deadline and was terminated with return code -15 before finalizing a timing run. | Phase 13 completion and Phase 14 readiness | Preserve campaign phase13-20260802t045837322693z-3127f1d1-486dcb and root 581b02a6ca1a09c976a899b2b5d7eeb7897c0ad8f7ed8ad9fb11be5f6475f327; separately preregister and validate a supervisor-timeout contract that accommodates source-faithful feasible top-context setup/execution, then start a wholly new Pilot ID. | open |
 
 ## Phase 4 disposition
 
@@ -270,3 +271,15 @@ attention/MLP peak, Graph reserve, and the frozen 0.88 limit. The former
 is COMPLETE-last and cleanly retrieved. No Phase 13F blocker remains. Both
 stopped campaigns remain immutable; Phase 13 still requires a wholly new
 Pilot campaign and neither stopped campaign may resume.
+
+## Phase 13R2 supervisor-timeout disposition
+
+Decision 0031 correctly retained 684 feasible and 126 capacity-infeasible
+records, including tq_3bit_nc B=8/L=98304 as capacity-infeasible. Fresh
+campaign phase13-20260802t045837322693z-3127f1d1-486dcb stopped fail-closed
+when feasible kvq2 B=1/L=131072 exceeded the frozen 7,200-second supervisor
+deadline. It preserves 23 completed, one runtime-failed, 660 aborted, and 126
+capacity-infeasible records with zero selective retries. Root
+581b02a6ca1a09c976a899b2b5d7eeb7897c0ad8f7ed8ad9fb11be5f6475f327 is
+COMPLETE-last and cleanly retrieved. B-020 is open; this campaign cannot be
+resumed or reclassified.
