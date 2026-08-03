@@ -1732,15 +1732,24 @@ def run_prefix_equivalence(
         if source_session is not None:
             raise Phase13PilotError("equivalence source unexpectedly retained a session")
         torch.cuda.empty_cache()
-        direct_session = _direct_session_with_snapshot(
-            loaded=loaded,
-            configuration=configuration,
-            batch=1,
-            historical=PREFIX_EQUIVALENCE_CONTEXT,
-            snapshot_root=direct_root,
-            abort_after_snapshot=False,
-        )
+        with phase12._observable_cuda_graph_factory(torch) as direct_graphs:
+            direct_session = _direct_session_with_snapshot(
+                loaded=loaded,
+                configuration=configuration,
+                batch=1,
+                historical=PREFIX_EQUIVALENCE_CONTEXT,
+                snapshot_root=direct_root,
+                abort_after_snapshot=False,
+            )
         assert direct_session is not None
+        if (
+            len(direct_graphs) != 1
+            or direct_session.graph is None
+            or direct_session.graph.graph is not direct_graphs[0]
+        ):
+            raise Phase13PilotError(
+                "equivalence direct CUDA Graph is absent or ambiguous"
+            )
         _patch_phase12_point_globals(batch=1, historical=PREFIX_EQUIVALENCE_CONTEXT)
         prefix, decode = _point_inputs(
             batch=1,
@@ -1757,14 +1766,23 @@ def run_prefix_equivalence(
             verify_state_bytes=True,
         )
         with torch.inference_mode(), forced_flash_execution():
-            restored_session, restore_receipt = _build_restored_session(
-                loaded=loaded,
-                operation=operation,
-                prefix=prefix,
-                decode=decode,
-                snapshot_root=source_root,
-                expected_state_sha256=str(source_manifest["state_file_sha256"]),
-                equivalence_export_root=restored_export_root,
+            with phase12._observable_cuda_graph_factory(torch) as restored_graphs:
+                restored_session, restore_receipt = _build_restored_session(
+                    loaded=loaded,
+                    operation=operation,
+                    prefix=prefix,
+                    decode=decode,
+                    snapshot_root=source_root,
+                    expected_state_sha256=str(source_manifest["state_file_sha256"]),
+                    equivalence_export_root=restored_export_root,
+                )
+        if (
+            len(restored_graphs) != 1
+            or restored_session.graph is None
+            or restored_session.graph.graph is not restored_graphs[0]
+        ):
+            raise Phase13PilotError(
+                "equivalence restored CUDA Graph is absent or ambiguous"
             )
         direct_state = validate_prefix_state(
             direct_root,

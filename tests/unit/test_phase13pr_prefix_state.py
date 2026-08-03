@@ -172,6 +172,13 @@ class PrefixStateTests(unittest.TestCase):
         self.assertIn('phase="before"', source)
         self.assertNotIn('phase="equivalence"', source)
 
+    def test_equivalence_uses_observable_graph_factory(self) -> None:
+        source = inspect.getsource(pilot.run_prefix_equivalence)
+        self.assertEqual(
+            source.count("phase12._observable_cuda_graph_factory(torch)"),
+            2,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
