@@ -1647,7 +1647,7 @@ def _equivalence_session_record(session: Any, *, evidence_root: Path) -> dict[st
     graph_path = phase12._write_cuda_graph_path_witness(
         graph=session.graph.graph,
         run_root=evidence_root,
-        phase="equivalence",
+        phase="before",
     )
     graph = session.graph_evidence
     record = {

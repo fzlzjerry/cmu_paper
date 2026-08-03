@@ -167,6 +167,11 @@ class PrefixStateTests(unittest.TestCase):
             source.index("with torch.inference_mode()"),
         )
 
+    def test_equivalence_uses_existing_graph_witness_phase(self) -> None:
+        source = inspect.getsource(pilot._equivalence_session_record)
+        self.assertIn('phase="before"', source)
+        self.assertNotIn('phase="equivalence"', source)
+
 
 if __name__ == "__main__":
     unittest.main()
