@@ -19,7 +19,7 @@ authoritative local task index until issues are created elsewhere.
 | E10 | KVQuant reference lane | E09 | dense/sparse/sink fixtures for 4/3/2-bit and source-faithful Key occupancy cases | complete: Decisions 0021/0023; nine deterministic source-authoritative fixtures; Key counts 0/6/12; non-sink Value fixed-extrema count 12 and sink count 0; native SM120/PTX/JIT and sanitizer PASS; fixture ID `kvqref-a50af6511c314b6394e58a7f81ceefb8`, 113-object root `32cdf465a361dd6695b66ccbea0a462bddc075fd9778d0aa8cdaa3f94e6f63ab` COMPLETE-last and cleanly retrieved; G2-KVQ remains NOT EVALUATED |
 | E11 | KVQuant measurement adapter | E10 | fixed sparse buffers; byte breakdown; graph/path tests; G2-KVQ | complete: Decision 0027 deterministic q4 decode binding; all nine corrected fixtures; exact byte/path/allocation/GQA controls; Graph and sanitizer PASS; bounded grid 9/9; 165-object inner root `0834410509ea7324a41715e0e84e09617bf9b188b10394a234f9a57e804dd1f2` COMPLETE-last and cleanly retrieved; G2-KVQ PASS. Decision 0029 successor current-source re-admission preserves that historical report and the unchanged Adapter/cache/session, replays all nine fixtures, passes a fresh bounded grid 9/9 plus path/allocation/GQA/Graph/sanitizer controls, and binds successor report SHA-256 `9cfed618cee9514a1071392d0a2dca327dcf6acd33d81ac72cc477c7880c09e2` to 212-object inner root `8ea533b9544e99140aec04b4cb9b1ad26f271273206d170e7abefa195c0581aa`, COMPLETE-last and cleanly retrieved; G2-KVQ remains PASS. |
 | E12 | Admission gates | E02-E11 | machine-readable G1-G5 report for every main configuration | complete: Phase 12R campaign `phase12-20260731t062914664948z-6165f78d-c78b9a` completed 30/30 runs across the exact 10 main configurations; G0-G5 PASS; 391-object root `42ab15b6617d072f9b0825b701d1df4519caa110166b8edd48b8359fe8e588e5` is COMPLETE-last and cleanly retrieved; no speedup or comparative claim calculated |
-| E13 | Pilot scan | E12 PASS; Phase 13B PASS; Phase 13F PASS; B-020 open | immutable randomized samples; QC; provisional knees; pilot gate | blocked: Phase 13R2 preserved all 810 Decision 0031 records (684 feasible, 126 capacity-infeasible), completed 23 runs, then stopped fail-closed when feasible kvq2 B=1/L=131072 exceeded the frozen 7,200-second supervisor deadline; root 581b02a6ca1a09c976a899b2b5d7eeb7897c0ad8f7ed8ad9fb11be5f6475f327 is COMPLETE-last and cleanly retrieved; separate timeout-contract remediation and another fresh campaign are required |
+| E13 | Pilot scan | E12 PASS; Phase 13B PASS; Phase 13F PASS; Phase 13T PASS | immutable randomized samples; QC; provisional knees; pilot gate | in progress: Decision 0032 supervision remediation root `5e98c8103c6e15ca0877e39f7b9363a208ba8722bb6993ef67a04a06c9f795cb` is COMPLETE-last and cleanly retrieved; all stopped campaigns remain immutable; a wholly new 810-record Pilot campaign is required |
 | E14 | Nsight Systems integration | E13 | nsys-only runs around knees; launch/sync/kernel evidence | pending |
 | E15 | Nsight Compute integration | E13 | current-SM metric discovery; measured traffic; ncu-only runs | pending |
 | E16 | Full scan | pilot gate, M14-GRAPH-AB, E14-E15 | preregistered grid; feasibility/exclusion records; immutable samples | pending |
@@ -77,10 +77,11 @@ task list. E16 remains closed until its evidence is reviewed.
   Phase 13B separately admits B=1/4/8 static geometry for all nine compressed
   configurations. Phase 13F corrects the 810-record end-to-end peak-memory
   feasibility contract under Decision 0031. Phase 13R2 confirms that matrix
-  but exposes B-020: feasible kvq2 B=1/L=131072 exceeds the frozen 7,200-second
-  supervisor deadline. A separate timeout-contract remediation and another
-  fresh Pilot ID are required; Phase 14, performance profiling, Full Scan, and
-  quality execution remain unopened.
+  but exposes B-020. Decision 0032 and Phase 13T prove normal progress and bind
+  finite stage-aware supervision without changing timing or grid semantics.
+  The remediation root is cleanly retrieved; another fresh Pilot ID is now
+  required. Phase 14, performance profiling, Full Scan, and quality execution
+  remain unopened.
 - E12 includes an operator-level MHA control with identical head dimension and
   no GQA repetition.
 - B-011 through B-017 are resolved for native-host BF16 G1. The reporting-only

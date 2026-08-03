@@ -1,0 +1,40 @@
+{
+  "artifact_id": "phase13t-20260803t003012058490z-aad35807-7d1bf2",
+  "bucket_lock": {
+    "bucket": "kvbench-artifacts",
+    "covered_prefix": "kvbench/sha256/",
+    "lock_rule_id": "kvbench-evidence-indefinite",
+    "lock_scope": "exact",
+    "public_state_result": "PASS",
+    "retention_condition": "Indefinite",
+    "retention_type": "Indefinite",
+    "verification_result": "PASS"
+  },
+  "clean_retrieval": {
+    "checksum_ledger_valid": true,
+    "complete_marker_valid": true,
+    "inventory_valid": true,
+    "object_count": 16,
+    "result": "PASS",
+    "retrieved_at_utc": "2026-08-03T00:34:43.075795Z",
+    "root_sha256": "5e98c8103c6e15ca0877e39f7b9363a208ba8722bb6993ef67a04a06c9f795cb",
+    "unexpected_objects": false
+  },
+  "clean_retrieval_count": 1,
+  "credential_leakage": false,
+  "initial_publication": {
+    "complete_last": true,
+    "object_count": 16,
+    "publication_order_sha256": "162afe3cb8d4e11a8782d22dd8c9b5c44691cbe5fe5538b3500d556ba5a8df29",
+    "published_at_utc": "2026-08-03T00:34:06.967583Z",
+    "result": "PASS",
+    "uploaded_count": 16,
+    "verified_existing_count": 0
+  },
+  "provider": "cloudflare_r2",
+  "required_variables": "PRESENT",
+  "root_sha256": "5e98c8103c6e15ca0877e39f7b9363a208ba8722bb6993ef67a04a06c9f795cb",
+  "schema_version": "kvbench-phase13t-r2-publication-receipt-1.0.0",
+  "status": "PASS",
+  "uri": "r2://kvbench-artifacts/kvbench/sha256/5e98c8103c6e15ca0877e39f7b9363a208ba8722bb6993ef67a04a06c9f795cb/"
+}

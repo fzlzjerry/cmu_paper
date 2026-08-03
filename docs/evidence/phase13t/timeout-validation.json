@@ -1,0 +1,70 @@
+{
+  "artifact_id": "phase13t-20260803t003012058490z-aad35807-7d1bf2",
+  "authorized_container_digest": "sha256:059bc9be89387369d7de9e3e9b26d85b6e9902c41e7dbf002ebc45edd188fb7e",
+  "capacity_infeasible_records": 126,
+  "decision": "0032",
+  "diagnostic": {
+    "backend_fallback": false,
+    "configuration": "kvq2",
+    "context_label": 131072,
+    "deadlocked": false,
+    "historical_context": 131071,
+    "normal_forward_progress": true,
+    "output_finite": true,
+    "performance_claim_eligible": false,
+    "raw_stage_log_sha256": "b278d81e6553a80f9e9d14138114c9c4d96123f6f21fa8bbb95438dd00655c9b",
+    "stages_seconds": {
+      "finalization": 0.0020979018881917,
+      "graph_capture_and_correctness": 3590.4531218521297,
+      "measurement_and_untimed_validation": 3825.243872751016,
+      "model_load": 11.555290000978857,
+      "prefix_construction_and_pre_capture_validation": 27550.86025683186,
+      "warmup_and_audit": 10802.075870963046
+    },
+    "stalled": false,
+    "worker_completed": true,
+    "worker_result_sha256": "a23da0d6ace8c52974db1601f780f8e8638e1e129e5c3c4524dc2d3f219e607f"
+  },
+  "diagnostic_source_git_sha": "fb6a1fedc0cc01abbfbd974005f7567fbd291fd7",
+  "execution_git_sha": "aad35807a50b8d775156c316a8f13120e87de7bb",
+  "feasible_records": 684,
+  "historical_custody": {
+    "all_stopped_campaigns_unchanged": true,
+    "record_count": 5
+  },
+  "local_artifact": "artifacts/phase13t/phase13t-20260803t003012058490z-aad35807-7d1bf2",
+  "object_count": 16,
+  "old_global_timeout_seconds": 7200.0,
+  "old_timeout_expired_during": "prefix_construction",
+  "planned_records": 810,
+  "root_sha256": "5e98c8103c6e15ca0877e39f7b9363a208ba8722bb6993ef67a04a06c9f795cb",
+  "schema_version": "kvbench-phase13t-timeout-validation-receipt-1.0.0",
+  "scope": {
+    "adapters_changed": false,
+    "admission_evidence_changed": false,
+    "cache_layouts_changed": false,
+    "calibration_changed": false,
+    "cuda_changed": false,
+    "fixtures_changed": false,
+    "grid_changed": false,
+    "pilot_executed": false,
+    "timing_boundaries_changed": false
+  },
+  "stage_timeout_contract_seconds": {
+    "finalization": 1800.0,
+    "graph_capture": 8354.0,
+    "measurement": 7200.0,
+    "model_load": 900.0,
+    "prefix_construction": 34568.0,
+    "startup": 600.0,
+    "transition": 600.0,
+    "warmup_and_audit": 16708.0
+  },
+  "status": "PASS",
+  "tests": {
+    "make_checks": "PASS",
+    "make_test": "PASS",
+    "package_lock_check": "PASS",
+    "test_phase13t_authorized_container": "PASS"
+  }
+}
