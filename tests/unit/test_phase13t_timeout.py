@@ -266,7 +266,12 @@ class Phase13StageContractTests(unittest.TestCase):
         )
         contract = pilot.stage_timeout_contract(batch=8, historical=49152)
         self.assertEqual(contract["prefix_construction"], 100_104.0)
+        self.assertEqual(contract["graph_capture"], 21_461.0)
+        self.assertEqual(contract["warmup_and_audit"], 42_922.0)
         self.assertTrue(all(value > 0 for value in contract.values()))
+        diagnostic = pilot.stage_timeout_contract(batch=1, historical=131071)
+        self.assertEqual(diagnostic["graph_capture"], 8_354.0)
+        self.assertEqual(diagnostic["warmup_and_audit"], 16_708.0)
         with self.assertRaisesRegex(
             pilot.Phase13PilotError,
             "prefix timeout geometry is invalid",
@@ -324,8 +329,21 @@ class Phase13StageContractTests(unittest.TestCase):
             self.assertFalse(summary["deadlocked"])
             self.assertEqual(summary["prefix_layers_completed"], 32)
             self.assertGreater(
-                summary["stages"]["prefix_construction"]["duration_seconds"],
+                summary["supervisor_stages"]["prefix_construction"][
+                    "duration_seconds"
+                ],
                 7_200.0,
+            )
+            self.assertEqual(
+                set(summary["supervisor_stages"]),
+                {
+                    "model_load",
+                    "prefix_construction",
+                    "graph_capture",
+                    "warmup_and_audit",
+                    "measurement",
+                    "finalization",
+                },
             )
 
             lines = (root / "stage-events.jsonl").read_text(

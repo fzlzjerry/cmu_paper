@@ -137,8 +137,6 @@ FIXED_STAGE_TIMEOUTS_SECONDS = {
     "startup": 600.0,
     "transition": 600.0,
     "model_load": 900.0,
-    "graph_capture": 7_200.0,
-    "warmup_and_audit": 7_200.0,
     "measurement": 7_200.0,
     "finalization": 1_800.0,
 }
@@ -157,9 +155,7 @@ class Phase13PilotError(RuntimeError):
     """The Pilot contract or evidence failed closed."""
 
 
-def prefix_construction_timeout_seconds(*, batch: int, historical: int) -> float:
-    """Return the frozen point-scaled, finite prefix-construction deadline."""
-
+def _validate_timeout_geometry(*, batch: int, historical: int) -> None:
     if (
         not isinstance(batch, int)
         or isinstance(batch, bool)
@@ -172,7 +168,27 @@ def prefix_construction_timeout_seconds(*, batch: int, historical: int) -> float
         }
     ):
         raise Phase13PilotError("prefix timeout geometry is invalid")
+
+
+def prefix_construction_timeout_seconds(*, batch: int, historical: int) -> float:
+    """Return the frozen point-scaled, finite prefix-construction deadline."""
+
+    _validate_timeout_geometry(batch=batch, historical=historical)
     return float(max(3_600, 1_800 + math.ceil(batch * historical / 4)))
+
+
+def graph_capture_timeout_seconds(*, batch: int, historical: int) -> float:
+    """Bound capture plus its one full-history stability checksum."""
+
+    _validate_timeout_geometry(batch=batch, historical=historical)
+    return float(max(7_200, 1_800 + math.ceil(batch * historical / 20)))
+
+
+def warmup_audit_timeout_seconds(*, batch: int, historical: int) -> float:
+    """Bound warmup/audit plus its two full-history stability checksums."""
+
+    _validate_timeout_geometry(batch=batch, historical=historical)
+    return float(max(10_800, 3_600 + math.ceil(batch * historical / 10)))
 
 
 def stage_timeout_contract(*, batch: int, historical: int) -> dict[str, float]:
@@ -181,6 +197,14 @@ def stage_timeout_contract(*, batch: int, historical: int) -> dict[str, float]:
     return {
         **FIXED_STAGE_TIMEOUTS_SECONDS,
         "prefix_construction": prefix_construction_timeout_seconds(
+            batch=batch,
+            historical=historical,
+        ),
+        "graph_capture": graph_capture_timeout_seconds(
+            batch=batch,
+            historical=historical,
+        ),
+        "warmup_and_audit": warmup_audit_timeout_seconds(
             batch=batch,
             historical=historical,
         ),

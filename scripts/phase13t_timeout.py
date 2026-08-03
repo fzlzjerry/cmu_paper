@@ -252,6 +252,35 @@ def _unique_duration(
     }
 
 
+def _boundary_span(
+    events: Sequence[Mapping[str, Any]],
+    *,
+    start_stage: str,
+    start_event: str,
+    end_stage: str,
+    end_event: str,
+) -> dict[str, float]:
+    starts = [
+        float(event["elapsed_seconds"])
+        for event in events
+        if event.get("stage") == start_stage
+        and event.get("event") == start_event
+    ]
+    completions = [
+        float(event["elapsed_seconds"])
+        for event in events
+        if event.get("stage") == end_stage
+        and event.get("event") == end_event
+    ]
+    if len(starts) != 1 or len(completions) != 1 or completions[0] <= starts[0]:
+        raise Phase13TTimeoutError("diagnostic supervisor-stage boundaries differ")
+    return {
+        "started_elapsed_seconds": starts[0],
+        "completed_elapsed_seconds": completions[0],
+        "duration_seconds": completions[0] - starts[0],
+    }
+
+
 def diagnostic_summary(root: Path) -> dict[str, Any]:
     resolved = root.resolve(strict=True)
     names = frozenset(path.name for path in resolved.iterdir() if path.is_file())
@@ -296,6 +325,32 @@ def diagnostic_summary(root: Path) -> dict[str, Any]:
             "finalization",
         )
     }
+    supervised_stages = {
+        "model_load": stages["model_load"],
+        "prefix_construction": _boundary_span(
+            events,
+            start_stage="prefix_construction",
+            start_event="started",
+            end_stage="graph_capture",
+            end_event="started",
+        ),
+        "graph_capture": _boundary_span(
+            events,
+            start_stage="graph_capture",
+            start_event="started",
+            end_stage="session_setup",
+            end_event="completed",
+        ),
+        "warmup_and_audit": _boundary_span(
+            events,
+            start_stage="session_setup",
+            start_event="completed",
+            end_stage="measurement",
+            end_event="started",
+        ),
+        "measurement": stages["measurement"],
+        "finalization": stages["finalization"],
+    }
     layer_starts = [
         event for event in events
         if event.get("stage") == "prefix_layer"
@@ -315,8 +370,14 @@ def diagnostic_summary(root: Path) -> dict[str, Any]:
         float(completed["elapsed_seconds"]) - float(started["elapsed_seconds"])
         for started, completed in zip(layer_starts, layer_completions, strict=True)
     ]
-    prefix_duration = stages["prefix_construction"]["duration_seconds"]
+    prefix_duration = supervised_stages["prefix_construction"][
+        "duration_seconds"
+    ]
     frozen_budget = pilot.prefix_construction_timeout_seconds(
+        batch=1,
+        historical=131071,
+    )
+    frozen_contract = pilot.stage_timeout_contract(
         batch=1,
         historical=131071,
     )
@@ -326,6 +387,11 @@ def diagnostic_summary(root: Path) -> dict[str, Any]:
         or any(duration <= 0 or duration >= 1800 for duration in layer_durations)
     ):
         raise Phase13TTimeoutError("diagnostic progression or bound differs")
+    for stage, boundary in supervised_stages.items():
+        if boundary["duration_seconds"] >= frozen_contract[stage]:
+            raise Phase13TTimeoutError(
+                f"diagnostic exceeded the Decision 0032 {stage} bound"
+            )
     return {
         "schema_version": "kvbench-phase13t-diagnostic-summary-1.0.0",
         "configuration": "kvq2",
@@ -333,12 +399,14 @@ def diagnostic_summary(root: Path) -> dict[str, Any]:
         "context_label": 131072,
         "historical_context": 131071,
         "old_global_timeout_seconds": 7200.0,
-        "stages": stages,
+        "source_observed_stages": stages,
+        "supervisor_stages": supervised_stages,
         "prefix_layers_completed": 32,
         "prefix_layer_duration_min_seconds": min(layer_durations),
         "prefix_layer_duration_max_seconds": max(layer_durations),
         "prefix_layer_duration_mean_seconds": sum(layer_durations) / 32,
         "decision_0032_prefix_budget_seconds": frozen_budget,
+        "decision_0032_stage_contract_seconds": frozen_contract,
         "old_timeout_expired_during": "prefix_construction",
         "normal_forward_progress": True,
         "stalled": False,
@@ -416,6 +484,8 @@ def _source_authority() -> dict[str, Any]:
         DECISION_PATH,
         PLAN_PATH,
         Path("scripts/phase13_pilot.py"),
+        Path("scripts/phase13t_timeout.py"),
+        Path("scripts/validate_phase2.py"),
         Path("src/kvbench/runtime/process_supervision.py"),
         Path("tests/unit/test_phase13t_timeout.py"),
     )
