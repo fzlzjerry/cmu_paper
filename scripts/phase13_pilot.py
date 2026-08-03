@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 from collections import defaultdict
 from collections.abc import Mapping, Sequence
+from contextlib import contextmanager
 import dataclasses
 from datetime import datetime, timezone
 import hashlib
@@ -25,11 +26,11 @@ import statistics
 import subprocess
 import sys
 import time
+import types
 from typing import Any
 
 from preflight.run_preflight import json_bytes, rename_noreplace, write_exclusive
 from kvbench.runtime.artifacts import sha256_file
-from kvbench.runtime.method_harness import execution_path_audit_facade
 from kvbench.runtime.process_supervision import run_stage_supervised_command
 from kvbench.schema import GraphMode, RunnerKind, canonical_json_bytes, sha256_hex
 from kvbench.schema.phase13b import (
@@ -38,6 +39,12 @@ from kvbench.schema.phase13b import (
     Phase13BMethodAdmissionReport,
 )
 from scripts.r2_artifact import validate_local_artifact
+from scripts.phase13_prefix_state import (
+    Phase13PrefixStateError,
+    restore_prefix_state,
+    save_prefix_state,
+    validate_prefix_state,
+)
 import scripts.phase12_unified_admission as phase12
 
 
@@ -117,6 +124,7 @@ INPUT_RECIPE_SCHEMA = "kvbench-phase13-pilot-input-1.0.0"
 CAMPAIGN_SCHEMA = "kvbench-phase13-pilot-campaign-1.0.0"
 RUN_SCHEMA = "kvbench-phase13-pilot-process-run-1.0.0"
 WORKER_PREFIX = "PHASE13_WORKER_RESULT="
+PREFIX_BUILDER_PREFIX = "PHASE13_PREFIX_BUILDER_RESULT="
 STAGE_EVENT_SCHEMA = "kvbench-phase13-stage-event-1.0.0"
 STAGE_OBSERVER_POLL_SECONDS = 5.0
 STAGE_SEQUENCE = (
@@ -133,6 +141,16 @@ STAGE_SEQUENCE = (
     ("finalization", "started"),
     ("finalization", "completed"),
 )
+PREFIX_BUILD_STAGE_SEQUENCE = (
+    ("model_load", "started"),
+    ("model_load", "completed"),
+    ("prefix_construction", "started"),
+    ("prefix_construction", "completed"),
+    ("finalization", "started"),
+    ("finalization", "completed"),
+)
+PREFIX_EQUIVALENCE_CONTEXT = 17
+PREFIX_EQUIVALENCE_SOURCE_BATCH = 8
 FIXED_STAGE_TIMEOUTS_SECONDS = {
     "startup": 600.0,
     "transition": 600.0,
@@ -214,7 +232,13 @@ def stage_timeout_contract(*, batch: int, historical: int) -> dict[str, float]:
 class _WorkerStageRecorder:
     """Write one exclusive, ordered file for each worker stage transition."""
 
-    def __init__(self, *, root: Path, run_id: str) -> None:
+    def __init__(
+        self,
+        *,
+        root: Path,
+        run_id: str,
+        stage_sequence: Sequence[tuple[str, str]] = STAGE_SEQUENCE,
+    ) -> None:
         self.root = root.resolve(strict=True)
         if (
             self.root.name != "stage-progress"
@@ -224,12 +248,15 @@ class _WorkerStageRecorder:
         ):
             raise Phase13PilotError("worker stage-progress root differs")
         self.run_id = run_id
+        self.stage_sequence = tuple(stage_sequence)
+        if not self.stage_sequence:
+            raise Phase13PilotError("worker stage sequence is empty")
         self.next_sequence = 1
 
     def record(self, stage: str, state: str) -> None:
-        if self.next_sequence > len(STAGE_SEQUENCE):
+        if self.next_sequence > len(self.stage_sequence):
             raise Phase13PilotError("worker stage sequence overflowed")
-        if (stage, state) != STAGE_SEQUENCE[self.next_sequence - 1]:
+        if (stage, state) != self.stage_sequence[self.next_sequence - 1]:
             raise Phase13PilotError("worker stage transition differs")
         payload = {
             "schema_version": STAGE_EVENT_SCHEMA,
@@ -249,7 +276,10 @@ class _WorkerStageRecorder:
 
 
 def _read_stage_observations(
-    *, root: Path, run_id: str
+    *,
+    root: Path,
+    run_id: str,
+    stage_sequence: Sequence[tuple[str, str]] = STAGE_SEQUENCE,
 ) -> list[dict[str, object]]:
     """Read exact append-only stage events for the direct-child supervisor."""
 
@@ -261,11 +291,12 @@ def _read_stage_observations(
     ):
         raise Phase13PilotError("stage observation root differs")
     paths = sorted(root.iterdir())
-    if len(paths) > len(STAGE_SEQUENCE):
+    sequence = tuple(stage_sequence)
+    if not sequence or len(paths) > len(sequence):
         raise Phase13PilotError("stage observation count overflowed")
     observations: list[dict[str, object]] = []
     for index, path in enumerate(paths, start=1):
-        stage, state = STAGE_SEQUENCE[index - 1]
+        stage, state = sequence[index - 1]
         expected_name = f"{index:02d}-{stage}-{state}.json"
         try:
             mode = path.lstat().st_mode
@@ -1072,6 +1103,759 @@ def _patch_phase12_point_globals(*, batch: int, historical: int) -> None:
     phase12.PHASE12_INPUT_RECIPE_SHA256 = _canonical_sha256(recipe)
 
 
+def _point_inputs(*, batch: int, historical: int, device: Any) -> tuple[Any, Any]:
+    import torch
+
+    prefix = (
+        torch.arange(batch * historical, dtype=torch.long, device=device)
+        .reshape(batch, historical)
+        .add(12_000)
+        .remainder(120_000)
+        .add(1_000)
+    )
+    decode = (
+        torch.arange(batch, dtype=torch.long, device=device)
+        .reshape(batch, 1)
+        .add(12_000 + historical + 257)
+        .remainder(120_000)
+        .add(1_000)
+    )
+    return prefix, decode
+
+
+def derive_prefix_catalog_plan(
+    feasibility: Sequence[Mapping[str, Any]],
+) -> list[dict[str, Any]]:
+    """Use one maximum-feasible-batch state per config/context pair."""
+
+    grouped: dict[tuple[str, int], set[int]] = defaultdict(set)
+    for record in feasibility:
+        if record.get("status") == "feasible":
+            grouped[
+                (str(record["method_config_id"]), int(record["context_label"]))
+            ].add(int(record["batch_size"]))
+    entries: list[dict[str, Any]] = []
+    for configuration in CONFIGURATIONS:
+        for context_label in CONTEXT_LABELS:
+            batches = sorted(grouped.get((configuration, context_label), set()))
+            if not batches:
+                raise Phase13PilotError("prefix catalog lacks a feasible batch")
+            if any(batch not in BATCH_SIZES for batch in batches):
+                raise Phase13PilotError("prefix catalog batch geometry differs")
+            historical = actual_historical_context(context_label)
+            entries.append(
+                {
+                    "snapshot_id": f"prefix-{configuration}-l{context_label}",
+                    "method_config_id": configuration,
+                    "method_config_fingerprint": CONFIG_FINGERPRINTS[configuration],
+                    "method_family": phase12._method_family(configuration),
+                    "context_label": context_label,
+                    "historical_context": historical,
+                    "capacity": historical + 1,
+                    "source_batch": max(batches),
+                    "target_batches": batches,
+                    "leading_rows_are_source_faithful": True,
+                }
+            )
+    unique_targets = sum(len(entry["target_batches"]) for entry in entries)
+    if len(entries) != len(CONFIGURATIONS) * len(CONTEXT_LABELS) or unique_targets != 228:
+        raise Phase13PilotError("prefix catalog cardinality differs")
+    return entries
+
+
+class _PrefixStateCaptured(Exception):
+    def __init__(self, manifest: Mapping[str, Any]) -> None:
+        super().__init__("prefix state captured")
+        self.manifest = dict(manifest)
+
+
+@contextmanager
+def _patched_endpoint_prefill(callback: Any) -> Any:
+    from kvbench.runtime.bf16_endpoint import BF16DecodeEndpoint
+
+    original = BF16DecodeEndpoint.prefill
+
+    def patched(endpoint: Any, prefix_input_ids: Any) -> Any:
+        return callback(endpoint, prefix_input_ids, original)
+
+    BF16DecodeEndpoint.prefill = patched
+    try:
+        yield
+    finally:
+        BF16DecodeEndpoint.prefill = original
+
+
+@contextmanager
+def _restored_prefix_hash_overrides(witness: str) -> Any:
+    import kvbench.runtime.kivi_session as kivi_session
+    import kvbench.runtime.kvquant_session as kvquant_session
+    import kvbench.runtime.phase3_endpoint_audit as bf16_audit
+
+    originals = (
+        bf16_audit._cache_pair_sha256,
+        kivi_session._historical_prefix_sha256,
+        kvquant_session._historical_prefix_sha256,
+    )
+    bf16_audit._cache_pair_sha256 = lambda *args, **kwargs: witness
+    kivi_session._historical_prefix_sha256 = lambda *args, **kwargs: witness
+    kvquant_session._historical_prefix_sha256 = lambda *args, **kwargs: witness
+    try:
+        yield
+    finally:
+        (
+            bf16_audit._cache_pair_sha256,
+            kivi_session._historical_prefix_sha256,
+            kvquant_session._historical_prefix_sha256,
+        ) = originals
+
+
+def _bind_session_prefix_witness(session: Any, witness: str) -> None:
+    session.current_historical_prefix_sha256 = types.MethodType(
+        lambda self: witness,
+        session,
+    )
+    if hasattr(session.cache, "history_sha256"):
+        session.cache.history_sha256 = types.MethodType(
+            lambda self, historical_length: witness,
+            session.cache,
+        )
+    if session.current_historical_prefix_sha256() != witness:
+        raise Phase13PilotError("restored prefix witness binding failed")
+
+
+def _build_restored_session(
+    *,
+    loaded: Any,
+    operation: Phase13OperationKey,
+    prefix: Any,
+    decode: Any,
+    snapshot_root: Path,
+    expected_state_sha256: str,
+    equivalence_export_root: Path | None = None,
+) -> tuple[Any, dict[str, Any]]:
+    family = phase12._method_family(operation.configuration)
+    restore_receipt: dict[str, Any] | None = None
+
+    def restore_callback(endpoint: Any, input_ids: Any, original: Any) -> None:
+        del original
+        nonlocal restore_receipt
+        if tuple(input_ids.shape) != (operation.batch_size, operation.historical_context):
+            raise Phase13PilotError("restored prefix input geometry differs")
+        restore_receipt = restore_prefix_state(
+            cache=endpoint.cache,
+            family=family,
+            configuration=operation.configuration,
+            historical=operation.historical_context,
+            root=snapshot_root,
+            expected_state_sha256=expected_state_sha256,
+        )
+        if equivalence_export_root is not None:
+            save_prefix_state(
+                cache=endpoint.cache,
+                family=family,
+                configuration=operation.configuration,
+                historical=operation.historical_context,
+                source_batch=operation.batch_size,
+                output=equivalence_export_root,
+                authority={
+                    "equivalence_export": True,
+                    "source_state_sha256": expected_state_sha256,
+                    "target_batch": operation.batch_size,
+                },
+            )
+        witness = str(restore_receipt["witness_sha256"])
+        if hasattr(endpoint.cache, "history_sha256"):
+            endpoint.cache.history_sha256 = types.MethodType(
+                lambda self, historical_length: witness,
+                endpoint.cache,
+            )
+        return None
+
+    manifest = validate_prefix_state(
+        snapshot_root,
+        configuration=operation.configuration,
+        historical=operation.historical_context,
+        verify_state_bytes=False,
+    )
+    if manifest.get("state_file_sha256") != expected_state_sha256:
+        raise Phase13PilotError("prefix snapshot catalog digest differs")
+    from scripts.phase13_prefix_state import restored_prefix_witness
+
+    witness = restored_prefix_witness(manifest, target_batch=operation.batch_size)
+    with _restored_prefix_hash_overrides(witness), _patched_endpoint_prefill(
+        restore_callback
+    ):
+        session = phase12._build_phase12_session(
+            loaded=loaded,
+            operation_key=operation,
+            prefix_input_ids=prefix,
+            decode_input_ids=decode,
+        )
+    if restore_receipt is None or restore_receipt.get("witness_sha256") != witness:
+        raise Phase13PilotError("prefix restore did not execute exactly once")
+    _bind_session_prefix_witness(session, witness)
+    return session, restore_receipt
+
+
+def _build_prefix_state_worker(
+    *,
+    snapshot_id: str,
+    configuration: str,
+    source_batch: int,
+    context_label: int,
+    git_sha: str,
+    build_root: Path,
+    output: Path,
+) -> dict[str, Any]:
+    """Directly construct one untimed canonical state inside the container."""
+
+    attestation = phase12._require_authorized_container_runtime()
+    import torch
+
+    from kvbench.runtime.backend import forced_flash_execution
+    from kvbench.runtime.model_loader import load_frozen_model
+
+    historical = actual_historical_context(context_label)
+    recorder = _WorkerStageRecorder(
+        root=build_root / "stage-progress",
+        run_id=snapshot_id,
+        stage_sequence=PREFIX_BUILD_STAGE_SEQUENCE,
+    )
+    observed_head = subprocess.run(
+        ("/usr/bin/git", "rev-parse", "HEAD"),
+        cwd=REPOSITORY_ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    observed_status = subprocess.run(
+        ("/usr/bin/git", "status", "--porcelain=v1", "--untracked-files=all"),
+        cwd=REPOSITORY_ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout
+    if observed_head != git_sha or observed_status:
+        raise Phase13PilotError("prefix builder source authority differs")
+    _patch_phase12_point_globals(batch=source_batch, historical=historical)
+    device = torch.device("cuda:0")
+    recorder.record("model_load", "started")
+    loaded = load_frozen_model(device=device)
+    recorder.record("model_load", "completed")
+    prefix, decode = _point_inputs(
+        batch=source_batch,
+        historical=historical,
+        device=device,
+    )
+    operation = Phase13OperationKey.create(configuration, source_batch, historical)
+    recorder.record("prefix_construction", "started")
+
+    def capture_callback(endpoint: Any, input_ids: Any, original: Any) -> None:
+        original(endpoint, input_ids)
+        recorder.record("prefix_construction", "completed")
+        recorder.record("finalization", "started")
+        manifest = save_prefix_state(
+            cache=endpoint.cache,
+            family=phase12._method_family(configuration),
+            configuration=configuration,
+            historical=historical,
+            source_batch=source_batch,
+            output=output,
+            authority={
+                "execution_git_sha": git_sha,
+                "authorized_container_digest": AUTHORIZED_CONTAINER_DIGEST,
+                "method_config_fingerprint": CONFIG_FINGERPRINTS[configuration],
+                "operation_fingerprint_sha256": operation.operation_fingerprint_sha256,
+                "input_recipe_schema": INPUT_RECIPE_SCHEMA,
+                "input_recipe_sha256": phase12.PHASE12_INPUT_RECIPE_SHA256,
+                "snapshot_id": snapshot_id,
+            },
+        )
+        recorder.record("finalization", "completed")
+        raise _PrefixStateCaptured(manifest)
+
+    captured: dict[str, Any] | None = None
+    with torch.inference_mode(), forced_flash_execution(), _patched_endpoint_prefill(
+        capture_callback
+    ):
+        try:
+            phase12._build_phase12_session(
+                loaded=loaded,
+                operation_key=operation,
+                prefix_input_ids=prefix,
+                decode_input_ids=decode,
+            )
+        except _PrefixStateCaptured as signal:
+            captured = signal.manifest
+    if captured is None:
+        raise Phase13PilotError("direct prefix snapshot was not captured")
+    return {
+        "schema_version": "kvbench-phase13-prefix-builder-result-1.0.0",
+        "snapshot_id": snapshot_id,
+        "configuration": configuration,
+        "context_label": context_label,
+        "historical_context": historical,
+        "source_batch": source_batch,
+        "state_file_sha256": captured["state_file_sha256"],
+        "state_file_bytes": captured["state_file_bytes"],
+        "container_runtime_attestation": attestation,
+    }
+
+
+def _run_prefix_builder_process(
+    *,
+    prefix_root: Path,
+    entry: Mapping[str, Any],
+    git_sha: str,
+) -> dict[str, Any]:
+    snapshot_id = str(entry["snapshot_id"])
+    builds_root = prefix_root / "builds"
+    states_root = prefix_root / "states"
+    build_root = builds_root / snapshot_id
+    snapshot_root = states_root / snapshot_id
+    if build_root.exists() or snapshot_root.exists() or snapshot_root.is_symlink():
+        raise Phase13PilotError("prefix snapshot ID already exists")
+    build_root.mkdir()
+    (build_root / "stage-progress").mkdir()
+    child_output = build_root / "snapshot"
+    pre = phase12._capture_process_snapshot()
+    phase12._require_idle_snapshot(pre)
+    command = (
+        sys.executable,
+        str(REPOSITORY_ROOT / "scripts/phase13_pilot.py"),
+        "--build-prefix-state",
+        "--snapshot-id",
+        snapshot_id,
+        "--configuration",
+        str(entry["method_config_id"]),
+        "--source-batch",
+        str(entry["source_batch"]),
+        "--context-label",
+        str(entry["context_label"]),
+        "--git-sha",
+        git_sha,
+        "--build-root",
+        str(build_root),
+        "--output",
+        str(child_output),
+    )
+    historical = int(entry["historical_context"])
+    timeouts = stage_timeout_contract(
+        batch=int(entry["source_batch"]),
+        historical=historical,
+    )
+    timeouts["finalization"] = max(
+        7_200.0,
+        float(1_800 + math.ceil(int(entry["source_batch"]) * historical / 20)),
+    )
+    result = run_stage_supervised_command(
+        command,
+        working_directory=str(REPOSITORY_ROOT),
+        environment=phase12._child_environment(),
+        stage_timeouts=timeouts,
+        stage_observer=lambda: _read_stage_observations(
+            root=build_root / "stage-progress",
+            run_id=snapshot_id,
+            stage_sequence=PREFIX_BUILD_STAGE_SEQUENCE,
+        ),
+        startup_stage="startup",
+        transition_stage="transition",
+        observer_poll_seconds=STAGE_OBSERVER_POLL_SECONDS,
+    )
+    post = phase12._capture_process_snapshot()
+    phase12._require_idle_snapshot(post)
+    phase12._write_supervised_command_evidence(
+        root=build_root,
+        prefix="builder",
+        result=result,
+        pre_snapshot=pre,
+        post_snapshot=post,
+    )
+    if not _supervision_passed(result):
+        raise Phase13PilotError(f"prefix builder failed: {snapshot_id}")
+    matches = [
+        line[len(PREFIX_BUILDER_PREFIX) :]
+        for line in result.stdout.decode("utf-8", errors="strict").splitlines()
+        if line.startswith(PREFIX_BUILDER_PREFIX)
+    ]
+    if len(matches) != 1:
+        raise Phase13PilotError("prefix builder result channel differs")
+    payload = json.loads(matches[0])
+    if not isinstance(payload, dict) or payload.get("snapshot_id") != snapshot_id:
+        raise Phase13PilotError("prefix builder result identity differs")
+    manifest = validate_prefix_state(
+        child_output,
+        configuration=str(entry["method_config_id"]),
+        historical=historical,
+        verify_state_bytes=True,
+    )
+    if (
+        manifest.get("source_batch") != entry["source_batch"]
+        or manifest.get("state_file_sha256") != payload.get("state_file_sha256")
+        or manifest.get("authority", {}).get("execution_git_sha") != git_sha
+        or manifest.get("authority", {}).get("authorized_container_digest")
+        != AUTHORIZED_CONTAINER_DIGEST
+    ):
+        raise Phase13PilotError("prefix builder authority differs")
+    rename_noreplace(child_output, snapshot_root)
+    for path in sorted(snapshot_root.iterdir()):
+        path.chmod(0o444)
+    snapshot_root.chmod(0o555)
+    return {
+        **dict(entry),
+        "snapshot_relative_path": f"states/{snapshot_id}",
+        "state_file_sha256": manifest["state_file_sha256"],
+        "state_file_bytes": manifest["state_file_bytes"],
+        "source_layout_fingerprint": manifest["source_layout_fingerprint"],
+        "builder_supervision_sha256": sha256_file(
+            build_root / "builder.supervision.json"
+        ),
+        "state_bytes_verified_once_before_timing": True,
+    }
+
+
+def prepare_prefix_catalog(
+    *,
+    prefix_root: Path,
+    feasibility: Sequence[Mapping[str, Any]],
+    git_sha: str,
+) -> dict[str, Any]:
+    """Build and validate every reusable state before any formal timing run."""
+
+    if not prefix_root.is_dir() or prefix_root.is_symlink() or any(prefix_root.iterdir()):
+        raise Phase13PilotError("prefix catalog root must be new and empty")
+    (prefix_root / "builds").mkdir()
+    (prefix_root / "states").mkdir()
+    plan = derive_prefix_catalog_plan(feasibility)
+    completed = [
+        _run_prefix_builder_process(
+            prefix_root=prefix_root,
+            entry=entry,
+            git_sha=git_sha,
+        )
+        for entry in plan
+    ]
+    payload = {
+        "schema_version": "kvbench-phase13-prefix-catalog-1.0.0",
+        "execution_git_sha": git_sha,
+        "authorized_container_digest": AUTHORIZED_CONTAINER_DIGEST,
+        "snapshot_count": len(completed),
+        "unique_feasible_points": sum(
+            len(entry["target_batches"]) for entry in completed
+        ),
+        "formal_process_replicates": REPLICATES,
+        "direct_constructions_per_snapshot": 1,
+        "runtime_prefix_cache_sharing": False,
+        "fresh_caller_owned_cache_per_timing_process": True,
+        "restoration_outside_timing": True,
+        "state_bytes_verified_before_timing": True,
+        "entries": completed,
+    }
+    if payload["snapshot_count"] != 90 or payload["unique_feasible_points"] != 228:
+        raise Phase13PilotError("completed prefix catalog cardinality differs")
+    write_exclusive(prefix_root / "catalog.json", json_bytes(payload))
+    return payload
+
+
+def _prefix_catalog_index(
+    catalog: Mapping[str, Any], prefix_root: Path
+) -> dict[tuple[str, int], dict[str, Any]]:
+    entries = catalog.get("entries")
+    if not isinstance(entries, list) or len(entries) != 90:
+        raise Phase13PilotError("prefix catalog entry set differs")
+    index: dict[tuple[str, int], dict[str, Any]] = {}
+    for value in entries:
+        if not isinstance(value, dict):
+            raise Phase13PilotError("prefix catalog entry differs")
+        key = (str(value["method_config_id"]), int(value["context_label"]))
+        if key in index:
+            raise Phase13PilotError("prefix catalog entry is duplicated")
+        state_root = prefix_root / str(value["snapshot_relative_path"])
+        if not state_root.is_dir() or state_root.is_symlink():
+            raise Phase13PilotError("prefix catalog state path differs")
+        index[key] = {**value, "snapshot_root": state_root}
+    return index
+
+
+def _direct_session_with_snapshot(
+    *,
+    loaded: Any,
+    configuration: str,
+    batch: int,
+    historical: int,
+    snapshot_root: Path,
+    abort_after_snapshot: bool,
+) -> Any | None:
+    import torch
+
+    from kvbench.runtime.backend import forced_flash_execution
+
+    _patch_phase12_point_globals(batch=batch, historical=historical)
+    prefix, decode = _point_inputs(
+        batch=batch,
+        historical=historical,
+        device=torch.device("cuda:0"),
+    )
+    operation = Phase13OperationKey.create(configuration, batch, historical)
+    captured: dict[str, Any] | None = None
+
+    def callback(endpoint: Any, input_ids: Any, original: Any) -> Any:
+        nonlocal captured
+        result = original(endpoint, input_ids)
+        captured = save_prefix_state(
+            cache=endpoint.cache,
+            family=phase12._method_family(configuration),
+            configuration=configuration,
+            historical=historical,
+            source_batch=batch,
+            output=snapshot_root,
+            authority={
+                "equivalence_direct": True,
+                "method_config_fingerprint": CONFIG_FINGERPRINTS[configuration],
+                "operation_fingerprint_sha256": operation.operation_fingerprint_sha256,
+                "input_recipe_sha256": phase12.PHASE12_INPUT_RECIPE_SHA256,
+            },
+        )
+        if abort_after_snapshot:
+            raise _PrefixStateCaptured(captured)
+        return result
+
+    with torch.inference_mode(), forced_flash_execution(), _patched_endpoint_prefill(
+        callback
+    ):
+        try:
+            session = phase12._build_phase12_session(
+                loaded=loaded,
+                operation_key=operation,
+                prefix_input_ids=prefix,
+                decode_input_ids=decode,
+            )
+        except _PrefixStateCaptured:
+            session = None
+    if captured is None:
+        raise Phase13PilotError("equivalence direct snapshot was not captured")
+    if abort_after_snapshot and session is not None:
+        raise Phase13PilotError("equivalence source session was not aborted")
+    if not abort_after_snapshot and session is None:
+        raise Phase13PilotError("equivalence direct session is absent")
+    return session
+
+
+def _equivalence_session_record(session: Any, *, evidence_root: Path) -> dict[str, Any]:
+    pointers_first = phase12._phase12_session_pointers(session)
+    pointers_second = phase12._phase12_session_pointers(session)
+    graph_path = phase12._write_cuda_graph_path_witness(
+        graph=session.graph.graph,
+        run_root=evidence_root,
+        phase="equivalence",
+    )
+    graph = session.graph_evidence
+    record = {
+        "cache_layout_fingerprint": session.cache_layout_fingerprint(),
+        "cache_accounting": session.method_cache_accounting(),
+        "cache_byte_breakdown": session.method_byte_breakdown(),
+        "pointer_labels": sorted(pointers_first),
+        "pointer_values": sorted(pointers_first.values()),
+        "pointers_stable": pointers_first == pointers_second,
+        "pointer_count": len(pointers_first),
+        "pointers_unique": len(set(pointers_first.values())) == len(pointers_first),
+        "output_checksum": graph["second_replay_checksum"],
+        "kernel_path_fingerprint": graph_path["normalized_sha256"],
+        "kernel_count": graph_path["kernel_node_count"],
+        "graph_capture": graph.get("captured"),
+        "graph_fallback": graph.get("fallback"),
+        "graph_replay_exact": graph.get("consecutive_replay_outputs_exact"),
+        "eager_graph_agreement": bool(
+            session.eager_graph_comparison is not None
+            and session.eager_graph_comparison.passed
+        ),
+    }
+    if (
+        record["pointers_stable"] is not True
+        or record["pointers_unique"] is not True
+        or record["graph_capture"] is not True
+        or record["graph_fallback"] is not False
+        or record["graph_replay_exact"] is not True
+        or record["eager_graph_agreement"] is not True
+    ):
+        raise Phase13PilotError("equivalence session Graph or pointers failed")
+    return record
+
+
+def run_prefix_equivalence(
+    *, output: Path, scratch_root: Path, git_sha: str
+) -> dict[str, Any]:
+    """One focused matrix proving source-batch slicing and fresh restoration."""
+
+    phase12._require_authorized_container_runtime()
+    if output.exists() or output.is_symlink():
+        raise Phase13PilotError("prefix equivalence output already exists")
+    if not scratch_root.is_dir() or scratch_root.is_symlink() or any(scratch_root.iterdir()):
+        raise Phase13PilotError("prefix equivalence scratch must be new and empty")
+    observed_head = subprocess.run(
+        ("/usr/bin/git", "rev-parse", "HEAD"),
+        cwd=REPOSITORY_ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    observed_status = subprocess.run(
+        ("/usr/bin/git", "status", "--porcelain=v1", "--untracked-files=all"),
+        cwd=REPOSITORY_ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout
+    if observed_head != git_sha or observed_status:
+        raise Phase13PilotError("equivalence source authority differs")
+    import torch
+
+    from kvbench.runtime.backend import forced_flash_execution
+    from kvbench.runtime.model_loader import load_frozen_model
+
+    with torch.inference_mode(), forced_flash_execution():
+        loaded = load_frozen_model(device=torch.device("cuda:0"))
+    records: list[dict[str, Any]] = []
+    for configuration in CONFIGURATIONS:
+        configuration_root = scratch_root / configuration
+        configuration_root.mkdir()
+        source_root = configuration_root / "source-b8"
+        direct_root = configuration_root / "direct-b1"
+        restored_export_root = configuration_root / "restored-b1"
+        source_session = _direct_session_with_snapshot(
+            loaded=loaded,
+            configuration=configuration,
+            batch=PREFIX_EQUIVALENCE_SOURCE_BATCH,
+            historical=PREFIX_EQUIVALENCE_CONTEXT,
+            snapshot_root=source_root,
+            abort_after_snapshot=True,
+        )
+        if source_session is not None:
+            raise Phase13PilotError("equivalence source unexpectedly retained a session")
+        torch.cuda.empty_cache()
+        direct_session = _direct_session_with_snapshot(
+            loaded=loaded,
+            configuration=configuration,
+            batch=1,
+            historical=PREFIX_EQUIVALENCE_CONTEXT,
+            snapshot_root=direct_root,
+            abort_after_snapshot=False,
+        )
+        assert direct_session is not None
+        _patch_phase12_point_globals(batch=1, historical=PREFIX_EQUIVALENCE_CONTEXT)
+        prefix, decode = _point_inputs(
+            batch=1,
+            historical=PREFIX_EQUIVALENCE_CONTEXT,
+            device=torch.device("cuda:0"),
+        )
+        operation = Phase13OperationKey.create(
+            configuration, 1, PREFIX_EQUIVALENCE_CONTEXT
+        )
+        source_manifest = validate_prefix_state(
+            source_root,
+            configuration=configuration,
+            historical=PREFIX_EQUIVALENCE_CONTEXT,
+            verify_state_bytes=True,
+        )
+        with torch.inference_mode(), forced_flash_execution():
+            restored_session, restore_receipt = _build_restored_session(
+                loaded=loaded,
+                operation=operation,
+                prefix=prefix,
+                decode=decode,
+                snapshot_root=source_root,
+                expected_state_sha256=str(source_manifest["state_file_sha256"]),
+                equivalence_export_root=restored_export_root,
+            )
+        direct_state = validate_prefix_state(
+            direct_root,
+            configuration=configuration,
+            historical=PREFIX_EQUIVALENCE_CONTEXT,
+            verify_state_bytes=True,
+        )
+        restored_state = validate_prefix_state(
+            restored_export_root,
+            configuration=configuration,
+            historical=PREFIX_EQUIVALENCE_CONTEXT,
+            verify_state_bytes=True,
+        )
+        direct_evidence_root = configuration_root / "direct-evidence"
+        restored_evidence_root = configuration_root / "restored-evidence"
+        direct_evidence_root.mkdir()
+        restored_evidence_root.mkdir()
+        direct = _equivalence_session_record(
+            direct_session, evidence_root=direct_evidence_root
+        )
+        restored = _equivalence_session_record(
+            restored_session, evidence_root=restored_evidence_root
+        )
+        exact_fields = (
+            "cache_layout_fingerprint",
+            "cache_accounting",
+            "cache_byte_breakdown",
+            "pointer_labels",
+            "pointer_count",
+            "output_checksum",
+            "kernel_path_fingerprint",
+            "kernel_count",
+            "graph_capture",
+            "graph_fallback",
+            "graph_replay_exact",
+            "eager_graph_agreement",
+        )
+        passed = bool(
+            direct_state["state_file_sha256"]
+            == restored_state["state_file_sha256"]
+            and all(direct[field] == restored[field] for field in exact_fields)
+            and set(direct["pointer_values"]).isdisjoint(
+                restored["pointer_values"]
+            )
+            and restore_receipt["fresh_target_allocation"] is True
+            and restore_receipt["runtime_prefix_sharing"] is False
+        )
+        if not passed:
+            raise Phase13PilotError(
+                f"direct/restored prefix equivalence failed: {configuration}"
+            )
+        records.append(
+            {
+                "configuration": configuration,
+                "source_batch": PREFIX_EQUIVALENCE_SOURCE_BATCH,
+                "target_batch": 1,
+                "historical_context": PREFIX_EQUIVALENCE_CONTEXT,
+                "source_state_sha256": source_manifest["state_file_sha256"],
+                "target_state_sha256": direct_state["state_file_sha256"],
+                "restored_state_sha256": restored_state["state_file_sha256"],
+                "direct": direct,
+                "restored": restored,
+                "fresh_target_allocation": True,
+                "direct_and_restored_pointers_disjoint": True,
+                "restore_outside_timing": True,
+                "runtime_prefix_cache_sharing": False,
+                "passed": True,
+            }
+        )
+        del direct_session, restored_session
+        torch.cuda.empty_cache()
+    payload = {
+        "schema_version": "kvbench-phase13-prefix-equivalence-1.0.0",
+        "status": "PASS",
+        "execution_git_sha": git_sha,
+        "authorized_container_digest": AUTHORIZED_CONTAINER_DIGEST,
+        "configuration_count": len(records),
+        "all_configurations_passed": all(record["passed"] for record in records),
+        "fresh_target_allocation": True,
+        "restore_outside_timing": True,
+        "runtime_prefix_cache_sharing": False,
+        "timing_collected": False,
+        "records": records,
+    }
+    if len(records) != len(CONFIGURATIONS) or not payload["all_configurations_passed"]:
+        raise Phase13PilotError("prefix equivalence matrix differs")
+    write_exclusive(output, json_bytes(payload))
+    return payload
+
+
 def _run_worker(
     *,
     run_id: str,
@@ -1082,6 +1866,8 @@ def _run_worker(
     order_index: int,
     git_sha: str,
     run_artifact_root: Path,
+    prefix_state_root: Path,
+    prefix_state_sha256: str,
 ) -> dict[str, Any]:
     """Execute one feasible Pilot point inside the authorized container."""
 
@@ -1129,19 +1915,10 @@ def _run_worker(
     stage_recorder.record("model_load", "started")
     loaded = load_frozen_model(device=device)
     stage_recorder.record("model_load", "completed")
-    prefix = (
-        torch.arange(batch * historical, dtype=torch.long, device=device)
-        .reshape(batch, historical)
-        .add(12_000)
-        .remainder(120_000)
-        .add(1_000)
-    )
-    decode = (
-        torch.arange(batch, dtype=torch.long, device=device)
-        .reshape(batch, 1)
-        .add(12_000 + historical + 257)
-        .remainder(120_000)
-        .add(1_000)
+    prefix, decode = _point_inputs(
+        batch=batch,
+        historical=historical,
+        device=device,
     )
     operation = Phase13OperationKey.create(configuration, batch, historical)
     stage_recorder.record("prefix_construction", "started")
@@ -1163,11 +1940,13 @@ def _run_worker(
     with torch.inference_mode(), forced_flash_execution():
         try:
             with phase12._observable_cuda_graph_factory(torch) as observed_graphs:
-                session = phase12._build_phase12_session(
+                session, prefix_restore = _build_restored_session(
                     loaded=loaded,
-                    operation_key=operation,
-                    prefix_input_ids=prefix,
-                    decode_input_ids=decode,
+                    operation=operation,
+                    prefix=prefix,
+                    decode=decode,
+                    snapshot_root=prefix_state_root,
+                    expected_state_sha256=prefix_state_sha256,
                 )
         finally:
             cuda_graph_module.capture_fixed_graph = original_capture_fixed_graph
@@ -1222,8 +2001,6 @@ def _run_worker(
         )
         family = phase12._method_family(configuration)
         geometry = session.gqa_cache_geometry()
-        prior_g3 = phase12._expected_prior_g3_binding(family)
-        phase12._validate_prior_g3_binding(prior_g3, family=family)
         successor_binding = None
         if family != "bf16":
             successor = _phase13b_successor_authority()["families"][family]
@@ -1270,23 +2047,13 @@ def _run_worker(
             and re.fullmatch(r"[0-9a-f]{64}", runtime_context.backend_fingerprint)
         )
         geometry_passed = phase12._gqa_geometry_passes(geometry, family=family)
-        path_audit = execution_path_audit_facade(
-            backend_identity_verified=backend_verified,
-            device_kernel_family_verified=bool(live_fingerprint),
-            allocation_categories_verified=allocation_passed,
-            temporary_tensor_shapes_verified=(
-                pointers_before == phase12._phase12_session_pointers(session)
-                and geometry_passed
-            ),
-            gqa_replication_detected=not geometry_passed,
-            full_prefix_temporary_detected=False,
-            host_synchronization_detected=False,
-            backend_fallback_detected=not graph_passed,
-            full_prefix_dequantization=(
-                "not_applicable" if family == "bf16" else "verified_false"
-            ),
+        path_passed = bool(
+            backend_verified
+            and live_fingerprint
+            and geometry_passed
+            and graph_passed
+            and pointers_before == phase12._phase12_session_pointers(session)
         )
-        phase12._validate_execution_path_record(path_audit.to_dict(), family=family)
         if (
             not warm_finite
             or not audit_finite
@@ -1299,7 +2066,7 @@ def _run_worker(
         session.graph_evidence["phase13_warmup_replays"] = WARMUP_STEPS
         session.admit(
             observed_outputs=((audit_checksum, audit_finite),),
-            execution_path_passed=path_audit.passed,
+            execution_path_passed=path_passed,
             allocation_passed=allocation_passed,
             graph_passed=graph_passed,
         )
@@ -1371,13 +2138,18 @@ def _run_worker(
         {
             "configuration": configuration,
             "operation": operation.operation_fingerprint_sha256,
-            "prior_g3": prior_g3,
             "phase13b_successor": successor_binding,
             "runtime_adapter_fingerprint": runner["adapter_config_fingerprint"],
             "cache_layout_fingerprint": runner["cache_layout_fingerprint"],
             "backend": runtime_context.backend_fingerprint,
             "graph_topology": graph_path_before["normalized_sha256"],
-            "path_audit": path_audit.to_dict(),
+            "prefix_state_witness": prefix_restore["witness_sha256"],
+            "path_checks": {
+                "backend_identity": backend_verified,
+                "runtime_adapter_fingerprint": bool(live_fingerprint),
+                "native_gqa_geometry": geometry_passed,
+                "graph_no_fallback": graph_passed,
+            },
         }
     )
     allocation_fingerprint = _canonical_sha256(
@@ -1419,7 +2191,7 @@ def _run_worker(
         "power_min_w": power[0],
         "power_max_w": power[1],
         "finite_output": True,
-        "no_backend_fallback": path_audit.passed,
+        "no_backend_fallback": path_passed,
         "allocation_stable": True,
         "kernel_path_stable": True,
         "gpu_exclusive": True,
@@ -1427,6 +2199,7 @@ def _run_worker(
         "measured_steps": MEASURED_STEPS,
         "measured_batches": MEASURED_BATCHES,
         "graph_replay_allocation": allocation_record,
+        "prefix_state_restore": prefix_restore,
         "graph_path_before": graph_path_before,
         "graph_path_after": graph_path_after,
         "runner": runner,
@@ -1535,7 +2308,10 @@ def _run_one_process(
     campaign_id: str,
     record: Mapping[str, Any],
     git_sha: str,
+    prefix_entry: Mapping[str, Any],
 ) -> dict[str, Any]:
+    if int(record["batch_size"]) not in prefix_entry.get("target_batches", []):
+        raise Phase13PilotError("formal run is not covered by its prefix snapshot")
     run_id = _run_id(campaign_id, record)
     run_root = stage / "runs" / run_id
     run_root.mkdir()
@@ -1574,6 +2350,10 @@ def _run_one_process(
         git_sha,
         "--run-artifact-root",
         str(run_root),
+        "--prefix-state-root",
+        str(prefix_entry["snapshot_root"]),
+        "--prefix-state-sha256",
+        str(prefix_entry["state_file_sha256"]),
     )
     timeouts = stage_timeout_contract(
         batch=int(record["batch_size"]),
@@ -1669,7 +2449,13 @@ def _run_one_process(
     return manifest
 
 
-def run_campaign(*, stage: Path, campaign_id: str, git_sha: str) -> dict[str, Any]:
+def run_campaign(
+    *,
+    stage: Path,
+    campaign_id: str,
+    git_sha: str,
+    prefix_root: Path,
+) -> dict[str, Any]:
     identifier = _validate_campaign_id(campaign_id)
     phase12._require_authorized_container_runtime()
     if any(name in os.environ for name in _FORBIDDEN_ENVIRONMENT):
@@ -1697,6 +2483,46 @@ def run_campaign(*, stage: Path, campaign_id: str, git_sha: str) -> dict[str, An
     order = _strict_json(REPOSITORY_ROOT / ORDER_PATH)
     validate_execution_order(order)
     feasibility = build_feasibility_records(order)
+    if not prefix_root.is_dir() or prefix_root.is_symlink() or any(prefix_root.iterdir()):
+        raise Phase13PilotError("mounted prefix root must be new and empty")
+    equivalence_scratch = prefix_root / "equivalence"
+    catalog_root = prefix_root / "catalog"
+    equivalence_scratch.mkdir()
+    catalog_root.mkdir()
+    equivalence_path = resolved / "unified" / "prefix-equivalence.json"
+    equivalence = run_prefix_equivalence(
+        output=equivalence_path,
+        scratch_root=equivalence_scratch,
+        git_sha=git_sha,
+    )
+    if (
+        equivalence.get("status") != "PASS"
+        or equivalence.get("all_configurations_passed") is not True
+        or equivalence.get("runtime_prefix_cache_sharing") is not False
+    ):
+        raise Phase13PilotError("prefix equivalence did not pass before timing")
+    catalog = prepare_prefix_catalog(
+        prefix_root=catalog_root,
+        feasibility=feasibility,
+        git_sha=git_sha,
+    )
+    catalog_index = _prefix_catalog_index(catalog, catalog_root)
+    published_catalog = {
+        **{key: value for key, value in catalog.items() if key != "entries"},
+        "entries": [
+            {
+                key: value
+                for key, value in entry.items()
+                if key not in {"snapshot_relative_path"}
+            }
+            for entry in catalog["entries"]
+        ],
+        "temporary_state_files_published": False,
+    }
+    write_exclusive(
+        resolved / "unified" / "prefix-catalog.json",
+        json_bytes(published_catalog),
+    )
     write_exclusive(resolved / "execution_order.json", json_bytes(order))
     write_exclusive(
         resolved / "unified" / "feasibility.json",
@@ -1727,6 +2553,17 @@ def run_campaign(*, stage: Path, campaign_id: str, git_sha: str) -> dict[str, An
                 "seeds": list(SEEDS),
                 "planned_point_records": PLANNED_RECORD_COUNT,
                 "execution_order_sha256": sha256_file(resolved / "execution_order.json"),
+                "prefix_equivalence_sha256": sha256_file(equivalence_path),
+                "prefix_catalog_sha256": sha256_file(
+                    resolved / "unified" / "prefix-catalog.json"
+                ),
+                "prefix_restore_outside_timing": True,
+                "fresh_caller_owned_cache_per_process": True,
+                "runtime_prefix_cache_sharing": False,
+                "per_point_fixture_replay": False,
+                "per_point_sanitizer": False,
+                "per_point_full_g1_g4_audit": False,
+                "per_point_large_history_scan": False,
                 "selective_reruns": 0,
                 "full_scan": "CLOSED",
                 "quality_execution": "LOCKED",
@@ -1764,6 +2601,9 @@ def run_campaign(*, stage: Path, campaign_id: str, git_sha: str) -> dict[str, An
             campaign_id=identifier,
             record=record,
             git_sha=git_sha,
+            prefix_entry=catalog_index[
+                (str(record["method_config_id"]), int(record["context_label"]))
+            ],
         )
         manifests.append(manifest)
         if manifest["status"] == "runtime_failed":
@@ -2980,6 +3820,108 @@ def validate_campaign(root: Path, *, expected_campaign_id: str | None = None) ->
     runs = _run_records(root)
     order = _strict_json(root / "execution_order.json")
     validate_execution_order(order)
+    campaign = _strict_json(root / "campaign_manifest.json")
+    equivalence_path = root / "unified" / "prefix-equivalence.json"
+    catalog_path = root / "unified" / "prefix-catalog.json"
+    equivalence = _strict_json(equivalence_path)
+    catalog = _strict_json(catalog_path)
+    feasibility_payload = _strict_json(root / "unified" / "feasibility.json")
+    feasibility = feasibility_payload.get("records")
+    if (
+        campaign.get("prefix_equivalence_sha256")
+        != sha256_file(equivalence_path)
+        or campaign.get("prefix_catalog_sha256") != sha256_file(catalog_path)
+        or campaign.get("prefix_restore_outside_timing") is not True
+        or campaign.get("fresh_caller_owned_cache_per_process") is not True
+        or campaign.get("runtime_prefix_cache_sharing") is not False
+        or campaign.get("per_point_fixture_replay") is not False
+        or campaign.get("per_point_sanitizer") is not False
+        or campaign.get("per_point_full_g1_g4_audit") is not False
+        or campaign.get("per_point_large_history_scan") is not False
+        or equivalence.get("status") != "PASS"
+        or equivalence.get("configuration_count") != len(CONFIGURATIONS)
+        or equivalence.get("all_configurations_passed") is not True
+        or equivalence.get("fresh_target_allocation") is not True
+        or equivalence.get("restore_outside_timing") is not True
+        or equivalence.get("runtime_prefix_cache_sharing") is not False
+        or equivalence.get("timing_collected") is not False
+        or not isinstance(feasibility, list)
+    ):
+        raise Phase13PilotError("Phase 13 prefix contract evidence differs")
+    equivalence_records = equivalence.get("records")
+    if (
+        not isinstance(equivalence_records, list)
+        or any(not isinstance(item, dict) for item in equivalence_records)
+        or {item.get("configuration") for item in equivalence_records}
+        != set(CONFIGURATIONS)
+        or any(
+            item.get("passed") is not True
+            or item.get("fresh_target_allocation") is not True
+            or item.get("direct_and_restored_pointers_disjoint") is not True
+            or item.get("restore_outside_timing") is not True
+            or item.get("runtime_prefix_cache_sharing") is not False
+            for item in equivalence_records
+        )
+    ):
+        raise Phase13PilotError("Phase 13 prefix equivalence matrix differs")
+    expected_catalog = {
+        (item["method_config_id"], item["context_label"]): item
+        for item in derive_prefix_catalog_plan(feasibility)
+    }
+    catalog_entries = catalog.get("entries")
+    if (
+        catalog.get("snapshot_count") != 90
+        or catalog.get("unique_feasible_points") != 228
+        or catalog.get("runtime_prefix_cache_sharing") is not False
+        or catalog.get("fresh_caller_owned_cache_per_timing_process") is not True
+        or catalog.get("restoration_outside_timing") is not True
+        or catalog.get("temporary_state_files_published") is not False
+        or not isinstance(catalog_entries, list)
+        or len(catalog_entries) != 90
+    ):
+        raise Phase13PilotError("Phase 13 prefix catalog differs")
+    catalog_index: dict[tuple[str, int], Mapping[str, Any]] = {}
+    for entry in catalog_entries:
+        if not isinstance(entry, dict):
+            raise Phase13PilotError("Phase 13 prefix catalog entry differs")
+        key = (str(entry.get("method_config_id")), int(entry.get("context_label", -1)))
+        expected = expected_catalog.get(key)
+        if (
+            expected is None
+            or key in catalog_index
+            or any(entry.get(name) != value for name, value in expected.items())
+            or re.fullmatch(r"[0-9a-f]{64}", str(entry.get("state_file_sha256")))
+            is None
+            or re.fullmatch(
+                r"[0-9a-f]{64}", str(entry.get("builder_supervision_sha256"))
+            )
+            is None
+            or entry.get("state_bytes_verified_once_before_timing") is not True
+        ):
+            raise Phase13PilotError("Phase 13 prefix catalog authority differs")
+        catalog_index[key] = entry
+    for record in runs:
+        if record.get("status") != "completed":
+            continue
+        result_path = record.get("result_path")
+        if not isinstance(result_path, str):
+            raise Phase13PilotError("completed Pilot result is absent")
+        result = _strict_json(root / result_path)
+        restore = result.get("prefix_state_restore")
+        entry = catalog_index.get(
+            (str(record["method_config_id"]), int(record["context_label"]))
+        )
+        if (
+            not isinstance(restore, dict)
+            or entry is None
+            or restore.get("state_file_sha256") != entry.get("state_file_sha256")
+            or restore.get("source_batch") != entry.get("source_batch")
+            or restore.get("target_batch") != record.get("batch_size")
+            or restore.get("fresh_target_allocation") is not True
+            or restore.get("runtime_prefix_sharing") is not False
+            or restore.get("restore_outside_timing") is not True
+        ):
+            raise Phase13PilotError("Pilot prefix restoration receipt differs")
     qc = _strict_json(root / "pilot_qc.json")
     if (
         qc.get("campaign_id") != identifier
@@ -3011,6 +3953,8 @@ def _parse_arguments(argv: Sequence[str] | None = None) -> argparse.Namespace:
     actions.add_argument("--reserve-campaign", action="store_true")
     actions.add_argument("--run-campaign", action="store_true")
     actions.add_argument("--run-worker", action="store_true")
+    actions.add_argument("--build-prefix-state", action="store_true")
+    actions.add_argument("--validate-prefix-equivalence", action="store_true")
     actions.add_argument("--materialize-analysis", action="store_true")
     actions.add_argument("--finalize-staged-campaign", action="store_true")
     actions.add_argument("--validate-campaign", action="store_true")
@@ -3026,6 +3970,13 @@ def _parse_arguments(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--order-index", type=int)
     parser.add_argument("--run-id")
     parser.add_argument("--run-artifact-root", type=Path)
+    parser.add_argument("--prefix-root", type=Path)
+    parser.add_argument("--prefix-state-root", type=Path)
+    parser.add_argument("--prefix-state-sha256")
+    parser.add_argument("--scratch-root", type=Path)
+    parser.add_argument("--snapshot-id")
+    parser.add_argument("--source-batch", type=int)
+    parser.add_argument("--build-root", type=Path)
     return parser.parse_args(argv)
 
 
@@ -3074,7 +4025,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(reserve_campaign(campaign_id=args.campaign_id, git_sha=args.git_sha))
         return 0
     if args.run_campaign:
-        if args.stage is None or args.campaign_id is None or args.git_sha is None:
+        if (
+            args.stage is None
+            or args.campaign_id is None
+            or args.git_sha is None
+        ):
             raise Phase13PilotError("stage, campaign ID, and Git SHA are required")
         print(
             json.dumps(
@@ -3082,6 +4037,11 @@ def main(argv: Sequence[str] | None = None) -> int:
                     stage=args.stage,
                     campaign_id=args.campaign_id,
                     git_sha=args.git_sha,
+                    prefix_root=(
+                        args.prefix_root
+                        if args.prefix_root is not None
+                        else Path("/opt/kvbench-prefix-states")
+                    ),
                 ),
                 sort_keys=True,
             )
@@ -3097,6 +4057,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             args.order_index,
             args.git_sha,
             args.run_artifact_root,
+            args.prefix_state_root,
+            args.prefix_state_sha256,
         )
         if any(value is None for value in required):
             raise Phase13PilotError("worker identity arguments are required")
@@ -3109,8 +4071,52 @@ def main(argv: Sequence[str] | None = None) -> int:
             order_index=int(args.order_index),
             git_sha=str(args.git_sha),
             run_artifact_root=Path(args.run_artifact_root),
+            prefix_state_root=Path(args.prefix_state_root),
+            prefix_state_sha256=str(args.prefix_state_sha256),
         )
         print(WORKER_PREFIX + json.dumps(payload, sort_keys=True, separators=(",", ":")))
+        return 0
+    if args.build_prefix_state:
+        required = (
+            args.snapshot_id,
+            args.configuration,
+            args.source_batch,
+            args.context_label,
+            args.git_sha,
+            args.build_root,
+            args.output,
+        )
+        if any(value is None for value in required):
+            raise Phase13PilotError("prefix builder identity arguments are required")
+        payload = _build_prefix_state_worker(
+            snapshot_id=str(args.snapshot_id),
+            configuration=str(args.configuration),
+            source_batch=int(args.source_batch),
+            context_label=int(args.context_label),
+            git_sha=str(args.git_sha),
+            build_root=Path(args.build_root),
+            output=Path(args.output),
+        )
+        print(
+            PREFIX_BUILDER_PREFIX
+            + json.dumps(payload, sort_keys=True, separators=(",", ":"))
+        )
+        return 0
+    if args.validate_prefix_equivalence:
+        if args.output is None or args.scratch_root is None or args.git_sha is None:
+            raise Phase13PilotError(
+                "equivalence output, scratch root, and Git SHA are required"
+            )
+        print(
+            json.dumps(
+                run_prefix_equivalence(
+                    output=args.output,
+                    scratch_root=args.scratch_root,
+                    git_sha=args.git_sha,
+                ),
+                sort_keys=True,
+            )
+        )
         return 0
     if args.materialize_analysis:
         if args.stage is None:

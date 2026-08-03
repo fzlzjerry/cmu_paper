@@ -112,6 +112,25 @@ EXPECTED_PHASE13T_PATHS = frozenset(
         "tests/unit/test_phase13t_timeout.py",
     }
 )
+EXPECTED_PHASE13PR_PATHS = frozenset(
+    {
+        "Makefile",
+        "docs/blockers.md",
+        "docs/decisions/0033-phase13-untimed-prefix-state-reuse.md",
+        "docs/evidence/phase13/pilot_qc.json",
+        "docs/evidence/phase13/r2-publication.json",
+        "docs/phase_reports/phase13-pilot-scan.md",
+        "docs/plans/phase13-pilot-scan.md",
+        "docs/risk_register.md",
+        "docs/status.md",
+        "docs/tasks.md",
+        "scripts/phase13_pilot.py",
+        "scripts/phase13_prefix_state.py",
+        "scripts/validate_phase2.py",
+        "tests/unit/test_phase13_scope.py",
+        "tests/unit/test_phase13pr_prefix_state.py",
+    }
+)
 
 
 class Phase13ScopeTests(unittest.TestCase):
@@ -288,6 +307,36 @@ class Phase13ScopeTests(unittest.TestCase):
         ):
             self.assertFalse(
                 validate_phase2.phase13t_path_is_allowed(relative)
+            )
+
+    def test_phase13pr_segment_and_allowlist_are_exact(self) -> None:
+        self.assertEqual(
+            validate_phase2.PHASE13PR_ENTRY_COMMIT,
+            "3e022662364fdbd129d4ca327e3eae8078a04ea1",
+        )
+        self.assertEqual(
+            validate_phase2.PHASE13PR_ALLOWED_PATHS,
+            EXPECTED_PHASE13PR_PATHS,
+        )
+        for relative in EXPECTED_PHASE13PR_PATHS:
+            self.assertTrue(
+                validate_phase2.phase13pr_path_is_allowed(relative)
+            )
+
+    def test_phase13pr_near_miss_and_broad_paths_are_rejected(self) -> None:
+        for relative in (
+            "docs/evidence/phase13",
+            "docs/evidence/phase13/pilot_qc.json.backup",
+            "docs/decisions/0033-phase13-untimed-prefix-state-reuse.md.old",
+            "scripts/phase13_prefix_state.py.backup",
+            "artifacts/phase13",
+            "artifacts/phase13/*",
+            "../scripts/phase13_prefix_state.py",
+            "/scripts/phase13_prefix_state.py",
+            "scripts\\phase13_prefix_state.py",
+        ):
+            self.assertFalse(
+                validate_phase2.phase13pr_path_is_allowed(relative)
             )
 
     def test_phase3_backup_root_allowlist_is_exact(self) -> None:

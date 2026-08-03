@@ -56,6 +56,7 @@ PHASE13R_ENTRY_COMMIT = "3dcd075d987db2452793408f8dd2b8f97f87530b"
 PHASE13F_ENTRY_COMMIT = "50d7820e1feb986acecd78d1b58a3fff6e0bd713"
 PHASE13R2_ENTRY_COMMIT = "bdfcb5ba41f150b1f56ddc8ac3515cd5a0b7bde3"
 PHASE13T_ENTRY_COMMIT = "fb6a1fedc0cc01abbfbd974005f7567fbd291fd7"
+PHASE13PR_ENTRY_COMMIT = "3e022662364fdbd129d4ca327e3eae8078a04ea1"
 QUALITY_COMMIT = "a7b8285dd8ed2fb598efbb3312e9f55064a0ee64"
 ENVIRONMENT_COMMIT = "ea176994921c793789ebbd9d42515ce20ae4baee"
 EVIDENCE_COMMIT = "fb164b5ea96031ca40b21f4b8436a49a3bb5b8d2"
@@ -1173,6 +1174,25 @@ PHASE13T_ALLOWED_PATHS = frozenset(
         "tests/unit/test_phase13t_timeout.py",
     }
 )
+PHASE13PR_ALLOWED_PATHS = frozenset(
+    {
+        "Makefile",
+        "docs/blockers.md",
+        "docs/decisions/0033-phase13-untimed-prefix-state-reuse.md",
+        "docs/evidence/phase13/pilot_qc.json",
+        "docs/evidence/phase13/r2-publication.json",
+        "docs/phase_reports/phase13-pilot-scan.md",
+        "docs/plans/phase13-pilot-scan.md",
+        "docs/risk_register.md",
+        "docs/status.md",
+        "docs/tasks.md",
+        "scripts/phase13_pilot.py",
+        "scripts/phase13_prefix_state.py",
+        "scripts/validate_phase2.py",
+        "tests/unit/test_phase13_scope.py",
+        "tests/unit/test_phase13pr_prefix_state.py",
+    }
+)
 
 
 RAW_RESULT_SUFFIXES = {
@@ -1807,10 +1827,25 @@ def current_phase13r2_paths() -> set[str]:
 
 
 def current_phase13t_paths() -> set[str]:
-    """Return tracked and untracked changes after the Phase 13T entry."""
+    """Compatibility view of the completed Phase 13T-R segment."""
+
+    return git_paths(
+        (
+            "diff",
+            "--name-only",
+            "-z",
+            PHASE13T_ENTRY_COMMIT,
+            PHASE13PR_ENTRY_COMMIT,
+            "--",
+        )
+    )
+
+
+def current_phase13pr_paths() -> set[str]:
+    """Return tracked and untracked changes after the Phase 13P-R entry."""
 
     changed = git_paths(
-        ("diff", "--name-only", "-z", PHASE13T_ENTRY_COMMIT, "--")
+        ("diff", "--name-only", "-z", PHASE13PR_ENTRY_COMMIT, "--")
     )
     untracked = git_paths(
         ("ls-files", "--others", "--exclude-standard", "-z", "--")
@@ -1941,6 +1976,24 @@ def phase13t_path_is_allowed(relative: str) -> bool:
         and ".." not in candidate.parts
         and "\\" not in relative
         and relative in PHASE13T_ALLOWED_PATHS
+    )
+
+
+def phase13pr_path_is_allowed(relative: str) -> bool:
+    """Accept only canonical exact paths in the Phase 13P-R allowlist."""
+
+    try:
+        candidate = PurePosixPath(relative)
+    except (TypeError, ValueError):
+        return False
+    return (
+        isinstance(relative, str)
+        and relative == candidate.as_posix()
+        and relative not in {"", "."}
+        and not candidate.is_absolute()
+        and ".." not in candidate.parts
+        and "\\" not in relative
+        and relative in PHASE13PR_ALLOWED_PATHS
     )
 
 
@@ -4272,6 +4325,38 @@ def check_scope() -> int:
         ):
             errors.append(
                 f"forbidden result tree in Phase 13T-R scope: {relative}"
+            )
+    phase13pr = current_phase13pr_paths()
+    phase13pr_unexpected = sorted(phase13pr - PHASE13PR_ALLOWED_PATHS)
+    if phase13pr_unexpected:
+        errors.append(
+            "files outside the approved Phase 13P-R prefix remediation and "
+            f"Pilot rerun: {phase13pr_unexpected!r}"
+        )
+    for relative in sorted(phase13pr):
+        if relative.startswith("docs/evidence/e00/"):
+            errors.append(f"immutable E00 evidence changed: {relative}")
+        if relative in QUALITY_PROTOCOL_HASHES:
+            errors.append(
+                "quality protocol changed during Phase 13P-R: "
+                f"{relative}"
+            )
+        if Path(relative).suffix in RAW_RESULT_SUFFIXES:
+            errors.append(
+                "forbidden binary, kernel, model, or profiler artifact "
+                f"in Phase 13P-R Git scope: {relative}"
+            )
+        if relative.startswith(
+            (
+                "artifacts/profiler/",
+                "artifacts/quality/",
+                "paper-results/",
+                "paper_results/",
+                "results/",
+            )
+        ):
+            errors.append(
+                f"forbidden result tree in Phase 13P-R scope: {relative}"
             )
     e00_changes = git_paths(
         (

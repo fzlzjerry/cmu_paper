@@ -1526,7 +1526,7 @@ pilot: verify-measurement-container
 		reference_image="$(KIVI_REFERENCE_IMAGE)@$(PHASE8_KIVI_REFERENCE_MANIFEST_DIGEST)"; \
 		test "$$(docker image inspect "$$reference_image" --format '{{.Id}}')" = "$(PHASE8_KIVI_REFERENCE_MANIFEST_DIGEST)"; \
 		test "$$(docker image inspect "$$reference_image" --format '{{index .Config.Labels "org.kvbench.reference.parent.config_digest"}}')" = "$$image_id"; \
-		mkdir "$$task_root/kivi-source" "$$task_root/kivi-extension"; \
+		mkdir "$$task_root/kivi-source" "$$task_root/kivi-extension" "$$task_root/prefix-states"; \
 		reference_cid="$$(docker create --network=none "$$reference_image")"; \
 		[[ "$$reference_cid" =~ ^[0-9a-f]{64}$$ ]]; \
 		docker cp "$$reference_cid:/opt/kivi-source/." "$$task_root/kivi-source"; \
@@ -1570,6 +1570,7 @@ pilot: verify-measurement-container
 			--mount "type=bind,src=$$task_root/kivi-extension/kivi_gemv.cpython-312-x86_64-linux-gnu.so,dst=/opt/kvbench/.phase3/site-packages/kivi_gemv.cpython-312-x86_64-linux-gnu.so,readonly" \
 			--mount "type=bind,src=$$task_root/kvquant-source,dst=/opt/kvquant-source,readonly" \
 			--mount "type=bind,src=$$task_root/kvquant-build,dst=/opt/kvquant-build" \
+			--mount "type=bind,src=$$task_root/prefix-states,dst=/opt/kvbench-prefix-states" \
 			--mount "type=bind,src=$$calibration_root,dst=/opt/kvquant-calibration/kvqcal-cdb724c806d64d095c040d2673a987a3,readonly" \
 			--mount "type=bind,src=$$model_root,dst=/root/.cache/huggingface/hub/models--meta-llama--Llama-3.1-8B-Instruct,readonly" \
 			--env PYTHONDONTWRITEBYTECODE=1 --env PYTHONNOUSERSITE=1 --env PYTHONIOENCODING=utf-8 \

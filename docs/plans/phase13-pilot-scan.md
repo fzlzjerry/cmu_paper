@@ -105,3 +105,37 @@ and simple plots. It is finalized with inventory, checksum ledger, and
 retrieved once. Phase 13 PASS makes only Phase 14 ready; Full Scan remains
 closed, quality remains locked, and no final speedup, HBM, capacity, quality,
 or knee claim is authorized.
+
+## Phase 13P-R untimed prefix-state amendment
+
+Decision 0033 supersedes only the repeated Pilot setup work.  The staging
+campaign `phase13-20260803t005021130867z-3e022662-6b36c5` is preserved locally
+as `stopped_non_claim_bearing`; it is not resumed, analyzed, or used as timing
+data.  A new campaign starts only after an exact-container control proves, for
+all ten configurations at historical L=17, that direct B=1 construction and a
+fresh B=1 cache restored from the leading row of a direct B=8 safe-format state
+have identical cache bytes, layout, owned allocation, output checksum, kernel
+path, and CUDA Graph result.
+
+Before any formal timing process, the new campaign directly constructs 90
+checksum-bound prefix states: one per configuration and context label, using
+the largest feasible batch at that point.  These states cover the 228 unique
+feasible `(configuration,B,L)` points by selecting only independent leading
+batch rows.  State payloads remain temporary local setup material; the final
+bundle preserves the equivalence result, catalog, state hashes, construction
+supervision hashes, and per-process restoration receipts.  Each of the 684
+formal GPU runs still loads the model in a fresh process, allocates a new
+caller-owned cache and workspaces, and restores before Graph capture, warmup,
+or timing.  No live cache, CUDA pointer, Graph object, or runtime prefix cache
+is shared.
+
+Formal workers do not repeat fixture campaigns, sanitizer, full G1-G4
+admission audits, or full-history buffer scans already replaced by the
+checksum-bound state witness.  They continue to require GPU exclusivity,
+source/container/fingerprint authority, native geometry, Graph capture and
+topology, 64 warmups, zero replay allocation, 128 measured operations per
+batch, all raw samples, telemetry, output checksum, kernel-path identity,
+allocation consistency, and append-only finalization.  The 810/684/126
+classification, complete committed order, seeds, grid, runner, timing
+boundaries, QC, provisional fits, publication, and all claim limits above are
+unchanged.  Phase 14 remains deferred.
