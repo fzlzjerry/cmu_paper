@@ -160,6 +160,13 @@ class PrefixStateTests(unittest.TestCase):
             makefile,
         )
 
+    def test_equivalence_loads_model_before_inference_mode(self) -> None:
+        source = inspect.getsource(pilot.run_prefix_equivalence)
+        self.assertLess(
+            source.index("loaded = load_frozen_model"),
+            source.index("with torch.inference_mode()"),
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

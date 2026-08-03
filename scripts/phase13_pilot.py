@@ -1713,8 +1713,7 @@ def run_prefix_equivalence(
     from kvbench.runtime.backend import forced_flash_execution
     from kvbench.runtime.model_loader import load_frozen_model
 
-    with torch.inference_mode(), forced_flash_execution():
-        loaded = load_frozen_model(device=torch.device("cuda:0"))
+    loaded = load_frozen_model(device=torch.device("cuda:0"))
     records: list[dict[str, Any]] = []
     for configuration in CONFIGURATIONS:
         configuration_root = scratch_root / configuration
