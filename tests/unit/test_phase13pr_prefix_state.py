@@ -37,6 +37,54 @@ def _cache(batch: int) -> BF16StaticCache:
 
 
 class PrefixStateTests(unittest.TestCase):
+    def test_equivalence_pointer_alias_contract_accepts_only_same_tensor_pairs(
+        self,
+    ) -> None:
+        allowed = pilot._ALLOWED_EQUIVALENCE_POINTER_ALIAS_GROUPS
+        self.assertEqual(
+            allowed,
+            frozenset(
+                {
+                    frozenset({"keys_data_ptr", "keys_storage_ptr"}),
+                    frozenset({"values_data_ptr", "values_storage_ptr"}),
+                }
+            ),
+        )
+
+        accepted = pilot._equivalence_pointer_alias_record(
+            {
+                "keys_data_ptr": 11,
+                "keys_storage_ptr": 11,
+                "values_data_ptr": 22,
+                "values_storage_ptr": 22,
+                "endpoint_query_rope_scratch_data_ptr": 33,
+                "endpoint_key_rope_scratch_data_ptr": 44,
+            }
+        )
+        self.assertTrue(accepted["pointers_unique"])
+        self.assertFalse(accepted["raw_pointer_values_unique"])
+        self.assertEqual(accepted["unexpected_pointer_alias_groups"], [])
+
+        rejected = pilot._equivalence_pointer_alias_record(
+            {
+                "keys_data_ptr": 11,
+                "keys_storage_ptr": 11,
+                "values_data_ptr": 11,
+                "values_storage_ptr": 22,
+            }
+        )
+        self.assertFalse(rejected["pointers_unique"])
+        self.assertEqual(
+            rejected["unexpected_pointer_alias_groups"],
+            [["keys_data_ptr", "keys_storage_ptr", "values_data_ptr"]],
+        )
+
+        with self.assertRaisesRegex(
+            pilot.Phase13PilotError,
+            "pointer evidence",
+        ):
+            pilot._equivalence_pointer_alias_record({"keys_data_ptr": 0})
+
     def test_catalog_plan_is_deterministic_and_covers_228_unique_points(self) -> None:
         feasibility = pilot.build_feasibility_records(pilot.derive_execution_order())
         first = pilot.derive_prefix_catalog_plan(feasibility)
@@ -178,6 +226,19 @@ class PrefixStateTests(unittest.TestCase):
             source.count("phase12._observable_cuda_graph_factory(torch)"),
             2,
         )
+
+    def test_equivalence_records_each_required_invariant(self) -> None:
+        source = inspect.getsource(pilot._equivalence_session_record)
+        for field in (
+            "pointers_stable",
+            "pointers_unique",
+            "graph_capture",
+            "graph_fallback",
+            "graph_replay_exact",
+            "eager_graph_agreement",
+        ):
+            self.assertIn(f'"{field}"', source)
+        self.assertIn("unexpected_pointer_alias_groups", source)
 
 
 if __name__ == "__main__":

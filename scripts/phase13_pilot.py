@@ -151,6 +151,12 @@ PREFIX_BUILD_STAGE_SEQUENCE = (
 )
 PREFIX_EQUIVALENCE_CONTEXT = 17
 PREFIX_EQUIVALENCE_SOURCE_BATCH = 8
+_ALLOWED_EQUIVALENCE_POINTER_ALIAS_GROUPS = frozenset(
+    {
+        frozenset({"keys_data_ptr", "keys_storage_ptr"}),
+        frozenset({"values_data_ptr", "values_storage_ptr"}),
+    }
+)
 FIXED_STAGE_TIMEOUTS_SECONDS = {
     "startup": 600.0,
     "transition": 600.0,
@@ -1641,9 +1647,51 @@ def _direct_session_with_snapshot(
     return session
 
 
+def _equivalence_pointer_alias_record(
+    pointers: Mapping[str, int],
+) -> dict[str, Any]:
+    if (
+        not pointers
+        or any(not isinstance(label, str) or not label for label in pointers)
+        or any(
+            not isinstance(pointer, int)
+            or isinstance(pointer, bool)
+            or pointer <= 0
+            for pointer in pointers.values()
+        )
+    ):
+        raise Phase13PilotError("equivalence pointer evidence is invalid")
+    pointer_groups: dict[int, list[str]] = defaultdict(list)
+    for label, pointer in pointers.items():
+        pointer_groups[pointer].append(label)
+    observed_alias_groups = sorted(
+        (sorted(labels) for labels in pointer_groups.values() if len(labels) > 1),
+        key=lambda labels: tuple(labels),
+    )
+    recognized_alias_groups = [
+        labels
+        for labels in observed_alias_groups
+        if frozenset(labels) in _ALLOWED_EQUIVALENCE_POINTER_ALIAS_GROUPS
+    ]
+    unexpected_alias_groups = [
+        labels
+        for labels in observed_alias_groups
+        if frozenset(labels) not in _ALLOWED_EQUIVALENCE_POINTER_ALIAS_GROUPS
+    ]
+    return {
+        "pointers_unique": not unexpected_alias_groups,
+        "raw_pointer_values_unique": (
+            len(set(pointers.values())) == len(pointers)
+        ),
+        "recognized_same_tensor_alias_groups": recognized_alias_groups,
+        "unexpected_pointer_alias_groups": unexpected_alias_groups,
+    }
+
+
 def _equivalence_session_record(session: Any, *, evidence_root: Path) -> dict[str, Any]:
     pointers_first = phase12._phase12_session_pointers(session)
     pointers_second = phase12._phase12_session_pointers(session)
+    alias_record = _equivalence_pointer_alias_record(pointers_first)
     graph_path = phase12._write_cuda_graph_path_witness(
         graph=session.graph.graph,
         run_root=evidence_root,
@@ -1658,7 +1706,7 @@ def _equivalence_session_record(session: Any, *, evidence_root: Path) -> dict[st
         "pointer_values": sorted(pointers_first.values()),
         "pointers_stable": pointers_first == pointers_second,
         "pointer_count": len(pointers_first),
-        "pointers_unique": len(set(pointers_first.values())) == len(pointers_first),
+        **alias_record,
         "output_checksum": graph["second_replay_checksum"],
         "kernel_path_fingerprint": graph_path["normalized_sha256"],
         "kernel_count": graph_path["kernel_node_count"],
@@ -1678,7 +1726,24 @@ def _equivalence_session_record(session: Any, *, evidence_root: Path) -> dict[st
         or record["graph_replay_exact"] is not True
         or record["eager_graph_agreement"] is not True
     ):
-        raise Phase13PilotError("equivalence session Graph or pointers failed")
+        diagnostic_fields = {
+            key: record[key]
+            for key in (
+                "pointers_stable",
+                "pointers_unique",
+                "graph_capture",
+                "graph_fallback",
+                "graph_replay_exact",
+                "eager_graph_agreement",
+                "raw_pointer_values_unique",
+                "recognized_same_tensor_alias_groups",
+                "unexpected_pointer_alias_groups",
+            )
+        }
+        raise Phase13PilotError(
+            "equivalence session Graph or pointers failed: "
+            + json.dumps(diagnostic_fields, sort_keys=True, separators=(",", ":"))
+        )
     return record
 
 
@@ -1812,6 +1877,11 @@ def run_prefix_equivalence(
             "cache_byte_breakdown",
             "pointer_labels",
             "pointer_count",
+            "pointers_stable",
+            "pointers_unique",
+            "raw_pointer_values_unique",
+            "recognized_same_tensor_alias_groups",
+            "unexpected_pointer_alias_groups",
             "output_checksum",
             "kernel_path_fingerprint",
             "kernel_count",
