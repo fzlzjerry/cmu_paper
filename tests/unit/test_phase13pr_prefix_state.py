@@ -49,6 +49,8 @@ def _equivalence_session(pointer: int) -> dict[str, object]:
         "pointer_count": 1,
         "pointers_unique": True,
         "raw_pointer_values_unique": True,
+        "allowed_null_pointer_labels": [],
+        "null_pointers_backed_by_zero_byte_tensors": True,
         "recognized_same_tensor_alias_groups": [],
         "unexpected_pointer_alias_groups": [],
         "output_checksum": "c" * 64,
@@ -155,6 +157,10 @@ class PrefixStateTests(unittest.TestCase):
                 }
             ),
         )
+        self.assertEqual(
+            pilot._ALLOWED_EQUIVALENCE_NULL_POINTER_LABELS,
+            frozenset({"reserved_workspace_data_ptr"}),
+        )
 
         accepted = pilot._equivalence_pointer_alias_record(
             {
@@ -169,6 +175,17 @@ class PrefixStateTests(unittest.TestCase):
         self.assertTrue(accepted["pointers_unique"])
         self.assertFalse(accepted["raw_pointer_values_unique"])
         self.assertEqual(accepted["unexpected_pointer_alias_groups"], [])
+
+        empty_workspace = pilot._equivalence_pointer_alias_record(
+            {
+                "keys_data_ptr": 11,
+                "reserved_workspace_data_ptr": 0,
+            }
+        )
+        self.assertEqual(
+            empty_workspace["allowed_null_pointer_labels"],
+            ["reserved_workspace_data_ptr"],
+        )
 
         rejected = pilot._equivalence_pointer_alias_record(
             {
@@ -189,6 +206,19 @@ class PrefixStateTests(unittest.TestCase):
             "pointer evidence",
         ):
             pilot._equivalence_pointer_alias_record({"keys_data_ptr": 0})
+
+    def test_equivalence_zero_pointer_contract_checks_zero_byte_backing(
+        self,
+    ) -> None:
+        source = inspect.getsource(pilot._equivalence_session_record)
+        self.assertIn('null_pointer_labels == ["reserved_workspace_data_ptr"]', source)
+        self.assertIn("reserved_workspace.numel() == 0", source)
+        self.assertIn("reserved_workspace.untyped_storage().nbytes() == 0", source)
+        self.assertIn("null_pointers_backed_by_zero_byte_tensors", source)
+
+        matrix_source = inspect.getsource(pilot.run_prefix_equivalence)
+        self.assertIn("direct_allocated_pointers", matrix_source)
+        self.assertIn("if pointer > 0", matrix_source)
 
     def test_catalog_plan_is_deterministic_and_uses_228_exact_batch_states(
         self,

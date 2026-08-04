@@ -157,6 +157,9 @@ _ALLOWED_EQUIVALENCE_POINTER_ALIAS_GROUPS = frozenset(
         frozenset({"values_data_ptr", "values_storage_ptr"}),
     }
 )
+_ALLOWED_EQUIVALENCE_NULL_POINTER_LABELS = frozenset(
+    {"reserved_workspace_data_ptr"}
+)
 FIXED_STAGE_TIMEOUTS_SECONDS = {
     "startup": 600.0,
     "transition": 600.0,
@@ -1680,14 +1683,20 @@ def _equivalence_pointer_alias_record(
         or any(
             not isinstance(pointer, int)
             or isinstance(pointer, bool)
-            or pointer <= 0
+            or pointer < 0
             for pointer in pointers.values()
+        )
+        or any(
+            pointer == 0
+            and label not in _ALLOWED_EQUIVALENCE_NULL_POINTER_LABELS
+            for label, pointer in pointers.items()
         )
     ):
         raise Phase13PilotError("equivalence pointer evidence is invalid")
     pointer_groups: dict[int, list[str]] = defaultdict(list)
     for label, pointer in pointers.items():
-        pointer_groups[pointer].append(label)
+        if pointer > 0:
+            pointer_groups[pointer].append(label)
     observed_alias_groups = sorted(
         (sorted(labels) for labels in pointer_groups.values() if len(labels) > 1),
         key=lambda labels: tuple(labels),
@@ -1707,6 +1716,9 @@ def _equivalence_pointer_alias_record(
         "raw_pointer_values_unique": (
             len(set(pointers.values())) == len(pointers)
         ),
+        "allowed_null_pointer_labels": sorted(
+            label for label, pointer in pointers.items() if pointer == 0
+        ),
         "recognized_same_tensor_alias_groups": recognized_alias_groups,
         "unexpected_pointer_alias_groups": unexpected_alias_groups,
     }
@@ -1722,6 +1734,16 @@ def _equivalence_session_record(session: Any, *, evidence_root: Path) -> dict[st
         phase="before",
     )
     graph = session.graph_evidence
+    null_pointer_labels = alias_record["allowed_null_pointer_labels"]
+    null_pointers_backed_by_zero_byte_tensors = True
+    if null_pointer_labels:
+        reserved_workspace = getattr(session.cache, "reserved_workspace", None)
+        null_pointers_backed_by_zero_byte_tensors = bool(
+            null_pointer_labels == ["reserved_workspace_data_ptr"]
+            and isinstance(reserved_workspace, torch.Tensor)
+            and reserved_workspace.numel() == 0
+            and reserved_workspace.untyped_storage().nbytes() == 0
+        )
     record = {
         "cache_layout_fingerprint": session.cache_layout_fingerprint(),
         "cache_accounting": session.method_cache_accounting(),
@@ -1731,6 +1753,9 @@ def _equivalence_session_record(session: Any, *, evidence_root: Path) -> dict[st
         "pointers_stable": pointers_first == pointers_second,
         "pointer_count": len(pointers_first),
         **alias_record,
+        "null_pointers_backed_by_zero_byte_tensors": (
+            null_pointers_backed_by_zero_byte_tensors
+        ),
         "output_checksum": graph["second_replay_checksum"],
         "kernel_path_fingerprint": graph_path["normalized_sha256"],
         "kernel_count": graph_path["kernel_node_count"],
@@ -1745,6 +1770,7 @@ def _equivalence_session_record(session: Any, *, evidence_root: Path) -> dict[st
     if (
         record["pointers_stable"] is not True
         or record["pointers_unique"] is not True
+        or record["null_pointers_backed_by_zero_byte_tensors"] is not True
         or record["graph_capture"] is not True
         or record["graph_fallback"] is not False
         or record["graph_replay_exact"] is not True
@@ -1760,6 +1786,8 @@ def _equivalence_session_record(session: Any, *, evidence_root: Path) -> dict[st
                 "graph_replay_exact",
                 "eager_graph_agreement",
                 "raw_pointer_values_unique",
+                "allowed_null_pointer_labels",
+                "null_pointers_backed_by_zero_byte_tensors",
                 "recognized_same_tensor_alias_groups",
                 "unexpected_pointer_alias_groups",
             )
@@ -1929,6 +1957,8 @@ def run_prefix_equivalence(
                 "pointers_stable",
                 "pointers_unique",
                 "raw_pointer_values_unique",
+                "allowed_null_pointer_labels",
+                "null_pointers_backed_by_zero_byte_tensors",
                 "recognized_same_tensor_alias_groups",
                 "unexpected_pointer_alias_groups",
                 "output_checksum",
@@ -1957,8 +1987,14 @@ def run_prefix_equivalence(
             session_fields_exact = all(
                 direct[field] == restored[field] for field in exact_fields
             )
-            pointers_disjoint = set(direct["pointer_values"]).isdisjoint(
-                restored["pointer_values"]
+            direct_allocated_pointers = {
+                pointer for pointer in direct["pointer_values"] if pointer > 0
+            }
+            restored_allocated_pointers = {
+                pointer for pointer in restored["pointer_values"] if pointer > 0
+            }
+            pointers_disjoint = direct_allocated_pointers.isdisjoint(
+                restored_allocated_pointers
             )
             passed = bool(
                 state_bytes_exact

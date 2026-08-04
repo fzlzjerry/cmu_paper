@@ -122,6 +122,8 @@ def validate_equivalence(payload: Mapping[str, Any]) -> dict[str, Any]:
         "pointers_stable",
         "pointers_unique",
         "raw_pointer_values_unique",
+        "allowed_null_pointer_labels",
+        "null_pointers_backed_by_zero_byte_tensors",
         "recognized_same_tensor_alias_groups",
         "unexpected_pointer_alias_groups",
         "output_checksum",
@@ -176,8 +178,14 @@ def validate_equivalence(payload: Mapping[str, Any]) -> dict[str, Any]:
             or not isinstance(direct, dict)
             or not isinstance(restored, dict)
             or any(direct.get(field) != restored.get(field) for field in exact_fields)
-            or set(direct.get("pointer_values", [])).intersection(
-                restored.get("pointer_values", [])
+            or {
+                pointer
+                for pointer in direct.get("pointer_values", [])
+                if isinstance(pointer, int) and pointer > 0
+            }.intersection(
+                pointer
+                for pointer in restored.get("pointer_values", [])
+                if isinstance(pointer, int) and pointer > 0
             )
         ):
             raise Phase13PBBatchExactError(
@@ -191,6 +199,10 @@ def validate_equivalence(payload: Mapping[str, Any]) -> dict[str, Any]:
                 or session.get("graph_fallback") is not False
                 or session.get("graph_replay_exact") is not True
                 or session.get("eager_graph_agreement") is not True
+                or session.get("null_pointers_backed_by_zero_byte_tensors")
+                is not True
+                or session.get("allowed_null_pointer_labels")
+                not in ([], ["reserved_workspace_data_ptr"])
                 or session.get("unexpected_pointer_alias_groups") != []
             ):
                 raise Phase13PBBatchExactError(
