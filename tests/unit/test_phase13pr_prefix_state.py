@@ -39,21 +39,23 @@ def _cache(batch: int) -> BF16StaticCache:
 
 
 def _equivalence_session(pointer: int, configuration: str) -> dict[str, object]:
-    zero_labels = sorted(
-        pilot._EXPECTED_EQUIVALENCE_ZERO_BYTE_POINTER_LABELS[configuration]
+    null_labels = sorted(
+        pilot._EXPECTED_EQUIVALENCE_NONALLOCATED_NULL_POINTER_LABELS[
+            configuration
+        ]
     )
     return {
         "cache_layout_fingerprint": "b" * 64,
         "cache_accounting": {"allocated_bytes": 1},
         "cache_byte_breakdown": {"data_bytes": 1},
-        "pointer_labels": ["cache", *zero_labels],
-        "pointer_values": [*([0] * len(zero_labels)), pointer],
+        "pointer_labels": ["cache", *null_labels],
+        "pointer_values": [*([0] * len(null_labels)), pointer],
         "pointers_stable": True,
-        "pointer_count": 1 + len(zero_labels),
+        "pointer_count": 1 + len(null_labels),
         "pointers_unique": True,
-        "raw_pointer_values_unique": len(zero_labels) <= 1,
-        "zero_byte_tensor_pointer_labels": zero_labels,
-        "zero_byte_pointer_tensors_verified": True,
+        "raw_pointer_values_unique": len(null_labels) <= 1,
+        "nonallocated_null_pointer_labels": null_labels,
+        "null_pointer_tensor_contract_verified": True,
         "recognized_same_tensor_alias_groups": [],
         "unexpected_pointer_alias_groups": [],
         "output_checksum": "c" * 64,
@@ -163,11 +165,15 @@ class PrefixStateTests(unittest.TestCase):
             ),
         )
         self.assertEqual(
-            pilot._EXPECTED_EQUIVALENCE_ZERO_BYTE_POINTER_LABELS["bf16"],
+            pilot._EXPECTED_EQUIVALENCE_NONALLOCATED_NULL_POINTER_LABELS[
+                "bf16"
+            ],
             frozenset(),
         )
         self.assertEqual(
-            pilot._EXPECTED_EQUIVALENCE_ZERO_BYTE_POINTER_LABELS["tq_4bit_nc"],
+            pilot._EXPECTED_EQUIVALENCE_NONALLOCATED_NULL_POINTER_LABELS[
+                "tq_4bit_nc"
+            ],
             frozenset({"reserved_workspace_data_ptr"}),
         )
 
@@ -190,10 +196,12 @@ class PrefixStateTests(unittest.TestCase):
                 "keys_data_ptr": 11,
                 "reserved_workspace_data_ptr": 0,
             },
-            expected_zero_byte_pointer_labels=("reserved_workspace_data_ptr",),
+            expected_nonallocated_null_pointer_labels=(
+                "reserved_workspace_data_ptr",
+            ),
         )
         self.assertEqual(
-            empty_workspace["zero_byte_tensor_pointer_labels"],
+            empty_workspace["nonallocated_null_pointer_labels"],
             ["reserved_workspace_data_ptr"],
         )
 
@@ -220,11 +228,18 @@ class PrefixStateTests(unittest.TestCase):
     def test_equivalence_zero_pointer_contract_checks_zero_byte_backing(
         self,
     ) -> None:
-        source = inspect.getsource(pilot._equivalence_session_record)
-        self.assertIn("_EXPECTED_EQUIVALENCE_ZERO_BYTE_POINTER_LABELS", source)
-        self.assertIn("tensor.numel() == 0", source)
-        self.assertIn("tensor.untyped_storage().nbytes() == 0", source)
-        self.assertIn("zero_byte_pointer_tensors_verified", source)
+        source = inspect.getsource(pilot._equivalence_null_pointer_tensor_verified)
+        self.assertIn("tensor.numel() != 0", source)
+        self.assertIn("q23_value_decode_workspace_data_ptr", source)
+        self.assertIn("decode_logits.untyped_storage().data_ptr()", source)
+        self.assertIn("storage.nbytes() == decode_logits.untyped_storage().nbytes()", source)
+
+        record_source = inspect.getsource(pilot._equivalence_session_record)
+        self.assertIn(
+            "_EXPECTED_EQUIVALENCE_NONALLOCATED_NULL_POINTER_LABELS",
+            record_source,
+        )
+        self.assertIn("null_pointer_tensor_contract_verified", record_source)
 
         matrix_source = inspect.getsource(pilot.run_prefix_equivalence)
         self.assertIn("direct_allocated_pointers", matrix_source)

@@ -157,7 +157,7 @@ _ALLOWED_EQUIVALENCE_POINTER_ALIAS_GROUPS = frozenset(
         frozenset({"values_data_ptr", "values_storage_ptr"}),
     }
 )
-_KIVI_L17_ZERO_BYTE_POINTER_LABELS = frozenset(
+_KIVI_L17_NONALLOCATED_NULL_POINTER_LABELS = frozenset(
     {
         "packed_key_history_data_ptr",
         "packed_value_history_data_ptr",
@@ -170,17 +170,27 @@ _KIVI_L17_ZERO_BYTE_POINTER_LABELS = frozenset(
         "value_history_token_indices_data_ptr",
     }
 )
-_EXPECTED_EQUIVALENCE_ZERO_BYTE_POINTER_LABELS = {
+_EXPECTED_EQUIVALENCE_NONALLOCATED_NULL_POINTER_LABELS = {
     "bf16": frozenset(),
     "tq_4bit_nc": frozenset({"reserved_workspace_data_ptr"}),
     "tq_k3v4_nc": frozenset({"reserved_workspace_data_ptr"}),
     "tq_3bit_nc": frozenset({"reserved_workspace_data_ptr"}),
-    "k4v4": _KIVI_L17_ZERO_BYTE_POINTER_LABELS,
-    "k2v4": _KIVI_L17_ZERO_BYTE_POINTER_LABELS,
-    "k2v2": _KIVI_L17_ZERO_BYTE_POINTER_LABELS,
+    "k4v4": _KIVI_L17_NONALLOCATED_NULL_POINTER_LABELS,
+    "k2v4": _KIVI_L17_NONALLOCATED_NULL_POINTER_LABELS,
+    "k2v2": _KIVI_L17_NONALLOCATED_NULL_POINTER_LABELS,
     "kvq4": frozenset({"reserved_workspace_data_ptr"}),
-    "kvq3": frozenset({"reserved_workspace_data_ptr"}),
-    "kvq2": frozenset({"reserved_workspace_data_ptr"}),
+    "kvq3": frozenset(
+        {
+            "q23_value_decode_workspace_data_ptr",
+            "reserved_workspace_data_ptr",
+        }
+    ),
+    "kvq2": frozenset(
+        {
+            "q23_value_decode_workspace_data_ptr",
+            "reserved_workspace_data_ptr",
+        }
+    ),
 }
 FIXED_STAGE_TIMEOUTS_SECONDS = {
     "startup": 600.0,
@@ -1699,13 +1709,14 @@ def _direct_session_with_snapshot(
 def _equivalence_pointer_alias_record(
     pointers: Mapping[str, int],
     *,
-    expected_zero_byte_pointer_labels: Sequence[str] = (),
+    expected_nonallocated_null_pointer_labels: Sequence[str] = (),
 ) -> dict[str, Any]:
-    expected_zero_labels = frozenset(expected_zero_byte_pointer_labels)
+    expected_null_labels = frozenset(expected_nonallocated_null_pointer_labels)
     if (
         not pointers
-        or len(expected_zero_labels) != len(expected_zero_byte_pointer_labels)
-        or any(not isinstance(label, str) or not label for label in expected_zero_labels)
+        or len(expected_null_labels)
+        != len(expected_nonallocated_null_pointer_labels)
+        or any(not isinstance(label, str) or not label for label in expected_null_labels)
         or any(not isinstance(label, str) or not label for label in pointers)
         or any(
             not isinstance(pointer, int)
@@ -1714,7 +1725,7 @@ def _equivalence_pointer_alias_record(
             for pointer in pointers.values()
         )
         or {label for label, pointer in pointers.items() if pointer == 0}
-        != expected_zero_labels
+        != expected_null_labels
     ):
         raise Phase13PilotError("equivalence pointer evidence is invalid")
     pointer_groups: dict[int, list[str]] = defaultdict(list)
@@ -1740,12 +1751,49 @@ def _equivalence_pointer_alias_record(
         "raw_pointer_values_unique": (
             len(set(pointers.values())) == len(pointers)
         ),
-        "zero_byte_tensor_pointer_labels": sorted(
+        "nonallocated_null_pointer_labels": sorted(
             label for label, pointer in pointers.items() if pointer == 0
         ),
         "recognized_same_tensor_alias_groups": recognized_alias_groups,
         "unexpected_pointer_alias_groups": unexpected_alias_groups,
-    }
+}
+
+
+def _equivalence_null_pointer_tensor_verified(
+    *, session: Any, configuration: str, label: str, torch: Any
+) -> bool:
+    if not label.endswith("_data_ptr"):
+        return False
+    tensor = getattr(session.cache, label.removesuffix("_data_ptr"), None)
+    if (
+        not isinstance(tensor, torch.Tensor)
+        or int(tensor.data_ptr()) != 0
+        or tensor.numel() != 0
+    ):
+        return False
+    storage = tensor.untyped_storage()
+    if storage.nbytes() == 0:
+        return int(storage.data_ptr()) == 0
+    if (
+        configuration not in {"kvq3", "kvq2"}
+        or label != "q23_value_decode_workspace_data_ptr"
+    ):
+        return False
+    decode_logits = getattr(session.cache, "decode_logits", None)
+    return bool(
+        isinstance(decode_logits, torch.Tensor)
+        and tuple(tensor.shape)
+        == (
+            session.cache.batch_size,
+            session.cache.num_query_heads,
+            0,
+            session.cache.head_dim,
+        )
+        and tensor.storage_offset() == 0
+        and int(storage.data_ptr())
+        == int(decode_logits.untyped_storage().data_ptr())
+        and storage.nbytes() == decode_logits.untyped_storage().nbytes()
+    )
 
 
 def _equivalence_session_record(
@@ -1755,14 +1803,16 @@ def _equivalence_session_record(
 
     pointers_first = phase12._phase12_session_pointers(session)
     pointers_second = phase12._phase12_session_pointers(session)
-    expected_zero_labels = _EXPECTED_EQUIVALENCE_ZERO_BYTE_POINTER_LABELS.get(
-        configuration
+    expected_null_labels = (
+        _EXPECTED_EQUIVALENCE_NONALLOCATED_NULL_POINTER_LABELS.get(configuration)
     )
-    if expected_zero_labels is None:
-        raise Phase13PilotError("equivalence zero-byte pointer configuration differs")
+    if expected_null_labels is None:
+        raise Phase13PilotError("equivalence null pointer configuration differs")
     alias_record = _equivalence_pointer_alias_record(
         pointers_first,
-        expected_zero_byte_pointer_labels=tuple(sorted(expected_zero_labels)),
+        expected_nonallocated_null_pointer_labels=tuple(
+            sorted(expected_null_labels)
+        ),
     )
     graph_path = phase12._write_cuda_graph_path_witness(
         graph=session.graph.graph,
@@ -1770,17 +1820,15 @@ def _equivalence_session_record(
         phase="before",
     )
     graph = session.graph_evidence
-    zero_byte_pointer_labels = alias_record["zero_byte_tensor_pointer_labels"]
-    zero_byte_pointer_tensors_verified = all(
-        label.endswith("_data_ptr")
-        and isinstance(
-            tensor := getattr(session.cache, label.removesuffix("_data_ptr"), None),
-            torch.Tensor,
+    null_pointer_labels = alias_record["nonallocated_null_pointer_labels"]
+    null_pointer_tensor_contract_verified = all(
+        _equivalence_null_pointer_tensor_verified(
+            session=session,
+            configuration=configuration,
+            label=label,
+            torch=torch,
         )
-        and int(tensor.data_ptr()) == 0
-        and tensor.numel() == 0
-        and tensor.untyped_storage().nbytes() == 0
-        for label in zero_byte_pointer_labels
+        for label in null_pointer_labels
     )
     record = {
         "cache_layout_fingerprint": session.cache_layout_fingerprint(),
@@ -1791,7 +1839,9 @@ def _equivalence_session_record(
         "pointers_stable": pointers_first == pointers_second,
         "pointer_count": len(pointers_first),
         **alias_record,
-        "zero_byte_pointer_tensors_verified": zero_byte_pointer_tensors_verified,
+        "null_pointer_tensor_contract_verified": (
+            null_pointer_tensor_contract_verified
+        ),
         "output_checksum": graph["second_replay_checksum"],
         "kernel_path_fingerprint": graph_path["normalized_sha256"],
         "kernel_count": graph_path["kernel_node_count"],
@@ -1806,7 +1856,7 @@ def _equivalence_session_record(
     if (
         record["pointers_stable"] is not True
         or record["pointers_unique"] is not True
-        or record["zero_byte_pointer_tensors_verified"] is not True
+        or record["null_pointer_tensor_contract_verified"] is not True
         or record["graph_capture"] is not True
         or record["graph_fallback"] is not False
         or record["graph_replay_exact"] is not True
@@ -1822,8 +1872,8 @@ def _equivalence_session_record(
                 "graph_replay_exact",
                 "eager_graph_agreement",
                 "raw_pointer_values_unique",
-                "zero_byte_tensor_pointer_labels",
-                "zero_byte_pointer_tensors_verified",
+                "nonallocated_null_pointer_labels",
+                "null_pointer_tensor_contract_verified",
                 "recognized_same_tensor_alias_groups",
                 "unexpected_pointer_alias_groups",
             )
@@ -1997,8 +2047,8 @@ def run_prefix_equivalence(
                 "pointers_stable",
                 "pointers_unique",
                 "raw_pointer_values_unique",
-                "zero_byte_tensor_pointer_labels",
-                "zero_byte_pointer_tensors_verified",
+                "nonallocated_null_pointer_labels",
+                "null_pointer_tensor_contract_verified",
                 "recognized_same_tensor_alias_groups",
                 "unexpected_pointer_alias_groups",
                 "output_checksum",

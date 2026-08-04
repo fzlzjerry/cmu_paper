@@ -122,8 +122,8 @@ def validate_equivalence(payload: Mapping[str, Any]) -> dict[str, Any]:
         "pointers_stable",
         "pointers_unique",
         "raw_pointer_values_unique",
-        "zero_byte_tensor_pointer_labels",
-        "zero_byte_pointer_tensors_verified",
+        "nonallocated_null_pointer_labels",
+        "null_pointer_tensor_contract_verified",
         "recognized_same_tensor_alias_groups",
         "unexpected_pointer_alias_groups",
         "output_checksum",
@@ -192,8 +192,10 @@ def validate_equivalence(payload: Mapping[str, Any]) -> dict[str, Any]:
                 f"prefix equivalence case differs: {configuration}/B{batch}"
             )
         for session in (direct, restored):
-            expected_zero_labels = sorted(
-                pilot._EXPECTED_EQUIVALENCE_ZERO_BYTE_POINTER_LABELS[configuration]
+            expected_null_labels = sorted(
+                pilot._EXPECTED_EQUIVALENCE_NONALLOCATED_NULL_POINTER_LABELS[
+                    configuration
+                ]
             )
             pointer_values = session.get("pointer_values")
             if (
@@ -203,9 +205,9 @@ def validate_equivalence(payload: Mapping[str, Any]) -> dict[str, Any]:
                 or session.get("graph_fallback") is not False
                 or session.get("graph_replay_exact") is not True
                 or session.get("eager_graph_agreement") is not True
-                or session.get("zero_byte_pointer_tensors_verified") is not True
-                or session.get("zero_byte_tensor_pointer_labels")
-                != expected_zero_labels
+                or session.get("null_pointer_tensor_contract_verified") is not True
+                or session.get("nonallocated_null_pointer_labels")
+                != expected_null_labels
                 or not isinstance(pointer_values, list)
                 or any(
                     not isinstance(pointer, int)
@@ -214,7 +216,7 @@ def validate_equivalence(payload: Mapping[str, Any]) -> dict[str, Any]:
                     for pointer in pointer_values
                 )
                 or sum(pointer == 0 for pointer in pointer_values)
-                != len(expected_zero_labels)
+                != len(expected_null_labels)
                 or session.get("unexpected_pointer_alias_groups") != []
             ):
                 raise Phase13PBBatchExactError(

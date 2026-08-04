@@ -26,11 +26,12 @@ layout fingerprint, and lifecycle mismatches fail closed.  Cross-batch
 restoration is prohibited.
 
 Pointer freshness applies to actual allocated storage.  A null pointer is
-accepted only for the exact configuration-specific cache tensor labels whose
-L=17 tensor objects independently prove zero elements and zero storage bytes;
-all other pointers must be positive.  Zero-byte placeholders are not treated
-as shared allocations, while every positive direct/restored allocation must
-remain address-disjoint.
+accepted only for exact configuration-specific L=17 cache tensor labels whose
+objects independently prove that they own no allocation: either a zero-byte
+tensor or the frozen q3/q2 zero-element workspace view bound exactly to the
+`decode_logits` storage.  All other pointers must be positive.  Nonallocating
+placeholders are not treated as shared allocations, while every positive
+direct/restored allocation must remain address-disjoint.
 
 Every consumer still allocates fresh caller-owned cache and workspace buffers.
 State copying occurs before Graph capture, warmup, or timing.  No live pointer,
