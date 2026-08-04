@@ -1725,6 +1725,8 @@ def _equivalence_pointer_alias_record(
 
 
 def _equivalence_session_record(session: Any, *, evidence_root: Path) -> dict[str, Any]:
+    import torch
+
     pointers_first = phase12._phase12_session_pointers(session)
     pointers_second = phase12._phase12_session_pointers(session)
     alias_record = _equivalence_pointer_alias_record(pointers_first)
