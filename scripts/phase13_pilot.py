@@ -125,6 +125,7 @@ CAMPAIGN_SCHEMA = "kvbench-phase13-pilot-campaign-1.0.0"
 RUN_SCHEMA = "kvbench-phase13-pilot-process-run-1.0.0"
 WORKER_PREFIX = "PHASE13_WORKER_RESULT="
 PREFIX_BUILDER_PREFIX = "PHASE13_PREFIX_BUILDER_RESULT="
+PREFIX_EQUIVALENCE_CHILD_TIMEOUT_SECONDS = 14_400
 STAGE_EVENT_SCHEMA = "kvbench-phase13-stage-event-1.0.0"
 STAGE_OBSERVER_POLL_SECONDS = 5.0
 STAGE_SEQUENCE = (
@@ -2234,6 +2235,103 @@ def run_prefix_equivalence(
     return payload
 
 
+def _validate_isolated_prefix_equivalence(
+    path: Path, *, git_sha: str
+) -> dict[str, Any]:
+    """Validate the complete child-produced matrix without initializing CUDA."""
+
+    from scripts.phase13pb_prefix_remediation import validate_equivalence
+
+    payload = _strict_json(path)
+    result = validate_equivalence(payload)
+    if result.get("execution_git_sha") != git_sha:
+        raise Phase13PilotError("isolated prefix equivalence Git SHA differs")
+    return payload
+
+
+def run_prefix_equivalence_isolated(
+    *,
+    output: Path,
+    scratch_root: Path,
+    handoff_output: Path,
+    git_sha: str,
+) -> dict[str, Any]:
+    """Run the CUDA equivalence gate in one disposable child process."""
+
+    if output.exists() or output.is_symlink():
+        raise Phase13PilotError("isolated prefix equivalence output already exists")
+    if handoff_output.exists() or handoff_output.is_symlink():
+        raise Phase13PilotError("prefix equivalence handoff already exists")
+    if not scratch_root.is_dir() or scratch_root.is_symlink() or any(
+        scratch_root.iterdir()
+    ):
+        raise Phase13PilotError("isolated prefix equivalence scratch differs")
+    pre = phase12._capture_process_snapshot()
+    phase12._require_idle_snapshot(pre)
+    command = (
+        sys.executable,
+        str(REPOSITORY_ROOT / "scripts/phase13_pilot.py"),
+        "--validate-prefix-equivalence",
+        "--output",
+        str(output),
+        "--scratch-root",
+        str(scratch_root),
+        "--git-sha",
+        git_sha,
+    )
+    try:
+        result = subprocess.run(
+            command,
+            cwd=REPOSITORY_ROOT,
+            env=phase12._child_environment(),
+            check=False,
+            capture_output=True,
+            timeout=PREFIX_EQUIVALENCE_CHILD_TIMEOUT_SECONDS,
+        )
+    except subprocess.TimeoutExpired as error:
+        post = phase12._capture_process_snapshot()
+        phase12._require_idle_snapshot(post)
+        raise Phase13PilotError("prefix equivalence child timed out") from error
+    post = phase12._capture_process_snapshot()
+    phase12._require_idle_snapshot(post)
+    if result.returncode != 0:
+        raise Phase13PilotError("prefix equivalence child failed")
+    payload = _validate_isolated_prefix_equivalence(output, git_sha=git_sha)
+    handoff = {
+        "schema_version": "kvbench-phase13-prefix-equivalence-handoff-1.0.0",
+        "status": "PASS",
+        "decision_id": "0035",
+        "execution_git_sha": git_sha,
+        "authorized_container_digest": AUTHORIZED_CONTAINER_DIGEST,
+        "dedicated_child_process": True,
+        "parent_pid": os.getpid(),
+        "parent_loaded_model": False,
+        "parent_initialized_cuda": False,
+        "child_exit_code": result.returncode,
+        "child_exit_passed": True,
+        "child_evidence_validated": True,
+        "equivalence_case_count": payload["case_count"],
+        "equivalence_cross_batch_rejection_count": payload[
+            "cross_batch_rejection_count"
+        ],
+        "equivalence_sha256": sha256_file(output),
+        "child_stdout_sha256": hashlib.sha256(result.stdout).hexdigest(),
+        "child_stderr_sha256": hashlib.sha256(result.stderr).hexdigest(),
+        "child_stdout_bytes": len(result.stdout),
+        "child_stderr_bytes": len(result.stderr),
+        "pre_snapshot": pre,
+        "post_snapshot": post,
+        "pre_idle_gpu": True,
+        "post_idle_gpu": True,
+        "remaining_cuda_processes": [],
+        "foreign_cuda_processes": [],
+        "runtime_prefix_cache_sharing": False,
+        "timing_collected": False,
+    }
+    write_exclusive(handoff_output, json_bytes(handoff))
+    return payload
+
+
 def _run_worker(
     *,
     run_id: str,
@@ -2875,9 +2973,13 @@ def run_campaign(
     equivalence_scratch.mkdir()
     catalog_root.mkdir()
     equivalence_path = resolved / "unified" / "prefix-equivalence.json"
-    equivalence = run_prefix_equivalence(
+    equivalence_handoff_path = (
+        resolved / "unified" / "prefix-equivalence-handoff.json"
+    )
+    equivalence = run_prefix_equivalence_isolated(
         output=equivalence_path,
         scratch_root=equivalence_scratch,
+        handoff_output=equivalence_handoff_path,
         git_sha=git_sha,
     )
     if (
@@ -2939,6 +3041,11 @@ def run_campaign(
                 "planned_point_records": PLANNED_RECORD_COUNT,
                 "execution_order_sha256": sha256_file(resolved / "execution_order.json"),
                 "prefix_equivalence_sha256": sha256_file(equivalence_path),
+                "prefix_equivalence_handoff_sha256": sha256_file(
+                    equivalence_handoff_path
+                ),
+                "prefix_equivalence_child_isolated": True,
+                "coordinator_cuda_initialized": False,
                 "prefix_catalog_sha256": sha256_file(
                     resolved / "unified" / "prefix-catalog.json"
                 ),
@@ -4211,14 +4318,43 @@ def validate_campaign(root: Path, *, expected_campaign_id: str | None = None) ->
     validate_execution_order(order)
     campaign = _strict_json(root / "campaign_manifest.json")
     equivalence_path = root / "unified" / "prefix-equivalence.json"
+    equivalence_handoff_path = (
+        root / "unified" / "prefix-equivalence-handoff.json"
+    )
     catalog_path = root / "unified" / "prefix-catalog.json"
     equivalence = _strict_json(equivalence_path)
+    equivalence_handoff = _strict_json(equivalence_handoff_path)
     catalog = _strict_json(catalog_path)
     feasibility_payload = _strict_json(root / "unified" / "feasibility.json")
     feasibility = feasibility_payload.get("records")
     if (
         campaign.get("prefix_equivalence_sha256")
         != sha256_file(equivalence_path)
+        or campaign.get("prefix_equivalence_handoff_sha256")
+        != sha256_file(equivalence_handoff_path)
+        or campaign.get("prefix_equivalence_child_isolated") is not True
+        or campaign.get("coordinator_cuda_initialized") is not False
+        or equivalence_handoff.get("status") != "PASS"
+        or equivalence_handoff.get("decision_id") != "0035"
+        or equivalence_handoff.get("execution_git_sha")
+        != campaign.get("execution_git_sha")
+        or equivalence_handoff.get("authorized_container_digest")
+        != AUTHORIZED_CONTAINER_DIGEST
+        or equivalence_handoff.get("dedicated_child_process") is not True
+        or equivalence_handoff.get("parent_loaded_model") is not False
+        or equivalence_handoff.get("parent_initialized_cuda") is not False
+        or equivalence_handoff.get("child_exit_code") != 0
+        or equivalence_handoff.get("child_exit_passed") is not True
+        or equivalence_handoff.get("child_evidence_validated") is not True
+        or equivalence_handoff.get("equivalence_case_count") != 30
+        or equivalence_handoff.get("equivalence_sha256")
+        != sha256_file(equivalence_path)
+        or equivalence_handoff.get("pre_idle_gpu") is not True
+        or equivalence_handoff.get("post_idle_gpu") is not True
+        or equivalence_handoff.get("remaining_cuda_processes") != []
+        or equivalence_handoff.get("foreign_cuda_processes") != []
+        or equivalence_handoff.get("runtime_prefix_cache_sharing") is not False
+        or equivalence_handoff.get("timing_collected") is not False
         or campaign.get("prefix_catalog_sha256") != sha256_file(catalog_path)
         or campaign.get("prefix_restore_outside_timing") is not True
         or campaign.get("fresh_caller_owned_cache_per_process") is not True

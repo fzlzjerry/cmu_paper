@@ -145,6 +145,23 @@ EXPECTED_PHASE13PB_PATHS = frozenset(
         "tests/unit/test_phase13pr_prefix_state.py",
     }
 )
+EXPECTED_PHASE13PC_PATHS = frozenset(
+    {
+        "docs/blockers.md",
+        "docs/decisions/0035-phase13-equivalence-cuda-context-isolation.md",
+        "docs/evidence/phase13pc/isolation-validation.json",
+        "docs/evidence/phase13pc/r2-publication.json",
+        "docs/phase_reports/phase13pc-cuda-context-isolation.md",
+        "docs/risk_register.md",
+        "docs/status.md",
+        "docs/tasks.md",
+        "scripts/phase13_pilot.py",
+        "scripts/phase13pc_cuda_context_isolation.py",
+        "scripts/validate_phase2.py",
+        "tests/unit/test_phase13_scope.py",
+        "tests/unit/test_phase13pc_cuda_context_isolation.py",
+    }
+)
 
 
 class Phase13ScopeTests(unittest.TestCase):
@@ -384,6 +401,39 @@ class Phase13ScopeTests(unittest.TestCase):
         ):
             self.assertFalse(
                 validate_phase2.phase13pb_path_is_allowed(relative)
+            )
+
+    def test_phase13pc_segment_and_allowlist_are_exact(self) -> None:
+        self.assertEqual(
+            validate_phase2.PHASE13PC_ENTRY_COMMIT,
+            "91b984069e3305428db612a3515fdc483ec990ed",
+        )
+        self.assertEqual(
+            validate_phase2.PHASE13PC_ALLOWED_PATHS,
+            EXPECTED_PHASE13PC_PATHS,
+        )
+        self.assertEqual(
+            validate_phase2.PHASE13PC_APPROVED_ARTIFACT_ROOT_NAMES,
+            frozenset({"phase13pc"}),
+        )
+        for relative in EXPECTED_PHASE13PC_PATHS:
+            self.assertTrue(
+                validate_phase2.phase13pc_path_is_allowed(relative)
+            )
+
+    def test_phase13pc_near_miss_and_broad_paths_are_rejected(self) -> None:
+        for relative in (
+            "docs/evidence/phase13pc",
+            "docs/evidence/phase13pc/r2-publication.json.backup",
+            "scripts/phase13pc_cuda_context_isolation.py.backup",
+            "artifacts/phase13pc",
+            "artifacts/phase13pc/*",
+            "../scripts/phase13_pilot.py",
+            "/scripts/phase13_pilot.py",
+            "scripts\\phase13_pilot.py",
+        ):
+            self.assertFalse(
+                validate_phase2.phase13pc_path_is_allowed(relative)
             )
 
     def test_phase3_backup_root_allowlist_is_exact(self) -> None:

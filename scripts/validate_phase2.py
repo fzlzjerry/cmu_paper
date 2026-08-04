@@ -58,6 +58,7 @@ PHASE13R2_ENTRY_COMMIT = "bdfcb5ba41f150b1f56ddc8ac3515cd5a0b7bde3"
 PHASE13T_ENTRY_COMMIT = "fb6a1fedc0cc01abbfbd974005f7567fbd291fd7"
 PHASE13PR_ENTRY_COMMIT = "3e022662364fdbd129d4ca327e3eae8078a04ea1"
 PHASE13PB_ENTRY_COMMIT = "5ff41722edfcdabe0ec96dc226f0546b008c6438"
+PHASE13PC_ENTRY_COMMIT = "91b984069e3305428db612a3515fdc483ec990ed"
 QUALITY_COMMIT = "a7b8285dd8ed2fb598efbb3312e9f55064a0ee64"
 ENVIRONMENT_COMMIT = "ea176994921c793789ebbd9d42515ce20ae4baee"
 EVIDENCE_COMMIT = "fb164b5ea96031ca40b21f4b8436a49a3bb5b8d2"
@@ -1208,6 +1209,23 @@ PHASE13PB_ALLOWED_PATHS = frozenset(
         "tests/unit/test_phase13pr_prefix_state.py",
     }
 )
+PHASE13PC_ALLOWED_PATHS = frozenset(
+    {
+        "docs/blockers.md",
+        "docs/decisions/0035-phase13-equivalence-cuda-context-isolation.md",
+        "docs/evidence/phase13pc/isolation-validation.json",
+        "docs/evidence/phase13pc/r2-publication.json",
+        "docs/phase_reports/phase13pc-cuda-context-isolation.md",
+        "docs/risk_register.md",
+        "docs/status.md",
+        "docs/tasks.md",
+        "scripts/phase13_pilot.py",
+        "scripts/phase13pc_cuda_context_isolation.py",
+        "scripts/validate_phase2.py",
+        "tests/unit/test_phase13_scope.py",
+        "tests/unit/test_phase13pc_cuda_context_isolation.py",
+    }
+)
 
 
 RAW_RESULT_SUFFIXES = {
@@ -1872,10 +1890,25 @@ def current_phase13pr_paths() -> set[str]:
 
 
 def current_phase13pb_paths() -> set[str]:
-    """Return tracked and untracked changes after the Phase 13P-B entry."""
+    """Compatibility view of the completed Phase 13P-B segment."""
+
+    return git_paths(
+        (
+            "diff",
+            "--name-only",
+            "-z",
+            PHASE13PB_ENTRY_COMMIT,
+            PHASE13PC_ENTRY_COMMIT,
+            "--",
+        )
+    )
+
+
+def current_phase13pc_paths() -> set[str]:
+    """Return tracked and untracked changes after the Phase 13P-C entry."""
 
     changed = git_paths(
-        ("diff", "--name-only", "-z", PHASE13PB_ENTRY_COMMIT, "--")
+        ("diff", "--name-only", "-z", PHASE13PC_ENTRY_COMMIT, "--")
     )
     untracked = git_paths(
         ("ls-files", "--others", "--exclude-standard", "-z", "--")
@@ -2042,6 +2075,24 @@ def phase13pb_path_is_allowed(relative: str) -> bool:
         and ".." not in candidate.parts
         and "\\" not in relative
         and relative in PHASE13PB_ALLOWED_PATHS
+    )
+
+
+def phase13pc_path_is_allowed(relative: str) -> bool:
+    """Accept only canonical exact paths in the Phase 13P-C allowlist."""
+
+    try:
+        candidate = PurePosixPath(relative)
+    except (TypeError, ValueError):
+        return False
+    return (
+        isinstance(relative, str)
+        and relative == candidate.as_posix()
+        and relative not in {"", "."}
+        and not candidate.is_absolute()
+        and ".." not in candidate.parts
+        and "\\" not in relative
+        and relative in PHASE13PC_ALLOWED_PATHS
     )
 
 
@@ -3065,6 +3116,7 @@ PHASE13B_APPROVED_ARTIFACT_ROOT_NAMES = frozenset({"phase13b"})
 PHASE13F_APPROVED_ARTIFACT_ROOT_NAMES = frozenset({"phase13f"})
 PHASE13T_APPROVED_ARTIFACT_ROOT_NAMES = frozenset({"phase13t"})
 PHASE13PB_APPROVED_ARTIFACT_ROOT_NAMES = frozenset({"phase13pb"})
+PHASE13PC_APPROVED_ARTIFACT_ROOT_NAMES = frozenset({"phase13pc"})
 PHASE12_BLOCKED_ARTIFACT_ROOT_NAMES = frozenset({"phase12"})
 PHASE12_STOPPED_CAMPAIGN_ID = (
     "phase12-20260730t000000000000z-2bc6aaa1-abcdef"
@@ -3748,6 +3800,7 @@ def validate_phase3_artifact_root() -> list[str]:
                 | PHASE13F_APPROVED_ARTIFACT_ROOT_NAMES
                 | PHASE13T_APPROVED_ARTIFACT_ROOT_NAMES
                 | PHASE13PB_APPROVED_ARTIFACT_ROOT_NAMES
+                | PHASE13PC_APPROVED_ARTIFACT_ROOT_NAMES
                 | PHASE12_BLOCKED_ARTIFACT_ROOT_NAMES
             )
         )
@@ -4439,6 +4492,38 @@ def check_scope() -> int:
         ):
             errors.append(
                 f"forbidden result tree in Phase 13P-B scope: {relative}"
+            )
+    phase13pc = current_phase13pc_paths()
+    phase13pc_unexpected = sorted(phase13pc - PHASE13PC_ALLOWED_PATHS)
+    if phase13pc_unexpected:
+        errors.append(
+            "files outside the approved Phase 13P-C CUDA-context isolation "
+            f"remediation: {phase13pc_unexpected!r}"
+        )
+    for relative in sorted(phase13pc):
+        if relative.startswith("docs/evidence/e00/"):
+            errors.append(f"immutable E00 evidence changed: {relative}")
+        if relative in QUALITY_PROTOCOL_HASHES:
+            errors.append(
+                "quality protocol changed during Phase 13P-C: "
+                f"{relative}"
+            )
+        if Path(relative).suffix in RAW_RESULT_SUFFIXES:
+            errors.append(
+                "forbidden binary, kernel, model, or profiler artifact "
+                f"in Phase 13P-C Git scope: {relative}"
+            )
+        if relative.startswith(
+            (
+                "artifacts/profiler/",
+                "artifacts/quality/",
+                "paper-results/",
+                "paper_results/",
+                "results/",
+            )
+        ):
+            errors.append(
+                f"forbidden result tree in Phase 13P-C scope: {relative}"
             )
     e00_changes = git_paths(
         (
