@@ -1,0 +1,64 @@
+{
+  "artifact_id": "phase13pb-20260804t065806037759z-6fa70df3-869de9",
+  "bucket_lock": {
+    "bucket": "kvbench-artifacts",
+    "bucket_public": false,
+    "covered_prefix": "kvbench/sha256/",
+    "enabled": true,
+    "lock_rule_id": "kvbench-evidence-indefinite",
+    "lock_scope": "exact",
+    "public_state_result": "PASS",
+    "retention_condition": "Indefinite",
+    "retention_type": "Indefinite",
+    "verification_result": "PASS",
+    "verified_at_utc": "2026-08-04T07:21:45.866698Z"
+  },
+  "clean_retrieval": {
+    "checksum_ledger_valid": true,
+    "complete_marker_valid": true,
+    "destination_initially_empty": true,
+    "inventory_valid": true,
+    "object_count": 7,
+    "result": "PASS",
+    "retrieved_at_utc": "2026-08-04T07:21:48.742315Z",
+    "root_sha256": "8fa941c7b35245955373f5e25e6895119a9f9c4e9c7f7737342fbc33017dc50b",
+    "unexpected_objects": false,
+    "uri": "r2://kvbench-artifacts/kvbench/sha256/8fa941c7b35245955373f5e25e6895119a9f9c4e9c7f7737342fbc33017dc50b/",
+    "verification_result": "PASS"
+  },
+  "clean_retrieval_count": 1,
+  "complete_last": true,
+  "credential_statuses": {
+    "AWS_ACCESS_KEY_ID": "PRESENT",
+    "AWS_SECRET_ACCESS_KEY": "PRESENT",
+    "CLOUDFLARE_API_TOKEN": "PRESENT",
+    "KVBENCH_R2_PREFIX": "PRESENT",
+    "R2_ACCOUNT_ID": "PRESENT",
+    "R2_BUCKET": "PRESENT",
+    "R2_ENDPOINT": "PRESENT"
+  },
+  "credential_values_recorded": false,
+  "credentials_passed_to_measurement_container": false,
+  "env_file_hashed": false,
+  "env_file_read": false,
+  "publication": {
+    "complete_last": true,
+    "conditional_writes": true,
+    "content_addressed": true,
+    "object_count": 7,
+    "publication_order_sha256": "19c5399190e409b2999bb58286259e912ac20870bd99e9762cbca3580ef51c36",
+    "published_at_utc": "2026-08-04T07:21:28.672285Z",
+    "root_sha256": "8fa941c7b35245955373f5e25e6895119a9f9c4e9c7f7737342fbc33017dc50b",
+    "uploaded_count": 7,
+    "uri": "r2://kvbench-artifacts/kvbench/sha256/8fa941c7b35245955373f5e25e6895119a9f9c4e9c7f7737342fbc33017dc50b/",
+    "verified_existing_count": 0
+  },
+  "publication_attempt_count": 1,
+  "schema_version": "kvbench-phase13pb-r2-publication-1.0.0",
+  "self_reference_control": {
+    "included_in_bundle": false,
+    "receipt_path": "docs/evidence/phase13pb/r2-publication.json"
+  },
+  "source_git_sha": "6fa70df3064d4953309f4edb9ae20c4f8cc227ef",
+  "status": "PASS"
+}
