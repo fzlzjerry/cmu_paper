@@ -150,7 +150,7 @@ PREFIX_BUILD_STAGE_SEQUENCE = (
     ("finalization", "completed"),
 )
 PREFIX_EQUIVALENCE_CONTEXT = 17
-PREFIX_EQUIVALENCE_SOURCE_BATCH = 8
+PREFIX_EQUIVALENCE_BATCHES = BATCH_SIZES
 _ALLOWED_EQUIVALENCE_POINTER_ALIAS_GROUPS = frozenset(
     {
         frozenset({"keys_data_ptr", "keys_storage_ptr"}),
@@ -1132,7 +1132,7 @@ def _point_inputs(*, batch: int, historical: int, device: Any) -> tuple[Any, Any
 def derive_prefix_catalog_plan(
     feasibility: Sequence[Mapping[str, Any]],
 ) -> list[dict[str, Any]]:
-    """Use one maximum-feasible-batch state per config/context pair."""
+    """Use one exact-batch state per feasible config/batch/context point."""
 
     grouped: dict[tuple[str, int], set[int]] = defaultdict(set)
     for record in feasibility:
@@ -1149,22 +1149,28 @@ def derive_prefix_catalog_plan(
             if any(batch not in BATCH_SIZES for batch in batches):
                 raise Phase13PilotError("prefix catalog batch geometry differs")
             historical = actual_historical_context(context_label)
-            entries.append(
-                {
-                    "snapshot_id": f"prefix-{configuration}-l{context_label}",
-                    "method_config_id": configuration,
-                    "method_config_fingerprint": CONFIG_FINGERPRINTS[configuration],
-                    "method_family": phase12._method_family(configuration),
-                    "context_label": context_label,
-                    "historical_context": historical,
-                    "capacity": historical + 1,
-                    "source_batch": max(batches),
-                    "target_batches": batches,
-                    "leading_rows_are_source_faithful": True,
-                }
-            )
-    unique_targets = sum(len(entry["target_batches"]) for entry in entries)
-    if len(entries) != len(CONFIGURATIONS) * len(CONTEXT_LABELS) or unique_targets != 228:
+            for batch in batches:
+                entries.append(
+                    {
+                        "snapshot_id": (
+                            f"prefix-{configuration}-b{batch}-l{context_label}"
+                        ),
+                        "method_config_id": configuration,
+                        "method_config_fingerprint": CONFIG_FINGERPRINTS[
+                            configuration
+                        ],
+                        "method_family": phase12._method_family(configuration),
+                        "context_label": context_label,
+                        "historical_context": historical,
+                        "capacity": historical + 1,
+                        "batch_size": batch,
+                        "source_batch": batch,
+                        "target_batch": batch,
+                        "batch_reuse_policy": "exact_target_batch_only",
+                        "cross_batch_reuse": False,
+                    }
+                )
+    if len(entries) != 228:
         raise Phase13PilotError("prefix catalog cardinality differs")
     return entries
 
@@ -1254,6 +1260,9 @@ def _build_restored_session(
             historical=operation.historical_context,
             root=snapshot_root,
             expected_state_sha256=expected_state_sha256,
+            expected_method_config_fingerprint=CONFIG_FINGERPRINTS[
+                operation.configuration
+            ],
         )
         if equivalence_export_root is not None:
             save_prefix_state(
@@ -1262,6 +1271,9 @@ def _build_restored_session(
                 configuration=operation.configuration,
                 historical=operation.historical_context,
                 source_batch=operation.batch_size,
+                method_config_fingerprint=CONFIG_FINGERPRINTS[
+                    operation.configuration
+                ],
                 output=equivalence_export_root,
                 authority={
                     "equivalence_export": True,
@@ -1280,7 +1292,12 @@ def _build_restored_session(
     manifest = validate_prefix_state(
         snapshot_root,
         configuration=operation.configuration,
+        family=family,
+        batch=operation.batch_size,
         historical=operation.historical_context,
+        method_config_fingerprint=CONFIG_FINGERPRINTS[
+            operation.configuration
+        ],
         verify_state_bytes=False,
     )
     if manifest.get("state_file_sha256") != expected_state_sha256:
@@ -1366,6 +1383,7 @@ def _build_prefix_state_worker(
             configuration=configuration,
             historical=historical,
             source_batch=source_batch,
+            method_config_fingerprint=CONFIG_FINGERPRINTS[configuration],
             output=output,
             authority={
                 "execution_git_sha": git_sha,
@@ -1492,7 +1510,10 @@ def _run_prefix_builder_process(
     manifest = validate_prefix_state(
         child_output,
         configuration=str(entry["method_config_id"]),
+        family=str(entry["method_family"]),
+        batch=int(entry["source_batch"]),
         historical=historical,
+        method_config_fingerprint=str(entry["method_config_fingerprint"]),
         verify_state_bytes=True,
     )
     if (
@@ -1546,9 +1567,7 @@ def prepare_prefix_catalog(
         "execution_git_sha": git_sha,
         "authorized_container_digest": AUTHORIZED_CONTAINER_DIGEST,
         "snapshot_count": len(completed),
-        "unique_feasible_points": sum(
-            len(entry["target_batches"]) for entry in completed
-        ),
+        "unique_feasible_points": len(completed),
         "formal_process_replicates": REPLICATES,
         "direct_constructions_per_snapshot": 1,
         "runtime_prefix_cache_sharing": False,
@@ -1557,7 +1576,7 @@ def prepare_prefix_catalog(
         "state_bytes_verified_before_timing": True,
         "entries": completed,
     }
-    if payload["snapshot_count"] != 90 or payload["unique_feasible_points"] != 228:
+    if payload["snapshot_count"] != 228 or payload["unique_feasible_points"] != 228:
         raise Phase13PilotError("completed prefix catalog cardinality differs")
     write_exclusive(prefix_root / "catalog.json", json_bytes(payload))
     return payload
@@ -1565,15 +1584,19 @@ def prepare_prefix_catalog(
 
 def _prefix_catalog_index(
     catalog: Mapping[str, Any], prefix_root: Path
-) -> dict[tuple[str, int], dict[str, Any]]:
+) -> dict[tuple[str, int, int], dict[str, Any]]:
     entries = catalog.get("entries")
-    if not isinstance(entries, list) or len(entries) != 90:
+    if not isinstance(entries, list) or len(entries) != 228:
         raise Phase13PilotError("prefix catalog entry set differs")
-    index: dict[tuple[str, int], dict[str, Any]] = {}
+    index: dict[tuple[str, int, int], dict[str, Any]] = {}
     for value in entries:
         if not isinstance(value, dict):
             raise Phase13PilotError("prefix catalog entry differs")
-        key = (str(value["method_config_id"]), int(value["context_label"]))
+        key = (
+            str(value["method_config_id"]),
+            int(value["batch_size"]),
+            int(value["context_label"]),
+        )
         if key in index:
             raise Phase13PilotError("prefix catalog entry is duplicated")
         state_root = prefix_root / str(value["snapshot_relative_path"])
@@ -1614,6 +1637,7 @@ def _direct_session_with_snapshot(
             configuration=configuration,
             historical=historical,
             source_batch=batch,
+            method_config_fingerprint=CONFIG_FINGERPRINTS[configuration],
             output=snapshot_root,
             authority={
                 "equivalence_direct": True,
@@ -1750,7 +1774,7 @@ def _equivalence_session_record(session: Any, *, evidence_root: Path) -> dict[st
 def run_prefix_equivalence(
     *, output: Path, scratch_root: Path, git_sha: str
 ) -> dict[str, Any]:
-    """One focused matrix proving source-batch slicing and fresh restoration."""
+    """Prove exact-batch direct/restored equivalence for all 30 Pilot geometries."""
 
     phase12._require_authorized_container_runtime()
     if output.exists() or output.is_symlink():
@@ -1780,164 +1804,305 @@ def run_prefix_equivalence(
 
     loaded = load_frozen_model(device=torch.device("cuda:0"))
     records: list[dict[str, Any]] = []
+    cross_batch_rejections: list[dict[str, Any]] = []
     for configuration in CONFIGURATIONS:
         configuration_root = scratch_root / configuration
         configuration_root.mkdir()
-        source_root = configuration_root / "source-b8"
-        direct_root = configuration_root / "direct-b1"
-        restored_export_root = configuration_root / "restored-b1"
-        source_session = _direct_session_with_snapshot(
-            loaded=loaded,
-            configuration=configuration,
-            batch=PREFIX_EQUIVALENCE_SOURCE_BATCH,
-            historical=PREFIX_EQUIVALENCE_CONTEXT,
-            snapshot_root=source_root,
-            abort_after_snapshot=True,
-        )
-        if source_session is not None:
-            raise Phase13PilotError("equivalence source unexpectedly retained a session")
-        torch.cuda.empty_cache()
-        with phase12._observable_cuda_graph_factory(torch) as direct_graphs:
-            direct_session = _direct_session_with_snapshot(
+        source_manifests: dict[int, dict[str, Any]] = {}
+        for batch in PREFIX_EQUIVALENCE_BATCHES:
+            case_root = configuration_root / f"b{batch}"
+            case_root.mkdir()
+            source_root = case_root / "source"
+            direct_root = case_root / "direct"
+            restored_export_root = case_root / "restored"
+            source_session = _direct_session_with_snapshot(
                 loaded=loaded,
                 configuration=configuration,
-                batch=1,
+                batch=batch,
                 historical=PREFIX_EQUIVALENCE_CONTEXT,
-                snapshot_root=direct_root,
-                abort_after_snapshot=False,
+                snapshot_root=source_root,
+                abort_after_snapshot=True,
             )
-        assert direct_session is not None
-        if (
-            len(direct_graphs) != 1
-            or direct_session.graph is None
-            or direct_session.graph.graph is not direct_graphs[0]
-        ):
-            raise Phase13PilotError(
-                "equivalence direct CUDA Graph is absent or ambiguous"
-            )
-        _patch_phase12_point_globals(batch=1, historical=PREFIX_EQUIVALENCE_CONTEXT)
-        prefix, decode = _point_inputs(
-            batch=1,
-            historical=PREFIX_EQUIVALENCE_CONTEXT,
-            device=torch.device("cuda:0"),
-        )
-        operation = Phase13OperationKey.create(
-            configuration, 1, PREFIX_EQUIVALENCE_CONTEXT
-        )
-        source_manifest = validate_prefix_state(
-            source_root,
-            configuration=configuration,
-            historical=PREFIX_EQUIVALENCE_CONTEXT,
-            verify_state_bytes=True,
-        )
-        with torch.inference_mode(), forced_flash_execution():
-            with phase12._observable_cuda_graph_factory(torch) as restored_graphs:
-                restored_session, restore_receipt = _build_restored_session(
-                    loaded=loaded,
-                    operation=operation,
-                    prefix=prefix,
-                    decode=decode,
-                    snapshot_root=source_root,
-                    expected_state_sha256=str(source_manifest["state_file_sha256"]),
-                    equivalence_export_root=restored_export_root,
+            if source_session is not None:
+                raise Phase13PilotError(
+                    "equivalence source unexpectedly retained a session"
                 )
-        if (
-            len(restored_graphs) != 1
-            or restored_session.graph is None
-            or restored_session.graph.graph is not restored_graphs[0]
-        ):
-            raise Phase13PilotError(
-                "equivalence restored CUDA Graph is absent or ambiguous"
+            torch.cuda.empty_cache()
+            with phase12._observable_cuda_graph_factory(torch) as direct_graphs:
+                direct_session = _direct_session_with_snapshot(
+                    loaded=loaded,
+                    configuration=configuration,
+                    batch=batch,
+                    historical=PREFIX_EQUIVALENCE_CONTEXT,
+                    snapshot_root=direct_root,
+                    abort_after_snapshot=False,
+                )
+            assert direct_session is not None
+            if (
+                len(direct_graphs) != 1
+                or direct_session.graph is None
+                or direct_session.graph.graph is not direct_graphs[0]
+            ):
+                raise Phase13PilotError(
+                    "equivalence direct CUDA Graph is absent or ambiguous"
+                )
+            _patch_phase12_point_globals(
+                batch=batch,
+                historical=PREFIX_EQUIVALENCE_CONTEXT,
             )
-        direct_state = validate_prefix_state(
-            direct_root,
-            configuration=configuration,
-            historical=PREFIX_EQUIVALENCE_CONTEXT,
-            verify_state_bytes=True,
-        )
-        restored_state = validate_prefix_state(
-            restored_export_root,
-            configuration=configuration,
-            historical=PREFIX_EQUIVALENCE_CONTEXT,
-            verify_state_bytes=True,
-        )
-        direct_evidence_root = configuration_root / "direct-evidence"
-        restored_evidence_root = configuration_root / "restored-evidence"
-        direct_evidence_root.mkdir()
-        restored_evidence_root.mkdir()
-        direct = _equivalence_session_record(
-            direct_session, evidence_root=direct_evidence_root
-        )
-        restored = _equivalence_session_record(
-            restored_session, evidence_root=restored_evidence_root
-        )
-        exact_fields = (
-            "cache_layout_fingerprint",
-            "cache_accounting",
-            "cache_byte_breakdown",
-            "pointer_labels",
-            "pointer_count",
-            "pointers_stable",
-            "pointers_unique",
-            "raw_pointer_values_unique",
-            "recognized_same_tensor_alias_groups",
-            "unexpected_pointer_alias_groups",
-            "output_checksum",
-            "kernel_path_fingerprint",
-            "kernel_count",
-            "graph_capture",
-            "graph_fallback",
-            "graph_replay_exact",
-            "eager_graph_agreement",
-        )
-        passed = bool(
-            direct_state["state_file_sha256"]
-            == restored_state["state_file_sha256"]
-            and all(direct[field] == restored[field] for field in exact_fields)
-            and set(direct["pointer_values"]).isdisjoint(
+            prefix, decode = _point_inputs(
+                batch=batch,
+                historical=PREFIX_EQUIVALENCE_CONTEXT,
+                device=torch.device("cuda:0"),
+            )
+            operation = Phase13OperationKey.create(
+                configuration, batch, PREFIX_EQUIVALENCE_CONTEXT
+            )
+            family = phase12._method_family(configuration)
+            source_manifest = validate_prefix_state(
+                source_root,
+                configuration=configuration,
+                family=family,
+                batch=batch,
+                historical=PREFIX_EQUIVALENCE_CONTEXT,
+                method_config_fingerprint=CONFIG_FINGERPRINTS[configuration],
+                verify_state_bytes=True,
+            )
+            source_manifests[batch] = source_manifest
+            with torch.inference_mode(), forced_flash_execution():
+                with phase12._observable_cuda_graph_factory(
+                    torch
+                ) as restored_graphs:
+                    restored_session, restore_receipt = _build_restored_session(
+                        loaded=loaded,
+                        operation=operation,
+                        prefix=prefix,
+                        decode=decode,
+                        snapshot_root=source_root,
+                        expected_state_sha256=str(
+                            source_manifest["state_file_sha256"]
+                        ),
+                        equivalence_export_root=restored_export_root,
+                    )
+            if (
+                len(restored_graphs) != 1
+                or restored_session.graph is None
+                or restored_session.graph.graph is not restored_graphs[0]
+            ):
+                raise Phase13PilotError(
+                    "equivalence restored CUDA Graph is absent or ambiguous"
+                )
+            direct_state = validate_prefix_state(
+                direct_root,
+                configuration=configuration,
+                family=family,
+                batch=batch,
+                historical=PREFIX_EQUIVALENCE_CONTEXT,
+                method_config_fingerprint=CONFIG_FINGERPRINTS[configuration],
+                verify_state_bytes=True,
+            )
+            restored_state = validate_prefix_state(
+                restored_export_root,
+                configuration=configuration,
+                family=family,
+                batch=batch,
+                historical=PREFIX_EQUIVALENCE_CONTEXT,
+                method_config_fingerprint=CONFIG_FINGERPRINTS[configuration],
+                verify_state_bytes=True,
+            )
+            direct_evidence_root = case_root / "direct-evidence"
+            restored_evidence_root = case_root / "restored-evidence"
+            direct_evidence_root.mkdir()
+            restored_evidence_root.mkdir()
+            direct = _equivalence_session_record(
+                direct_session, evidence_root=direct_evidence_root
+            )
+            restored = _equivalence_session_record(
+                restored_session, evidence_root=restored_evidence_root
+            )
+            exact_fields = (
+                "cache_layout_fingerprint",
+                "cache_accounting",
+                "cache_byte_breakdown",
+                "pointer_labels",
+                "pointer_count",
+                "pointers_stable",
+                "pointers_unique",
+                "raw_pointer_values_unique",
+                "recognized_same_tensor_alias_groups",
+                "unexpected_pointer_alias_groups",
+                "output_checksum",
+                "kernel_path_fingerprint",
+                "kernel_count",
+                "graph_capture",
+                "graph_fallback",
+                "graph_replay_exact",
+                "eager_graph_agreement",
+            )
+            state_bytes_exact = (
+                source_manifest["state_file_sha256"]
+                == direct_state["state_file_sha256"]
+                == restored_state["state_file_sha256"]
+            )
+            lifecycle_exact = (
+                source_manifest["lifecycle"]
+                == direct_state["lifecycle"]
+                == restored_state["lifecycle"]
+            )
+            manifest_layout_exact = (
+                source_manifest["source_layout_fingerprint"]
+                == direct_state["source_layout_fingerprint"]
+                == restored_state["source_layout_fingerprint"]
+            )
+            session_fields_exact = all(
+                direct[field] == restored[field] for field in exact_fields
+            )
+            pointers_disjoint = set(direct["pointer_values"]).isdisjoint(
                 restored["pointer_values"]
             )
-            and restore_receipt["fresh_target_allocation"] is True
-            and restore_receipt["runtime_prefix_sharing"] is False
-        )
-        if not passed:
-            raise Phase13PilotError(
-                f"direct/restored prefix equivalence failed: {configuration}"
+            passed = bool(
+                state_bytes_exact
+                and lifecycle_exact
+                and manifest_layout_exact
+                and session_fields_exact
+                and pointers_disjoint
+                and restore_receipt["source_batch"] == batch
+                and restore_receipt["target_batch"] == batch
+                and restore_receipt["batch_reuse_policy"]
+                == "exact_target_batch_only"
+                and restore_receipt["fresh_target_allocation"] is True
+                and restore_receipt["runtime_prefix_sharing"] is False
             )
-        records.append(
-            {
-                "configuration": configuration,
-                "source_batch": PREFIX_EQUIVALENCE_SOURCE_BATCH,
-                "target_batch": 1,
-                "historical_context": PREFIX_EQUIVALENCE_CONTEXT,
-                "source_state_sha256": source_manifest["state_file_sha256"],
-                "target_state_sha256": direct_state["state_file_sha256"],
-                "restored_state_sha256": restored_state["state_file_sha256"],
-                "direct": direct,
-                "restored": restored,
-                "fresh_target_allocation": True,
-                "direct_and_restored_pointers_disjoint": True,
-                "restore_outside_timing": True,
-                "runtime_prefix_cache_sharing": False,
-                "passed": True,
-            }
-        )
-        del direct_session, restored_session
-        torch.cuda.empty_cache()
+            if not passed:
+                raise Phase13PilotError(
+                    "direct/restored exact-batch prefix equivalence failed: "
+                    + json.dumps(
+                        {
+                            "configuration": configuration,
+                            "batch_size": batch,
+                            "state_bytes_exact": state_bytes_exact,
+                            "lifecycle_exact": lifecycle_exact,
+                            "manifest_layout_exact": manifest_layout_exact,
+                            "session_fields_exact": session_fields_exact,
+                            "pointers_disjoint": pointers_disjoint,
+                        },
+                        sort_keys=True,
+                        separators=(",", ":"),
+                    )
+                )
+            cross_batch_rejected = None
+            if batch != 1:
+                cross_source = source_manifests[1]
+                pointers_before_rejection = phase12._phase12_session_pointers(
+                    direct_session
+                )
+                try:
+                    restore_prefix_state(
+                        cache=direct_session.cache,
+                        family=family,
+                        configuration=configuration,
+                        historical=PREFIX_EQUIVALENCE_CONTEXT,
+                        root=configuration_root / "b1" / "source",
+                        expected_state_sha256=str(
+                            cross_source["state_file_sha256"]
+                        ),
+                        expected_method_config_fingerprint=CONFIG_FINGERPRINTS[
+                            configuration
+                        ],
+                    )
+                except Phase13PrefixStateError as error:
+                    cross_batch_rejected = (
+                        str(error) == "prefix state exact batch differs"
+                    )
+                if (
+                    cross_batch_rejected is not True
+                    or pointers_before_rejection
+                    != phase12._phase12_session_pointers(direct_session)
+                ):
+                    raise Phase13PilotError(
+                        "cross-batch prefix restoration did not fail closed"
+                    )
+                cross_batch_rejections.append(
+                    {
+                        "configuration": configuration,
+                        "source_batch": 1,
+                        "target_batch": batch,
+                        "historical_context": PREFIX_EQUIVALENCE_CONTEXT,
+                        "rejected_before_cache_mutation": True,
+                        "pointers_unchanged": True,
+                        "error": "prefix state exact batch differs",
+                    }
+                )
+            records.append(
+                {
+                    "case_id": f"{configuration}/B{batch}/L17",
+                    "configuration": configuration,
+                    "method_config_fingerprint": CONFIG_FINGERPRINTS[
+                        configuration
+                    ],
+                    "source_batch": batch,
+                    "target_batch": batch,
+                    "historical_context": PREFIX_EQUIVALENCE_CONTEXT,
+                    "batch_reuse_policy": "exact_target_batch_only",
+                    "source_state_sha256": source_manifest[
+                        "state_file_sha256"
+                    ],
+                    "target_state_sha256": direct_state["state_file_sha256"],
+                    "restored_state_sha256": restored_state[
+                        "state_file_sha256"
+                    ],
+                    "state_bytes_exact": True,
+                    "lifecycle_exact": True,
+                    "layout_exact": True,
+                    "allocation_exact": True,
+                    "output_checksum_exact": True,
+                    "kernel_path_exact": True,
+                    "cuda_graph_result_exact": True,
+                    "direct": direct,
+                    "restored": restored,
+                    "fresh_target_allocation": True,
+                    "direct_and_restored_pointers_disjoint": True,
+                    "restore_outside_timing": True,
+                    "runtime_prefix_cache_sharing": False,
+                    "cross_batch_control_rejected": cross_batch_rejected,
+                    "passed": True,
+                }
+            )
+            del direct_session, restored_session
+            torch.cuda.empty_cache()
     payload = {
-        "schema_version": "kvbench-phase13-prefix-equivalence-1.0.0",
+        "schema_version": "kvbench-phase13-prefix-equivalence-2.0.0",
         "status": "PASS",
         "execution_git_sha": git_sha,
         "authorized_container_digest": AUTHORIZED_CONTAINER_DIGEST,
-        "configuration_count": len(records),
+        "decision_id": "0034",
+        "configuration_count": len(CONFIGURATIONS),
+        "batch_sizes": list(PREFIX_EQUIVALENCE_BATCHES),
+        "historical_context": PREFIX_EQUIVALENCE_CONTEXT,
+        "case_count": len(records),
         "all_configurations_passed": all(record["passed"] for record in records),
+        "all_cases_passed": all(record["passed"] for record in records),
+        "cross_batch_restore_fail_closed": all(
+            record["rejected_before_cache_mutation"]
+            and record["pointers_unchanged"]
+            for record in cross_batch_rejections
+        ),
+        "cross_batch_rejection_count": len(cross_batch_rejections),
         "fresh_target_allocation": True,
         "restore_outside_timing": True,
         "runtime_prefix_cache_sharing": False,
         "timing_collected": False,
+        "cross_batch_rejections": cross_batch_rejections,
         "records": records,
     }
-    if len(records) != len(CONFIGURATIONS) or not payload["all_configurations_passed"]:
+    if (
+        len(records) != len(CONFIGURATIONS) * len(PREFIX_EQUIVALENCE_BATCHES)
+        or len(cross_batch_rejections)
+        != len(CONFIGURATIONS) * (len(PREFIX_EQUIVALENCE_BATCHES) - 1)
+        or not payload["all_configurations_passed"]
+        or not payload["all_cases_passed"]
+        or not payload["cross_batch_restore_fail_closed"]
+    ):
         raise Phase13PilotError("prefix equivalence matrix differs")
     write_exclusive(output, json_bytes(payload))
     return payload
@@ -2397,8 +2562,15 @@ def _run_one_process(
     git_sha: str,
     prefix_entry: Mapping[str, Any],
 ) -> dict[str, Any]:
-    if int(record["batch_size"]) not in prefix_entry.get("target_batches", []):
-        raise Phase13PilotError("formal run is not covered by its prefix snapshot")
+    if (
+        prefix_entry.get("source_batch") != int(record["batch_size"])
+        or prefix_entry.get("target_batch") != int(record["batch_size"])
+        or prefix_entry.get("batch_reuse_policy") != "exact_target_batch_only"
+        or prefix_entry.get("cross_batch_reuse") is not False
+    ):
+        raise Phase13PilotError(
+            "formal run is not covered by an exact-batch prefix snapshot"
+        )
     run_id = _run_id(campaign_id, record)
     run_root = stage / "runs" / run_id
     run_root.mkdir()
@@ -2689,7 +2861,11 @@ def run_campaign(
             record=record,
             git_sha=git_sha,
             prefix_entry=catalog_index[
-                (str(record["method_config_id"]), int(record["context_label"]))
+                (
+                    str(record["method_config_id"]),
+                    int(record["batch_size"]),
+                    int(record["context_label"]),
+                )
             ],
         )
         manifests.append(manifest)
@@ -3927,7 +4103,15 @@ def validate_campaign(root: Path, *, expected_campaign_id: str | None = None) ->
         or campaign.get("per_point_large_history_scan") is not False
         or equivalence.get("status") != "PASS"
         or equivalence.get("configuration_count") != len(CONFIGURATIONS)
+        or equivalence.get("case_count")
+        != len(CONFIGURATIONS) * len(BATCH_SIZES)
+        or equivalence.get("batch_sizes") != list(BATCH_SIZES)
+        or equivalence.get("historical_context") != PREFIX_EQUIVALENCE_CONTEXT
         or equivalence.get("all_configurations_passed") is not True
+        or equivalence.get("all_cases_passed") is not True
+        or equivalence.get("cross_batch_restore_fail_closed") is not True
+        or equivalence.get("cross_batch_rejection_count")
+        != len(CONFIGURATIONS) * (len(BATCH_SIZES) - 1)
         or equivalence.get("fresh_target_allocation") is not True
         or equivalence.get("restore_outside_timing") is not True
         or equivalence.get("runtime_prefix_cache_sharing") is not False
@@ -3939,10 +4123,26 @@ def validate_campaign(root: Path, *, expected_campaign_id: str | None = None) ->
     if (
         not isinstance(equivalence_records, list)
         or any(not isinstance(item, dict) for item in equivalence_records)
-        or {item.get("configuration") for item in equivalence_records}
-        != set(CONFIGURATIONS)
+        or {
+            (item.get("configuration"), item.get("target_batch"))
+            for item in equivalence_records
+        }
+        != {
+            (configuration, batch)
+            for configuration in CONFIGURATIONS
+            for batch in BATCH_SIZES
+        }
         or any(
             item.get("passed") is not True
+            or item.get("source_batch") != item.get("target_batch")
+            or item.get("batch_reuse_policy") != "exact_target_batch_only"
+            or item.get("state_bytes_exact") is not True
+            or item.get("lifecycle_exact") is not True
+            or item.get("layout_exact") is not True
+            or item.get("allocation_exact") is not True
+            or item.get("output_checksum_exact") is not True
+            or item.get("kernel_path_exact") is not True
+            or item.get("cuda_graph_result_exact") is not True
             or item.get("fresh_target_allocation") is not True
             or item.get("direct_and_restored_pointers_disjoint") is not True
             or item.get("restore_outside_timing") is not True
@@ -3952,26 +4152,34 @@ def validate_campaign(root: Path, *, expected_campaign_id: str | None = None) ->
     ):
         raise Phase13PilotError("Phase 13 prefix equivalence matrix differs")
     expected_catalog = {
-        (item["method_config_id"], item["context_label"]): item
+        (
+            item["method_config_id"],
+            item["batch_size"],
+            item["context_label"],
+        ): item
         for item in derive_prefix_catalog_plan(feasibility)
     }
     catalog_entries = catalog.get("entries")
     if (
-        catalog.get("snapshot_count") != 90
+        catalog.get("snapshot_count") != 228
         or catalog.get("unique_feasible_points") != 228
         or catalog.get("runtime_prefix_cache_sharing") is not False
         or catalog.get("fresh_caller_owned_cache_per_timing_process") is not True
         or catalog.get("restoration_outside_timing") is not True
         or catalog.get("temporary_state_files_published") is not False
         or not isinstance(catalog_entries, list)
-        or len(catalog_entries) != 90
+        or len(catalog_entries) != 228
     ):
         raise Phase13PilotError("Phase 13 prefix catalog differs")
-    catalog_index: dict[tuple[str, int], Mapping[str, Any]] = {}
+    catalog_index: dict[tuple[str, int, int], Mapping[str, Any]] = {}
     for entry in catalog_entries:
         if not isinstance(entry, dict):
             raise Phase13PilotError("Phase 13 prefix catalog entry differs")
-        key = (str(entry.get("method_config_id")), int(entry.get("context_label", -1)))
+        key = (
+            str(entry.get("method_config_id")),
+            int(entry.get("batch_size", -1)),
+            int(entry.get("context_label", -1)),
+        )
         expected = expected_catalog.get(key)
         if (
             expected is None
@@ -3996,7 +4204,11 @@ def validate_campaign(root: Path, *, expected_campaign_id: str | None = None) ->
         result = _strict_json(root / result_path)
         restore = result.get("prefix_state_restore")
         entry = catalog_index.get(
-            (str(record["method_config_id"]), int(record["context_label"]))
+            (
+                str(record["method_config_id"]),
+                int(record["batch_size"]),
+                int(record["context_label"]),
+            )
         )
         if (
             not isinstance(restore, dict)
@@ -4004,6 +4216,8 @@ def validate_campaign(root: Path, *, expected_campaign_id: str | None = None) ->
             or restore.get("state_file_sha256") != entry.get("state_file_sha256")
             or restore.get("source_batch") != entry.get("source_batch")
             or restore.get("target_batch") != record.get("batch_size")
+            or restore.get("source_batch") != restore.get("target_batch")
+            or restore.get("batch_reuse_policy") != "exact_target_batch_only"
             or restore.get("fresh_target_allocation") is not True
             or restore.get("runtime_prefix_sharing") is not False
             or restore.get("restore_outside_timing") is not True

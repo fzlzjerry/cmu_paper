@@ -12,10 +12,12 @@ from collections.abc import Mapping
 import hashlib
 import json
 from pathlib import Path
+import re
 from typing import Any
 
 
-PREFIX_STATE_SCHEMA = "kvbench-phase13-prefix-state-1.0.0"
+PREFIX_STATE_SCHEMA = "kvbench-phase13-prefix-state-2.0.0"
+PREFIX_BATCH_REUSE_POLICY = "exact_target_batch_only"
 PREFIX_STATE_FILE = "state.safetensors"
 PREFIX_STATE_MANIFEST = "manifest.json"
 PREFIX_STATE_COMPLETE = "COMPLETE"
@@ -38,6 +40,12 @@ def _sha256_file(path: Path) -> str:
         while chunk := handle.read(8 * 1024 * 1024):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def _require_sha256(value: Any, message: str) -> str:
+    if not isinstance(value, str) or re.fullmatch(r"[0-9a-f]{64}", value) is None:
+        raise Phase13PrefixStateError(message)
+    return value
 
 
 def _tensor_spec(
@@ -206,6 +214,7 @@ def save_prefix_state(
     configuration: str,
     historical: int,
     source_batch: int,
+    method_config_fingerprint: str,
     output: Path,
     authority: Mapping[str, Any],
 ) -> dict[str, Any]:
@@ -219,6 +228,16 @@ def save_prefix_state(
         raise Phase13PrefixStateError("direct prefix cache geometry differs")
     if str(cache.mode) != "ready":
         raise Phase13PrefixStateError("direct prefix cache is not ready")
+    if source_batch not in {1, 4, 8}:
+        raise Phase13PrefixStateError("direct prefix batch differs")
+    fingerprint = _require_sha256(
+        method_config_fingerprint,
+        "prefix method fingerprint differs",
+    )
+    layout_fingerprint = _require_sha256(
+        cache.layout_fingerprint(),
+        "prefix layout fingerprint differs",
+    )
     output.mkdir(parents=False)
     tensors, axes = prefix_state_views(cache, family=family, historical=historical)
     cpu_tensors = {
@@ -236,7 +255,14 @@ def save_prefix_state(
         "historical_context": historical,
         "capacity": int(cache.capacity),
         "source_batch": source_batch,
-        "source_layout_fingerprint": cache.layout_fingerprint(),
+        "snapshot_key": {
+            "configuration": configuration,
+            "batch_size": source_batch,
+            "historical_context": historical,
+        },
+        "batch_reuse_policy": PREFIX_BATCH_REUSE_POLICY,
+        "method_config_fingerprint": fingerprint,
+        "source_layout_fingerprint": layout_fingerprint,
         "state_file": PREFIX_STATE_FILE,
         "state_file_bytes": state_path.stat().st_size,
         "state_file_sha256": state_sha256,
@@ -258,7 +284,10 @@ def validate_prefix_state(
     root: Path,
     *,
     configuration: str | None = None,
+    family: str | None = None,
+    batch: int | None = None,
     historical: int | None = None,
+    method_config_fingerprint: str | None = None,
     verify_state_bytes: bool = True,
 ) -> dict[str, Any]:
     """Validate the manifest and, once per catalog, its complete state bytes."""
@@ -277,6 +306,8 @@ def validate_prefix_state(
         raise Phase13PrefixStateError("prefix state schema differs")
     if configuration is not None and manifest.get("configuration") != configuration:
         raise Phase13PrefixStateError("prefix state configuration differs")
+    if family is not None and manifest.get("family") != family:
+        raise Phase13PrefixStateError("prefix state family differs")
     if historical is not None and manifest.get("historical_context") != historical:
         raise Phase13PrefixStateError("prefix state context differs")
     state_path = root / PREFIX_STATE_FILE
@@ -297,6 +328,41 @@ def validate_prefix_state(
     source_batch = manifest.get("source_batch")
     if source_batch not in {1, 4, 8}:
         raise Phase13PrefixStateError("prefix state source batch differs")
+    if batch is not None and source_batch != batch:
+        raise Phase13PrefixStateError("prefix state exact batch differs")
+    if manifest.get("batch_reuse_policy") != PREFIX_BATCH_REUSE_POLICY:
+        raise Phase13PrefixStateError("prefix state batch reuse policy differs")
+    fingerprint = _require_sha256(
+        manifest.get("method_config_fingerprint"),
+        "prefix state method fingerprint differs",
+    )
+    if (
+        method_config_fingerprint is not None
+        and fingerprint != method_config_fingerprint
+    ):
+        raise Phase13PrefixStateError("prefix state method fingerprint differs")
+    _require_sha256(
+        manifest.get("source_layout_fingerprint"),
+        "prefix state layout fingerprint differs",
+    )
+    snapshot_key = manifest.get("snapshot_key")
+    if snapshot_key != {
+        "configuration": manifest.get("configuration"),
+        "batch_size": source_batch,
+        "historical_context": manifest.get("historical_context"),
+    }:
+        raise Phase13PrefixStateError("prefix state snapshot key differs")
+    capacity = manifest.get("capacity")
+    manifest_historical = manifest.get("historical_context")
+    if (
+        not isinstance(capacity, int)
+        or isinstance(capacity, bool)
+        or not isinstance(manifest_historical, int)
+        or isinstance(manifest_historical, bool)
+        or manifest_historical <= 0
+        or capacity <= manifest_historical
+    ):
+        raise Phase13PrefixStateError("prefix state capacity differs")
     for item in tensors:
         shape = item.get("shape")
         axis = item.get("batch_axis")
@@ -308,22 +374,33 @@ def validate_prefix_state(
             or (axis is not None and shape[axis] != source_batch)
         ):
             raise Phase13PrefixStateError("prefix state batch geometry differs")
+    lifecycle = manifest.get("lifecycle")
     if not isinstance(manifest.get("authority"), dict) or not isinstance(
-        manifest.get("lifecycle"), dict
+        lifecycle, dict
     ):
         raise Phase13PrefixStateError("prefix state authority or lifecycle differs")
+    if lifecycle.get("active_context") != manifest_historical or lifecycle.get(
+        "mode"
+    ) != "ready":
+        raise Phase13PrefixStateError("prefix state lifecycle differs")
     return manifest
 
 
 def restored_prefix_witness(manifest: Mapping[str, Any], *, target_batch: int) -> str:
+    if (
+        manifest.get("batch_reuse_policy") != PREFIX_BATCH_REUSE_POLICY
+        or manifest.get("source_batch") != target_batch
+    ):
+        raise Phase13PrefixStateError("prefix witness exact batch differs")
     payload = {
-        "schema_version": "kvbench-phase13-restored-prefix-witness-1.0.0",
+        "schema_version": "kvbench-phase13-restored-prefix-witness-2.0.0",
         "state_file_sha256": manifest.get("state_file_sha256"),
         "configuration": manifest.get("configuration"),
         "historical_context": manifest.get("historical_context"),
         "source_batch": manifest.get("source_batch"),
         "target_batch": target_batch,
-        "batch_selection": "leading_independent_rows",
+        "batch_reuse_policy": PREFIX_BATCH_REUSE_POLICY,
+        "batch_selection": "exact_batch_geometry",
     }
     return hashlib.sha256(_canonical_bytes(payload)).hexdigest()
 
@@ -336,28 +413,34 @@ def restore_prefix_state(
     historical: int,
     root: Path,
     expected_state_sha256: str,
+    expected_method_config_fingerprint: str,
 ) -> dict[str, Any]:
     """Restore into newly allocated caller-owned cache tensors, outside timing."""
 
     from safetensors import safe_open
 
+    target_batch = int(cache.batch_size)
     manifest = validate_prefix_state(
         root,
         configuration=configuration,
+        family=family,
+        batch=target_batch,
         historical=historical,
+        method_config_fingerprint=expected_method_config_fingerprint,
         verify_state_bytes=False,
     )
     if manifest.get("state_file_sha256") != expected_state_sha256:
         raise Phase13PrefixStateError("prefix catalog binding differs")
     source_batch = manifest.get("source_batch")
-    target_batch = int(cache.batch_size)
     if (
         not isinstance(source_batch, int)
         or isinstance(source_batch, bool)
         or target_batch not in {1, 4, 8}
         or source_batch not in {1, 4, 8}
-        or target_batch > source_batch
+        or target_batch != source_batch
         or int(cache.capacity) != manifest.get("capacity")
+        or cache.layout_fingerprint()
+        != manifest.get("source_layout_fingerprint")
     ):
         raise Phase13PrefixStateError("prefix restore geometry differs")
     target_tensors, target_axes = prefix_state_views(
@@ -366,6 +449,16 @@ def restore_prefix_state(
     specs = {item["name"]: item for item in manifest["tensors"]}
     if set(specs) != set(target_tensors):
         raise Phase13PrefixStateError("prefix restore tensor inventory differs")
+    for name, target in sorted(target_tensors.items()):
+        spec = specs[name]
+        if (
+            target_axes[name] != spec.get("batch_axis")
+            or str(target.dtype) != spec.get("dtype")
+            or [int(item) for item in target.shape] != spec.get("shape")
+        ):
+            raise Phase13PrefixStateError(
+                "prefix target tensor metadata differs"
+            )
     cache.prepare_prefill(historical)
     with safe_open(str(root / PREFIX_STATE_FILE), framework="pt", device="cpu") as handle:
         if set(handle.keys()) != set(target_tensors):
@@ -379,8 +472,6 @@ def restore_prefix_state(
                 raise Phase13PrefixStateError("prefix tensor metadata differs")
             if [int(item) for item in source.shape] != spec.get("shape"):
                 raise Phase13PrefixStateError("prefix source shape differs")
-            if axis is not None:
-                source = source.narrow(axis, 0, target_batch)
             if tuple(source.shape) != tuple(target.shape) or source.dtype != target.dtype:
                 raise Phase13PrefixStateError("prefix target shape or dtype differs")
             target.copy_(source, non_blocking=False)
@@ -396,6 +487,7 @@ def restore_prefix_state(
         "state_file_sha256": expected_state_sha256,
         "source_batch": source_batch,
         "target_batch": target_batch,
+        "batch_reuse_policy": PREFIX_BATCH_REUSE_POLICY,
         "witness_sha256": restored_prefix_witness(
             manifest, target_batch=target_batch
         ),
