@@ -157,9 +157,31 @@ _ALLOWED_EQUIVALENCE_POINTER_ALIAS_GROUPS = frozenset(
         frozenset({"values_data_ptr", "values_storage_ptr"}),
     }
 )
-_ALLOWED_EQUIVALENCE_NULL_POINTER_LABELS = frozenset(
-    {"reserved_workspace_data_ptr"}
+_KIVI_L17_ZERO_BYTE_POINTER_LABELS = frozenset(
+    {
+        "packed_key_history_data_ptr",
+        "packed_value_history_data_ptr",
+        "key_scales_data_ptr",
+        "key_minimums_data_ptr",
+        "value_scales_data_ptr",
+        "value_minimums_data_ptr",
+        "reserved_workspace_data_ptr",
+        "key_history_token_indices_data_ptr",
+        "value_history_token_indices_data_ptr",
+    }
 )
+_EXPECTED_EQUIVALENCE_ZERO_BYTE_POINTER_LABELS = {
+    "bf16": frozenset(),
+    "tq_4bit_nc": frozenset({"reserved_workspace_data_ptr"}),
+    "tq_k3v4_nc": frozenset({"reserved_workspace_data_ptr"}),
+    "tq_3bit_nc": frozenset({"reserved_workspace_data_ptr"}),
+    "k4v4": _KIVI_L17_ZERO_BYTE_POINTER_LABELS,
+    "k2v4": _KIVI_L17_ZERO_BYTE_POINTER_LABELS,
+    "k2v2": _KIVI_L17_ZERO_BYTE_POINTER_LABELS,
+    "kvq4": frozenset({"reserved_workspace_data_ptr"}),
+    "kvq3": frozenset({"reserved_workspace_data_ptr"}),
+    "kvq2": frozenset({"reserved_workspace_data_ptr"}),
+}
 FIXED_STAGE_TIMEOUTS_SECONDS = {
     "startup": 600.0,
     "transition": 600.0,
@@ -1676,9 +1698,14 @@ def _direct_session_with_snapshot(
 
 def _equivalence_pointer_alias_record(
     pointers: Mapping[str, int],
+    *,
+    expected_zero_byte_pointer_labels: Sequence[str] = (),
 ) -> dict[str, Any]:
+    expected_zero_labels = frozenset(expected_zero_byte_pointer_labels)
     if (
         not pointers
+        or len(expected_zero_labels) != len(expected_zero_byte_pointer_labels)
+        or any(not isinstance(label, str) or not label for label in expected_zero_labels)
         or any(not isinstance(label, str) or not label for label in pointers)
         or any(
             not isinstance(pointer, int)
@@ -1686,11 +1713,8 @@ def _equivalence_pointer_alias_record(
             or pointer < 0
             for pointer in pointers.values()
         )
-        or any(
-            pointer == 0
-            and label not in _ALLOWED_EQUIVALENCE_NULL_POINTER_LABELS
-            for label, pointer in pointers.items()
-        )
+        or {label for label, pointer in pointers.items() if pointer == 0}
+        != expected_zero_labels
     ):
         raise Phase13PilotError("equivalence pointer evidence is invalid")
     pointer_groups: dict[int, list[str]] = defaultdict(list)
@@ -1716,7 +1740,7 @@ def _equivalence_pointer_alias_record(
         "raw_pointer_values_unique": (
             len(set(pointers.values())) == len(pointers)
         ),
-        "allowed_null_pointer_labels": sorted(
+        "zero_byte_tensor_pointer_labels": sorted(
             label for label, pointer in pointers.items() if pointer == 0
         ),
         "recognized_same_tensor_alias_groups": recognized_alias_groups,
@@ -1724,28 +1748,40 @@ def _equivalence_pointer_alias_record(
     }
 
 
-def _equivalence_session_record(session: Any, *, evidence_root: Path) -> dict[str, Any]:
+def _equivalence_session_record(
+    session: Any, *, configuration: str, evidence_root: Path
+) -> dict[str, Any]:
     import torch
 
     pointers_first = phase12._phase12_session_pointers(session)
     pointers_second = phase12._phase12_session_pointers(session)
-    alias_record = _equivalence_pointer_alias_record(pointers_first)
+    expected_zero_labels = _EXPECTED_EQUIVALENCE_ZERO_BYTE_POINTER_LABELS.get(
+        configuration
+    )
+    if expected_zero_labels is None:
+        raise Phase13PilotError("equivalence zero-byte pointer configuration differs")
+    alias_record = _equivalence_pointer_alias_record(
+        pointers_first,
+        expected_zero_byte_pointer_labels=tuple(sorted(expected_zero_labels)),
+    )
     graph_path = phase12._write_cuda_graph_path_witness(
         graph=session.graph.graph,
         run_root=evidence_root,
         phase="before",
     )
     graph = session.graph_evidence
-    null_pointer_labels = alias_record["allowed_null_pointer_labels"]
-    null_pointers_backed_by_zero_byte_tensors = True
-    if null_pointer_labels:
-        reserved_workspace = getattr(session.cache, "reserved_workspace", None)
-        null_pointers_backed_by_zero_byte_tensors = bool(
-            null_pointer_labels == ["reserved_workspace_data_ptr"]
-            and isinstance(reserved_workspace, torch.Tensor)
-            and reserved_workspace.numel() == 0
-            and reserved_workspace.untyped_storage().nbytes() == 0
+    zero_byte_pointer_labels = alias_record["zero_byte_tensor_pointer_labels"]
+    zero_byte_pointer_tensors_verified = all(
+        label.endswith("_data_ptr")
+        and isinstance(
+            tensor := getattr(session.cache, label.removesuffix("_data_ptr"), None),
+            torch.Tensor,
         )
+        and int(tensor.data_ptr()) == 0
+        and tensor.numel() == 0
+        and tensor.untyped_storage().nbytes() == 0
+        for label in zero_byte_pointer_labels
+    )
     record = {
         "cache_layout_fingerprint": session.cache_layout_fingerprint(),
         "cache_accounting": session.method_cache_accounting(),
@@ -1755,9 +1791,7 @@ def _equivalence_session_record(session: Any, *, evidence_root: Path) -> dict[st
         "pointers_stable": pointers_first == pointers_second,
         "pointer_count": len(pointers_first),
         **alias_record,
-        "null_pointers_backed_by_zero_byte_tensors": (
-            null_pointers_backed_by_zero_byte_tensors
-        ),
+        "zero_byte_pointer_tensors_verified": zero_byte_pointer_tensors_verified,
         "output_checksum": graph["second_replay_checksum"],
         "kernel_path_fingerprint": graph_path["normalized_sha256"],
         "kernel_count": graph_path["kernel_node_count"],
@@ -1772,7 +1806,7 @@ def _equivalence_session_record(session: Any, *, evidence_root: Path) -> dict[st
     if (
         record["pointers_stable"] is not True
         or record["pointers_unique"] is not True
-        or record["null_pointers_backed_by_zero_byte_tensors"] is not True
+        or record["zero_byte_pointer_tensors_verified"] is not True
         or record["graph_capture"] is not True
         or record["graph_fallback"] is not False
         or record["graph_replay_exact"] is not True
@@ -1788,8 +1822,8 @@ def _equivalence_session_record(session: Any, *, evidence_root: Path) -> dict[st
                 "graph_replay_exact",
                 "eager_graph_agreement",
                 "raw_pointer_values_unique",
-                "allowed_null_pointer_labels",
-                "null_pointers_backed_by_zero_byte_tensors",
+                "zero_byte_tensor_pointer_labels",
+                "zero_byte_pointer_tensors_verified",
                 "recognized_same_tensor_alias_groups",
                 "unexpected_pointer_alias_groups",
             )
@@ -1945,10 +1979,14 @@ def run_prefix_equivalence(
             direct_evidence_root.mkdir()
             restored_evidence_root.mkdir()
             direct = _equivalence_session_record(
-                direct_session, evidence_root=direct_evidence_root
+                direct_session,
+                configuration=configuration,
+                evidence_root=direct_evidence_root,
             )
             restored = _equivalence_session_record(
-                restored_session, evidence_root=restored_evidence_root
+                restored_session,
+                configuration=configuration,
+                evidence_root=restored_evidence_root,
             )
             exact_fields = (
                 "cache_layout_fingerprint",
@@ -1959,8 +1997,8 @@ def run_prefix_equivalence(
                 "pointers_stable",
                 "pointers_unique",
                 "raw_pointer_values_unique",
-                "allowed_null_pointer_labels",
-                "null_pointers_backed_by_zero_byte_tensors",
+                "zero_byte_tensor_pointer_labels",
+                "zero_byte_pointer_tensors_verified",
                 "recognized_same_tensor_alias_groups",
                 "unexpected_pointer_alias_groups",
                 "output_checksum",

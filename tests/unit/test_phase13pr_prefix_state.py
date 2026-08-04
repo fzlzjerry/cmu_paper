@@ -38,19 +38,22 @@ def _cache(batch: int) -> BF16StaticCache:
     return cache
 
 
-def _equivalence_session(pointer: int) -> dict[str, object]:
+def _equivalence_session(pointer: int, configuration: str) -> dict[str, object]:
+    zero_labels = sorted(
+        pilot._EXPECTED_EQUIVALENCE_ZERO_BYTE_POINTER_LABELS[configuration]
+    )
     return {
         "cache_layout_fingerprint": "b" * 64,
         "cache_accounting": {"allocated_bytes": 1},
         "cache_byte_breakdown": {"data_bytes": 1},
-        "pointer_labels": ["cache"],
-        "pointer_values": [pointer],
+        "pointer_labels": ["cache", *zero_labels],
+        "pointer_values": [*([0] * len(zero_labels)), pointer],
         "pointers_stable": True,
-        "pointer_count": 1,
+        "pointer_count": 1 + len(zero_labels),
         "pointers_unique": True,
-        "raw_pointer_values_unique": True,
-        "allowed_null_pointer_labels": [],
-        "null_pointers_backed_by_zero_byte_tensors": True,
+        "raw_pointer_values_unique": len(zero_labels) <= 1,
+        "zero_byte_tensor_pointer_labels": zero_labels,
+        "zero_byte_pointer_tensors_verified": True,
         "recognized_same_tensor_alias_groups": [],
         "unexpected_pointer_alias_groups": [],
         "output_checksum": "c" * 64,
@@ -92,10 +95,12 @@ def _equivalence_payload() -> dict[str, object]:
                     "kernel_path_exact": True,
                     "cuda_graph_result_exact": True,
                     "direct": _equivalence_session(
-                        1000 + configuration_index * 100 + batch
+                        1000 + configuration_index * 100 + batch,
+                        configuration,
                     ),
                     "restored": _equivalence_session(
-                        2000 + configuration_index * 100 + batch
+                        2000 + configuration_index * 100 + batch,
+                        configuration,
                     ),
                     "fresh_target_allocation": True,
                     "direct_and_restored_pointers_disjoint": True,
@@ -158,7 +163,11 @@ class PrefixStateTests(unittest.TestCase):
             ),
         )
         self.assertEqual(
-            pilot._ALLOWED_EQUIVALENCE_NULL_POINTER_LABELS,
+            pilot._EXPECTED_EQUIVALENCE_ZERO_BYTE_POINTER_LABELS["bf16"],
+            frozenset(),
+        )
+        self.assertEqual(
+            pilot._EXPECTED_EQUIVALENCE_ZERO_BYTE_POINTER_LABELS["tq_4bit_nc"],
             frozenset({"reserved_workspace_data_ptr"}),
         )
 
@@ -180,10 +189,11 @@ class PrefixStateTests(unittest.TestCase):
             {
                 "keys_data_ptr": 11,
                 "reserved_workspace_data_ptr": 0,
-            }
+            },
+            expected_zero_byte_pointer_labels=("reserved_workspace_data_ptr",),
         )
         self.assertEqual(
-            empty_workspace["allowed_null_pointer_labels"],
+            empty_workspace["zero_byte_tensor_pointer_labels"],
             ["reserved_workspace_data_ptr"],
         )
 
@@ -211,10 +221,10 @@ class PrefixStateTests(unittest.TestCase):
         self,
     ) -> None:
         source = inspect.getsource(pilot._equivalence_session_record)
-        self.assertIn('null_pointer_labels == ["reserved_workspace_data_ptr"]', source)
-        self.assertIn("reserved_workspace.numel() == 0", source)
-        self.assertIn("reserved_workspace.untyped_storage().nbytes() == 0", source)
-        self.assertIn("null_pointers_backed_by_zero_byte_tensors", source)
+        self.assertIn("_EXPECTED_EQUIVALENCE_ZERO_BYTE_POINTER_LABELS", source)
+        self.assertIn("tensor.numel() == 0", source)
+        self.assertIn("tensor.untyped_storage().nbytes() == 0", source)
+        self.assertIn("zero_byte_pointer_tensors_verified", source)
 
         matrix_source = inspect.getsource(pilot.run_prefix_equivalence)
         self.assertIn("direct_allocated_pointers", matrix_source)

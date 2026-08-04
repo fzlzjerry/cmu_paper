@@ -25,6 +25,13 @@ method fingerprint, context, tensor inventory/shape/dtype, capacity, cache
 layout fingerprint, and lifecycle mismatches fail closed.  Cross-batch
 restoration is prohibited.
 
+Pointer freshness applies to actual allocated storage.  A null pointer is
+accepted only for the exact configuration-specific cache tensor labels whose
+L=17 tensor objects independently prove zero elements and zero storage bytes;
+all other pointers must be positive.  Zero-byte placeholders are not treated
+as shared allocations, while every positive direct/restored allocation must
+remain address-disjoint.
+
 Every consumer still allocates fresh caller-owned cache and workspace buffers.
 State copying occurs before Graph capture, warmup, or timing.  No live pointer,
 cache, workspace, CUDA Graph, or runtime prefix cache is shared.  Decision
