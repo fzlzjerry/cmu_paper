@@ -25,6 +25,13 @@ import stat
 import statistics
 import subprocess
 import sys
+from kvbench.runtime.kvquant_cache import (
+    KVQUANT_Q4_VALUE_DECODE_TILE_WIDTH,
+    KVQUANT_Q4_VALUE_DECODE_WORKSPACE_FORMULA_VERSION,
+    kvquant_q4_value_decode_quantized_capacity,
+    kvquant_q4_value_decode_tile_capacity,
+    kvquant_q4_value_decode_workspace_bytes,
+)
 import time
 import types
 from typing import Any
@@ -817,7 +824,14 @@ def _kvquant_cache_bytes(configuration: str, batch: int, capacity: int) -> int:
         + batch * query_heads * 5 * 2
         + 4 * query_elements * 4
         + query_elements * 2
-        + (batch * 32 * 32 * 128 * 4 if configuration == "kvq4" else 0)
+        + (
+            kvquant_q4_value_decode_workspace_bytes(
+                batch_size=batch,
+                total_attended_capacity=capacity,
+            )
+            if configuration == "kvq4"
+            else 0
+        )
     )
     endpoint_rope_scratch = (
         layers * batch * (query_heads + heads) * 64 * 2
@@ -882,7 +896,7 @@ def feasibility_record(order_record: Mapping[str, Any]) -> dict[str, Any]:
         + graph_reserve
     )
     feasible = required <= limit
-    return {
+    result = {
         **dict(order_record),
         "schema_version": "kvbench-phase13-feasibility-record-2.0.0",
         "capacity": capacity,
@@ -916,6 +930,31 @@ def feasibility_record(order_record: Mapping[str, Any]) -> dict[str, Any]:
         "unsupported_geometry_is_not_reclassified_as_capacity": True,
         "method_config_fingerprint": CONFIG_FINGERPRINTS[configuration],
     }
+    if configuration == "kvq4":
+        quantized_capacity = kvquant_q4_value_decode_quantized_capacity(
+            capacity
+        )
+        tile_capacity = kvquant_q4_value_decode_tile_capacity(capacity)
+        workspace_bytes = kvquant_q4_value_decode_workspace_bytes(
+            batch_size=batch,
+            total_attended_capacity=capacity,
+        )
+        result["q4_value_decode_workspace"] = {
+            "formula_version": (
+                KVQUANT_Q4_VALUE_DECODE_WORKSPACE_FORMULA_VERSION
+            ),
+            "tile_size": KVQUANT_Q4_VALUE_DECODE_TILE_WIDTH,
+            "tile_capacity": tile_capacity,
+            "total_attended_capacity": capacity,
+            "quantized_value_capacity": quantized_capacity,
+            "workspace_shape": [batch, 32, tile_capacity, 128],
+            "workspace_bytes": workspace_bytes,
+            "predicted_actual_workspace_bytes_exact": True,
+            "counted_as_cache_payload": False,
+            "allocated_before_prefill": True,
+            "resize_during_decode": False,
+        }
+    return result
 
 
 def build_feasibility_records(order: Mapping[str, Any]) -> list[dict[str, Any]]:
@@ -2736,6 +2775,13 @@ def _write_status_manifest(
         "performance_claim_eligible": False,
         "r_hbm": None,
     }
+    if record["method_config_id"] == "kvq4":
+        workspace = record.get("q4_value_decode_workspace")
+        if not isinstance(workspace, Mapping):
+            raise Phase13PilotError(
+                "q4 Pilot record lacks workspace geometry"
+            )
+        manifest["q4_value_decode_workspace"] = dict(workspace)
     write_exclusive(run_root / "manifest.json", json_bytes(manifest))
     return manifest
 

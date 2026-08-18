@@ -19,6 +19,7 @@ from kvbench.adapters.kvquant import (
     KVQUANT_CORRECTED_TREE,
     KVQUANT_DECISIONS,
     KVQUANT_DECISION_0021_PATCH_SHA256,
+    KVQUANT_Q4_DECISIONS,
     KVQUANT_DETERMINISTIC_VALUE_DECODE_APIS,
     KVQUANT_EXECUTION_SOURCE_IDENTIFIER,
     KVQUANT_EXTENSION_SHA256,
@@ -35,8 +36,7 @@ from kvbench.runtime.bf16_endpoint import BF16DecodeEndpoint
 from kvbench.runtime.cuda_graph import CapturedFixedGraph, capture_fixed_graph
 from kvbench.runtime.kvquant_cache import (
     KVQUANT_CONFIG_BITS,
-    KVQUANT_Q4_VALUE_DECODE_WORKSPACE_BYTES,
-    KVQUANT_Q4_VALUE_DECODE_WORKSPACE_SHAPE,
+    KVQUANT_Q4_VALUE_DECODE_WORKSPACE_FORMULA_VERSION,
     KVQuantStaticCache,
 )
 from kvbench.runtime.model_loader import (
@@ -81,6 +81,9 @@ PHASE11_ENDPOINT_WARMUP_OPERATIONS = 3
 _LAYERS = 32
 _QUERY_HEADS = 32
 _KV_HEADS = 8
+KVQUANT_LEGACY_BACKEND_FINGERPRINT = (
+    "d18b73d981115453aaeaa3100b2e33b4403cdc48a1b2c4e518708d95810d4396"
+)
 _HEAD_DIM = 128
 _METHOD_CONFIG_PATH = (
     Path(__file__).resolve().parents[3] / "configs" / "methods" / "kvquant.yaml"
@@ -272,12 +275,16 @@ def build_kvquant_operation_keys(
     )
 
 
-def phase11_kvquant_backend_fingerprint() -> str:
+def phase11_kvquant_backend_fingerprint(configuration: str = "kvq4") -> str:
     """Bind the common endpoint to the corrected execution-source authority."""
 
+    if configuration not in KVQUANT_CONFIG_BITS:
+        raise EndpointSessionError("KVQuant backend configuration differs")
+    if configuration != "kvq4":
+        return KVQUANT_LEGACY_BACKEND_FINGERPRINT
     source_root = Path(__file__).resolve().parents[1]
     payload = {
-        "schema_version": "kvbench-phase11-kvquant-backend-1.1.0",
+        "schema_version": "kvbench-phase13r-kvquant-q4-backend-1.0.0",
         "prefill_backend": BACKEND_IDENTITY,
         "decode_backend": {
             "implementation": "corrected_kvquant_direct_compressed_decode",
@@ -295,7 +302,7 @@ def phase11_kvquant_backend_fingerprint() -> str:
             "corrected_tree": KVQUANT_CORRECTED_TREE,
             "corrected_cuda_sha256": KVQUANT_CORRECTED_CUDA_SHA256,
             "extension_sha256": KVQUANT_EXTENSION_SHA256,
-            "decisions": list(KVQUANT_DECISIONS),
+            "decisions": list(KVQUANT_Q4_DECISIONS),
             "fixture_id": PHASE11_FIXTURE_ID,
             "fixture_root": PHASE11_FIXTURE_ROOT,
             "authorized_container_digest": (
@@ -309,13 +316,12 @@ def phase11_kvquant_backend_fingerprint() -> str:
                     )
                 },
                 "caller_owned_workspace": True,
-                "q4_workspace_shape": list(
-                    KVQUANT_Q4_VALUE_DECODE_WORKSPACE_SHAPE
-                ),
+                "q4_workspace_shape": "[batch,32,capacity_tiles,128]",
                 "workspace_dtype": "float32",
-                "q4_workspace_bytes": (
-                    KVQUANT_Q4_VALUE_DECODE_WORKSPACE_BYTES
+                "q4_workspace_formula_version": (
+                    KVQUANT_Q4_VALUE_DECODE_WORKSPACE_FORMULA_VERSION
                 ),
+                "q4_workspace_capacity_source": "declared_cache_capacity",
                 "q23_workspace_alias": "decode_logits",
                 "q23_additional_allocated_bytes": 0,
                 "reduction_order": (
@@ -339,14 +345,14 @@ def phase11_kvquant_backend_fingerprint() -> str:
     return sha256_hex(canonical_json_bytes(payload))
 
 
-def kvquant_runtime_context() -> MethodRuntimeContext:
+def kvquant_runtime_context(configuration: str = "kvq4") -> MethodRuntimeContext:
     """Return the sole frozen full-model context for all KVQuant variants."""
 
     return MethodRuntimeContext(
         model_id=MODEL_ID,
         model_revision=MODEL_REVISION,
         backend_id="pytorch_flash_kvquant_longctx_deterministic_q23_v4",
-        backend_fingerprint=phase11_kvquant_backend_fingerprint(),
+        backend_fingerprint=phase11_kvquant_backend_fingerprint(configuration),
         num_layers=_LAYERS,
         num_query_heads=_QUERY_HEADS,
         num_kv_heads=_KV_HEADS,
@@ -586,7 +592,7 @@ class KVQuantEndpointSession(TurboQuantEndpointSession):
             self.operation_keys[0].historical_context,
         )
 
-    def method_cache_accounting(self) -> dict[str, int | float]:
+    def method_cache_accounting(self) -> dict[str, object]:
         accounting = self.cache.accounting().to_dict()
         if self.method.allocated_bytes(self.cache) != accounting["allocated_bytes"]:
             raise EndpointSessionError("method and cache bytes differ")
@@ -636,6 +642,28 @@ class KVQuantEndpointSession(TurboQuantEndpointSession):
                 "key_active_entries": key_entries,
             }
         )
+
+        if self.cache.config_name == "kvq4":
+            geometry = self.cache.q4_value_decode_workspace_geometry()
+            accounting.update(
+                {
+                    "q4_workspace_formula_version": geometry[
+                        "formula_version"
+                    ],
+                    "q4_workspace_tile_size": geometry["tile_size"],
+                    "q4_workspace_tile_capacity": geometry[
+                        "tile_capacity"
+                    ],
+                    "q4_workspace_total_attended_capacity": geometry[
+                        "total_attended_capacity"
+                    ],
+                    "q4_workspace_quantized_value_capacity": geometry[
+                        "quantized_value_capacity"
+                    ],
+                    "q4_workspace_shape": geometry["workspace_shape"],
+                    "q4_workspace_bytes": geometry["workspace_bytes"],
+                }
+            )
         return accounting
 
     def method_byte_breakdown(self) -> dict[str, int]:
@@ -766,7 +794,7 @@ def build_kvquant_endpoint_session(
     method_config = load_frozen_kvquant_method_config()
     method = build_method_adapter(
         method_config,
-        kvquant_runtime_context(),
+        kvquant_runtime_context(first.configuration),
         variant_id=first.configuration,
     )
     if type(method) is not KVQuantMethodAdapter:

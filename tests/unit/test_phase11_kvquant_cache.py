@@ -15,8 +15,7 @@ from kvbench.runtime.kvquant_cache import (
     KVQUANT_NUM_KV_HEADS,
     KVQUANT_NUM_LAYERS,
     KVQUANT_NUM_QUERY_HEADS,
-    KVQUANT_Q4_VALUE_DECODE_WORKSPACE_BYTES,
-    KVQUANT_Q4_VALUE_DECODE_WORKSPACE_SHAPE,
+    kvquant_q4_value_decode_workspace_shape,
     KVQUANT_SINK_TOKENS,
     KVQUANT_VALUE_CAP,
     KVQuantStaticCache,
@@ -123,7 +122,10 @@ class KVQuantStaticCacheTests(unittest.TestCase):
                     self.assertIsNotNone(cache.q4_value_decode_workspace)
                     self.assertEqual(
                         tuple(cache.q4_value_decode_workspace.shape),
-                        KVQUANT_Q4_VALUE_DECODE_WORKSPACE_SHAPE,
+                        kvquant_q4_value_decode_workspace_shape(
+                            batch_size=1,
+                            total_attended_capacity=18,
+                        ),
                     )
                     self.assertEqual(
                         str(cache.q4_value_decode_workspace.dtype),
@@ -136,7 +138,10 @@ class KVQuantStaticCacheTests(unittest.TestCase):
                         cache.storage_geometry()[
                             "q4_value_decode_workspace"
                         ],
-                        KVQUANT_Q4_VALUE_DECODE_WORKSPACE_SHAPE,
+                        kvquant_q4_value_decode_workspace_shape(
+                            batch_size=1,
+                            total_attended_capacity=18,
+                        ),
                     )
                 else:
                     self.assertIsNone(cache.q4_value_decode_workspace)
@@ -238,13 +243,20 @@ class KVQuantStaticCacheTests(unittest.TestCase):
                         + cache.decode_sink_contribution.untyped_storage().nbytes()
                         + cache.decode_quantized_output.untyped_storage().nbytes()
                         + cache.sink_output_fp16.untyped_storage().nbytes()
-                        + (
-                            KVQUANT_Q4_VALUE_DECODE_WORKSPACE_BYTES
-                            if family == "kvq4"
-                            else 0
-                        )
                         + 257
                     ),
+                )
+                if family == "kvq4":
+                    self.assertEqual(
+                        observed["q4_value_decode_workspace"],
+                        cache.q4_value_decode_workspace_bytes,
+                    )
+                else:
+                    self.assertNotIn("q4_value_decode_workspace", observed)
+                self.assertEqual(
+                    accounting.workspace_bytes,
+                    observed["persistent_workspace"]
+                    + observed.get("q4_value_decode_workspace", 0),
                 )
                 ratios = cache.ratios()
                 self.assertLessEqual(ratios.reciprocal_error, 1e-9)

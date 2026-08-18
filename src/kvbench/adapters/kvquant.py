@@ -29,7 +29,7 @@ from kvbench.runtime.kvquant_cache import (
     KVQUANT_NUM_KV_HEADS,
     KVQUANT_NUM_LAYERS,
     KVQUANT_NUM_QUERY_HEADS,
-    KVQUANT_Q4_VALUE_DECODE_WORKSPACE_SHAPE,
+    KVQUANT_Q4_VALUE_DECODE_WORKSPACE_FORMULA_VERSION,
     KVQUANT_SINK_TOKENS,
     KVQUANT_VALUE_CAP,
     KVQuantStaticCache,
@@ -44,6 +44,13 @@ KVQUANT_ADAPTER_FINGERPRINT_SCHEMA_VERSION = (
     "kvbench-kvquant-method-adapter-config-1.3.0"
 )
 KVQUANT_METHOD_IDENTIFIER = "kvquant_gqa_upstream_patch_v1"
+KVQUANT_Q4_ADAPTER_VERSION = "kvbench-kvquant-method-adapter-1.4.0"
+KVQUANT_Q4_ADAPTER_FINGERPRINT_SCHEMA_VERSION = (
+    "kvbench-kvquant-method-adapter-config-1.4.0"
+)
+KVQUANT_LEGACY_ADAPTER_IMPLEMENTATION_SHA256 = (
+    "922ad8ef951b815118043b17792ecf737969ade437f96cacabd27d81c6e94b91"
+)
 KVQUANT_EXECUTION_SOURCE_IDENTIFIER = (
     "kvquant_gqa_longctx_deterministic_q23_v4"
 )
@@ -93,6 +100,7 @@ KVQUANT_DECISIONS = (
     "0027",
     "0029",
 )
+KVQUANT_Q4_DECISIONS = (*KVQUANT_DECISIONS, "0036")
 KVQUANT_Q4_DETERMINISTIC_VALUE_DECODE_API = (
     "vecquant4matmul_nuq_perchannel_transposed_"
     "mha_batched_fused_opt2_deterministic_out"
@@ -387,6 +395,21 @@ class KVQuantMethodAdapter:
         self.bits = KVQUANT_CONFIG_BITS[config_name]
         self.levels = 1 << self.bits
         self.quantizer_sha256 = KVQUANT_QUANTIZER_SHA256[config_name]
+        self.adapter_version = (
+            KVQUANT_Q4_ADAPTER_VERSION
+            if config_name == "kvq4"
+            else KVQUANT_ADAPTER_VERSION
+        )
+        self.fingerprint_schema_version = (
+            KVQUANT_Q4_ADAPTER_FINGERPRINT_SCHEMA_VERSION
+            if config_name == "kvq4"
+            else KVQUANT_ADAPTER_FINGERPRINT_SCHEMA_VERSION
+        )
+        self.decisions = (
+            KVQUANT_Q4_DECISIONS
+            if config_name == "kvq4"
+            else KVQUANT_DECISIONS
+        )
         self._extension: ModuleType | None = None
 
     def prepare_runtime(self) -> None:
@@ -1033,11 +1056,9 @@ class KVQuantMethodAdapter:
         """Dispatch every bit width through its deterministic out API."""
 
         if self.bits == 4:
-            workspace = cache.q4_value_decode_workspace
-            if workspace is None:
-                raise CacheStateError(
-                    "KVQuant q4 deterministic workspace differs"
-                )
+            workspace = cache.require_q4_value_decode_workspace(
+                quantized_length=quantized
+            )
         else:
             workspace = cache.q23_value_decode_workspace
             if workspace is None:
@@ -1113,7 +1134,7 @@ class KVQuantMethodAdapter:
         )
         context = self.runtime_context
         payload = {
-            "schema_version": KVQUANT_ADAPTER_FINGERPRINT_SCHEMA_VERSION,
+            "schema_version": self.fingerprint_schema_version,
             "adapter_version": self.adapter_version,
             "method_name": self.name,
             "configuration": self.config_name,
@@ -1132,7 +1153,7 @@ class KVQuantMethodAdapter:
             "corrected_tree": KVQUANT_CORRECTED_TREE,
             "corrected_cuda_sha256": KVQUANT_CORRECTED_CUDA_SHA256,
             "extension_sha256": KVQUANT_EXTENSION_SHA256,
-            "decisions": list(KVQUANT_DECISIONS),
+            "decisions": list(self.decisions),
             "calibration_id": KVQUANT_CALIBRATION_ID,
             "calibration_root_sha256": KVQUANT_CALIBRATION_ROOT_SHA256,
             "quantizer_sha256": self.quantizer_sha256,
@@ -1177,17 +1198,35 @@ class KVQuantMethodAdapter:
                     else "decode_logits_alias_no_additional_storage"
                 ),
                 "q4_value_decode_workspace_shape": (
-                    list(KVQUANT_Q4_VALUE_DECODE_WORKSPACE_SHAPE)
+                    "capacity_bound_in_cache_layout_fingerprint"
                     if self.bits == 4
                     else None
                 ),
             },
             "supports_cuda_graph": self.supports_cuda_graph(),
             "r_hbm": None,
-            "implementation_sha256": hashlib.sha256(
-                Path(__file__).read_bytes()
-            ).hexdigest(),
+            "implementation_sha256": (
+                hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
+                if self.bits == 4
+                else KVQUANT_LEGACY_ADAPTER_IMPLEMENTATION_SHA256
+            ),
         }
+
+        if self.bits == 4:
+            payload["semantics"].update(
+                {
+                    "q4_value_decode_tile_size": 128,
+                    "q4_value_decode_workspace_formula_version": (
+                        KVQUANT_Q4_VALUE_DECODE_WORKSPACE_FORMULA_VERSION
+                    ),
+                    "q4_value_decode_total_attended_capacity_source": (
+                        "declared_cache_capacity"
+                    ),
+                    "q4_value_decode_workspace_preallocated": True,
+                    "q4_value_decode_workspace_resizable": False,
+                    "decision_0036": True,
+                }
+            )
         return sha256_hex(canonical_json_bytes(payload))
 
     def supports_cuda_graph(self) -> bool:

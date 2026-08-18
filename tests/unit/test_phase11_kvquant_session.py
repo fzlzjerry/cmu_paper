@@ -20,9 +20,10 @@ from kvbench.adapters.kvquant import (
     KVQUANT_METHOD_IDENTIFIER,
 )
 from kvbench.runtime.kvquant_cache import (
-    KVQUANT_Q4_VALUE_DECODE_WORKSPACE_BYTES,
-    KVQUANT_Q4_VALUE_DECODE_WORKSPACE_SHAPE,
+    KVQUANT_Q4_VALUE_DECODE_WORKSPACE_FORMULA_VERSION,
     KVQuantStaticCache,
+    kvquant_q4_value_decode_workspace_bytes,
+    kvquant_q4_value_decode_workspace_shape,
 )
 from kvbench.runtime.kvquant_session import (
     KVQuantEndpointSession,
@@ -246,7 +247,7 @@ class Phase11KVQuantSessionTests(unittest.TestCase):
             PHASE11_METHOD_IDENTIFIER,
         )
 
-    def test_backend_fingerprint_binds_decision0029_q23_workspace(
+    def test_backend_fingerprint_binds_q23_and_capacity_q4_workspace(
         self,
     ) -> None:
         source = inspect.getsource(phase11_kvquant_backend_fingerprint)
@@ -255,13 +256,10 @@ class Phase11KVQuantSessionTests(unittest.TestCase):
             source,
         )
         self.assertIn(
-            "KVQUANT_Q4_VALUE_DECODE_WORKSPACE_SHAPE",
+            "KVQUANT_Q4_VALUE_DECODE_WORKSPACE_FORMULA_VERSION",
             source,
         )
-        self.assertIn(
-            "KVQUANT_Q4_VALUE_DECODE_WORKSPACE_BYTES",
-            source,
-        )
+        self.assertIn("declared_cache_capacity", source)
         self.assertTrue(
             all(
                 api.endswith("_deterministic_out")
@@ -269,12 +267,22 @@ class Phase11KVQuantSessionTests(unittest.TestCase):
             )
         )
         self.assertEqual(
-            KVQUANT_Q4_VALUE_DECODE_WORKSPACE_SHAPE,
+            kvquant_q4_value_decode_workspace_shape(
+                batch_size=1,
+                total_attended_capacity=4097,
+            ),
             (1, 32, 32, 128),
         )
         self.assertEqual(
-            KVQUANT_Q4_VALUE_DECODE_WORKSPACE_BYTES,
+            kvquant_q4_value_decode_workspace_bytes(
+                batch_size=1,
+                total_attended_capacity=4097,
+            ),
             524_288,
+        )
+        self.assertIn(
+            "capacity-v1",
+            KVQUANT_Q4_VALUE_DECODE_WORKSPACE_FORMULA_VERSION,
         )
 
     def test_method_config_binds_calibration_without_license_gate(self) -> None:

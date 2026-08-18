@@ -4001,7 +4001,7 @@ def run_admission() -> dict[str, Any]:
             for context in PHASE11_ACCOUNTING_CONTEXTS:
                 method = build_method_adapter(
                     method_config,
-                    kvquant_runtime_context(),
+                    kvquant_runtime_context(configuration),
                     variant_id=configuration,
                 )
                 method.prepare_runtime()

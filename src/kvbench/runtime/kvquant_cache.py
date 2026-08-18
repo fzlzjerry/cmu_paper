@@ -13,6 +13,7 @@ from dataclasses import dataclass
 import hashlib
 import importlib
 import json
+import math
 from pathlib import Path
 from typing import Any, Final
 
@@ -35,19 +36,11 @@ KVQUANT_KEY_CAP: Final[int] = 12
 KVQUANT_VALUE_CAP: Final[int] = 12
 KVQUANT_ROPE_DIM: Final[int] = 64
 KVQUANT_Q4_VALUE_DECODE_TILE_WIDTH: Final[int] = 128
-KVQUANT_Q4_VALUE_DECODE_MAX_TILES: Final[int] = 32
-KVQUANT_Q4_VALUE_DECODE_WORKSPACE_SHAPE: Final[tuple[int, ...]] = (
-    KVQUANT_BATCH_SIZE,
-    KVQUANT_NUM_QUERY_HEADS,
-    KVQUANT_Q4_VALUE_DECODE_MAX_TILES,
-    KVQUANT_HEAD_DIM,
+KVQUANT_Q4_VALUE_DECODE_WORKSPACE_FORMULA_VERSION: Final[str] = (
+    "kvbench-kvquant-q4-value-workspace-capacity-v1"
 )
-KVQUANT_Q4_VALUE_DECODE_WORKSPACE_BYTES: Final[int] = (
-    KVQUANT_BATCH_SIZE
-    * KVQUANT_NUM_QUERY_HEADS
-    * KVQUANT_Q4_VALUE_DECODE_MAX_TILES
-    * KVQUANT_HEAD_DIM
-    * 4
+KVQUANT_LEGACY_CACHE_IMPLEMENTATION_SHA256: Final[str] = (
+    "24e0152347edbfca46ae8d911b424b2d0a1da9237d886c8075b0c071e605ee96"
 )
 KVQUANT_Q23_VALUE_DECODE_TILE_WIDTH: Final[int] = 128
 _TORCH: Any | None = None
@@ -79,6 +72,61 @@ def _nonnegative_int(value: int, name: str) -> int:
 
 def _storage_bytes(tensor: Any) -> int:
     return int(tensor.untyped_storage().nbytes())
+
+
+def kvquant_q4_value_decode_quantized_capacity(
+    total_attended_capacity: int,
+) -> int:
+    """Return the q4 non-sink Value capacity for one static cache."""
+
+    capacity = _positive_int(
+        total_attended_capacity,
+        "total_attended_capacity",
+    )
+    return max(0, capacity - KVQUANT_SINK_TOKENS)
+
+
+def kvquant_q4_value_decode_tile_capacity(
+    total_attended_capacity: int,
+) -> int:
+    """Return the exact 128-token q4 tile capacity without active-state input."""
+
+    quantized = kvquant_q4_value_decode_quantized_capacity(
+        total_attended_capacity
+    )
+    return (
+        quantized + KVQUANT_Q4_VALUE_DECODE_TILE_WIDTH - 1
+    ) // KVQUANT_Q4_VALUE_DECODE_TILE_WIDTH
+
+
+def kvquant_q4_value_decode_workspace_shape(
+    *,
+    batch_size: int,
+    total_attended_capacity: int,
+) -> tuple[int, int, int, int]:
+    """Return the sole Decision 0036 caller-owned q4 workspace shape."""
+
+    batch = _positive_int(batch_size, "batch_size")
+    return (
+        batch,
+        KVQUANT_NUM_QUERY_HEADS,
+        kvquant_q4_value_decode_tile_capacity(total_attended_capacity),
+        KVQUANT_HEAD_DIM,
+    )
+
+
+def kvquant_q4_value_decode_workspace_bytes(
+    *,
+    batch_size: int,
+    total_attended_capacity: int,
+) -> int:
+    """Return exact FP32 bytes for the Decision 0036 workspace."""
+
+    shape = kvquant_q4_value_decode_workspace_shape(
+        batch_size=batch_size,
+        total_attended_capacity=total_attended_capacity,
+    )
+    return math.prod(shape) * 4
 
 
 @dataclass(frozen=True, slots=True)
@@ -488,16 +536,39 @@ class KVQuantStaticCache:
         self.sink_output_fp16 = torch.zeros(
             query_shape, dtype=torch.float16, device=self.device
         )
+        self.q4_value_decode_quantized_capacity = (
+            kvquant_q4_value_decode_quantized_capacity(self.capacity)
+            if self.config_name == "kvq4"
+            else None
+        )
+        self.q4_value_decode_tile_capacity = (
+            kvquant_q4_value_decode_tile_capacity(self.capacity)
+            if self.config_name == "kvq4"
+            else None
+        )
+        self.q4_value_decode_workspace_shape = (
+            kvquant_q4_value_decode_workspace_shape(
+                batch_size=self.batch_size,
+                total_attended_capacity=self.capacity,
+            )
+            if self.config_name == "kvq4"
+            else None
+        )
+        self.q4_value_decode_workspace_bytes = (
+            kvquant_q4_value_decode_workspace_bytes(
+                batch_size=self.batch_size,
+                total_attended_capacity=self.capacity,
+            )
+            if self.config_name == "kvq4"
+            else 0
+        )
         self.q4_value_decode_workspace = (
             torch.empty(
-                (
-                    self.batch_size,
-                    *KVQUANT_Q4_VALUE_DECODE_WORKSPACE_SHAPE[1:],
-                ),
+                self.q4_value_decode_workspace_shape,
                 dtype=torch.float32,
                 device=self.device,
             )
-            if self.config_name == "kvq4"
+            if self.q4_value_decode_workspace_shape is not None
             else None
         )
         q23_max_quantized = max(self.capacity - self.sink_tokens, 0)
@@ -560,6 +631,61 @@ class KVQuantStaticCache:
         """Phase 11 does not infer physical HBM traffic."""
 
         return None
+
+    def q4_value_decode_workspace_geometry(self) -> dict[str, object]:
+        """Return the exact Decision 0036 geometry for manifests and audits."""
+
+        if self.config_name != "kvq4":
+            raise CacheStateError("q4 workspace geometry requires kvq4")
+        return {
+            "formula_version": (
+                KVQUANT_Q4_VALUE_DECODE_WORKSPACE_FORMULA_VERSION
+            ),
+            "tile_size": KVQUANT_Q4_VALUE_DECODE_TILE_WIDTH,
+            "tile_capacity": self.q4_value_decode_tile_capacity,
+            "total_attended_capacity": self.capacity,
+            "quantized_value_capacity": (
+                self.q4_value_decode_quantized_capacity
+            ),
+            "workspace_shape": list(self.q4_value_decode_workspace_shape or ()),
+            "workspace_bytes": self.q4_value_decode_workspace_bytes,
+            "dtype": "float32",
+            "allocation_time": "cache_state_construction",
+            "resize_during_decode": False,
+            "counted_as_cache_payload": False,
+        }
+
+    def require_q4_value_decode_workspace(
+        self,
+        *,
+        quantized_length: int,
+    ) -> Any:
+        """Validate and return the preallocated q4 workspace without resizing."""
+
+        torch = _torch()
+        quantized = _nonnegative_int(quantized_length, "quantized_length")
+        workspace = self.q4_value_decode_workspace
+        expected_shape = self.q4_value_decode_workspace_shape
+        if (
+            self.config_name != "kvq4"
+            or workspace is None
+            or expected_shape is None
+            or quantized > int(self.q4_value_decode_quantized_capacity or 0)
+            or kvquant_q4_value_decode_tile_capacity(
+                quantized + self.sink_tokens
+            )
+            > int(self.q4_value_decode_tile_capacity or 0)
+            or tuple(int(item) for item in workspace.shape) != expected_shape
+            or workspace.dtype != torch.float32
+            or workspace.device != self.device
+            or not workspace.is_contiguous()
+            or _storage_bytes(workspace)
+            != self.q4_value_decode_workspace_bytes
+        ):
+            raise CacheStateError(
+                "KVQuant q4 deterministic workspace capacity differs"
+            )
+        return workspace
 
     def _check_length(self, length: int, *, allow_zero: bool = False) -> int:
         minimum = 0 if allow_zero else 1
@@ -852,11 +978,6 @@ class KVQuantStaticCache:
                 self.decode_sink_contribution,
                 self.decode_quantized_output,
                 self.sink_output_fp16,
-                *(
-                    ()
-                    if self.q4_value_decode_workspace is None
-                    else (self.q4_value_decode_workspace,)
-                ),
                 self.reserved_workspace,
             )
         )
@@ -876,6 +997,10 @@ class KVQuantStaticCache:
             "padding_alignment": 0,
             "persistent_workspace": workspace,
         }
+        if self.q4_value_decode_workspace is not None:
+            breakdown["q4_value_decode_workspace"] = _storage_bytes(
+                self.q4_value_decode_workspace
+            )
         owned = sum(_storage_bytes(tensor) for tensor in self._owned_tensors())
         if sum(breakdown.values()) != owned:
             raise CacheStateError("KVQuant persistent byte breakdown is not exact")
@@ -950,14 +1075,9 @@ class KVQuantStaticCache:
             * 2
             + 4 * query_elements * 4
             + query_elements * 2
-            + (
-                self.batch_size * KVQUANT_Q4_VALUE_DECODE_WORKSPACE_BYTES
-                if self.config_name == "kvq4"
-                else 0
-            )
             + self.external_workspace_bytes
         )
-        return {
+        breakdown = {
             "dense_k_payload": dense_bytes,
             "dense_v_payload": dense_bytes,
             "key_metadata": key_metadata,
@@ -973,6 +1093,11 @@ class KVQuantStaticCache:
             "padding_alignment": 0,
             "persistent_workspace": workspace,
         }
+        if self.config_name == "kvq4":
+            breakdown["q4_value_decode_workspace"] = (
+                self.q4_value_decode_workspace_bytes
+            )
+        return breakdown
 
     def accounting(self) -> KVQuantStaticCacheAccounting:
         breakdown = self.byte_breakdown()
@@ -984,7 +1109,10 @@ class KVQuantStaticCache:
             allocated_bytes=allocated,
             padding_bytes=breakdown["padding_alignment"],
             staging_bytes=breakdown["staging"],
-            workspace_bytes=breakdown["persistent_workspace"],
+            workspace_bytes=(
+                breakdown["persistent_workspace"]
+                + breakdown.get("q4_value_decode_workspace", 0)
+            ),
             temporary_peak_bytes=0,
             capacity=self.capacity,
             active_context=self.active_context,
@@ -1119,7 +1247,11 @@ class KVQuantStaticCache:
 
     def layout_fingerprint(self) -> str:
         payload = {
-            "schema": "kvbench-kvquant-static-cache-layout-1.3.0",
+            "schema": (
+                "kvbench-kvquant-static-cache-layout-1.4.0"
+                if self.config_name == "kvq4"
+                else "kvbench-kvquant-static-cache-layout-1.3.0"
+            ),
             "configuration": self.config_name,
             "bits": self.bits,
             "levels": self.levels,
@@ -1160,7 +1292,7 @@ class KVQuantStaticCache:
                 else None
             ),
             "q4_value_decode_max_tiles": (
-                KVQUANT_Q4_VALUE_DECODE_MAX_TILES
+                self.q4_value_decode_tile_capacity
                 if self.q4_value_decode_workspace is not None
                 else None
             ),
@@ -1192,10 +1324,31 @@ class KVQuantStaticCache:
             "sink_dtype": str(self.sink_dtype),
             "device": str(self.device),
             "persistent_breakdown": self.byte_breakdown(),
-            "implementation_sha256": hashlib.sha256(
-                Path(__file__).read_bytes()
-            ).hexdigest(),
+            "implementation_sha256": (
+                hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
+                if self.config_name == "kvq4"
+                else KVQUANT_LEGACY_CACHE_IMPLEMENTATION_SHA256
+            ),
         }
+
+        if self.config_name == "kvq4":
+            payload.update(
+                {
+                    "q4_value_decode_tile_capacity": (
+                        self.q4_value_decode_tile_capacity
+                    ),
+                    "q4_value_decode_total_attended_capacity": self.capacity,
+                    "q4_value_decode_quantized_capacity": (
+                        self.q4_value_decode_quantized_capacity
+                    ),
+                    "q4_value_decode_workspace_bytes": (
+                        self.q4_value_decode_workspace_bytes
+                    ),
+                    "q4_value_decode_workspace_formula_version": (
+                        KVQUANT_Q4_VALUE_DECODE_WORKSPACE_FORMULA_VERSION
+                    ),
+                }
+            )
         return hashlib.sha256(
             json.dumps(
                 payload,

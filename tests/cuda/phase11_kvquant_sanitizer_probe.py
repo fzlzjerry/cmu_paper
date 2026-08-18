@@ -27,9 +27,6 @@ from kvbench.adapters.kvquant import (
     KVQuantMethodAdapter,
 )
 from kvbench.runtime.cuda_graph import capture_fixed_graph
-from kvbench.runtime.kvquant_cache import (
-    KVQUANT_Q4_VALUE_DECODE_WORKSPACE_SHAPE,
-)
 from kvbench.runtime.kvquant_fixture import (
     KVQUANT_FIXTURE_ID,
     KVQUANT_FIXTURE_ROOT_SHA256,
@@ -261,7 +258,7 @@ def _run_case(
         if (
             cache.q4_value_decode_workspace is None
             or tuple(cache.q4_value_decode_workspace.shape)
-            != KVQUANT_Q4_VALUE_DECODE_WORKSPACE_SHAPE
+            != cache.q4_value_decode_workspace_shape
         ):
             raise RuntimeError(
                 "KVQuant q4 deterministic workspace differs"

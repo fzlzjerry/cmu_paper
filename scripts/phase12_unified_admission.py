@@ -1745,7 +1745,7 @@ def _build_phase12_session(
     else:
         method = build_method_adapter(
             load_frozen_kvquant_method_config(),
-            kvquant_runtime_context(),
+            kvquant_runtime_context(operation_key.configuration),
             variant_id=operation_key.configuration,
         )
         method.prepare_runtime()

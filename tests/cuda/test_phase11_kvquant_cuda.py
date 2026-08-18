@@ -17,9 +17,6 @@ from kvbench.adapters.kvquant import (
     KVQUANT_EXTENSION_SHA256,
     KVQuantMethodAdapter,
 )
-from kvbench.runtime.kvquant_cache import (
-    KVQUANT_Q4_VALUE_DECODE_WORKSPACE_SHAPE,
-)
 from kvbench.runtime.kvquant_fixture import (
     KVQUANT_CASES,
     KVQUANT_FAMILIES,
@@ -540,7 +537,7 @@ class Phase11KVQuantCudaTests(unittest.TestCase):
                     if family == "kvq4":
                         self.assertEqual(
                             tuple(cache.q4_value_decode_workspace.shape),
-                            KVQUANT_Q4_VALUE_DECODE_WORKSPACE_SHAPE,
+                            cache.q4_value_decode_workspace_shape,
                         )
                     else:
                         self.assertIsNone(

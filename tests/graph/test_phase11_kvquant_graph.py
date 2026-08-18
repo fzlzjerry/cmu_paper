@@ -23,9 +23,6 @@ from kvbench.runtime.kvquant_fixture import (
     load_fixture_tensor_file_untimed,
     load_kvquant_fixture,
 )
-from kvbench.runtime.kvquant_cache import (
-    KVQUANT_Q4_VALUE_DECODE_WORKSPACE_SHAPE,
-)
 from kvbench.runtime.turboquant_admission import (
     PHASE6_CONTAINER_ENVIRONMENT_VALUE,
     PHASE6_CONTAINER_ENVIRONMENT_VARIABLE,
@@ -258,7 +255,7 @@ class Phase11KVQuantGraphTests(unittest.TestCase):
                 if family == "kvq4":
                     self.assertEqual(
                         tuple(cache.q4_value_decode_workspace.shape),
-                        KVQUANT_Q4_VALUE_DECODE_WORKSPACE_SHAPE,
+                        cache.q4_value_decode_workspace_shape,
                     )
                     self.assertIn(
                         "q4_value_decode_workspace_data_ptr",
