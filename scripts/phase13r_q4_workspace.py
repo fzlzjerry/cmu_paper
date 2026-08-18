@@ -604,7 +604,14 @@ def successor_report(
     cuda = _strict_json(cuda_validation)
     sanitizer_payload = _strict_json(sanitizer)
     probe = _strict_json(standardized_probe)
-    if cuda.get("status") != "PASS" or sanitizer_payload.get("status") != "PASS":
+    if (
+        cuda.get("status") != "PASS"
+        or sanitizer_payload.get("status") != "PASS"
+        or probe.get("status") != "PASS"
+        or cuda.get("execution_git_sha") != git_sha
+        or sanitizer_payload.get("execution_git_sha") != git_sha
+        or probe.get("execution_git_sha") != git_sha
+    ):
         raise Phase13RQ4Error("q4 successor evidence is not PASS")
     records = cuda.get("target_records")
     if not isinstance(records, list) or len(records) != 2:

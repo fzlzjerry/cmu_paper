@@ -206,6 +206,7 @@ class Phase13RQ4WorkspaceTests(unittest.TestCase):
                 json.dumps(
                     {
                         "status": "PASS",
+                        "execution_git_sha": "6" * 40,
                         "target_records": [
                             {
                                 "batch_size": batch,
@@ -220,13 +221,16 @@ class Phase13RQ4WorkspaceTests(unittest.TestCase):
                 encoding="utf-8",
             )
             sanitizer_path.write_text(
-                json.dumps({"status": "PASS"}),
+                json.dumps(
+                    {"status": "PASS", "execution_git_sha": "6" * 40}
+                ),
                 encoding="utf-8",
             )
             probe_path.write_text(
                 json.dumps(
                     {
                         "status": "PASS",
+                        "execution_git_sha": "6" * 40,
                         "method_config_fingerprint": "4" * 64,
                         "cache_layout_fingerprint": "5" * 64,
                     }
