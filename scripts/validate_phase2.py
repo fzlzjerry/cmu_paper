@@ -1242,6 +1242,7 @@ PHASE13RQ4_ALLOWED_PATHS = frozenset(
         "docs/risk_register.md",
         "docs/status.md",
         "docs/tasks.md",
+        "scripts/phase11_kvquant_admission.py",
         "scripts/phase12_unified_admission.py",
         "scripts/phase13_pilot.py",
         "scripts/phase13r_q4_workspace.py",

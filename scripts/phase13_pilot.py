@@ -106,6 +106,10 @@ AUTHORIZED_CONTAINER_DIGEST = phase12.PHASE12_AUTHORIZED_CONTAINER_DIGEST
 GPU_UUID = phase12.PHASE12_GPU_UUID
 CONFIGURATIONS = phase12.MAIN_CONFIG_IDS
 CONFIG_FINGERPRINTS = dict(phase12.EXPECTED_CONFIG_FINGERPRINTS)
+PHASE12_REFERENCE_FINGERPRINTS = dict(phase12.EXPECTED_CONFIG_FINGERPRINTS)
+CONFIG_FINGERPRINTS["kvq4"] = (
+    "27b3af27e153491112ef974ea3a6d813987bfcb5083a699ce131fa3332c9703b"
+)
 HELD_OUT_CONFIGURATIONS = phase12.HELD_OUT_CONFIG_IDS
 BATCH_SIZES = (1, 4, 8)
 CONTEXT_LABELS = (4096, 8192, 16384, 24576, 32768, 49152, 65536, 98304, 131072)
@@ -603,7 +607,10 @@ def _phase12_reference_runs() -> dict[str, Mapping[str, Any]]:
         payload = json.loads(path.read_text(encoding="utf-8"))
         configuration = payload.get("method_config_id")
         if configuration in CONFIGURATIONS and configuration not in selected:
-            if payload.get("method_config_fingerprint") != CONFIG_FINGERPRINTS[configuration]:
+            if (
+                payload.get("method_config_fingerprint")
+                != PHASE12_REFERENCE_FINGERPRINTS[configuration]
+            ):
                 raise Phase13PilotError("Phase 12 reference fingerprint differs")
             selected[str(configuration)] = payload
     if tuple(selected) != CONFIGURATIONS:
