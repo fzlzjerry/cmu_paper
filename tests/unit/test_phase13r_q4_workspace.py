@@ -196,6 +196,23 @@ class Phase13RQ4WorkspaceTests(unittest.TestCase):
             512,
         )
 
+    def test_target_harness_warms_post_capture_eager_reserve_before_audit(
+        self,
+    ) -> None:
+        source = inspect.getsource(
+            phase13r_q4_workspace._target_session_record
+        )
+        warmup = source.index("session._fixed_operation()\n")
+        synchronize = source.index(
+            "torch.cuda.synchronize(device=session.cache_device)",
+            warmup,
+        )
+        pointers = source.index("pointers_before =", synchronize)
+        audit = source.index("eager_allocation = audit_cuda_allocations", pointers)
+        self.assertLess(warmup, synchronize)
+        self.assertLess(synchronize, pointers)
+        self.assertLess(pointers, audit)
+
     def test_successor_report_binds_probe_and_rejects_tampering(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

@@ -287,6 +287,12 @@ def _target_session_record(*, loaded: Any, batch: int, evidence_root: Path) -> d
             )
         if session.graph is None or session._fixed_operation is None or len(graphs) != 1:
             raise Phase13RQ4Error("target session CUDA Graph differs")
+        # Match the frozen Phase 13B admission order: after Graph capture,
+        # populate the eager allocator reserve outside the instrumented audit.
+        # The subsequent audit must still match the admitted outer event set
+        # exactly and must observe zero persistent allocated/reserved delta.
+        session._fixed_operation()
+        torch.cuda.synchronize(device=session.cache_device)
         pointers_before = phase12._phase12_session_pointers(session)
         workspace_pointer = int(session.cache.q4_value_decode_workspace.data_ptr())
         history_before = session.current_historical_prefix_sha256()
