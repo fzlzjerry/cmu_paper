@@ -1,6 +1,6 @@
 # Project status
 
-Last updated: 2026-08-03
+Last updated: 2026-08-20
 Authoritative contracts: CODEX_WORKFLOW.md for active performance engineering;
 CODEX_POST_PERFORMANCE_QUALITY_VALIDATION.md for post-performance quality
 scheduling; CODEX_QUALITY_EVALUATION_ADDENDUM.md for non-conflicting quality
@@ -8,17 +8,18 @@ requirements; and AGENTS.md. Decision 0005 records precedence.
 
 ## Current state
 
-- Latest scoped phase: Phase 13T PASS. Decision 0032 binds ordered, finite,
-  geometry-scaled stage deadlines after the exact-container
-  kvq2 B=1/L=131072 diagnostic completed normally rather than deadlocking.
-  The 16-object remediation root
-  5e98c8103c6e15ca0877e39f7b9363a208ba8722bb6993ef67a04a06c9f795cb
-  is COMPLETE-last and passed exactly one clean R2 retrieval. All three
-  finalized stopped Pilot campaigns and both stopped staging reservations
-  remain checksum-identical; none may resume. The unchanged matrix remains
-  810 planned, 684 feasible, and 126 capacity-infeasible records. G0-G5 remain
-  PASS from unified admission, Phase 13 remains incomplete pending a wholly
-  new Pilot, Phase 14 is NOT READY, Full Scan is CLOSED, quality remains
+- Latest scoped phase: Phase 13R q4 workspace remediation PASS. Decision 0036
+  replaces only the hard-coded 32-tile q4 Value-decode workspace capacity with
+  a declared-total-attended-capacity formula. B=4/8 L=16384 numerical,
+  path/allocation, Graph, pointer, stream, and sanitizer controls pass; the
+  successor q4 MethodAdmissionReport and three-process standardized q4 G5
+  refresh pass. Nine unchanged configuration records plus the refreshed q4
+  record retain global G0-G5 PASS and Pilot READY. The 14-object remediation
+  root `9f027d64424844d0d62311daad5740e2b76960d1d5e7b8be26aa1ccba100a8db`
+  is COMPLETE-last and passed one clean R2 retrieval. The blocked Pilot
+  `phase13-20260804t111810342595z-a127b0d1-8649c3` remains immutable and none
+  of its timing data may be reused. Phase 13 remains incomplete pending a
+  wholly new Pilot; Phase 14 is NOT READY, Full Scan is CLOSED, quality is
   LOCKED, and PERFORMANCE_DATA_FROZEN is absent.
 - Phase 6 status: PASS for method-specific G2-TQ at execution commit
   `0df5bb4d445d48e6cba17e30723733f8de35cb14`. The approved admission driver
@@ -752,7 +753,8 @@ reference execution is recorded separately above.
 | Phase 13F peak feasibility | PASS | Decision 0031 includes model, cache/workspace, prefix attention/MLP and control tensors, Graph reserve, and the frozen 0.88 limit; all 810 records deterministically classify 684 feasible and 126 capacity-infeasible. Root `5090b193c046637cb3836f7d5a3ee5ebbad95d9a459672ab4aa3ff0ddb756589` is COMPLETE-last and cleanly retrieved. |
 | Phase 13R2 Pilot | BLOCKED | Fresh Decision 0031 campaign preserved 23 completed, one 7,200-second supervisor-timeout failure, 660 aborted, and 126 capacity-infeasible records; root 581b02a6ca1a09c976a899b2b5d7eeb7897c0ad8f7ed8ad9fb11be5f6475f327 is COMPLETE-last and cleanly retrieved. |
 | Phase 13T supervisor remediation | PASS | Decision 0032; the long-context diagnostic completed with normal forward progress; ordered finite stage deadlines pass focused and full regression tests; 16-object root `5e98c8103c6e15ca0877e39f7b9363a208ba8722bb6993ef67a04a06c9f795cb` is COMPLETE-last and cleanly retrieved. |
-| Pilot/full-scan gates | FRESH PILOT REQUIRED / CLOSED | B-020 is resolved for supervision. Preserve all stopped Phase 13 campaigns and start a wholly new Pilot under the unchanged 810/684/126 contract. Phase 14 remains not ready until that Pilot passes. |
+| Phase 13R q4 workspace remediation | PASS | Decision 0036 capacity-derived q4 workspace; all nine fixture regressions, B=4/8 L=16384 targeted admission, Graph/allocation/stream/sanitizer controls, successor q4 admission, and three-process q4 G5 refresh pass; 14-object root `9f027d64424844d0d62311daad5740e2b76960d1d5e7b8be26aa1ccba100a8db` is COMPLETE-last and cleanly retrieved. |
+| Pilot/full-scan gates | FRESH PILOT REQUIRED / CLOSED | B-020 and B-021 are resolved. Preserve every stopped Phase 13 campaign and start a wholly new Pilot under the unchanged preregistered contract. Phase 14 remains not ready until that Pilot passes. |
 | Post-performance quality validation | LOCKED | Decision 0005; `PERFORMANCE_DATA_FROZEN` absent |
 
 ## Phase 0 acceptance
@@ -774,12 +776,11 @@ Decision 0016 continues to authorize Measurement Lane CUDA only in the exact
 recorded image digest. All earlier failed and passing reports, campaigns,
 runs, fixtures, and publication roots remain unchanged.
 
-Phase 13B remains PASS under Decision 0030, Phase 13F remains PASS under
-Decision 0031, and Phase 13T resolves B-020 under Decision 0032. Preserve all
-three stopped Pilot campaigns:
-phase13-20260801t080641686374z-009dfd71-14b7e3,
-phase13-20260801t184243094922z-e886592f-99b6ca, and
-phase13-20260802t045837322693z-3127f1d1-486dcb. The next action is the wholly
-new Pilot campaign authorized only after the remediation root passed clean
-retrieval. Do not resume or selectively repair any stopped campaign. Phase 14,
-profiling, Full Scan, performance claims, and quality execution remain closed.
+Phase 13B, Phase 13F, Phase 13T, and the prefix-remediation evidence remain
+preserved. Decision 0036 resolves the q4 capacity defect exposed by blocked
+campaign `phase13-20260804t111810342595z-a127b0d1-8649c3`; that campaign's
+3,246-object root remains checksum-identical and none of its 69 completed runs
+may enter successor timing. The next action is a wholly new Pilot campaign in
+a separate task. Do not resume or selectively repair any stopped campaign.
+Phase 14, profiling, Full Scan, performance claims, and quality execution
+remain closed.

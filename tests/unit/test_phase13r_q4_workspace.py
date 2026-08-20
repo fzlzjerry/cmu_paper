@@ -8,6 +8,7 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
+from unittest import mock
 
 import torch
 
@@ -342,6 +343,26 @@ class Phase13RQ4WorkspaceTests(unittest.TestCase):
                 "MethodAdmissionReport differs",
             ):
                 phase13r_q4_workspace.validate_successor_report(tampered)
+
+    def test_pilot_entry_binds_q4_successor_and_rejects_hash_tamper(self) -> None:
+        authority = phase13_pilot.validate_phase13b_entry()
+        q4 = authority["families"]["kvquant"]["q4_successor"]
+        self.assertEqual(q4["decision"], "0036")
+        self.assertEqual(q4["clean_retrieval"], "PASS")
+        self.assertEqual(
+            q4["method_config_fingerprint"],
+            "27b3af27e153491112ef974ea3a6d813987bfcb5083a699ce131fa3332c9703b",
+        )
+        with mock.patch.object(
+            phase13_pilot,
+            "PHASE13RQ4_SUCCESSOR_REPORT_SHA256",
+            "0" * 64,
+        ):
+            with self.assertRaisesRegex(
+                phase13_pilot.Phase13PilotError,
+                "q4 successor report checksum differs",
+            ):
+                phase13_pilot.validate_phase13b_entry()
 
 
 if __name__ == "__main__":

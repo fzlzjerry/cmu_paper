@@ -25,6 +25,13 @@ Each compressed worker binds the applicable successor report, admitted batch,
 adapter version, current source hashes, and live capacity-specific layout
 fingerprint. B=1 preservation remains part of that authority.
 
+Decision 0036 supersedes only the `kvq4` workspace/fingerprint binding with
+successor MethodAdmissionReport SHA-256
+`75605637f460a309081e1e0a4065e90e8e14194d365250cb513092616ef89ec7`.
+The Decision 0030 report remains the immutable B=1/4/8 geometry authority;
+`kvq3` and `kvq2` remain unchanged. The blocked campaign is not resumed and
+none of its timing data is eligible for the next campaign.
+
 The main IDs and Phase 12 configuration fingerprints are exactly:
 
 | ID | Fingerprint |
@@ -36,7 +43,7 @@ The main IDs and Phase 12 configuration fingerprints are exactly:
 | `k4v4` | `97289ed9c875e27013ddcf7659fc6e849b3d438c58d0d86bd3dcac5d82eefb09` |
 | `k2v4` | `568493e09cad122088716533c954beb6b25a01209fa28016f761b2ede4930a3f` |
 | `k2v2` | `667395cefa882efc7c54f9088e3706dcdc3ba33c8734bdf8de9e0dd8ae1124b8` |
-| `kvq4` | `8f3ea4f49056a5c4ada715a853ec506de4b6bcab262cfd88dc5796bacc032fa0` |
+| `kvq4` | `27b3af27e153491112ef974ea3a6d813987bfcb5083a699ce131fa3332c9703b` |
 | `kvq3` | `2f0d1a99db2e6884745b6cd54c50eedfa17744b89a3e8b2ffd840986126bd802` |
 | `kvq2` | `eb75d6cbf8ff27365cd2799c4e0232649c94d6f094cb4d041bbe8c3ac1cda5ee` |
 
@@ -136,6 +143,7 @@ source/container/fingerprint authority, native geometry, Graph capture and
 topology, 64 warmups, zero replay allocation, 128 measured operations per
 batch, all raw samples, telemetry, output checksum, kernel-path identity,
 allocation consistency, and append-only finalization.  The 810/684/126
-classification, complete committed order, seeds, grid, runner, timing
-boundaries, QC, provisional fits, publication, and all claim limits above are
-unchanged.  Phase 14 remains deferred.
+classification, seeds, randomized ordering, grid, runner, timing boundaries,
+QC, provisional fits, publication, and all claim limits above are unchanged.
+The committed order is refreshed only to bind the Decision 0036 `kvq4`
+fingerprint; no point order changes. Phase 14 remains deferred.

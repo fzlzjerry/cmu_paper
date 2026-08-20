@@ -1,0 +1,163 @@
+{
+  "blocked_point": {
+    "allocated_before_prefill": true,
+    "batch_size": 8,
+    "counted_as_cache_payload": false,
+    "formula_version": "kvbench-kvquant-q4-value-workspace-capacity-v1",
+    "historical_context": 16384,
+    "quantized_value_capacity": 16380,
+    "resize_during_decode": false,
+    "sink_tokens": 5,
+    "tile_capacity": 128,
+    "tile_size": 128,
+    "total_attended_capacity": 16385,
+    "workspace_bytes": 16777216,
+    "workspace_dtype": "float32",
+    "workspace_shape": [
+      8,
+      32,
+      128,
+      128
+    ]
+  },
+  "cases": {
+    "131071": {
+      "allocated_before_prefill": true,
+      "batch_size": 1,
+      "counted_as_cache_payload": false,
+      "formula_version": "kvbench-kvquant-q4-value-workspace-capacity-v1",
+      "historical_context": 131071,
+      "quantized_value_capacity": 131067,
+      "resize_during_decode": false,
+      "sink_tokens": 5,
+      "tile_capacity": 1024,
+      "tile_size": 128,
+      "total_attended_capacity": 131072,
+      "workspace_bytes": 16777216,
+      "workspace_dtype": "float32",
+      "workspace_shape": [
+        1,
+        32,
+        1024,
+        128
+      ]
+    },
+    "16384": {
+      "allocated_before_prefill": true,
+      "batch_size": 1,
+      "counted_as_cache_payload": false,
+      "formula_version": "kvbench-kvquant-q4-value-workspace-capacity-v1",
+      "historical_context": 16384,
+      "quantized_value_capacity": 16380,
+      "resize_during_decode": false,
+      "sink_tokens": 5,
+      "tile_capacity": 128,
+      "tile_size": 128,
+      "total_attended_capacity": 16385,
+      "workspace_bytes": 2097152,
+      "workspace_dtype": "float32",
+      "workspace_shape": [
+        1,
+        32,
+        128,
+        128
+      ]
+    },
+    "32768": {
+      "allocated_before_prefill": true,
+      "batch_size": 1,
+      "counted_as_cache_payload": false,
+      "formula_version": "kvbench-kvquant-q4-value-workspace-capacity-v1",
+      "historical_context": 32768,
+      "quantized_value_capacity": 32764,
+      "resize_during_decode": false,
+      "sink_tokens": 5,
+      "tile_capacity": 256,
+      "tile_size": 128,
+      "total_attended_capacity": 32769,
+      "workspace_bytes": 4194304,
+      "workspace_dtype": "float32",
+      "workspace_shape": [
+        1,
+        32,
+        256,
+        128
+      ]
+    },
+    "4096": {
+      "allocated_before_prefill": true,
+      "batch_size": 1,
+      "counted_as_cache_payload": false,
+      "formula_version": "kvbench-kvquant-q4-value-workspace-capacity-v1",
+      "historical_context": 4096,
+      "quantized_value_capacity": 4092,
+      "resize_during_decode": false,
+      "sink_tokens": 5,
+      "tile_capacity": 32,
+      "tile_size": 128,
+      "total_attended_capacity": 4097,
+      "workspace_bytes": 524288,
+      "workspace_dtype": "float32",
+      "workspace_shape": [
+        1,
+        32,
+        32,
+        128
+      ]
+    },
+    "65536": {
+      "allocated_before_prefill": true,
+      "batch_size": 1,
+      "counted_as_cache_payload": false,
+      "formula_version": "kvbench-kvquant-q4-value-workspace-capacity-v1",
+      "historical_context": 65536,
+      "quantized_value_capacity": 65532,
+      "resize_during_decode": false,
+      "sink_tokens": 5,
+      "tile_capacity": 512,
+      "tile_size": 128,
+      "total_attended_capacity": 65537,
+      "workspace_bytes": 8388608,
+      "workspace_dtype": "float32",
+      "workspace_shape": [
+        1,
+        32,
+        512,
+        128
+      ]
+    },
+    "8192": {
+      "allocated_before_prefill": true,
+      "batch_size": 1,
+      "counted_as_cache_payload": false,
+      "formula_version": "kvbench-kvquant-q4-value-workspace-capacity-v1",
+      "historical_context": 8192,
+      "quantized_value_capacity": 8188,
+      "resize_during_decode": false,
+      "sink_tokens": 5,
+      "tile_capacity": 64,
+      "tile_size": 128,
+      "total_attended_capacity": 8193,
+      "workspace_bytes": 1048576,
+      "workspace_dtype": "float32",
+      "workspace_shape": [
+        1,
+        32,
+        64,
+        128
+      ]
+    }
+  },
+  "decision": "0036",
+  "schema_version": "kvbench-phase13r-q4-workspace-boundaries-1.0.0",
+  "status": "PASS",
+  "tile_boundary_controls": {
+    "total_attended_133_tiles": 1,
+    "total_attended_134_tiles": 2
+  },
+  "top_context_convention": {
+    "historical_prefix": 131071,
+    "requested_label": 131072,
+    "total_attended": 131072
+  }
+}

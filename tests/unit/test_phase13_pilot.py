@@ -45,7 +45,7 @@ class Phase13PilotTests(unittest.TestCase):
         phase13_pilot.validate_execution_order(payload)
         self.assertEqual(
             hashlib.sha256(path.read_bytes()).hexdigest(),
-            "e82c2ba5502a373989e6e82fa03fb8a30e4f104aa70320c9f4ff9cf87f0c0342",
+            "377e7a2a8592ce8d39692f42f0824a8e7f9379cdd33f5db01c598e407cc5b92f",
         )
 
     def test_feasibility_has_every_record_and_never_masks_geometry(self) -> None:
@@ -84,6 +84,13 @@ class Phase13PilotTests(unittest.TestCase):
         self.assertEqual(authority["decision"], "0030")
         self.assertEqual(authority["clean_retrieval"], "PASS")
         self.assertEqual(set(authority["families"]), {"turboquant", "kivi", "kvquant"})
+        q4 = authority["families"]["kvquant"]["q4_successor"]
+        self.assertEqual(q4["decision"], "0036")
+        self.assertEqual(
+            q4["report_sha256"],
+            "75605637f460a309081e1e0a4065e90e8e14194d365250cb513092616ef89ec7",
+        )
+        self.assertEqual(q4["clean_retrieval"], "PASS")
         matrix = json.loads(
             (ROOT / "docs/evidence/phase13b/cuda-validation.json").read_text(
                 encoding="utf-8"
@@ -92,11 +99,31 @@ class Phase13PilotTests(unittest.TestCase):
         for record in matrix["records"]:
             configuration = record["configuration"]
             batch = record["batch_size"]
-            self.assertEqual(
-                phase13_pilot.cache_allocated_bytes(configuration, batch, 129),
-                record["accounting"]["allocated_bytes"],
-                f"{configuration}/B{batch}",
+            current_allocated = phase13_pilot.cache_allocated_bytes(
+                configuration, batch, 129
             )
+            historical_allocated = record["accounting"]["allocated_bytes"]
+            if configuration == "kvq4":
+                historical_fixed_workspace = batch * 32 * 32 * 128 * 4
+                current_capacity_workspace = (
+                    phase13_pilot.kvquant_q4_value_decode_workspace_bytes(
+                        batch_size=batch,
+                        total_attended_capacity=129,
+                    )
+                )
+                self.assertEqual(
+                    current_allocated,
+                    historical_allocated
+                    - historical_fixed_workspace
+                    + current_capacity_workspace,
+                    f"{configuration}/B{batch}",
+                )
+            else:
+                self.assertEqual(
+                    current_allocated,
+                    historical_allocated,
+                    f"{configuration}/B{batch}",
+                )
             family = record["method_family"]
             geometry_key = f"{configuration}/B{batch}"
             successor = authority["families"][family]

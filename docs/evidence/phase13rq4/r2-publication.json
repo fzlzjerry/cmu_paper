@@ -1,0 +1,75 @@
+{
+  "artifact_id": "phase13rq4-20260820t094629495794z-ab4e0b84-b8c7bd",
+  "bucket_lock": {
+    "bucket": "kvbench-artifacts",
+    "bucket_public": false,
+    "covered_prefix": "kvbench/sha256/",
+    "enabled": true,
+    "lock_rule_id": "kvbench-evidence-indefinite",
+    "lock_scope": "exact",
+    "public_state_result": "PASS",
+    "retention_condition": "Indefinite",
+    "retention_type": "Indefinite",
+    "verification_result": "PASS",
+    "verified_at_utc": "2026-08-20T09:51:45.912147Z"
+  },
+  "clean_retrieval": {
+    "checksum_ledger_valid": true,
+    "complete_marker_valid": true,
+    "destination_initially_empty": true,
+    "inventory_valid": true,
+    "object_count": 14,
+    "result": "PASS",
+    "retrieved_at_utc": "2026-08-20T09:51:32.311143Z",
+    "root_sha256": "9f027d64424844d0d62311daad5740e2b76960d1d5e7b8be26aa1ccba100a8db",
+    "unexpected_objects": false,
+    "uri": "r2://kvbench-artifacts/kvbench/sha256/9f027d64424844d0d62311daad5740e2b76960d1d5e7b8be26aa1ccba100a8db/",
+    "verification_result": "PASS"
+  },
+  "clean_retrieval_count": 1,
+  "complete_last": true,
+  "credential_statuses": {
+    "AWS_ACCESS_KEY_ID": "PRESENT",
+    "AWS_SECRET_ACCESS_KEY": "PRESENT",
+    "CLOUDFLARE_API_TOKEN": "PRESENT",
+    "KVBENCH_R2_PREFIX": "PRESENT",
+    "R2_ACCOUNT_ID": "PRESENT",
+    "R2_BUCKET": "PRESENT",
+    "R2_ENDPOINT": "PRESENT"
+  },
+  "credential_values_recorded": false,
+  "credentials_passed_to_measurement_container": false,
+  "env_file_hashed": false,
+  "env_file_read": false,
+  "execution_git_sha": "ab4e0b84dca127be0cde5450162cf2235de02ce8",
+  "finalization_git_sha": "2eafbb63f883cf27308018146e20e25e1d4b39eb",
+  "local_validation": {
+    "artifact_path": "artifacts/phase13rq4/phase13rq4-20260820t094629495794z-ab4e0b84-b8c7bd",
+    "method_admission_report_sha256": "75605637f460a309081e1e0a4065e90e8e14194d365250cb513092616ef89ec7",
+    "object_count": 14,
+    "root_sha256": "9f027d64424844d0d62311daad5740e2b76960d1d5e7b8be26aa1ccba100a8db",
+    "status": "PASS",
+    "unified_admission_sha256": "13553823a68f34a0a538674caeb5abf2f9e638d5086b90d21fbdb94aa66be05a"
+  },
+  "publication": {
+    "complete_last": true,
+    "conditional_writes": true,
+    "content_addressed": true,
+    "evidence_capture_result": "PASS",
+    "initial_invocation_exit_status": "PASS",
+    "object_count": 14,
+    "publication_order_sha256": "f382c1bae808dd8ac6f90ad44d0cac1f6c29527af04eb124d47fa597e4206bfb",
+    "published_at_utc": "2026-08-20T09:52:01.658048Z",
+    "root_sha256": "9f027d64424844d0d62311daad5740e2b76960d1d5e7b8be26aa1ccba100a8db",
+    "uploaded_count_on_evidence_capture": 0,
+    "uri": "r2://kvbench-artifacts/kvbench/sha256/9f027d64424844d0d62311daad5740e2b76960d1d5e7b8be26aa1ccba100a8db/",
+    "verified_existing_count_on_evidence_capture": 14
+  },
+  "publication_invocation_count": 2,
+  "schema_version": "kvbench-phase13rq4-r2-publication-1.0.0",
+  "self_reference_control": {
+    "included_in_bundle": false,
+    "receipt_path": "docs/evidence/phase13rq4/r2-publication.json"
+  },
+  "status": "PASS"
+}

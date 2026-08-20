@@ -18,6 +18,8 @@ EXPECTED = frozenset(
         "docs/evidence/phase13rq4/unified-admission.json",
         "docs/evidence/phase13rq4/workspace-boundaries.json",
         "docs/phase_reports/phase13r-kvquant-q4-workspace.md",
+        "docs/plans/phase13-pilot-execution-order.json",
+        "docs/plans/phase13-pilot-scan.md",
         "docs/risk_register.md",
         "docs/status.md",
         "docs/tasks.md",
@@ -37,6 +39,8 @@ EXPECTED = frozenset(
         "tests/unit/test_phase11_kvquant_cache.py",
         "tests/unit/test_phase11_kvquant_session.py",
         "tests/unit/test_phase13r_q4_workspace.py",
+        "tests/unit/test_phase13_pilot.py",
+        "tests/unit/test_phase13_scope.py",
         "tests/unit/test_phase13rq4_scope.py",
     }
 )

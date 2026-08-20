@@ -1,0 +1,117 @@
+{
+  "configuration_count": 10,
+  "created_at_utc": "2026-08-20T09:46:58.594347Z",
+  "full_scan": "CLOSED",
+  "gates": {
+    "G0": "PASS",
+    "G1": "PASS",
+    "G2": "PASS",
+    "G3": "PASS",
+    "G4": "PASS",
+    "G5": "PASS"
+  },
+  "historical_phase12_report": "docs/evidence/phase12/unified-admission.json",
+  "historical_phase12_report_sha256": "3e337e883baaf055d307e97f25a001fb0c9a5b8a8bc14dab6230fd3d8823b4bb",
+  "performance_data_frozen": false,
+  "pilot": "READY",
+  "quality_execution": "LOCKED",
+  "r_hbm": null,
+  "refreshed_configuration": {
+    "g1": "PASS",
+    "g2": "PASS",
+    "g3": "PASS",
+    "g4": "PASS",
+    "g5": "PASS",
+    "g5_statistics": {
+      "allocation_agreement": true,
+      "coefficient_of_variation": 0.0016273336621252625,
+      "kernel_path_agreement": true,
+      "maximum_ms": 151.18264770507812,
+      "mean_ms": 151.0283406575521,
+      "median_ms": 151.15745544433594,
+      "minimum_ms": 150.7449188232422,
+      "output_checksum_agreement": true,
+      "performance_claim_eligible": false,
+      "process_medians_ms": [
+        151.18264770507812,
+        150.7449188232422,
+        151.15745544433594
+      ],
+      "quality_status": "unvalidated",
+      "r_hbm": null,
+      "run_ids": [
+        "phase13rq4-g5-r0-ab4e0b8-20260820",
+        "phase13rq4-g5-r1-ab4e0b8-20260820",
+        "phase13rq4-g5-r2-ab4e0b8-20260820"
+      ],
+      "schema_version": "kvbench-phase13r-q4-g5-statistics-1.0.0",
+      "speedup_calculated": false,
+      "standard_deviation_ms": 0.2457735026869559,
+      "status": "PASS",
+      "threshold": 0.03
+    },
+    "method_admission_report_sha256": "75605637f460a309081e1e0a4065e90e8e14194d365250cb513092616ef89ec7",
+    "method_config_fingerprint": "27b3af27e153491112ef974ea3a6d813987bfcb5083a699ce131fa3332c9703b",
+    "method_config_id": "kvq4"
+  },
+  "schema_version": "kvbench-phase13r-unified-admission-refresh-1.0.0",
+  "speedup_calculated": false,
+  "status": "PASS",
+  "unchanged_configuration_count": 9,
+  "unchanged_configurations": [
+    {
+      "configuration_record_sha256": "c44bdcf162013068bea24cdd3cfcefea173c20331cd71ea23d5634021fb5ded0",
+      "g5_statistics_sha256": "e198787ac4c84f89186a6a6c856710deb544b288a08eb799c8312c7c18291c09",
+      "method_config_id": "bf16",
+      "reused_unchanged": true
+    },
+    {
+      "configuration_record_sha256": "caf607160c8b28df4b42a3174effc9784f121ebf8dcdb941d27e165cdf1e384c",
+      "g5_statistics_sha256": "ddebbb419df3885694ab956ca9b1c316e7e3f655f147abfa934287055fe5124d",
+      "method_config_id": "tq_4bit_nc",
+      "reused_unchanged": true
+    },
+    {
+      "configuration_record_sha256": "7b865be7042074acdb892e50f7f621b10a247fdb51d0be27ada752007658d6b2",
+      "g5_statistics_sha256": "a126d981a07f46aa74b8489192b7069bf7e569ae49b3fa57d070fdc94471d3a3",
+      "method_config_id": "tq_k3v4_nc",
+      "reused_unchanged": true
+    },
+    {
+      "configuration_record_sha256": "02e6f86ecb6ead2c456d59aa4ceb0678d7667c16a48bdbe1fa908d0513a7d578",
+      "g5_statistics_sha256": "802b109adc427f1092c0f1ab671ffd380738ba4aaa45c6ae2b9de444176c5939",
+      "method_config_id": "tq_3bit_nc",
+      "reused_unchanged": true
+    },
+    {
+      "configuration_record_sha256": "eee69d77e490f45aa1207356baa94f5eba57bd627103d446cb455055cc7fa4c6",
+      "g5_statistics_sha256": "346b0234a6fdce04d563010c22eb1ca0900ade16f343f9db96897cc589e594bf",
+      "method_config_id": "k4v4",
+      "reused_unchanged": true
+    },
+    {
+      "configuration_record_sha256": "427728ba257d58de0301f0c43ed77aecdefe09d21907634e6a6ef473a51e39dc",
+      "g5_statistics_sha256": "e5235dec4c73d94193c099442f4b5a7268484647f73ffb82210d1eedacd26928",
+      "method_config_id": "k2v4",
+      "reused_unchanged": true
+    },
+    {
+      "configuration_record_sha256": "27e44e8645c52a201b2286c6d887e0bb896381eeecaf8f53d739cc9270c5a362",
+      "g5_statistics_sha256": "2fe19d2905fd5d38ed6734cfee281da620b150a54c662c7b5eb41ec2ff087b75",
+      "method_config_id": "k2v2",
+      "reused_unchanged": true
+    },
+    {
+      "configuration_record_sha256": "9ddd18639cf6afd907a837ee1fb4f9b3d6a3fda651eeef408e4f28e946bcd017",
+      "g5_statistics_sha256": "8747e1a522a1b87e075ba434c4fcc7cdecfe927fe7bb4e4dd6d68fd4b7728200",
+      "method_config_id": "kvq3",
+      "reused_unchanged": true
+    },
+    {
+      "configuration_record_sha256": "5ea98a5d31f0749ccb5c73940c8bc7eacb90a396ab5dbfa7c4b3516d577a88e5",
+      "g5_statistics_sha256": "4f18ff81ce25431fa60b76d67da41bf2404fed8eae405d053d10ed82059f96b4",
+      "method_config_id": "kvq2",
+      "reused_unchanged": true
+    }
+  ]
+}

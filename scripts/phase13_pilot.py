@@ -101,6 +101,34 @@ PHASE13B_CHECKSUM_LEDGER_SHA256 = (
 PHASE13B_R2_ROOT_SHA256 = (
     "f1c96eaacbbace1c23b249d1afe8d892aa26c3f6b8d04e07f373a2becafba1fe"
 )
+PHASE13RQ4_DECISION_PATH = Path(
+    "docs/decisions/0036-kvquant-q4-value-decode-workspace-geometry.md"
+)
+PHASE13RQ4_DECISION_SHA256 = (
+    "a7d81d76945ad33f534c52b42cbd5a6e99665d22aab27e58184521a9db2bfbeb"
+)
+PHASE13RQ4_SUCCESSOR_REPORT_PATH = Path(
+    "docs/evidence/phase13rq4/kvquant-q4-method-admission.json"
+)
+PHASE13RQ4_SUCCESSOR_REPORT_SHA256 = (
+    "75605637f460a309081e1e0a4065e90e8e14194d365250cb513092616ef89ec7"
+)
+PHASE13RQ4_PUBLICATION_RECEIPT_PATH = Path(
+    "docs/evidence/phase13rq4/r2-publication.json"
+)
+PHASE13RQ4_PUBLICATION_RECEIPT_SHA256 = (
+    "195ccc3729b19a119f99144a6563ba0f344dad993046673989aa66743b9d341a"
+)
+PHASE13RQ4_LOCAL_BUNDLE_PATH = Path(
+    "artifacts/phase13rq4/"
+    "phase13rq4-20260820t094629495794z-ab4e0b84-b8c7bd"
+)
+PHASE13RQ4_LOCAL_ROOT_SHA256 = (
+    "9f027d64424844d0d62311daad5740e2b76960d1d5e7b8be26aa1ccba100a8db"
+)
+PHASE13RQ4_CHECKSUM_LEDGER_SHA256 = (
+    "b26452fe8678382f867128df72d7968b6613b23cfd208581dfc6edcacb5c92e8"
+)
 
 AUTHORIZED_CONTAINER_DIGEST = phase12.PHASE12_AUTHORIZED_CONTAINER_DIGEST
 GPU_UUID = phase12.PHASE12_GPU_UUID
@@ -401,6 +429,7 @@ def _phase13b_successor_authority() -> dict[str, Any]:
     decision = REPOSITORY_ROOT / PHASE13B_DECISION_PATH
     if sha256_file(decision) != PHASE13B_DECISION_SHA256:
         raise Phase13PilotError("Decision 0030 checksum differs")
+    q4_successor = _phase13rq4_successor_authority()
     families: dict[str, Any] = {}
     for family, (relative, expected_sha256) in PHASE13B_SUCCESSOR_REPORTS.items():
         path = REPOSITORY_ROOT / relative
@@ -427,18 +456,43 @@ def _phase13b_successor_authority() -> dict[str, Any]:
                 f"Phase 13B {family} successor authority differs"
             )
         for relative_source, expected_source_sha256 in report.source_hashes.items():
-            source = REPOSITORY_ROOT / relative_source
-            if sha256_file(source) != expected_source_sha256:
-                raise Phase13PilotError(
-                    f"Phase 13B {family} admitted source differs: {relative_source}"
+            if family == "kvquant":
+                historical = subprocess.run(
+                    (
+                        "/usr/bin/git",
+                        "show",
+                        f"{PHASE13B_SOURCE_AUTHORITY_COMMIT}:{relative_source}",
+                    ),
+                    cwd=REPOSITORY_ROOT,
+                    check=False,
+                    capture_output=True,
                 )
+                if (
+                    historical.returncode != 0
+                    or hashlib.sha256(historical.stdout).hexdigest()
+                    != expected_source_sha256
+                ):
+                    raise Phase13PilotError(
+                        "Phase 13B kvquant historical source differs: "
+                        f"{relative_source}"
+                    )
+            else:
+                source = REPOSITORY_ROOT / relative_source
+                if sha256_file(source) != expected_source_sha256:
+                    raise Phase13PilotError(
+                        f"Phase 13B {family} admitted source differs: "
+                        f"{relative_source}"
+                    )
+        adapter_versions = dict(report.adapter_versions)
+        if family == "kvquant":
+            adapter_versions["kvq4"] = q4_successor["adapter_version"]
         families[family] = {
             "report_path": relative.as_posix(),
             "report_sha256": expected_sha256,
             "creation_git_sha": report.creation_git_sha,
             "configurations": list(report.configurations),
             "batch_sizes": list(report.batch_sizes),
-            "adapter_versions": dict(report.adapter_versions),
+            "adapter_versions": adapter_versions,
             "adapter_config_fingerprints_l128": dict(
                 report.adapter_config_fingerprints
             ),
@@ -448,6 +502,8 @@ def _phase13b_successor_authority() -> dict[str, Any]:
             "source_hashes": dict(report.source_hashes),
             "b1_numerical_preserved": True,
         }
+        if family == "kvquant":
+            families[family]["q4_successor"] = q4_successor
     return {
         "schema_version": "kvbench-phase13r-successor-authority-1.0.0",
         "decision": "0030",
@@ -455,6 +511,97 @@ def _phase13b_successor_authority() -> dict[str, Any]:
         "decision_sha256": PHASE13B_DECISION_SHA256,
         "source_authority_commit": PHASE13B_SOURCE_AUTHORITY_COMMIT,
         "families": families,
+    }
+
+
+def _phase13rq4_successor_authority() -> dict[str, Any]:
+    """Bind current q4 source to Decision 0036 without rewriting Phase 13B."""
+
+    decision = REPOSITORY_ROOT / PHASE13RQ4_DECISION_PATH
+    report_path = REPOSITORY_ROOT / PHASE13RQ4_SUCCESSOR_REPORT_PATH
+    receipt_path = REPOSITORY_ROOT / PHASE13RQ4_PUBLICATION_RECEIPT_PATH
+    if sha256_file(decision) != PHASE13RQ4_DECISION_SHA256:
+        raise Phase13PilotError("Decision 0036 checksum differs")
+    if sha256_file(report_path) != PHASE13RQ4_SUCCESSOR_REPORT_SHA256:
+        raise Phase13PilotError("Phase 13R q4 successor report checksum differs")
+    report = _strict_json(report_path)
+    checks = report.get("checks")
+    source_hashes = report.get("source_hashes")
+    if (
+        report.get("status") != "PASS"
+        or report.get("configuration") != "kvq4"
+        or report.get("decision") != "0036"
+        or report.get("authorized_container_digest") != AUTHORIZED_CONTAINER_DIGEST
+        or report.get("standardized_phase12_method_config_fingerprint")
+        != CONFIG_FINGERPRINTS["kvq4"]
+        or report.get("q3_changed") is not False
+        or report.get("q2_changed") is not False
+        or report.get("quantization_changed") is not False
+        or report.get("cuda_source_changed") is not False
+        or report.get("blockers") != []
+        or not isinstance(checks, Mapping)
+        or not checks
+        or set(checks.values()) != {"PASS"}
+        or not isinstance(source_hashes, Mapping)
+        or not source_hashes
+    ):
+        raise Phase13PilotError("Phase 13R q4 successor authority differs")
+    for relative_source, expected_source_sha256 in source_hashes.items():
+        if (
+            not isinstance(relative_source, str)
+            or not isinstance(expected_source_sha256, str)
+            or sha256_file(REPOSITORY_ROOT / relative_source)
+            != expected_source_sha256
+        ):
+            raise Phase13PilotError(
+                f"Phase 13R q4 admitted source differs: {relative_source}"
+            )
+    local_bundle = REPOSITORY_ROOT / PHASE13RQ4_LOCAL_BUNDLE_PATH
+    artifact = validate_local_artifact(local_bundle, environ={})
+    if (
+        artifact.root_sha256 != PHASE13RQ4_LOCAL_ROOT_SHA256
+        or sha256_file(local_bundle / "checksums.sha256")
+        != PHASE13RQ4_CHECKSUM_LEDGER_SHA256
+    ):
+        raise Phase13PilotError("Phase 13R q4 local admission root differs")
+    if sha256_file(receipt_path) != PHASE13RQ4_PUBLICATION_RECEIPT_SHA256:
+        raise Phase13PilotError("Phase 13R q4 publication receipt checksum differs")
+    receipt = _strict_json(receipt_path)
+    publication = receipt.get("publication")
+    retrieval = receipt.get("clean_retrieval")
+    if (
+        receipt.get("status") != "PASS"
+        or receipt.get("clean_retrieval_count") != 1
+        or not isinstance(publication, Mapping)
+        or publication.get("root_sha256") != PHASE13RQ4_LOCAL_ROOT_SHA256
+        or publication.get("complete_last") is not True
+        or publication.get("conditional_writes") is not True
+        or not isinstance(retrieval, Mapping)
+        or retrieval.get("root_sha256") != PHASE13RQ4_LOCAL_ROOT_SHA256
+        or retrieval.get("result") != "PASS"
+        or retrieval.get("destination_initially_empty") is not True
+        or retrieval.get("checksum_ledger_valid") is not True
+        or retrieval.get("inventory_valid") is not True
+    ):
+        raise Phase13PilotError("Phase 13R q4 durable evidence differs")
+    return {
+        "decision": "0036",
+        "decision_path": PHASE13RQ4_DECISION_PATH.as_posix(),
+        "decision_sha256": PHASE13RQ4_DECISION_SHA256,
+        "report_path": PHASE13RQ4_SUCCESSOR_REPORT_PATH.as_posix(),
+        "report_sha256": PHASE13RQ4_SUCCESSOR_REPORT_SHA256,
+        "creation_git_sha": report.get("creation_git_sha"),
+        "adapter_version": report.get("adapter_version"),
+        "method_config_fingerprint": CONFIG_FINGERPRINTS["kvq4"],
+        "source_hashes": dict(source_hashes),
+        "local_bundle_path": PHASE13RQ4_LOCAL_BUNDLE_PATH.as_posix(),
+        "local_root_sha256": PHASE13RQ4_LOCAL_ROOT_SHA256,
+        "publication_receipt_path": PHASE13RQ4_PUBLICATION_RECEIPT_PATH.as_posix(),
+        "publication_receipt_sha256": PHASE13RQ4_PUBLICATION_RECEIPT_SHA256,
+        "r2_uri": publication.get("uri"),
+        "clean_retrieval": "PASS",
+        "q3_changed": False,
+        "q2_changed": False,
     }
 
 
@@ -2553,6 +2700,25 @@ def _run_worker(
                 ][geometry_key],
                 "pilot_capacity": operation.capacity,
             }
+            if configuration == "kvq4":
+                q4_successor = successor.get("q4_successor")
+                if not isinstance(q4_successor, Mapping):
+                    raise Phase13PilotError(
+                        "Phase 13R q4 successor binding is absent"
+                    )
+                successor_binding.update(
+                    {
+                        "q4_workspace_decision": "0036",
+                        "q4_successor_report_path": q4_successor["report_path"],
+                        "q4_successor_report_sha256": q4_successor[
+                            "report_sha256"
+                        ],
+                        "q4_successor_method_config_fingerprint": q4_successor[
+                            "method_config_fingerprint"
+                        ],
+                        "q4_successor_r2_uri": q4_successor["r2_uri"],
+                    }
+                )
         live_fingerprint = phase12._validate_runtime_adapter_fingerprint(
             method=session.method,
             cache=session.cache,
