@@ -246,6 +246,43 @@ class Phase13RQ4WorkspaceTests(unittest.TestCase):
         self.assertLess(synchronize, pointers)
         self.assertLess(pointers, audit)
 
+    def test_cuda_finalization_is_preflighted_and_tamper_rejecting(self) -> None:
+        source = inspect.getsource(
+            phase13r_q4_workspace.run_cuda_validation
+        )
+        self.assertLess(
+            source.index("target = _phase13r_feasibility_target()"),
+            source.index("fixtures = _run_fixture_suite"),
+        )
+        record = {
+            "schema_version": "kvbench-phase13r-q4-target-point-1.0.0",
+            "status": "PASS",
+            "configuration": "kvq4",
+            "batch_size": 4,
+            "historical_context": 16_384,
+            "workspace": phase13r_q4_workspace.workspace_geometry(
+                batch=4, historical=16_384
+            ),
+            "checks": {"all": True},
+            "r_hbm": None,
+            "timing_collected": False,
+            "performance_claim_eligible": False,
+        }
+        self.assertEqual(
+            phase13r_q4_workspace._validate_completed_target_record(
+                record, batch=4
+            )["status"],
+            "PASS",
+        )
+        record["checks"] = {"all": False}
+        with self.assertRaisesRegex(
+            phase13r_q4_workspace.Phase13RQ4Error,
+            "completed q4 B=4 target record differs",
+        ):
+            phase13r_q4_workspace._validate_completed_target_record(
+                record, batch=4
+            )
+
     def test_successor_report_binds_probe_and_rejects_tampering(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

@@ -78,6 +78,12 @@ BLOCKED_CAMPAIGN_OBJECT_COUNT = 3246
 Q4_G5_SEEDS = (20260730, 20260731, 20260732)
 TARGET_CONTEXT = 16_384
 TARGET_BATCHES = (4, 8)
+CUDA_BOUND_SOURCE_PATHS = (
+    "src/kvbench/adapters/kvquant.py",
+    "src/kvbench/runtime/kvquant_cache.py",
+    "src/kvbench/runtime/kvquant_session.py",
+    "src/kvbench/runtime/numerical.py",
+)
 _ID_RE = re.compile(
     r"phase13rq4-[0-9]{8}t[0-9]{12}z-[0-9a-f]{8}-[0-9a-f]{6}\Z"
 )
@@ -426,6 +432,163 @@ def _target_session_record(*, loaded: Any, batch: int, evidence_root: Path) -> d
     return record
 
 
+def _execution_source_hashes(
+    *, execution_git_sha: str, finalization_git_sha: str
+) -> dict[str, str]:
+    """Bind a post-CUDA finalizer to unchanged execution-source blobs."""
+
+    if subprocess.run(
+        (
+            "/usr/bin/git",
+            "merge-base",
+            "--is-ancestor",
+            execution_git_sha,
+            finalization_git_sha,
+        ),
+        cwd=REPOSITORY_ROOT,
+        check=False,
+        capture_output=True,
+    ).returncode != 0:
+        raise Phase13RQ4Error("CUDA execution commit is not a finalization ancestor")
+    hashes: dict[str, str] = {}
+    for relative in CUDA_BOUND_SOURCE_PATHS:
+        blob = subprocess.run(
+            (
+                "/usr/bin/git",
+                "show",
+                f"{execution_git_sha}:{relative}",
+            ),
+            cwd=REPOSITORY_ROOT,
+            check=True,
+            capture_output=True,
+        ).stdout
+        execution_hash = hashlib.sha256(blob).hexdigest()
+        current_hash = sha256_file(REPOSITORY_ROOT / relative)
+        if execution_hash != current_hash:
+            raise Phase13RQ4Error(
+                f"CUDA-bound source changed before finalization: {relative}"
+            )
+        hashes[relative] = execution_hash
+    return hashes
+
+
+def _validate_completed_target_record(
+    record: Mapping[str, Any], *, batch: int
+) -> dict[str, Any]:
+    expected = workspace_geometry(batch=batch, historical=TARGET_CONTEXT)
+    checks = record.get("checks")
+    if (
+        record.get("schema_version")
+        != "kvbench-phase13r-q4-target-point-1.0.0"
+        or record.get("status") != "PASS"
+        or record.get("configuration") != "kvq4"
+        or record.get("batch_size") != batch
+        or record.get("historical_context") != TARGET_CONTEXT
+        or record.get("workspace") != expected
+        or record.get("r_hbm") is not None
+        or record.get("timing_collected") is not False
+        or record.get("performance_claim_eligible") is not False
+        or not isinstance(checks, dict)
+        or not checks
+        or any(value is not True for value in checks.values())
+    ):
+        raise Phase13RQ4Error(f"completed q4 B={batch} target record differs")
+    return dict(record)
+
+
+def _phase13r_feasibility_target() -> list[dict[str, Any]]:
+    feasibility = phase13.build_feasibility_records(
+        phase13.derive_execution_order()
+    )
+    target = [
+        item
+        for item in feasibility
+        if item["method_config_id"] == "kvq4"
+        and item["batch_size"] == 8
+        and item["context_label"] == 65536
+    ]
+    if len(target) != 3 or any(
+        item["status"] != "capacity_infeasible" for item in target
+    ):
+        raise Phase13RQ4Error("q4 B=8/L=65536 feasibility differs")
+    return target
+
+
+def _cuda_validation_payload(
+    *,
+    output: Path,
+    execution_git_sha: str,
+    finalization_git_sha: str,
+    fixtures: Mapping[str, Any],
+    records: Sequence[Mapping[str, Any]],
+    source_hashes: Mapping[str, str],
+    target: Sequence[Mapping[str, Any]],
+) -> dict[str, Any]:
+    return {
+        "schema_version": "kvbench-phase13r-q4-cuda-validation-1.0.0",
+        "status": "PASS",
+        "execution_git_sha": execution_git_sha,
+        "finalization_git_sha": finalization_git_sha,
+        "authorized_container_digest": AUTHORIZED_CONTAINER_DIGEST,
+        "decision": "0036",
+        "fixture_regression_sha256": sha256_file(
+            output / "fixture-regression.json"
+        ),
+        "fixture_tests_run": fixtures["tests_run"],
+        "target_record_sha256s": {
+            f"B{batch}/L{TARGET_CONTEXT}": sha256_file(
+                output / f"b{batch}-record.json"
+            )
+            for batch in TARGET_BATCHES
+        },
+        "target_records": [dict(record) for record in records],
+        "logical_run_records": [
+            {
+                "run_id": f"phase13rq4-b4-l16384-{mode}",
+                "batch_size": 4,
+                "historical_context": 16384,
+                "mode": mode,
+                "status": "PASS",
+            }
+            for mode in ("eager", "cuda_graph")
+        ]
+        + [
+            {
+                "run_id": f"phase13rq4-b8-l16384-{mode}",
+                "batch_size": 8,
+                "historical_context": 16384,
+                "mode": mode,
+                "status": "PASS",
+            }
+            for mode in ("eager", "cuda_graph")
+        ]
+        + [
+            {
+                "run_id": "phase13rq4-b8-l65536-cuda_graph",
+                "batch_size": 8,
+                "historical_context": 65536,
+                "mode": "cuda_graph",
+                "status": "capacity_infeasible",
+                "launched": False,
+                "predicted_required_bytes": target[0][
+                    "predicted_required_bytes"
+                ],
+                "limit_bytes": target[0]["limit_bytes"],
+                "workspace": target[0]["q4_value_decode_workspace"],
+            }
+        ],
+        "source_hashes": dict(source_hashes),
+        "post_execution_finalization": execution_git_sha
+        != finalization_git_sha,
+        "cuda_source_changed": False,
+        "q3_behavior_changed": False,
+        "q2_behavior_changed": False,
+        "timing_collected": False,
+        "performance_claim_eligible": False,
+        "r_hbm": None,
+    }
+
+
 def run_cuda_validation(output: Path, *, git_sha: str) -> dict[str, Any]:
     """Replay fixtures then run the two feasible long-context q4 sessions."""
 
@@ -436,6 +599,7 @@ def run_cuda_validation(output: Path, *, git_sha: str) -> dict[str, Any]:
     output.mkdir(parents=True)
     if validate_local_artifact(REPOSITORY_ROOT / FIXTURE_ROOT, environ={}).root_sha256 != FIXTURE_ROOT_SHA256:
         raise Phase13RQ4Error("corrected fixture root differs")
+    target = _phase13r_feasibility_target()
     fixtures = _run_fixture_suite(output / "fixture-regression.json")
     import torch
 
@@ -448,62 +612,64 @@ def run_cuda_validation(output: Path, *, git_sha: str) -> dict[str, Any]:
     ]
     del loaded
     torch.cuda.empty_cache()
-    order = phase13.derive_execution_order()
-    feasibility = phase13.build_feasibility_records(order)
-    target = [
-        item
-        for item in feasibility
-        if item["method_config_id"] == "kvq4"
-        and item["batch_size"] == 8
-        and item["context_label"] == 65536
+    records = [
+        _validate_completed_target_record(record, batch=batch)
+        for record, batch in zip(records, TARGET_BATCHES, strict=True)
     ]
-    if len(target) != 3 or any(item["status"] != "capacity_infeasible" for item in target):
-        raise Phase13RQ4Error("q4 B=8/L=65536 feasibility differs")
-    payload = {
-        "schema_version": "kvbench-phase13r-q4-cuda-validation-1.0.0",
-        "status": "PASS",
-        "execution_git_sha": git_sha,
-        "authorized_container_digest": AUTHORIZED_CONTAINER_DIGEST,
-        "decision": "0036",
-        "fixture_regression_sha256": sha256_file(output / "fixture-regression.json"),
-        "fixture_tests_run": fixtures["tests_run"],
-        "target_records": records,
-        "logical_run_records": [
-            {"run_id": f"phase13rq4-b4-l16384-{mode}", "batch_size": 4, "historical_context": 16384, "mode": mode, "status": "PASS"}
-            for mode in ("eager", "cuda_graph")
-        ]
-        + [
-            {"run_id": f"phase13rq4-b8-l16384-{mode}", "batch_size": 8, "historical_context": 16384, "mode": mode, "status": "PASS"}
-            for mode in ("eager", "cuda_graph")
-        ]
-        + [
-            {
-                "run_id": "phase13rq4-b8-l65536-cuda_graph",
-                "batch_size": 8,
-                "historical_context": 65536,
-                "mode": "cuda_graph",
-                "status": "capacity_infeasible",
-                "launched": False,
-                "predicted_required_bytes": target[0]["predicted_required_bytes"],
-                "limit_bytes": target[0]["limit_bytes"],
-                "workspace": target[0]["q4_value_decode_workspace"],
-            }
-        ],
-        "source_hashes": {
+    payload = _cuda_validation_payload(
+        output=output,
+        execution_git_sha=git_sha,
+        finalization_git_sha=git_sha,
+        fixtures=fixtures,
+        records=records,
+        source_hashes={
             relative: sha256_file(REPOSITORY_ROOT / relative)
-            for relative in (
-                "src/kvbench/adapters/kvquant.py",
-                "src/kvbench/runtime/kvquant_cache.py",
-                "src/kvbench/runtime/kvquant_session.py",
-            )
+            for relative in CUDA_BOUND_SOURCE_PATHS
         },
-        "cuda_source_changed": False,
-        "q3_behavior_changed": False,
-        "q2_behavior_changed": False,
-        "timing_collected": False,
-        "performance_claim_eligible": False,
-        "r_hbm": None,
-    }
+        target=target,
+    )
+    write_exclusive(output / "cuda-validation.json", json_bytes(payload))
+    return payload
+
+
+def finalize_cuda_validation(
+    output: Path, *, execution_git_sha: str, finalization_git_sha: str
+) -> dict[str, Any]:
+    """Append the post-CUDA summary after strict completed-record replay."""
+
+    _require_container()
+    _require_clean_git(finalization_git_sha)
+    if not output.is_dir() or output.is_symlink():
+        raise Phase13RQ4Error("CUDA validation staging directory differs")
+    if (output / "cuda-validation.json").exists():
+        raise Phase13RQ4Error("CUDA validation summary already exists")
+    fixtures = _strict_json(output / "fixture-regression.json")
+    if (
+        fixtures.get("status") != "PASS"
+        or fixtures.get("fixture_root") != FIXTURE_ROOT_SHA256
+        or fixtures.get("nine_fixture_cases") != 9
+        or fixtures.get("errors") != 0
+        or fixtures.get("failures") != 0
+    ):
+        raise Phase13RQ4Error("completed fixture regression differs")
+    records = [
+        _validate_completed_target_record(
+            _strict_json(output / f"b{batch}-record.json"), batch=batch
+        )
+        for batch in TARGET_BATCHES
+    ]
+    payload = _cuda_validation_payload(
+        output=output,
+        execution_git_sha=execution_git_sha,
+        finalization_git_sha=finalization_git_sha,
+        fixtures=fixtures,
+        records=records,
+        source_hashes=_execution_source_hashes(
+            execution_git_sha=execution_git_sha,
+            finalization_git_sha=finalization_git_sha,
+        ),
+        target=_phase13r_feasibility_target(),
+    )
     write_exclusive(output / "cuda-validation.json", json_bytes(payload))
     return payload
 
@@ -1072,6 +1238,10 @@ def _parser() -> argparse.ArgumentParser:
     cuda = commands.add_parser("cuda-validation")
     cuda.add_argument("--output", required=True, type=Path)
     cuda.add_argument("--git-sha", required=True)
+    finalize_cuda = commands.add_parser("finalize-cuda-validation")
+    finalize_cuda.add_argument("--output", required=True, type=Path)
+    finalize_cuda.add_argument("--execution-git-sha", required=True)
+    finalize_cuda.add_argument("--finalization-git-sha", required=True)
     probe = commands.add_parser("standardized-probe")
     probe.add_argument("--output", required=True, type=Path)
     probe.add_argument("--git-sha", required=True)
@@ -1114,6 +1284,12 @@ def main(argv: Sequence[str] | None = None) -> int:
             write_exclusive(args.output, json_bytes(result))
     elif args.command == "cuda-validation":
         result = run_cuda_validation(args.output, git_sha=args.git_sha)
+    elif args.command == "finalize-cuda-validation":
+        result = finalize_cuda_validation(
+            args.output,
+            execution_git_sha=args.execution_git_sha,
+            finalization_git_sha=args.finalization_git_sha,
+        )
     elif args.command == "standardized-probe":
         result = standardized_fingerprint_probe(args.output, git_sha=args.git_sha)
     elif args.command == "successor-report":
