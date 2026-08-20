@@ -168,6 +168,10 @@ class Phase13PilotTests(unittest.TestCase):
                 f"dst=/home/rockrock/cmu_paper/{bundle},readonly\"",
                 makefile,
             )
+            self.assertIn(
+                f'mkdir -p "$$task_root/repository/{bundle}"',
+                makefile,
+            )
             self.assertNotIn(
                 f"--mount \"type=bind,src=$${variable},"
                 f"dst=/home/rockrock/cmu_paper/{bundle}\"",

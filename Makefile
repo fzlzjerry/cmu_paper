@@ -1531,12 +1531,12 @@ pilot: verify-measurement-container
 		test -d "$$phase13b_bundle" && test ! -L "$$phase13b_bundle"; \
 		test "$$(realpath -e "$$phase13b_bundle")" = "$$phase13b_bundle"; \
 		test "$$($(PHASE13_HOST_PYTHON) -c 'import sys; from scripts.r2_artifact import validate_local_artifact; print(validate_local_artifact(sys.argv[1], environ={}).root_sha256)' "$$phase13b_bundle")" = "$(PHASE13B_LOCAL_ROOT_SHA256)"; \
-		mkdir -p "$$task_root/repository/artifacts/phase13b"; \
+		mkdir -p "$$task_root/repository/artifacts/phase13b/phase13b-20260801t143138050263z-b862af64-batch-admission"; \
 		phase13rq4_bundle="$(PHASE13RQ4_LOCAL_BUNDLE)"; \
 		test -d "$$phase13rq4_bundle" && test ! -L "$$phase13rq4_bundle"; \
 		test "$$(realpath -e "$$phase13rq4_bundle")" = "$$phase13rq4_bundle"; \
 		test "$$($(PHASE13_HOST_PYTHON) -c 'import sys; from scripts.r2_artifact import validate_local_artifact; print(validate_local_artifact(sys.argv[1], environ={}).root_sha256)' "$$phase13rq4_bundle")" = "$(PHASE13RQ4_LOCAL_ROOT_SHA256)"; \
-		mkdir -p "$$task_root/repository/artifacts/phase13rq4"; \
+		mkdir -p "$$task_root/repository/artifacts/phase13rq4/phase13rq4-20260820t094629495794z-ab4e0b84-b8c7bd"; \
 		reference_image="$(KIVI_REFERENCE_IMAGE)@$(PHASE8_KIVI_REFERENCE_MANIFEST_DIGEST)"; \
 		test "$$(docker image inspect "$$reference_image" --format '{{.Id}}')" = "$(PHASE8_KIVI_REFERENCE_MANIFEST_DIGEST)"; \
 		test "$$(docker image inspect "$$reference_image" --format '{{index .Config.Labels "org.kvbench.reference.parent.config_digest"}}')" = "$$image_id"; \
