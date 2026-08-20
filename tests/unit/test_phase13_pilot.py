@@ -30,7 +30,7 @@ class Phase13PilotTests(unittest.TestCase):
         second = phase13_pilot.derive_execution_order()
         self.assertEqual(first, second)
         self.assertEqual(len(first["records"]), 810)
-        self.assertEqual(first["seeds"], [20260801, 20260802, 20260803])
+        self.assertEqual(first["seeds"], [20260805, 20260806, 20260807])
         phase13_pilot.validate_execution_order(first)
         tampered = copy.deepcopy(first)
         tampered["records"][0]["batch_size"] = 1
@@ -45,7 +45,7 @@ class Phase13PilotTests(unittest.TestCase):
         phase13_pilot.validate_execution_order(payload)
         self.assertEqual(
             hashlib.sha256(path.read_bytes()).hexdigest(),
-            "377e7a2a8592ce8d39692f42f0824a8e7f9379cdd33f5db01c598e407cc5b92f",
+            "d64fc06cda5d6f594ea82247eca5b3a400b39dc32605b93f308461591641d35a",
         )
 
     def test_feasibility_has_every_record_and_never_masks_geometry(self) -> None:
