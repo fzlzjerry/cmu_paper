@@ -136,6 +136,48 @@ class Phase13PilotTests(unittest.TestCase):
                 record["cache_layout_fingerprint"],
             )
 
+    def test_pilot_mounts_exact_successor_bundles_read_only(self) -> None:
+        makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
+        bindings = (
+            (
+                "PHASE13B",
+                "phase13b_bundle",
+                "artifacts/phase13b/"
+                "phase13b-20260801t143138050263z-b862af64-batch-admission",
+                "f1c96eaacbbace1c23b249d1afe8d892aa26c3f6b8d04e07f373a2becafba1fe",
+            ),
+            (
+                "PHASE13RQ4",
+                "phase13rq4_bundle",
+                "artifacts/phase13rq4/"
+                "phase13rq4-20260820t094629495794z-ab4e0b84-b8c7bd",
+                "9f027d64424844d0d62311daad5740e2b76960d1d5e7b8be26aa1ccba100a8db",
+            ),
+        )
+        for authority, variable, bundle, root in bindings:
+            self.assertIn(
+                f"override {authority}_LOCAL_BUNDLE := $(CURDIR)/{bundle}",
+                makefile,
+            )
+            self.assertIn(
+                f"override {authority}_LOCAL_ROOT_SHA256 := {root}",
+                makefile,
+            )
+            self.assertIn(
+                f"--mount \"type=bind,src=$${variable},"
+                f"dst=/home/rockrock/cmu_paper/{bundle},readonly\"",
+                makefile,
+            )
+            self.assertNotIn(
+                f"--mount \"type=bind,src=$${variable},"
+                f"dst=/home/rockrock/cmu_paper/{bundle}\"",
+                makefile,
+            )
+        self.assertIn(
+            'validate_local_artifact(sys.argv[1], environ={}).root_sha256',
+            makefile,
+        )
+
     def test_cv_uses_sample_standard_deviation_and_frozen_boundary(self) -> None:
         equal = phase13_pilot.point_statistics((1.0, 1.0, 1.0))
         self.assertEqual(equal["cv"], 0.0)

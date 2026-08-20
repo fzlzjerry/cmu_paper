@@ -114,6 +114,10 @@ PHASE12_HOST_ENV := /usr/bin/env -i PATH=/usr/bin:/bin LC_ALL=C LANG=C TZ=UTC PY
 PHASE12_HOST_PYTHON := $(PHASE12_HOST_ENV) $(CURDIR)/$(PHASE3_PYTHON)
 override PHASE13_AUTHORIZED_IMAGE_CONFIG_DIGEST := $(PHASE12_AUTHORIZED_IMAGE_CONFIG_DIGEST)
 override PHASE13_ANALYSIS_IMAGE_CONFIG_DIGEST := sha256:127759078f2c70c9e795c7a1bb3408df1eaee8fa019319299d283dc8075b216d
+override PHASE13B_LOCAL_BUNDLE := $(CURDIR)/artifacts/phase13b/phase13b-20260801t143138050263z-b862af64-batch-admission
+override PHASE13B_LOCAL_ROOT_SHA256 := f1c96eaacbbace1c23b249d1afe8d892aa26c3f6b8d04e07f373a2becafba1fe
+override PHASE13RQ4_LOCAL_BUNDLE := $(CURDIR)/artifacts/phase13rq4/phase13rq4-20260820t094629495794z-ab4e0b84-b8c7bd
+override PHASE13RQ4_LOCAL_ROOT_SHA256 := 9f027d64424844d0d62311daad5740e2b76960d1d5e7b8be26aa1ccba100a8db
 PHASE13_CAMPAIGN_ARTIFACT ?=
 PHASE13_HOST_PYTHON := $(PHASE12_HOST_PYTHON)
 PHASE13F_ARTIFACT ?=
@@ -1523,6 +1527,16 @@ pilot: verify-measurement-container
 		test -d "$$phase12_artifact_root" && test ! -L "$$phase12_artifact_root"; \
 		test "$$(realpath -e "$$phase12_artifact_root")" = "$$phase12_artifact_root"; \
 		mkdir -p "$$task_root/repository/artifacts/phase12"; \
+		phase13b_bundle="$(PHASE13B_LOCAL_BUNDLE)"; \
+		test -d "$$phase13b_bundle" && test ! -L "$$phase13b_bundle"; \
+		test "$$(realpath -e "$$phase13b_bundle")" = "$$phase13b_bundle"; \
+		test "$$($(PHASE13_HOST_PYTHON) -c 'import sys; from scripts.r2_artifact import validate_local_artifact; print(validate_local_artifact(sys.argv[1], environ={}).root_sha256)' "$$phase13b_bundle")" = "$(PHASE13B_LOCAL_ROOT_SHA256)"; \
+		mkdir -p "$$task_root/repository/artifacts/phase13b"; \
+		phase13rq4_bundle="$(PHASE13RQ4_LOCAL_BUNDLE)"; \
+		test -d "$$phase13rq4_bundle" && test ! -L "$$phase13rq4_bundle"; \
+		test "$$(realpath -e "$$phase13rq4_bundle")" = "$$phase13rq4_bundle"; \
+		test "$$($(PHASE13_HOST_PYTHON) -c 'import sys; from scripts.r2_artifact import validate_local_artifact; print(validate_local_artifact(sys.argv[1], environ={}).root_sha256)' "$$phase13rq4_bundle")" = "$(PHASE13RQ4_LOCAL_ROOT_SHA256)"; \
+		mkdir -p "$$task_root/repository/artifacts/phase13rq4"; \
 		reference_image="$(KIVI_REFERENCE_IMAGE)@$(PHASE8_KIVI_REFERENCE_MANIFEST_DIGEST)"; \
 		test "$$(docker image inspect "$$reference_image" --format '{{.Id}}')" = "$(PHASE8_KIVI_REFERENCE_MANIFEST_DIGEST)"; \
 		test "$$(docker image inspect "$$reference_image" --format '{{index .Config.Labels "org.kvbench.reference.parent.config_digest"}}')" = "$$image_id"; \
@@ -1565,6 +1579,8 @@ pilot: verify-measurement-container
 			--tmpfs /root:rw,exec,nosuid,nodev,size=8g \
 			--mount "type=bind,src=$$task_root/repository,dst=/home/rockrock/cmu_paper,readonly" \
 			--mount "type=bind,src=$$phase12_artifact_root,dst=/home/rockrock/cmu_paper/artifacts/phase12,readonly" \
+			--mount "type=bind,src=$$phase13b_bundle,dst=/home/rockrock/cmu_paper/artifacts/phase13b/phase13b-20260801t143138050263z-b862af64-batch-admission,readonly" \
+			--mount "type=bind,src=$$phase13rq4_bundle,dst=/home/rockrock/cmu_paper/artifacts/phase13rq4/phase13rq4-20260820t094629495794z-ab4e0b84-b8c7bd,readonly" \
 			--mount "type=bind,src=$$stage,dst=/home/rockrock/cmu_paper/$$stage_relative" \
 			--mount "type=bind,src=$$task_root/kivi-source,dst=/opt/kivi-source,readonly" \
 			--mount "type=bind,src=$$task_root/kivi-extension/kivi_gemv.cpython-312-x86_64-linux-gnu.so,dst=/opt/kvbench/.phase3/site-packages/kivi_gemv.cpython-312-x86_64-linux-gnu.so,readonly" \
