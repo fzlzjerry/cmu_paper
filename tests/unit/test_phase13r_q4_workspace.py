@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import inspect
 import json
 from pathlib import Path
@@ -25,12 +26,44 @@ from kvbench.runtime.kvquant_cache import (
     kvquant_q4_value_decode_workspace_shape,
 )
 from kvbench.runtime.kvquant_session import kvquant_runtime_context
+from kvbench.runtime.numerical import tensor_sha256_untimed
 from kvbench.runtime.static_cache import CacheStateError
 from scripts import phase13_pilot
 from scripts import phase13r_q4_workspace
 
 
 class Phase13RQ4WorkspaceTests(unittest.TestCase):
+    def test_untimed_tensor_digest_preserves_canonical_raw_bytes(self) -> None:
+        for dtype in (
+            torch.uint8,
+            torch.int32,
+            torch.float16,
+            torch.bfloat16,
+            torch.float32,
+        ):
+            with self.subTest(dtype=dtype):
+                value = (
+                    torch.arange(48, dtype=torch.float32)
+                    .reshape(6, 8)[:, ::2]
+                    .to(dtype=dtype)
+                )
+                contiguous = (
+                    value.detach()
+                    .contiguous()
+                    .view(torch.uint8)
+                    .to(device="cpu", copy=True)
+                )
+                raw = bytes(contiguous.untyped_storage())[
+                    : int(contiguous.numel())
+                ]
+                header = json.dumps(
+                    {"shape": list(value.shape), "dtype": str(value.dtype)},
+                    sort_keys=True,
+                    separators=(",", ":"),
+                ).encode("utf-8")
+                expected = hashlib.sha256(header + b"\0" + raw).hexdigest()
+                self.assertEqual(tensor_sha256_untimed(value), expected)
+
     def _cache(
         self,
         *,

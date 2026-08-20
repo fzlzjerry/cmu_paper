@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ctypes
 from dataclasses import dataclass
 import hashlib
 import importlib
@@ -190,9 +191,6 @@ def tensor_sha256_untimed(tensor: Any) -> str:
         .to(device="cpu", copy=True)
     )
     byte_count = int(contiguous.numel())
-    raw = bytes(contiguous.untyped_storage())[:byte_count]
-    if len(raw) != byte_count:
-        raise RuntimeError("untimed tensor checksum storage is incomplete")
     header = json.dumps(
         {
             "shape": list(tensor.shape),
@@ -204,7 +202,19 @@ def tensor_sha256_untimed(tensor: Any) -> str:
     digest = hashlib.sha256()
     digest.update(header)
     digest.update(b"\0")
-    digest.update(raw)
+    if byte_count:
+        # ``bytes(UntypedStorage)`` iterates one Python integer per byte.  That
+        # is exact but makes untimed custody checks over long-context caches
+        # take hours.  The tensor above is a fresh contiguous CPU uint8 copy,
+        # so a read-only buffer over its declared byte range has identical raw
+        # byte semantics without materializing or iterating a Python sequence.
+        raw_array = (ctypes.c_ubyte * byte_count).from_address(
+            int(contiguous.data_ptr())
+        )
+        raw_view = memoryview(raw_array).cast("B")
+        if len(raw_view) != byte_count:
+            raise RuntimeError("untimed tensor checksum storage is incomplete")
+        digest.update(raw_view)
     return digest.hexdigest()
 
 

@@ -29,6 +29,7 @@ EXPECTED = frozenset(
         "src/kvbench/adapters/kvquant.py",
         "src/kvbench/runtime/kvquant_cache.py",
         "src/kvbench/runtime/kvquant_session.py",
+        "src/kvbench/runtime/numerical.py",
         "tests/cuda/phase11_kvquant_sanitizer_probe.py",
         "tests/cuda/phase13r_q4_workspace_sanitizer_probe.py",
         "tests/cuda/test_phase11_kvquant_cuda.py",
