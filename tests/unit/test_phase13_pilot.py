@@ -4,10 +4,16 @@ from __future__ import annotations
 
 import copy
 import hashlib
+import inspect
+import io
 import json
+import os
 from pathlib import Path
+import subprocess
+import sys
 import tempfile
 import unittest
+from unittest import mock
 
 from scripts import phase13_pilot
 
@@ -16,6 +22,122 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 class Phase13PilotTests(unittest.TestCase):
+    def test_prefix_builder_validates_and_fsyncs_before_finalization(self) -> None:
+        source = inspect.getsource(phase13_pilot._build_prefix_state_worker)
+        validated = source.index("validated = validate_prefix_state(")
+        fsynced = source.index("_fsync_prefix_builder_snapshot(output)")
+        completed = source.index('recorder.record("finalization", "completed")')
+        self.assertLess(validated, fsynced)
+        self.assertLess(fsynced, completed)
+
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary) / "snapshot"
+            root.mkdir()
+            (root / "state.safetensors").write_bytes(b"state")
+            (root / "manifest.json").write_bytes(b"{}\n")
+            (root / "COMPLETE").write_bytes(b"a" * 64 + b"\n")
+            with mock.patch.object(
+                phase13_pilot.os, "fsync", wraps=os.fsync
+            ) as fsync:
+                phase13_pilot._fsync_prefix_builder_snapshot(root)
+            self.assertEqual(fsync.call_count, 5)
+
+    def test_prefix_builder_success_flushes_result_then_uses_os_exit(self) -> None:
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+        payload = {"snapshot_id": "prefix-bf16-b4-l49152", "status": "PASS"}
+        with mock.patch.object(
+            phase13_pilot.sys, "stdout", stdout
+        ), mock.patch.object(
+            phase13_pilot.sys, "stderr", stderr
+        ), mock.patch.object(
+            phase13_pilot.os, "_exit", side_effect=RuntimeError("exit sentinel")
+        ) as exit_call:
+            with self.assertRaisesRegex(RuntimeError, "exit sentinel"):
+                phase13_pilot._emit_prefix_builder_result_and_exit(payload)
+        exit_call.assert_called_once_with(0)
+        self.assertEqual(
+            stdout.getvalue(),
+            phase13_pilot.PREFIX_BUILDER_PREFIX
+            + json.dumps(payload, sort_keys=True, separators=(",", ":"))
+            + "\n",
+        )
+
+    def test_prefix_builder_os_exit_is_reaped_with_exact_result(self) -> None:
+        payload = {"snapshot_id": "unit-prefix", "status": "PASS"}
+        command = (
+            sys.executable,
+            "-c",
+            "from scripts.phase13_pilot import "
+            "_emit_prefix_builder_result_and_exit as emit; "
+            f"emit({payload!r})",
+        )
+        completed = subprocess.run(
+            command,
+            cwd=phase13_pilot.REPOSITORY_ROOT,
+            env=dict(os.environ),
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(completed.returncode, 0)
+        self.assertEqual(completed.stderr, "")
+        self.assertEqual(
+            completed.stdout,
+            phase13_pilot.PREFIX_BUILDER_PREFIX
+            + json.dumps(payload, sort_keys=True, separators=(",", ":"))
+            + "\n",
+        )
+
+    def test_prefix_builder_flush_failure_never_reports_success(self) -> None:
+        class FailingFlush(io.StringIO):
+            def flush(self) -> None:
+                raise OSError("injected flush failure")
+
+        with mock.patch.object(
+            phase13_pilot.sys, "stdout", FailingFlush()
+        ), mock.patch.object(
+            phase13_pilot.sys, "stderr", io.StringIO()
+        ), mock.patch.object(phase13_pilot.os, "_exit") as exit_call:
+            with self.assertRaisesRegex(OSError, "injected flush failure"):
+                phase13_pilot._emit_prefix_builder_result_and_exit(
+                    {"status": "PASS"}
+                )
+        exit_call.assert_not_called()
+
+    def test_prefix_builder_worker_failure_exits_nonzero_normally(self) -> None:
+        arguments = [
+            "--build-prefix-state",
+            "--snapshot-id",
+            "prefix-bf16-b4-l49152",
+            "--configuration",
+            "bf16",
+            "--source-batch",
+            "4",
+            "--context-label",
+            "49152",
+            "--git-sha",
+            "a" * 40,
+            "--build-root",
+            "/tmp/build",
+            "--output",
+            "/tmp/output",
+        ]
+        with mock.patch.object(
+            phase13_pilot,
+            "_build_prefix_state_worker",
+            side_effect=phase13_pilot.Phase13PilotError(
+                "injected builder failure"
+            ),
+        ), mock.patch.object(
+            phase13_pilot, "_emit_prefix_builder_result_and_exit"
+        ) as emit:
+            with self.assertRaisesRegex(
+                phase13_pilot.Phase13PilotError, "injected builder failure"
+            ):
+                phase13_pilot.main(arguments)
+        emit.assert_not_called()
+
     def test_exact_grid_configuration_set_and_top_context(self) -> None:
         self.assertEqual(len(phase13_pilot.CONFIGURATIONS), 10)
         self.assertEqual(phase13_pilot.BATCH_SIZES, (1, 4, 8))

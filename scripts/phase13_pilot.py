@@ -34,7 +34,7 @@ from kvbench.runtime.kvquant_cache import (
 )
 import time
 import types
-from typing import Any
+from typing import Any, NoReturn
 
 from preflight.run_preflight import json_bytes, rename_noreplace, write_exclusive
 from kvbench.runtime.artifacts import sha256_file
@@ -1624,7 +1624,6 @@ def _build_prefix_state_worker(
                 "snapshot_id": snapshot_id,
             },
         )
-        recorder.record("finalization", "completed")
         raise _PrefixStateCaptured(manifest)
 
     captured: dict[str, Any] | None = None
@@ -1642,6 +1641,22 @@ def _build_prefix_state_worker(
             captured = signal.manifest
     if captured is None:
         raise Phase13PilotError("direct prefix snapshot was not captured")
+    validated = validate_prefix_state(
+        output,
+        configuration=configuration,
+        family=phase12._method_family(configuration),
+        batch=source_batch,
+        historical=historical,
+        method_config_fingerprint=CONFIG_FINGERPRINTS[configuration],
+        verify_state_bytes=True,
+    )
+    if (
+        validated.get("state_file_sha256") != captured.get("state_file_sha256")
+        or validated.get("state_file_bytes") != captured.get("state_file_bytes")
+    ):
+        raise Phase13PilotError("prefix builder finalized snapshot differs")
+    _fsync_prefix_builder_snapshot(output)
+    recorder.record("finalization", "completed")
     return {
         "schema_version": "kvbench-phase13-prefix-builder-result-1.0.0",
         "snapshot_id": snapshot_id,
@@ -1653,6 +1668,49 @@ def _build_prefix_state_worker(
         "state_file_bytes": captured["state_file_bytes"],
         "container_runtime_attestation": attestation,
     }
+
+
+def _fsync_prefix_builder_snapshot(root: Path) -> None:
+    """Durably flush the already validated fixed prefix-snapshot file set."""
+
+    expected = ("state.safetensors", "manifest.json", "COMPLETE")
+    if not root.is_dir() or root.is_symlink():
+        raise Phase13PilotError("prefix builder snapshot root is invalid")
+    if {item.name for item in root.iterdir()} != set(expected):
+        raise Phase13PilotError("prefix builder snapshot file set differs")
+    file_flags = os.O_RDONLY | os.O_CLOEXEC
+    if hasattr(os, "O_NOFOLLOW"):
+        file_flags |= os.O_NOFOLLOW
+    for name in expected:
+        descriptor = os.open(root / name, file_flags)
+        try:
+            metadata = os.fstat(descriptor)
+            if not stat.S_ISREG(metadata.st_mode):
+                raise Phase13PilotError("prefix builder snapshot file is invalid")
+            os.fsync(descriptor)
+        finally:
+            os.close(descriptor)
+    directory_flags = os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC
+    if hasattr(os, "O_NOFOLLOW"):
+        directory_flags |= os.O_NOFOLLOW
+    for directory in (root, root.parent):
+        descriptor = os.open(directory, directory_flags)
+        try:
+            os.fsync(descriptor)
+        finally:
+            os.close(descriptor)
+
+
+def _emit_prefix_builder_result_and_exit(payload: Mapping[str, Any]) -> NoReturn:
+    """Flush the dedicated builder result, then bypass CUDA interpreter teardown."""
+
+    line = PREFIX_BUILDER_PREFIX + json.dumps(
+        dict(payload), sort_keys=True, separators=(",", ":")
+    )
+    sys.stdout.write(line + "\n")
+    sys.stdout.flush()
+    sys.stderr.flush()
+    os._exit(0)
 
 
 def _run_prefix_builder_process(
@@ -4879,11 +4937,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             build_root=Path(args.build_root),
             output=Path(args.output),
         )
-        print(
-            PREFIX_BUILDER_PREFIX
-            + json.dumps(payload, sort_keys=True, separators=(",", ":"))
-        )
-        return 0
+        _emit_prefix_builder_result_and_exit(payload)
     if args.validate_prefix_equivalence:
         if args.output is None or args.scratch_root is None or args.git_sha is None:
             raise Phase13PilotError(
