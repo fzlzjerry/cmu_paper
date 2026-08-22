@@ -906,9 +906,15 @@ def kvquant_prefix_chunk_workspace_spec(configuration: str) -> dict[str, Any]:
     components = {
         # Reused first for Key and then Value.
         "source_rows": rows * width * 4,
+        # Bounded vectorized Key nearest-code selection and exact packing.
+        "key_distances": rows * width * levels * 4,
+        "key_codes": rows * width * 8,
+        "key_packed_long": rows * PREFIX_KV_HEADS * packed_rows * 8,
+        "key_shifted": rows * PREFIX_KV_HEADS * packed_rows * 8,
+        "key_half_ranges": width * 4,
+        "key_midpoints": width * 4,
+        # Used only by the frozen parallel Value pack.
         "parallel_values": PREFIX_KV_HEADS * PREFIX_HEAD_DIM * rows * 4,
-        # Key parallel pack writes threshold-rescaled values separately.
-        "key_rescaled_parallel": PREFIX_KV_HEADS * PREFIX_HEAD_DIM * rows * 4,
         "key_rescaled_rows": rows * width * 4,
         # Reused first for packed Key and then packed Value.
         "packed_words": PREFIX_KV_HEADS * packed_rows * rows * 4,
@@ -1659,10 +1665,23 @@ class _KVQuantPrefixChunkWorkspace:
         self.source_rows = torch.empty(
             (rows, width), dtype=torch.float32, device=device
         )
+        self.key_distances = torch.empty(
+            (rows, width, levels), dtype=torch.float32, device=device
+        )
+        self.key_codes = torch.empty(
+            (rows, width), dtype=torch.int64, device=device
+        )
+        self.key_packed_long = torch.empty(
+            (rows, heads, packed_rows), dtype=torch.int64, device=device
+        )
+        self.key_shifted = torch.empty_like(self.key_packed_long)
+        self.key_half_ranges = torch.empty(
+            (width,), dtype=torch.float32, device=device
+        )
+        self.key_midpoints = torch.empty_like(self.key_half_ranges)
         self.parallel_values = torch.empty(
             (heads, dimension, rows), dtype=torch.float32, device=device
         )
-        self.key_rescaled_parallel = torch.empty_like(self.parallel_values)
         self.key_rescaled_rows = torch.empty_like(self.source_rows)
         self.packed_words = torch.empty(
             (heads, packed_rows, rows), dtype=torch.int32, device=device
@@ -1691,8 +1710,13 @@ class _KVQuantPrefixChunkWorkspace:
         self.value_zero_points = torch.empty_like(self.value_scales)
         tensors = (
             self.source_rows,
+            self.key_distances,
+            self.key_codes,
+            self.key_packed_long,
+            self.key_shifted,
+            self.key_half_ranges,
+            self.key_midpoints,
             self.parallel_values,
-            self.key_rescaled_parallel,
             self.key_rescaled_rows,
             self.packed_words,
             self.selected_values,
@@ -1715,6 +1739,65 @@ class _KVQuantPrefixChunkWorkspace:
             raise Phase13PilotError("KVQuant prefix chunk buffers alias")
 
 
+def _pack_kvquant_key_codes_out(
+    workspace: _KVQuantPrefixChunkWorkspace,
+    *,
+    valid: int,
+    bits: int,
+) -> None:
+    """Pack one bounded Key-code tile with the frozen source bit layout."""
+
+    import torch
+
+    if not 0 < valid <= KVQUANT_PREFIX_CHUNK_TOKENS or bits not in {2, 3, 4}:
+        raise Phase13PilotError("KVQuant Key-code pack geometry differs")
+    heads = PREFIX_KV_HEADS
+    dimension = PREFIX_HEAD_DIM
+    packed_rows = bits * dimension // 32
+    codes = workspace.key_codes[:valid].view(valid, heads, dimension)
+    packed = workspace.key_packed_long[:valid, :, :packed_rows]
+    scratch = workspace.key_shifted[:valid, :, :packed_rows]
+    packed.zero_()
+    if bits in {2, 4}:
+        values_per_word = 32 // bits
+        grouped = codes.view(
+            valid, heads, packed_rows, values_per_word
+        )
+        for location in range(values_per_word):
+            torch.bitwise_left_shift(
+                grouped[..., location],
+                location * bits,
+                out=scratch,
+            )
+            packed.add_(scratch)
+    else:
+        groups = dimension // 32
+        grouped = codes.view(valid, heads, groups, 32)
+        packed_grouped = packed.view(valid, heads, groups, 3)
+        scratch_grouped = scratch.view(valid, heads, groups, 3)
+        temporary = scratch_grouped[..., 0]
+        for location in range(32):
+            code = grouped[..., location]
+            if location == 10:
+                torch.bitwise_left_shift(code, 30, out=temporary)
+                packed_grouped[..., 0].add_(temporary)
+                torch.bitwise_right_shift(code, 2, out=temporary)
+                packed_grouped[..., 1].add_(temporary)
+            elif location == 21:
+                torch.bitwise_left_shift(code, 31, out=temporary)
+                packed_grouped[..., 1].add_(temporary)
+                torch.bitwise_right_shift(code, 1, out=temporary)
+                packed_grouped[..., 2].add_(temporary)
+            else:
+                word = location // 11
+                shift = (location * 3) % 32
+                torch.bitwise_left_shift(code, shift, out=temporary)
+                packed_grouped[..., word].add_(temporary)
+    workspace.packed_words[:, :packed_rows, :valid].copy_(
+        packed.permute(1, 2, 0)
+    )
+
+
 def _kvquant_chunked_store_prefill(
     adapter: Any,
     workspace: _KVQuantPrefixChunkWorkspace,
@@ -1727,6 +1810,8 @@ def _kvquant_chunked_store_prefill(
     key_pre_rope_states: Any | None = None,
 ) -> tuple[Any, Any]:
     """Pack one KVQuant prefix with a fixed 128-token setup-only tile."""
+
+    import torch
 
     from kvbench.adapters.kvquant import KVQUANT_ZERO_CODE
     from kvbench.runtime.static_cache import CacheStateError
@@ -1763,10 +1848,9 @@ def _kvquant_chunked_store_prefill(
         key_lookup = cache.key_lookup_table[layer_idx]
         key_lower = cache.key_lower_threshold[layer_idx].reshape(-1)
         key_upper = cache.key_upper_threshold[layer_idx].reshape(-1)
+        workspace.key_half_ranges.copy_(key_upper).sub_(key_lower).mul_(0.5)
+        workspace.key_midpoints.copy_(key_upper).add_(key_lower).mul_(0.5)
         zero_code = KVQUANT_ZERO_CODE[adapter.config_name]
-        key_pack = getattr(
-            runtime, f"vecquant{adapter.bits}appendvecKsparseParallel"
-        )
         value_pack = getattr(
             runtime, f"vecquant{adapter.bits}appendvecVsparseParallel"
         )
@@ -1779,8 +1863,6 @@ def _kvquant_chunked_store_prefill(
                 # Key: convert only one bounded tile, pack densely, then write
                 # the frozen threshold-based sparse residuals at exact slots.
                 workspace.source_rows.zero_()
-                workspace.parallel_values.zero_()
-                workspace.key_rescaled_parallel.zero_()
                 workspace.key_rescaled_rows.zero_()
                 workspace.packed_words.zero_()
                 key_source = key_pre_rope_states[
@@ -1789,27 +1871,28 @@ def _kvquant_chunked_store_prefill(
                 workspace.source_rows[:valid].view(
                     valid, heads, dimension
                 ).copy_(key_source.permute(1, 0, 2))
-                workspace.parallel_values[:, :, :valid].copy_(
-                    key_source.permute(0, 2, 1)
+                torch.sub(
+                    workspace.source_rows[:valid].unsqueeze(2),
+                    key_lookup.reshape(1, heads * dimension, adapter.levels),
+                    out=workspace.key_distances[:valid],
                 )
-                key_pack(
-                    workspace.packed_words,
-                    key_lookup,
-                    workspace.parallel_values,
-                    workspace.key_rescaled_parallel,
-                    key_lower,
-                    key_upper,
+                workspace.key_distances[:valid].abs_()
+                torch.argmin(
+                    workspace.key_distances[:valid],
+                    dim=2,
+                    out=workspace.key_codes[:valid],
+                )
+                _pack_kvquant_key_codes_out(
+                    workspace,
+                    valid=valid,
+                    bits=adapter.bits,
                 )
                 cache.packed_key_cache[
                     layer_idx, batch_idx, :, :, offset : offset + valid
                 ].copy_(workspace.packed_words[:, :, :valid])
-                workspace.key_rescaled_rows[:valid].view(
-                    valid, heads, dimension
-                ).copy_(
-                    workspace.key_rescaled_parallel[:, :, :valid].permute(
-                        2, 0, 1
-                    )
-                )
+                workspace.key_rescaled_rows[:valid].copy_(
+                    workspace.source_rows[:valid]
+                ).sub_(workspace.key_midpoints).div_(workspace.key_half_ranges)
                 runtime.select_fixed_outliers_1024_cap12_out(
                     workspace.key_rescaled_rows[:valid],
                     cache.key_selector_lower,

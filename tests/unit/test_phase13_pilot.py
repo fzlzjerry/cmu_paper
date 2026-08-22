@@ -12,6 +12,7 @@ from pathlib import Path
 import subprocess
 import sys
 import tempfile
+from types import SimpleNamespace
 import unittest
 from unittest import mock
 
@@ -22,11 +23,60 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 class Phase13PilotTests(unittest.TestCase):
+    def test_key_chunk_packing_matches_independent_scalar_control(self) -> None:
+        import torch
+
+        valid = 2
+        for bits in (4, 3, 2):
+            levels = 1 << bits
+            packed_rows = bits * 128 // 32
+            codes = (
+                torch.arange(valid * 8 * 128, dtype=torch.int64)
+                .reshape(valid, 8 * 128)
+                .remainder(levels)
+            )
+            workspace = SimpleNamespace(
+                key_codes=codes.clone(),
+                key_packed_long=torch.empty(
+                    (valid, 8, packed_rows), dtype=torch.int64
+                ),
+                key_shifted=torch.empty(
+                    (valid, 8, packed_rows), dtype=torch.int64
+                ),
+                packed_words=torch.empty(
+                    (8, packed_rows, valid), dtype=torch.int32
+                ),
+            )
+            phase13_pilot._pack_kvquant_key_codes_out(
+                workspace, valid=valid, bits=bits
+            )
+            first = workspace.packed_words.clone()
+            expected = torch.zeros(
+                (valid, 8, packed_rows), dtype=torch.int64
+            )
+            source = codes.view(valid, 8, 128)
+            for row in range(valid):
+                for head in range(8):
+                    for native_index in range(128):
+                        value = int(source[row, head, native_index])
+                        bit_offset = native_index * bits
+                        word = bit_offset // 32
+                        shift = bit_offset % 32
+                        expected[row, head, word] += value << shift
+                        if shift + bits > 32:
+                            expected[row, head, word + 1] += value >> (32 - shift)
+            expected_i32 = expected.permute(1, 2, 0).to(torch.int32)
+            self.assertTrue(torch.equal(first, expected_i32))
+            phase13_pilot._pack_kvquant_key_codes_out(
+                workspace, valid=valid, bits=bits
+            )
+            self.assertTrue(torch.equal(first, workspace.packed_words))
+
     def test_kvquant_prefix_chunks_are_fixed_bounded_and_fully_accounted(self) -> None:
         expected_bytes = {
-            "kvq4": 2_186_368,
-            "kvq3": 2_165_888,
-            "kvq2": 2_147_456,
+            "kvq4": 11_369_600,
+            "kvq3": 7_089_280,
+            "kvq2": 4_908_160,
         }
         for configuration, expected in expected_bytes.items():
             specification = phase13_pilot.kvquant_prefix_chunk_workspace_spec(
@@ -46,6 +96,7 @@ class Phase13PilotTests(unittest.TestCase):
         self.assertIn("range(0, quantized_tokens, chunk)", source)
         self.assertNotIn("range(cache.sink_tokens, tokens)", source)
         self.assertNotIn(".float().contiguous()", source)
+        self.assertNotIn("appendvecKsparseParallel", source)
 
     def test_feasibility_includes_exact_kvquant_prefix_chunk_bytes(self) -> None:
         record = phase13_pilot.feasibility_record(
