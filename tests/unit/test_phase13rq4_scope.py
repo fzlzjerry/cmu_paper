@@ -12,6 +12,7 @@ EXPECTED = frozenset(
         "Makefile",
         "docs/blockers.md",
         "docs/decisions/0036-kvquant-q4-value-decode-workspace-geometry.md",
+        "docs/decisions/0037-phase13-persistent-chunked-prefix-construction.md",
         "docs/evidence/phase13rq4/cuda-validation.json",
         "docs/evidence/phase13rq4/kvquant-q4-method-admission.json",
         "docs/evidence/phase13rq4/r2-publication.json",
@@ -40,6 +41,7 @@ EXPECTED = frozenset(
         "tests/unit/test_phase11_kvquant_session.py",
         "tests/unit/test_phase13r_q4_workspace.py",
         "tests/unit/test_phase13_pilot.py",
+        "tests/unit/test_phase13pr_prefix_state.py",
         "tests/unit/test_phase13_scope.py",
         "tests/unit/test_phase13rq4_scope.py",
     }
@@ -56,6 +58,10 @@ class Phase13RQ4ScopeTests(unittest.TestCase):
         self.assertEqual(
             validate_phase2.PHASE13RQ4_APPROVED_ARTIFACT_ROOT_NAMES,
             frozenset({"phase13rq4"}),
+        )
+        self.assertEqual(
+            validate_phase2.PHASE13_PREFIX_APPROVED_ARTIFACT_ROOT_NAMES,
+            frozenset({"phase13_prefix_catalogs"}),
         )
         for relative in EXPECTED:
             self.assertTrue(

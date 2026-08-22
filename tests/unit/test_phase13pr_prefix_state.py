@@ -519,9 +519,10 @@ class PrefixStateTests(unittest.TestCase):
         self.assertIn("current_historical_prefix_sha256", session_bridge)
         makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
         self.assertIn(
-            "src=$$task_root/prefix-states,dst=/opt/kvbench-prefix-states",
+            "src=$$prefix_campaign_root,dst=/opt/kvbench-prefix-states",
             makefile,
         )
+        self.assertIn("--materialize-prefix-seed", makefile)
 
     def test_equivalence_loads_model_before_inference_mode(self) -> None:
         source = inspect.getsource(pilot.run_prefix_equivalence)

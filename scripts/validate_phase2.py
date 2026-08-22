@@ -1232,6 +1232,7 @@ PHASE13RQ4_ALLOWED_PATHS = frozenset(
         "Makefile",
         "docs/blockers.md",
         "docs/decisions/0036-kvquant-q4-value-decode-workspace-geometry.md",
+        "docs/decisions/0037-phase13-persistent-chunked-prefix-construction.md",
         "docs/evidence/phase13rq4/cuda-validation.json",
         "docs/evidence/phase13rq4/kvquant-q4-method-admission.json",
         "docs/evidence/phase13rq4/r2-publication.json",
@@ -1260,6 +1261,7 @@ PHASE13RQ4_ALLOWED_PATHS = frozenset(
         "tests/unit/test_phase11_kvquant_session.py",
         "tests/unit/test_phase13r_q4_workspace.py",
         "tests/unit/test_phase13_pilot.py",
+        "tests/unit/test_phase13pr_prefix_state.py",
         "tests/unit/test_phase13_scope.py",
         "tests/unit/test_phase13rq4_scope.py",
     }
@@ -3189,6 +3191,9 @@ PHASE13T_APPROVED_ARTIFACT_ROOT_NAMES = frozenset({"phase13t"})
 PHASE13PB_APPROVED_ARTIFACT_ROOT_NAMES = frozenset({"phase13pb"})
 PHASE13PC_APPROVED_ARTIFACT_ROOT_NAMES = frozenset({"phase13pc"})
 PHASE13RQ4_APPROVED_ARTIFACT_ROOT_NAMES = frozenset({"phase13rq4"})
+PHASE13_PREFIX_APPROVED_ARTIFACT_ROOT_NAMES = frozenset(
+    {"phase13_prefix_catalogs"}
+)
 PHASE12_BLOCKED_ARTIFACT_ROOT_NAMES = frozenset({"phase12"})
 PHASE12_STOPPED_CAMPAIGN_ID = (
     "phase12-20260730t000000000000z-2bc6aaa1-abcdef"
@@ -3874,6 +3879,7 @@ def validate_phase3_artifact_root() -> list[str]:
                 | PHASE13PB_APPROVED_ARTIFACT_ROOT_NAMES
                 | PHASE13PC_APPROVED_ARTIFACT_ROOT_NAMES
                 | PHASE13RQ4_APPROVED_ARTIFACT_ROOT_NAMES
+                | PHASE13_PREFIX_APPROVED_ARTIFACT_ROOT_NAMES
                 | PHASE12_BLOCKED_ARTIFACT_ROOT_NAMES
             )
         )

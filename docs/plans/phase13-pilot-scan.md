@@ -13,6 +13,18 @@ MethodAdmissionReport SHA-256
 are the current `kvq4` workspace authority. The refreshed global evidence keeps
 G0-G5 PASS and Pilot READY.
 
+Decision 0037 governs setup-only prefix construction.  The stopped
+`phase13-20260821t151036274823z-b27442c4-8a39d6` coordinator was terminated
+only after `prefix-kvq4-b8-l16384` finalized `COMPLETE`.  Its 168 fully
+checksum-validated states are frozen as local seed
+`phase13-prefix-seed-20260822t185619z-b27442c4-168`.  A fresh campaign
+hardlinks those immutable states into a new persistent catalog and constructs
+only the 60 absent KVQuant states; no historical timing sample is reused.
+KVQuant setup packing uses one fixed 128-token tile and never materializes a
+complete-prefix FP32 Key or Value copy.  The tile scratch is included in the
+same conservative 0.88 memory calculation and changes no adapter fingerprint,
+cache layout, formal decode, grid, or timing boundary.
+
 The immutable blocked campaign
 `phase13-20260804t111810342595z-a127b0d1-8649c3` is historical failure evidence
 only. Its root
@@ -48,8 +60,9 @@ historical 131071 so total attended length is 131072.
 Feasibility is recomputed for every new record from current fingerprints and
 actual owned-byte formulas. It includes model weights, cache payload and
 metadata/residual/sink/sparse regions, persistent workspace, Decision 0036 q4
-capacity workspace, end-to-end prefix-construction peak, Graph reserve, and the
-frozen 0.88 memory limit. The result is 684 feasible launches and 126 explicit
+capacity workspace, Decision 0037's fixed KVQuant prefix tile, end-to-end
+prefix-construction peak, Graph reserve, and the frozen 0.88 memory limit. The
+result is 684 feasible launches and 126 explicit
 `capacity_infeasible` records. Known-infeasible records are never launched or
 removed.
 

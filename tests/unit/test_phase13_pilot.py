@@ -22,6 +22,239 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 class Phase13PilotTests(unittest.TestCase):
+    def test_kvquant_prefix_chunks_are_fixed_bounded_and_fully_accounted(self) -> None:
+        expected_bytes = {
+            "kvq4": 2_186_368,
+            "kvq3": 2_165_888,
+            "kvq2": 2_147_456,
+        }
+        for configuration, expected in expected_bytes.items():
+            specification = phase13_pilot.kvquant_prefix_chunk_workspace_spec(
+                configuration
+            )
+            self.assertEqual(specification["chunk_tokens"], 128)
+            self.assertEqual(specification["workspace_bytes"], expected)
+            self.assertEqual(
+                sum(specification["components"].values()), expected
+            )
+            self.assertFalse(specification["batch_scaled"])
+            self.assertFalse(specification["context_scaled"])
+            self.assertFalse(specification["full_context_fp32_copy"])
+        source = inspect.getsource(
+            phase13_pilot._kvquant_chunked_store_prefill
+        )
+        self.assertIn("range(0, quantized_tokens, chunk)", source)
+        self.assertNotIn("range(cache.sink_tokens, tokens)", source)
+        self.assertNotIn(".float().contiguous()", source)
+
+    def test_feasibility_includes_exact_kvquant_prefix_chunk_bytes(self) -> None:
+        record = phase13_pilot.feasibility_record(
+            {
+                "method_config_id": "kvq4",
+                "batch_size": 8,
+                "historical_context": 16384,
+                "context_label": 16384,
+            }
+        )
+        specification = phase13_pilot.kvquant_prefix_chunk_workspace_spec(
+            "kvq4"
+        )
+        self.assertEqual(
+            record["kvquant_prefix_chunk_workspace"], specification
+        )
+        self.assertEqual(
+            record["kvquant_prefix_chunk_workspace_bytes"],
+            specification["workspace_bytes"],
+        )
+        recomposed = (
+            record["model_weight_bytes"]
+            + record["cache_allocated_bytes"]
+            + record["endpoint_workspace_bytes"]
+            + record["prefix_control_tensor_bytes"]
+            + record["prefix_compute_peak_bytes"]
+            + record["kvquant_prefix_chunk_workspace_bytes"]
+            + record["graph_pool_or_capture_reserve_bytes"]
+        )
+        self.assertEqual(record["predicted_required_bytes"], recomposed)
+        self.assertLessEqual(recomposed, record["limit_bytes"])
+
+    def test_seed_materialization_is_exact_append_only_and_hardlinked(self) -> None:
+        entry = {
+            "snapshot_id": "prefix-kvq4-b8-l16384",
+            "state_file_sha256": "a" * 64,
+            "state_file_bytes": 5,
+            "source_layout_fingerprint": "b" * 64,
+        }
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            seed = root / "seed"
+            state = seed / "states" / entry["snapshot_id"]
+            state.mkdir(parents=True)
+            (state / "state.safetensors").write_bytes(b"state")
+            (state / "manifest.json").write_bytes(b"{}\n")
+            (state / "COMPLETE").write_bytes(b"c" * 64 + b"\n")
+            destination = root / "campaign"
+            with mock.patch.object(
+                phase13_pilot,
+                "validate_persistent_prefix_seed",
+                return_value={"entries": [entry]},
+            ):
+                result = phase13_pilot.materialize_persistent_prefix_seed(
+                    seed_root=seed,
+                    destination=destination,
+                    git_sha="d" * 40,
+                )
+            target = (
+                destination
+                / "catalog"
+                / "states"
+                / entry["snapshot_id"]
+                / "state.safetensors"
+            )
+            self.assertEqual(result["reused_snapshot_count"], 1)
+            self.assertFalse(result["timing_samples_reused"])
+            self.assertEqual(
+                target.stat().st_ino,
+                (state / "state.safetensors").stat().st_ino,
+            )
+            with mock.patch.object(
+                phase13_pilot,
+                "validate_persistent_prefix_seed",
+                return_value={"entries": [entry]},
+            ):
+                with self.assertRaisesRegex(
+                    phase13_pilot.Phase13PilotError, "already exists"
+                ):
+                    phase13_pilot.materialize_persistent_prefix_seed(
+                        seed_root=seed,
+                        destination=destination,
+                        git_sha="d" * 40,
+                    )
+
+    def test_persistent_seed_control_tampering_fails_closed(self) -> None:
+        snapshot_id = "prefix-kvq4-b8-l16384"
+        plan = {
+            "snapshot_id": snapshot_id,
+            "method_config_id": "kvq4",
+            "method_family": "kvquant",
+            "source_batch": 8,
+            "batch_size": 8,
+            "historical_context": 16384,
+            "context_label": 16384,
+            "method_config_fingerprint": "f" * 64,
+        }
+        manifest = {
+            "state_file_sha256": "a" * 64,
+            "state_file_bytes": 5,
+            "source_layout_fingerprint": "b" * 64,
+        }
+        entry = {
+            **plan,
+            **manifest,
+            "source_execution_git_sha": (
+                phase13_pilot.PERSISTENT_PREFIX_SEED_EXECUTION_GIT_SHA
+            ),
+            "state_bytes_verified": True,
+        }
+        payload = {
+            "schema_version": "kvbench-phase13-prefix-seed-1.0.0",
+            "seed_id": phase13_pilot.PERSISTENT_PREFIX_SEED_ID,
+            "source_campaign_id": "stopped",
+            "source_campaign_status": "stopped_non_claim_bearing",
+            "source_execution_git_sha": (
+                phase13_pilot.PERSISTENT_PREFIX_SEED_EXECUTION_GIT_SHA
+            ),
+            "authorized_container_digest": (
+                phase13_pilot.AUTHORIZED_CONTAINER_DIGEST
+            ),
+            "snapshot_count": 1,
+            "state_file_bytes": 5,
+            "full_state_bytes_verified": True,
+            "verified_at": "2026-08-22T00:00:00Z",
+            "timing_samples_reusable": False,
+            "prefix_states_reusable": True,
+            "reuse_policy": "exact_configuration_batch_context_only",
+            "recompute_allowed": False,
+            "entries": [entry],
+        }
+        with tempfile.TemporaryDirectory() as temporary:
+            seed = Path(temporary) / "seed"
+            state = seed / "states" / snapshot_id
+            state.mkdir(parents=True)
+            (state / "state.safetensors").write_bytes(b"state")
+            catalog = seed / "seed-catalog.json"
+            catalog.write_bytes(phase13_pilot.json_bytes(payload))
+            catalog_sha = phase13_pilot.sha256_file(catalog)
+            ledger = seed / "checksums.sha256"
+            ledger.write_text(
+                f"{catalog_sha}  seed-catalog.json\n", encoding="ascii"
+            )
+            ledger_sha = phase13_pilot.sha256_file(ledger)
+            complete = seed / "COMPLETE"
+            complete.write_text(
+                phase13_pilot._prefix_seed_complete_digest(
+                    catalog_sha256=catalog_sha,
+                    ledger_sha256=ledger_sha,
+                )
+                + "\n",
+                encoding="ascii",
+            )
+            patches = (
+                mock.patch.object(
+                    phase13_pilot,
+                    "PERSISTENT_PREFIX_SEED_EXPECTED_COUNT",
+                    1,
+                ),
+                mock.patch.object(
+                    phase13_pilot,
+                    "PERSISTENT_PREFIX_SEED_MANIFEST_SHA256",
+                    catalog_sha,
+                ),
+                mock.patch.object(
+                    phase13_pilot,
+                    "_prefix_seed_expected_plan",
+                    return_value={snapshot_id: plan},
+                ),
+                mock.patch.object(
+                    phase13_pilot,
+                    "validate_prefix_state",
+                    return_value=manifest,
+                ),
+            )
+            with patches[0], patches[1], patches[2], patches[3]:
+                self.assertEqual(
+                    phase13_pilot.validate_persistent_prefix_seed(seed)[
+                        "snapshot_count"
+                    ],
+                    1,
+                )
+                ledger.write_bytes(b"0" * 64 + b"  seed-catalog.json\n")
+                with self.assertRaisesRegex(
+                    phase13_pilot.Phase13PilotError, "ledger differs"
+                ):
+                    phase13_pilot.validate_persistent_prefix_seed(seed)
+                ledger.write_text(
+                    f"{catalog_sha}  seed-catalog.json\n", encoding="ascii"
+                )
+                complete.write_bytes(b"0" * 64 + b"\n")
+                with self.assertRaisesRegex(
+                    phase13_pilot.Phase13PilotError, "COMPLETE differs"
+                ):
+                    phase13_pilot.validate_persistent_prefix_seed(seed)
+                complete.write_text(
+                    phase13_pilot._prefix_seed_complete_digest(
+                        catalog_sha256=catalog_sha,
+                        ledger_sha256=phase13_pilot.sha256_file(ledger),
+                    )
+                    + "\n",
+                    encoding="ascii",
+                )
+                catalog.write_bytes(phase13_pilot.json_bytes({**payload, "x": 1}))
+                with self.assertRaisesRegex(
+                    phase13_pilot.Phase13PilotError, "manifest differs"
+                ):
+                    phase13_pilot.validate_persistent_prefix_seed(seed)
+
     def test_prefix_builder_validates_and_fsyncs_before_finalization(self) -> None:
         source = inspect.getsource(phase13_pilot._build_prefix_state_worker)
         validated = source.index("validated = validate_prefix_state(")

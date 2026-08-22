@@ -118,6 +118,7 @@ override PHASE13B_LOCAL_BUNDLE := $(CURDIR)/artifacts/phase13b/phase13b-20260801
 override PHASE13B_LOCAL_ROOT_SHA256 := f1c96eaacbbace1c23b249d1afe8d892aa26c3f6b8d04e07f373a2becafba1fe
 override PHASE13RQ4_LOCAL_BUNDLE := $(CURDIR)/artifacts/phase13rq4/phase13rq4-20260820t094629495794z-ab4e0b84-b8c7bd
 override PHASE13RQ4_LOCAL_ROOT_SHA256 := 9f027d64424844d0d62311daad5740e2b76960d1d5e7b8be26aa1ccba100a8db
+override PHASE13_PREFIX_SEED_ROOT := $(CURDIR)/artifacts/phase13_prefix_catalogs/phase13-prefix-seed-20260822t185619z-b27442c4-168
 PHASE13_CAMPAIGN_ARTIFACT ?=
 PHASE13_HOST_PYTHON := $(PHASE12_HOST_PYTHON)
 PHASE13F_ARTIFACT ?=
@@ -1470,7 +1471,7 @@ pilot: verify-measurement-container
 	@test -z "$$(git status --porcelain=v1 --untracked-files=all)" || { echo '{"status":"BLOCKED","reason":"clean_committed_phase13_tree_required"}' >&2; exit 2; }
 	@$(PHASE13_HOST_PYTHON) -m scripts.phase13_pilot --validate-phase13b-entry
 	@task_root="$$(mktemp -d /tmp/kvbench-phase13-pilot.XXXXXX)"; \
-		cid=""; reference_cid=""; analysis_cid=""; stage=""; campaign_id=""; final_root=""; head=""; preserve=1; \
+		cid=""; reference_cid=""; analysis_cid=""; stage=""; campaign_id=""; final_root=""; head=""; prefix_campaign_root=""; preserve=1; \
 		cleanup() { \
 			status=$$?; \
 			if [[ -n "$$cid" ]]; then docker rm -f "$$cid" >/dev/null 2>&1 || true; fi; \
@@ -1498,6 +1499,12 @@ pilot: verify-measurement-container
 		test "$$(docker image inspect "$$analysis_image" --format '{{.Id}}')" = "$$analysis_image"; \
 		campaign_id="$$($(PHASE13_HOST_PYTHON) -m scripts.phase13_pilot --new-campaign-id --git-sha "$$head")"; \
 		[[ "$$campaign_id" =~ ^phase13-[0-9]{8}t[0-9]{12}z-[0-9a-f]{8}-[0-9a-f]{6}$$ ]]; \
+		prefix_seed_root="$(PHASE13_PREFIX_SEED_ROOT)"; \
+		test -d "$$prefix_seed_root" && test ! -L "$$prefix_seed_root"; \
+		$(PHASE13_HOST_PYTHON) -m scripts.phase13_pilot --validate-prefix-seed --seed-root "$$prefix_seed_root"; \
+		prefix_campaign_root="$$repository_root/artifacts/phase13_prefix_catalogs/$$campaign_id"; \
+		test ! -e "$$prefix_campaign_root" && test ! -L "$$prefix_campaign_root"; \
+		$(PHASE13_HOST_PYTHON) -m scripts.phase13_pilot --materialize-prefix-seed --seed-root "$$prefix_seed_root" --destination "$$prefix_campaign_root" --git-sha "$$head"; \
 		stage="$$($(PHASE13_HOST_PYTHON) -m scripts.phase13_pilot --reserve-campaign --campaign-id "$$campaign_id" --git-sha "$$head")"; \
 		test -d "$$stage" && test ! -L "$$stage"; \
 		test "$$(realpath -e "$$stage")" = "$$stage"; \
@@ -1540,7 +1547,7 @@ pilot: verify-measurement-container
 		reference_image="$(KIVI_REFERENCE_IMAGE)@$(PHASE8_KIVI_REFERENCE_MANIFEST_DIGEST)"; \
 		test "$$(docker image inspect "$$reference_image" --format '{{.Id}}')" = "$(PHASE8_KIVI_REFERENCE_MANIFEST_DIGEST)"; \
 		test "$$(docker image inspect "$$reference_image" --format '{{index .Config.Labels "org.kvbench.reference.parent.config_digest"}}')" = "$$image_id"; \
-		mkdir "$$task_root/kivi-source" "$$task_root/kivi-extension" "$$task_root/prefix-states"; \
+		mkdir "$$task_root/kivi-source" "$$task_root/kivi-extension"; \
 		reference_cid="$$(docker create --network=none "$$reference_image")"; \
 		[[ "$$reference_cid" =~ ^[0-9a-f]{64}$$ ]]; \
 		docker cp "$$reference_cid:/opt/kivi-source/." "$$task_root/kivi-source"; \
@@ -1586,7 +1593,7 @@ pilot: verify-measurement-container
 			--mount "type=bind,src=$$task_root/kivi-extension/kivi_gemv.cpython-312-x86_64-linux-gnu.so,dst=/opt/kvbench/.phase3/site-packages/kivi_gemv.cpython-312-x86_64-linux-gnu.so,readonly" \
 			--mount "type=bind,src=$$task_root/kvquant-source,dst=/opt/kvquant-source,readonly" \
 			--mount "type=bind,src=$$task_root/kvquant-build,dst=/opt/kvquant-build" \
-			--mount "type=bind,src=$$task_root/prefix-states,dst=/opt/kvbench-prefix-states" \
+			--mount "type=bind,src=$$prefix_campaign_root,dst=/opt/kvbench-prefix-states" \
 			--mount "type=bind,src=$$calibration_root,dst=/opt/kvquant-calibration/kvqcal-cdb724c806d64d095c040d2673a987a3,readonly" \
 			--mount "type=bind,src=$$model_root,dst=/root/.cache/huggingface/hub/models--meta-llama--Llama-3.1-8B-Instruct,readonly" \
 			--env PYTHONDONTWRITEBYTECODE=1 --env PYTHONNOUSERSITE=1 --env PYTHONIOENCODING=utf-8 \

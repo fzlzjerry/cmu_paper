@@ -164,6 +164,7 @@ CAMPAIGN_SCHEMA = "kvbench-phase13-pilot-campaign-1.0.0"
 RUN_SCHEMA = "kvbench-phase13-pilot-process-run-1.0.0"
 WORKER_PREFIX = "PHASE13_WORKER_RESULT="
 PREFIX_BUILDER_PREFIX = "PHASE13_PREFIX_BUILDER_RESULT="
+PREFIX_CHUNK_VALIDATION_PREFIX = "PHASE13_PREFIX_CHUNK_VALIDATION_RESULT="
 PREFIX_EQUIVALENCE_CHILD_TIMEOUT_SECONDS = 14_400
 STAGE_EVENT_SCHEMA = "kvbench-phase13-stage-event-1.0.0"
 STAGE_OBSERVER_POLL_SECONDS = 5.0
@@ -191,6 +192,31 @@ PREFIX_BUILD_STAGE_SEQUENCE = (
 )
 PREFIX_EQUIVALENCE_CONTEXT = 17
 PREFIX_EQUIVALENCE_BATCHES = BATCH_SIZES
+KVQUANT_PREFIX_CHUNK_TOKENS = 128
+KVQUANT_PREFIX_CHUNK_FORMULA_VERSION = (
+    "kvbench-phase13-kvquant-prefix-chunk-v1"
+)
+PERSISTENT_PREFIX_SEED_ID = (
+    "phase13-prefix-seed-20260822t185619z-b27442c4-168"
+)
+PERSISTENT_PREFIX_SEED_ROOT = (
+    REPOSITORY_ROOT / "artifacts" / "phase13_prefix_catalogs" / PERSISTENT_PREFIX_SEED_ID
+)
+PERSISTENT_PREFIX_SEED_EXECUTION_GIT_SHA = (
+    "b27442c4919517087c51f45d955491da2151ebcb"
+)
+PERSISTENT_PREFIX_SEED_EXPECTED_COUNT = 168
+# Frozen after the one-time full-byte migration validation.  The seed is local
+# setup authority only; no historical timing sample is reusable.
+PERSISTENT_PREFIX_SEED_MANIFEST_SHA256 = (
+    "c432013892d571d32e8cc6ff0c2c3cefb7415285742bf3c5682ef8fa67020f3e"
+)
+PERSISTENT_PREFIX_Q4_B8_L16384_STATE_SHA256 = (
+    "175cbb47cdf81b96fa6ca8c8fbf3011413ba78e385bde7ea41cea01b83cec08d"
+)
+PERSISTENT_PREFIX_Q4_B8_L16384_LAYOUT_SHA256 = (
+    "445b2791d0c0f9fae00ff384266a4921fb236d08a1a9eafa38776b84c45b2a74"
+)
 _ALLOWED_EQUIVALENCE_POINTER_ALIAS_GROUPS = frozenset(
     {
         frozenset({"keys_data_ptr", "keys_storage_ptr"}),
@@ -860,6 +886,60 @@ def endpoint_workspace_bytes(batch: int) -> int:
     )
 
 
+def kvquant_prefix_chunk_workspace_spec(configuration: str) -> dict[str, Any]:
+    """Describe the fixed, setup-only KVQuant prefix-packing scratch.
+
+    The workspace is intentionally independent of batch and context.  One
+    batch row and at most one frozen 128-token source tile are processed at a
+    time.  Buffers are reused in current-stream order between Key and Value so
+    no complete-prefix FP32 representation is ever materialized.
+    """
+
+    bits_by_configuration = {"kvq4": 4, "kvq3": 3, "kvq2": 2}
+    if configuration not in bits_by_configuration:
+        raise Phase13PilotError("KVQuant prefix chunk configuration differs")
+    bits = bits_by_configuration[configuration]
+    levels = 1 << bits
+    rows = KVQUANT_PREFIX_CHUNK_TOKENS
+    width = PREFIX_KV_HEADS * PREFIX_HEAD_DIM
+    packed_rows = bits * PREFIX_HEAD_DIM // 32
+    components = {
+        # Reused first for Key and then Value.
+        "source_rows": rows * width * 4,
+        "parallel_values": PREFIX_KV_HEADS * PREFIX_HEAD_DIM * rows * 4,
+        # Key parallel pack writes threshold-rescaled values separately.
+        "key_rescaled_parallel": PREFIX_KV_HEADS * PREFIX_HEAD_DIM * rows * 4,
+        "key_rescaled_rows": rows * width * 4,
+        # Reused first for packed Key and then packed Value.
+        "packed_words": PREFIX_KV_HEADS * packed_rows * rows * 4,
+        "selected_values": rows * 12 * 4,
+        "selected_indices": rows * 12 * 4,
+        "active_counts": rows * 4,
+        "dense_lower_bounds": rows * 4,
+        "dense_upper_bounds": rows * 4,
+        "sink_mask": rows,
+        "value_metadata": rows * levels * 4,
+        "value_scales": rows * 4,
+        "value_offsets": rows * 4,
+        "value_zero_points": rows * 4,
+    }
+    return {
+        "formula_version": KVQUANT_PREFIX_CHUNK_FORMULA_VERSION,
+        "chunk_tokens": rows,
+        "native_kv_width": width,
+        "num_kv_heads": PREFIX_KV_HEADS,
+        "head_dim": PREFIX_HEAD_DIM,
+        "bits": bits,
+        "levels": levels,
+        "packed_rows": packed_rows,
+        "components": components,
+        "workspace_bytes": sum(components.values()),
+        "batch_scaled": False,
+        "context_scaled": False,
+        "full_context_fp32_copy": False,
+    }
+
+
 def _turboquant_cache_bytes(configuration: str, batch: int, capacity: int) -> int:
     slot_size = {"tq_4bit_nc": 134, "tq_k3v4_nc": 118, "tq_3bit_nc": 102}[
         configuration
@@ -1040,6 +1120,16 @@ def feasibility_record(order_record: Mapping[str, Any]) -> dict[str, Any]:
         batch=batch,
         historical_context=historical,
     )
+    kvquant_prefix_chunk = (
+        kvquant_prefix_chunk_workspace_spec(configuration)
+        if configuration in {"kvq4", "kvq3", "kvq2"}
+        else None
+    )
+    kvquant_prefix_chunk_bytes = (
+        int(kvquant_prefix_chunk["workspace_bytes"])
+        if kvquant_prefix_chunk is not None
+        else 0
+    )
     limit = math.floor(GPU_TOTAL_MEMORY_BYTES * MAX_MEMORY_FRACTION)
     required = (
         MODEL_WEIGHT_BYTES
@@ -1047,6 +1137,7 @@ def feasibility_record(order_record: Mapping[str, Any]) -> dict[str, Any]:
         + endpoint_workspace
         + int(prefix["prefix_control_tensor_bytes"])
         + int(prefix["prefix_compute_peak_bytes"])
+        + kvquant_prefix_chunk_bytes
         + graph_reserve
     )
     feasible = required <= limit
@@ -1058,6 +1149,8 @@ def feasibility_record(order_record: Mapping[str, Any]) -> dict[str, Any]:
         "cache_allocated_bytes": cache_bytes,
         "persistent_workspace_included_in_cache": True,
         "endpoint_workspace_bytes": endpoint_workspace,
+        "kvquant_prefix_chunk_workspace": kvquant_prefix_chunk,
+        "kvquant_prefix_chunk_workspace_bytes": kvquant_prefix_chunk_bytes,
         **prefix,
         "graph_pool_or_capture_reserve_bytes": graph_reserve,
         "graph_reserve_reference_bytes": reference_reserve,
@@ -1549,6 +1642,386 @@ def _build_restored_session(
     return session, restore_receipt
 
 
+class _KVQuantPrefixChunkWorkspace:
+    """One fixed caller-owned tile used only by untimed prefix construction."""
+
+    def __init__(self, *, configuration: str, device: Any) -> None:
+        import torch
+
+        specification = kvquant_prefix_chunk_workspace_spec(configuration)
+        rows = int(specification["chunk_tokens"])
+        heads = int(specification["num_kv_heads"])
+        dimension = int(specification["head_dim"])
+        width = int(specification["native_kv_width"])
+        packed_rows = int(specification["packed_rows"])
+        levels = int(specification["levels"])
+        self.specification = specification
+        self.source_rows = torch.empty(
+            (rows, width), dtype=torch.float32, device=device
+        )
+        self.parallel_values = torch.empty(
+            (heads, dimension, rows), dtype=torch.float32, device=device
+        )
+        self.key_rescaled_parallel = torch.empty_like(self.parallel_values)
+        self.key_rescaled_rows = torch.empty_like(self.source_rows)
+        self.packed_words = torch.empty(
+            (heads, packed_rows, rows), dtype=torch.int32, device=device
+        )
+        self.selected_values = torch.empty(
+            (rows, 12), dtype=torch.float32, device=device
+        )
+        self.selected_indices = torch.empty(
+            (rows, 12), dtype=torch.int32, device=device
+        )
+        self.active_counts = torch.empty(
+            (rows,), dtype=torch.int32, device=device
+        )
+        self.dense_lower_bounds = torch.empty(
+            (rows,), dtype=torch.float32, device=device
+        )
+        self.dense_upper_bounds = torch.empty_like(self.dense_lower_bounds)
+        self.sink_mask = torch.zeros((rows,), dtype=torch.bool, device=device)
+        self.value_metadata = torch.empty(
+            (rows, levels), dtype=torch.float32, device=device
+        )
+        self.value_scales = torch.empty(
+            (rows,), dtype=torch.float32, device=device
+        )
+        self.value_offsets = torch.empty_like(self.value_scales)
+        self.value_zero_points = torch.empty_like(self.value_scales)
+        tensors = (
+            self.source_rows,
+            self.parallel_values,
+            self.key_rescaled_parallel,
+            self.key_rescaled_rows,
+            self.packed_words,
+            self.selected_values,
+            self.selected_indices,
+            self.active_counts,
+            self.dense_lower_bounds,
+            self.dense_upper_bounds,
+            self.sink_mask,
+            self.value_metadata,
+            self.value_scales,
+            self.value_offsets,
+            self.value_zero_points,
+        )
+        actual = sum(int(t.numel() * t.element_size()) for t in tensors)
+        if actual != int(specification["workspace_bytes"]):
+            raise Phase13PilotError("KVQuant prefix chunk byte formula differs")
+        self.allocated_bytes = actual
+        self.pointers = tuple(int(t.data_ptr()) for t in tensors)
+        if len(set(self.pointers)) != len(self.pointers):
+            raise Phase13PilotError("KVQuant prefix chunk buffers alias")
+
+
+def _kvquant_chunked_store_prefill(
+    adapter: Any,
+    workspace: _KVQuantPrefixChunkWorkspace,
+    cache_state: Any,
+    key_states: Any,
+    value_states: Any,
+    layer_idx: int,
+    cache_position: Any,
+    *,
+    key_pre_rope_states: Any | None = None,
+) -> tuple[Any, Any]:
+    """Pack one KVQuant prefix with a fixed 128-token setup-only tile."""
+
+    from kvbench.adapters.kvquant import KVQUANT_ZERO_CODE
+    from kvbench.runtime.static_cache import CacheStateError
+
+    cache = adapter._require_cache(cache_state)
+    if cache.mode != "prefill":
+        raise CacheStateError("KVQuant prefill store requires prefill mode")
+    tokens = adapter._validate_update(
+        cache,
+        key_states,
+        value_states,
+        key_pre_rope_states,
+        layer_idx,
+        cache_position,
+    )
+    if tokens > cache.capacity:
+        raise CacheStateError("KVQuant prefill exceeds static capacity")
+    if key_pre_rope_states is None:
+        raise CacheStateError("KVQuant pre-RoPE Key disappeared")
+    sink = min(tokens, cache.sink_tokens)
+    if sink:
+        cache.sink_key[layer_idx, :, :, :, :sink].copy_(
+            key_states[:, :, :sink, :].transpose(2, 3)
+        )
+        cache.sink_value[layer_idx, :, :, :sink, :].copy_(
+            value_states[:, :, :sink, :]
+        )
+    quantized_tokens = tokens - sink
+    if quantized_tokens:
+        runtime = adapter._runtime()
+        chunk = KVQUANT_PREFIX_CHUNK_TOKENS
+        heads = cache.num_kv_heads
+        dimension = cache.head_dim
+        key_lookup = cache.key_lookup_table[layer_idx]
+        key_lower = cache.key_lower_threshold[layer_idx].reshape(-1)
+        key_upper = cache.key_upper_threshold[layer_idx].reshape(-1)
+        zero_code = KVQUANT_ZERO_CODE[adapter.config_name]
+        key_pack = getattr(
+            runtime, f"vecquant{adapter.bits}appendvecKsparseParallel"
+        )
+        value_pack = getattr(
+            runtime, f"vecquant{adapter.bits}appendvecVsparseParallel"
+        )
+        for batch_idx in range(cache.batch_size):
+            for offset in range(0, quantized_tokens, chunk):
+                valid = min(chunk, quantized_tokens - offset)
+                absolute = sink + offset
+                stop = absolute + valid
+
+                # Key: convert only one bounded tile, pack densely, then write
+                # the frozen threshold-based sparse residuals at exact slots.
+                workspace.source_rows.zero_()
+                workspace.parallel_values.zero_()
+                workspace.key_rescaled_parallel.zero_()
+                workspace.key_rescaled_rows.zero_()
+                workspace.packed_words.zero_()
+                key_source = key_pre_rope_states[
+                    batch_idx, :, absolute:stop, :
+                ]
+                workspace.source_rows[:valid].view(
+                    valid, heads, dimension
+                ).copy_(key_source.permute(1, 0, 2))
+                workspace.parallel_values[:, :, :valid].copy_(
+                    key_source.permute(0, 2, 1)
+                )
+                key_pack(
+                    workspace.packed_words,
+                    key_lookup,
+                    workspace.parallel_values,
+                    workspace.key_rescaled_parallel,
+                    key_lower,
+                    key_upper,
+                )
+                cache.packed_key_cache[
+                    layer_idx, batch_idx, :, :, offset : offset + valid
+                ].copy_(workspace.packed_words[:, :, :valid])
+                workspace.key_rescaled_rows[:valid].view(
+                    valid, heads, dimension
+                ).copy_(
+                    workspace.key_rescaled_parallel[:, :, :valid].permute(
+                        2, 0, 1
+                    )
+                )
+                runtime.select_fixed_outliers_1024_cap12_out(
+                    workspace.key_rescaled_rows[:valid],
+                    cache.key_selector_lower,
+                    cache.key_selector_upper,
+                    workspace.sink_mask[:valid],
+                    workspace.selected_values[:valid],
+                    workspace.selected_indices[:valid],
+                    workspace.active_counts[:valid],
+                    workspace.dense_lower_bounds[:valid],
+                    workspace.dense_upper_bounds[:valid],
+                    0,
+                )
+                runtime.key_sparse_residual_1024_cap12_out(
+                    workspace.source_rows[:valid],
+                    key_lookup,
+                    workspace.selected_values[:valid],
+                    workspace.selected_indices[:valid],
+                    workspace.active_counts[:valid],
+                    cache.key_sparse_values[layer_idx, batch_idx],
+                    cache.key_sparse_indices[layer_idx, batch_idx],
+                    cache.key_active_counts[layer_idx, batch_idx],
+                    offset,
+                    adapter.bits,
+                )
+
+                # Value: select fixed extrema and construct per-row metadata
+                # before reusing the same fixed source/packed tile.
+                workspace.source_rows.zero_()
+                workspace.parallel_values.zero_()
+                workspace.packed_words.zero_()
+                workspace.value_metadata.zero_()
+                workspace.dense_lower_bounds.zero_()
+                workspace.dense_upper_bounds.zero_()
+                value_source = value_states[
+                    batch_idx, :, absolute:stop, :
+                ]
+                workspace.source_rows[:valid].view(
+                    valid, heads, dimension
+                ).copy_(value_source.permute(1, 0, 2))
+                workspace.parallel_values[:, :, :valid].copy_(
+                    value_source.permute(0, 2, 1)
+                )
+                runtime.select_fixed_outliers_1024_cap12_out(
+                    workspace.source_rows[:valid],
+                    cache.dummy_thresholds,
+                    cache.dummy_thresholds,
+                    workspace.sink_mask[:valid],
+                    workspace.selected_values[:valid],
+                    workspace.selected_indices[:valid],
+                    workspace.active_counts[:valid],
+                    workspace.dense_lower_bounds[:valid],
+                    workspace.dense_upper_bounds[:valid],
+                    1,
+                )
+                cache.value_store_lower_bounds[
+                    batch_idx, offset : offset + valid
+                ].copy_(workspace.dense_lower_bounds[:valid])
+                cache.value_store_upper_bounds[
+                    batch_idx, offset : offset + valid
+                ].copy_(workspace.dense_upper_bounds[:valid])
+                workspace.value_scales[:valid].copy_(
+                    workspace.dense_upper_bounds[:valid]
+                ).sub_(workspace.dense_lower_bounds[:valid]).mul_(0.5)
+                workspace.value_offsets[:valid].copy_(
+                    workspace.dense_upper_bounds[:valid]
+                ).add_(workspace.dense_lower_bounds[:valid]).mul_(0.5)
+                workspace.value_metadata[:valid].copy_(
+                    cache.value_codebook[layer_idx]
+                    .reshape(1, -1)
+                    .expand(valid, -1)
+                ).mul_(workspace.value_scales[:valid].reshape(-1, 1)).add_(
+                    workspace.value_offsets[:valid].reshape(-1, 1)
+                )
+                workspace.value_zero_points[:valid].copy_(
+                    workspace.value_metadata[:valid, zero_code]
+                )
+                cache.value_lookup_cache[
+                    layer_idx, batch_idx, offset : offset + valid
+                ].copy_(workspace.value_metadata[:valid])
+                runtime.value_sparse_residual_1024_cap12_out(
+                    workspace.selected_values[:valid],
+                    workspace.selected_indices[:valid],
+                    workspace.active_counts[:valid],
+                    workspace.value_zero_points[:valid],
+                    cache.value_sparse_values[layer_idx, batch_idx],
+                    cache.value_sparse_indices[layer_idx, batch_idx],
+                    cache.value_active_counts[layer_idx, batch_idx],
+                    offset,
+                )
+                value_pack(
+                    workspace.packed_words,
+                    workspace.value_metadata,
+                    workspace.parallel_values,
+                    workspace.dense_lower_bounds,
+                    workspace.dense_upper_bounds,
+                )
+                cache.packed_value_cache[
+                    layer_idx, batch_idx, :, :, offset : offset + valid
+                ].copy_(workspace.packed_words[:, :, :valid])
+    handle = adapter._handle(cache, layer_idx)
+    handle.prefill = True
+    handle.prefill_key_states = key_states
+    handle.prefill_value_states = value_states
+    return handle, handle
+
+
+@contextmanager
+def _chunked_kvquant_prefix_store(endpoint: Any) -> Any:
+    """Temporarily replace only the untimed KVQuant prefix store."""
+
+    from kvbench.adapters.kvquant import KVQuantMethodAdapter
+
+    method = endpoint.method
+    if type(method) is not KVQuantMethodAdapter:
+        yield None
+        return
+    workspace = _KVQuantPrefixChunkWorkspace(
+        configuration=method.config_name,
+        device=endpoint.cache.device,
+    )
+    original = method.store_prefill
+
+    def patched(
+        self: Any,
+        cache_state: Any,
+        key_states: Any,
+        value_states: Any,
+        layer_idx: int,
+        cache_position: Any,
+        *,
+        key_pre_rope_states: Any | None = None,
+    ) -> tuple[Any, Any]:
+        return _kvquant_chunked_store_prefill(
+            self,
+            workspace,
+            cache_state,
+            key_states,
+            value_states,
+            layer_idx,
+            cache_position,
+            key_pre_rope_states=key_pre_rope_states,
+        )
+
+    method.store_prefill = types.MethodType(patched, method)
+    try:
+        yield workspace
+    finally:
+        method.store_prefill = original
+
+
+def _execute_chunked_kvquant_prefix_construction(
+    *,
+    endpoint: Any,
+    input_ids: Any,
+    original: Any,
+    configuration: str,
+    batch: int,
+    historical: int,
+    context_label: int,
+) -> tuple[Any, dict[str, Any]]:
+    """Execute and measure only the untimed bounded KVQuant prefix setup."""
+
+    import torch
+
+    device = endpoint.cache.device
+    torch.cuda.synchronize(device=device)
+    torch.cuda.reset_peak_memory_stats(device=device)
+    started = time.monotonic()
+    with _chunked_kvquant_prefix_store(endpoint) as chunk_workspace:
+        if chunk_workspace is None:
+            raise Phase13PilotError("chunked prefix construction requires KVQuant")
+        result = original(endpoint, input_ids)
+    torch.cuda.synchronize(device=device)
+    elapsed = time.monotonic() - started
+    feasibility = feasibility_record(
+        {
+            "method_config_id": configuration,
+            "batch_size": batch,
+            "historical_context": historical,
+            "context_label": context_label,
+        }
+    )
+    peak_allocated = int(torch.cuda.max_memory_allocated(device=device))
+    peak_reserved = int(torch.cuda.max_memory_reserved(device=device))
+    limit = int(feasibility["limit_bytes"])
+    if (
+        feasibility["status"] != "feasible"
+        or peak_allocated > limit
+        or peak_reserved > limit
+    ):
+        raise Phase13PilotError(
+            "prefix construction exceeded the frozen 0.88 memory limit"
+        )
+    metrics = {
+        "formula_version": KVQUANT_PREFIX_CHUNK_FORMULA_VERSION,
+        "mode": "fixed_bounded_kvquant_chunks",
+        "chunk_tokens": KVQUANT_PREFIX_CHUNK_TOKENS,
+        "chunk_workspace_bytes": int(chunk_workspace.allocated_bytes),
+        "chunk_workspace_pointers_stable": (
+            len(set(chunk_workspace.pointers)) == len(chunk_workspace.pointers)
+        ),
+        "full_context_fp32_copy": False,
+        "elapsed_seconds": elapsed,
+        "peak_allocated_bytes": peak_allocated,
+        "peak_reserved_bytes": peak_reserved,
+        "predicted_required_bytes": int(feasibility["predicted_required_bytes"]),
+        "memory_limit_bytes": limit,
+        "within_frozen_memory_limit": True,
+    }
+    return result, metrics
+
+
 def _build_prefix_state_worker(
     *,
     snapshot_id: str,
@@ -1601,9 +2074,19 @@ def _build_prefix_state_worker(
     )
     operation = Phase13OperationKey.create(configuration, source_batch, historical)
     recorder.record("prefix_construction", "started")
+    construction_metrics: dict[str, Any] | None = None
 
     def capture_callback(endpoint: Any, input_ids: Any, original: Any) -> None:
-        original(endpoint, input_ids)
+        nonlocal construction_metrics
+        _, construction_metrics = _execute_chunked_kvquant_prefix_construction(
+            endpoint=endpoint,
+            input_ids=input_ids,
+            original=original,
+            configuration=configuration,
+            batch=source_batch,
+            historical=historical,
+            context_label=context_label,
+        )
         recorder.record("prefix_construction", "completed")
         recorder.record("finalization", "started")
         manifest = save_prefix_state(
@@ -1622,6 +2105,7 @@ def _build_prefix_state_worker(
                 "input_recipe_schema": INPUT_RECIPE_SCHEMA,
                 "input_recipe_sha256": phase12.PHASE12_INPUT_RECIPE_SHA256,
                 "snapshot_id": snapshot_id,
+                "prefix_construction": construction_metrics,
             },
         )
         raise _PrefixStateCaptured(manifest)
@@ -1641,6 +2125,8 @@ def _build_prefix_state_worker(
             captured = signal.manifest
     if captured is None:
         raise Phase13PilotError("direct prefix snapshot was not captured")
+    if construction_metrics is None:
+        raise Phase13PilotError("prefix construction metrics are absent")
     validated = validate_prefix_state(
         output,
         configuration=configuration,
@@ -1658,7 +2144,7 @@ def _build_prefix_state_worker(
     _fsync_prefix_builder_snapshot(output)
     recorder.record("finalization", "completed")
     return {
-        "schema_version": "kvbench-phase13-prefix-builder-result-1.0.0",
+        "schema_version": "kvbench-phase13-prefix-builder-result-2.0.0",
         "snapshot_id": snapshot_id,
         "configuration": configuration,
         "context_label": context_label,
@@ -1666,6 +2152,7 @@ def _build_prefix_state_worker(
         "source_batch": source_batch,
         "state_file_sha256": captured["state_file_sha256"],
         "state_file_bytes": captured["state_file_bytes"],
+        "prefix_construction": construction_metrics,
         "container_runtime_attestation": attestation,
     }
 
@@ -1711,6 +2198,314 @@ def _emit_prefix_builder_result_and_exit(payload: Mapping[str, Any]) -> NoReturn
     sys.stdout.flush()
     sys.stderr.flush()
     os._exit(0)
+
+
+def _emit_prefix_chunk_validation_result_and_exit(
+    payload: Mapping[str, Any]
+) -> NoReturn:
+    line = PREFIX_CHUNK_VALIDATION_PREFIX + json.dumps(
+        dict(payload), sort_keys=True, separators=(",", ":")
+    )
+    sys.stdout.write(line + "\n")
+    sys.stdout.flush()
+    sys.stderr.flush()
+    os._exit(0)
+
+
+def _prefix_seed_expected_plan() -> dict[str, dict[str, Any]]:
+    feasibility = build_feasibility_records(derive_execution_order())
+    return {
+        str(entry["snapshot_id"]): entry
+        for entry in derive_prefix_catalog_plan(feasibility)
+    }
+
+
+def _prefix_seed_complete_digest(
+    *, catalog_sha256: str, ledger_sha256: str
+) -> str:
+    return _canonical_sha256(
+        {
+            "schema_version": "kvbench-phase13-prefix-seed-complete-1.0.0",
+            "seed_id": PERSISTENT_PREFIX_SEED_ID,
+            "catalog_sha256": catalog_sha256,
+            "checksum_ledger_sha256": ledger_sha256,
+        }
+    )
+
+
+def freeze_persistent_prefix_seed(seed_root: Path) -> dict[str, Any]:
+    """Full-byte validate and freeze the one-time 168-state local seed."""
+
+    resolved = seed_root.resolve(strict=True)
+    if resolved != PERSISTENT_PREFIX_SEED_ROOT.resolve(strict=True):
+        raise Phase13PilotError("persistent prefix seed path differs")
+    if resolved.is_symlink() or not (resolved / "states").is_dir():
+        raise Phase13PilotError("persistent prefix seed state root differs")
+    forbidden = {"seed-catalog.json", "checksums.sha256", "COMPLETE"}
+    if any((resolved / name).exists() for name in forbidden):
+        raise Phase13PilotError("persistent prefix seed is already frozen")
+    expected = _prefix_seed_expected_plan()
+    state_roots = sorted(
+        item for item in (resolved / "states").iterdir() if item.is_dir()
+    )
+    if len(state_roots) != PERSISTENT_PREFIX_SEED_EXPECTED_COUNT:
+        raise Phase13PilotError("persistent prefix seed cardinality differs")
+    entries: list[dict[str, Any]] = []
+    total_bytes = 0
+    for state_root in state_roots:
+        plan = expected.get(state_root.name)
+        if plan is None:
+            raise Phase13PilotError("persistent prefix seed identity differs")
+        manifest = validate_prefix_state(
+            state_root,
+            configuration=str(plan["method_config_id"]),
+            family=str(plan["method_family"]),
+            batch=int(plan["source_batch"]),
+            historical=int(plan["historical_context"]),
+            method_config_fingerprint=str(plan["method_config_fingerprint"]),
+            verify_state_bytes=True,
+        )
+        state_bytes = int(manifest["state_file_bytes"])
+        total_bytes += state_bytes
+        entries.append(
+            {
+                **plan,
+                "state_file_sha256": manifest["state_file_sha256"],
+                "state_file_bytes": state_bytes,
+                "source_layout_fingerprint": manifest[
+                    "source_layout_fingerprint"
+                ],
+                "source_execution_git_sha": manifest.get("authority", {}).get(
+                    "execution_git_sha"
+                ),
+                "state_bytes_verified": True,
+            }
+        )
+    q4 = next(
+        item
+        for item in entries
+        if item["snapshot_id"] == "prefix-kvq4-b8-l16384"
+    )
+    if (
+        q4["state_file_sha256"]
+        != PERSISTENT_PREFIX_Q4_B8_L16384_STATE_SHA256
+        or q4["source_layout_fingerprint"]
+        != PERSISTENT_PREFIX_Q4_B8_L16384_LAYOUT_SHA256
+    ):
+        raise Phase13PilotError("q4 B=8/L=16384 seed oracle differs")
+    payload = {
+        "schema_version": "kvbench-phase13-prefix-seed-1.0.0",
+        "seed_id": PERSISTENT_PREFIX_SEED_ID,
+        "source_campaign_id": "phase13-20260821t151036274823z-b27442c4-8a39d6",
+        "source_campaign_status": "stopped_non_claim_bearing",
+        "source_execution_git_sha": PERSISTENT_PREFIX_SEED_EXECUTION_GIT_SHA,
+        "authorized_container_digest": AUTHORIZED_CONTAINER_DIGEST,
+        "snapshot_count": len(entries),
+        "state_file_bytes": total_bytes,
+        "full_state_bytes_verified": True,
+        "verified_at": _utc_now(),
+        "timing_samples_reusable": False,
+        "prefix_states_reusable": True,
+        "reuse_policy": "exact_configuration_batch_context_only",
+        "recompute_allowed": False,
+        "entries": entries,
+    }
+    catalog_path = resolved / "seed-catalog.json"
+    write_exclusive(catalog_path, json_bytes(payload))
+    catalog_sha = sha256_file(catalog_path)
+    ledger = f"{catalog_sha}  seed-catalog.json\n".encode("ascii")
+    write_exclusive(resolved / "checksums.sha256", ledger)
+    ledger_sha = sha256_file(resolved / "checksums.sha256")
+    complete = _prefix_seed_complete_digest(
+        catalog_sha256=catalog_sha,
+        ledger_sha256=ledger_sha,
+    )
+    write_exclusive(resolved / "COMPLETE", (complete + "\n").encode("ascii"))
+    _fsync_prefix_builder_snapshot_set(
+        resolved,
+        expected=("seed-catalog.json", "checksums.sha256", "COMPLETE", "states"),
+    )
+    for name in ("seed-catalog.json", "checksums.sha256", "COMPLETE"):
+        (resolved / name).chmod(0o444)
+    resolved.chmod(0o555)
+    return {
+        "seed_id": PERSISTENT_PREFIX_SEED_ID,
+        "manifest_sha256": catalog_sha,
+        "snapshot_count": len(entries),
+        "state_file_bytes": total_bytes,
+        "complete_sha256": complete,
+    }
+
+
+def _fsync_prefix_builder_snapshot_set(
+    root: Path, *, expected: Sequence[str]
+) -> None:
+    """Fsync a fixed set containing regular files and optional directories."""
+
+    if {item.name for item in root.iterdir()} != set(expected):
+        raise Phase13PilotError("prefix control file set differs")
+    for name in expected:
+        path = root / name
+        if path.is_dir():
+            continue
+        descriptor = os.open(path, os.O_RDONLY | os.O_CLOEXEC)
+        try:
+            os.fsync(descriptor)
+        finally:
+            os.close(descriptor)
+    descriptor = os.open(root, os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC)
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+
+
+def validate_persistent_prefix_seed(
+    seed_root: Path, *, verify_state_bytes: bool = False
+) -> dict[str, Any]:
+    """Fail closed on seed identity, control, manifest, or state drift."""
+
+    resolved = seed_root.resolve(strict=True)
+    if resolved.is_symlink() or {item.name for item in resolved.iterdir()} != {
+        "states",
+        "seed-catalog.json",
+        "checksums.sha256",
+        "COMPLETE",
+    }:
+        raise Phase13PilotError("persistent prefix seed file set differs")
+    catalog_path = resolved / "seed-catalog.json"
+    catalog_sha = sha256_file(catalog_path)
+    if (
+        not PERSISTENT_PREFIX_SEED_MANIFEST_SHA256
+        or catalog_sha != PERSISTENT_PREFIX_SEED_MANIFEST_SHA256
+    ):
+        raise Phase13PilotError("persistent prefix seed manifest differs")
+    expected_ledger = f"{catalog_sha}  seed-catalog.json\n".encode("ascii")
+    if (resolved / "checksums.sha256").read_bytes() != expected_ledger:
+        raise Phase13PilotError("persistent prefix seed checksum ledger differs")
+    ledger_sha = sha256_file(resolved / "checksums.sha256")
+    expected_complete = _prefix_seed_complete_digest(
+        catalog_sha256=catalog_sha,
+        ledger_sha256=ledger_sha,
+    )
+    if (resolved / "COMPLETE").read_text(encoding="ascii") != expected_complete + "\n":
+        raise Phase13PilotError("persistent prefix seed COMPLETE differs")
+    payload = _strict_json(catalog_path)
+    entries = payload.get("entries")
+    if (
+        payload.get("schema_version") != "kvbench-phase13-prefix-seed-1.0.0"
+        or payload.get("seed_id") != PERSISTENT_PREFIX_SEED_ID
+        or payload.get("source_execution_git_sha")
+        != PERSISTENT_PREFIX_SEED_EXECUTION_GIT_SHA
+        or payload.get("authorized_container_digest")
+        != AUTHORIZED_CONTAINER_DIGEST
+        or payload.get("snapshot_count")
+        != PERSISTENT_PREFIX_SEED_EXPECTED_COUNT
+        or payload.get("full_state_bytes_verified") is not True
+        or payload.get("timing_samples_reusable") is not False
+        or payload.get("prefix_states_reusable") is not True
+        or payload.get("recompute_allowed") is not False
+        or not isinstance(entries, list)
+        or len(entries) != PERSISTENT_PREFIX_SEED_EXPECTED_COUNT
+    ):
+        raise Phase13PilotError("persistent prefix seed authority differs")
+    expected = _prefix_seed_expected_plan()
+    seen: set[str] = set()
+    total_bytes = 0
+    for entry in entries:
+        if not isinstance(entry, dict):
+            raise Phase13PilotError("persistent prefix seed entry differs")
+        snapshot_id = str(entry.get("snapshot_id"))
+        plan = expected.get(snapshot_id)
+        if (
+            plan is None
+            or snapshot_id in seen
+            or any(entry.get(name) != value for name, value in plan.items())
+            or entry.get("state_bytes_verified") is not True
+        ):
+            raise Phase13PilotError("persistent prefix seed plan differs")
+        state_root = resolved / "states" / snapshot_id
+        manifest = validate_prefix_state(
+            state_root,
+            configuration=str(plan["method_config_id"]),
+            family=str(plan["method_family"]),
+            batch=int(plan["source_batch"]),
+            historical=int(plan["historical_context"]),
+            method_config_fingerprint=str(plan["method_config_fingerprint"]),
+            verify_state_bytes=verify_state_bytes,
+        )
+        if (
+            manifest.get("state_file_sha256") != entry.get("state_file_sha256")
+            or manifest.get("state_file_bytes") != entry.get("state_file_bytes")
+            or manifest.get("source_layout_fingerprint")
+            != entry.get("source_layout_fingerprint")
+            or (state_root / "state.safetensors").stat().st_size
+            != entry.get("state_file_bytes")
+        ):
+            raise Phase13PilotError("persistent prefix seed state differs")
+        total_bytes += int(entry["state_file_bytes"])
+        seen.add(snapshot_id)
+    if total_bytes != payload.get("state_file_bytes"):
+        raise Phase13PilotError("persistent prefix seed byte total differs")
+    return payload
+
+
+def materialize_persistent_prefix_seed(
+    *, seed_root: Path, destination: Path, git_sha: str
+) -> dict[str, Any]:
+    """Hardlink the frozen seed into one fresh persistent campaign catalog."""
+
+    if destination.exists() or destination.is_symlink():
+        raise Phase13PilotError("campaign prefix root already exists")
+    seed = validate_persistent_prefix_seed(seed_root, verify_state_bytes=False)
+    destination.mkdir(parents=False)
+    (destination / "equivalence").mkdir()
+    (destination / "remediation").mkdir()
+    catalog_root = destination / "catalog"
+    catalog_root.mkdir()
+    (catalog_root / "builds").mkdir()
+    states_root = catalog_root / "states"
+    states_root.mkdir()
+    handoff_entries: list[dict[str, Any]] = []
+    for entry in seed["entries"]:
+        snapshot_id = str(entry["snapshot_id"])
+        source = seed_root / "states" / snapshot_id
+        target = states_root / snapshot_id
+        target.mkdir()
+        for name in ("state.safetensors", "manifest.json", "COMPLETE"):
+            os.link(source / name, target / name, follow_symlinks=False)
+        for path in target.iterdir():
+            path.chmod(0o444)
+        target.chmod(0o555)
+        handoff_entries.append(
+            {
+                "snapshot_id": snapshot_id,
+                "state_file_sha256": entry["state_file_sha256"],
+                "state_file_bytes": entry["state_file_bytes"],
+                "source_layout_fingerprint": entry[
+                    "source_layout_fingerprint"
+                ],
+            }
+        )
+    handoff = {
+        "schema_version": "kvbench-phase13-prefix-seed-handoff-1.0.0",
+        "campaign_execution_git_sha": git_sha,
+        "seed_id": PERSISTENT_PREFIX_SEED_ID,
+        "seed_manifest_sha256": PERSISTENT_PREFIX_SEED_MANIFEST_SHA256,
+        "seed_execution_git_sha": PERSISTENT_PREFIX_SEED_EXECUTION_GIT_SHA,
+        "reused_snapshot_count": len(handoff_entries),
+        "timing_samples_reused": False,
+        "states_hardlinked_read_only": True,
+        "entries": handoff_entries,
+    }
+    write_exclusive(destination / "seed-handoff.json", json_bytes(handoff))
+    return {
+        "prefix_root": str(destination),
+        "seed_manifest_sha256": PERSISTENT_PREFIX_SEED_MANIFEST_SHA256,
+        "reused_snapshot_count": len(handoff_entries),
+        "missing_snapshot_count": 228 - len(handoff_entries),
+        "timing_samples_reused": False,
+    }
 
 
 def _run_prefix_builder_process(
@@ -1794,6 +2589,21 @@ def _run_prefix_builder_process(
     payload = json.loads(matches[0])
     if not isinstance(payload, dict) or payload.get("snapshot_id") != snapshot_id:
         raise Phase13PilotError("prefix builder result identity differs")
+    construction = payload.get("prefix_construction")
+    expected_chunk = kvquant_prefix_chunk_workspace_spec(
+        str(entry["method_config_id"])
+    )
+    if (
+        not isinstance(construction, dict)
+        or construction.get("mode") != "fixed_bounded_kvquant_chunks"
+        or construction.get("chunk_tokens") != KVQUANT_PREFIX_CHUNK_TOKENS
+        or construction.get("chunk_workspace_bytes")
+        != expected_chunk["workspace_bytes"]
+        or construction.get("full_context_fp32_copy") is not False
+        or construction.get("within_frozen_memory_limit") is not True
+        or float(construction.get("elapsed_seconds", 0.0)) <= 0.0
+    ):
+        raise Phase13PilotError("prefix builder chunk evidence differs")
     manifest = validate_prefix_state(
         child_output,
         configuration=str(entry["method_config_id"]),
@@ -1824,6 +2634,9 @@ def _run_prefix_builder_process(
         "builder_supervision_sha256": sha256_file(
             build_root / "builder.supervision.json"
         ),
+        "construction_provenance": "fresh_chunked_builder",
+        "prefix_construction": construction,
+        "reused_without_recomputation": False,
         "state_bytes_verified_once_before_timing": True,
     }
 
@@ -1836,19 +2649,90 @@ def prepare_prefix_catalog(
 ) -> dict[str, Any]:
     """Build and validate every reusable state before any formal timing run."""
 
-    if not prefix_root.is_dir() or prefix_root.is_symlink() or any(prefix_root.iterdir()):
-        raise Phase13PilotError("prefix catalog root must be new and empty")
-    (prefix_root / "builds").mkdir()
-    (prefix_root / "states").mkdir()
+    if (
+        not prefix_root.is_dir()
+        or prefix_root.is_symlink()
+        or {item.name for item in prefix_root.iterdir()} != {"builds", "states"}
+        or any((prefix_root / "builds").iterdir())
+    ):
+        raise Phase13PilotError("prefix catalog staging layout differs")
+    handoff_path = prefix_root.parent / "seed-handoff.json"
+    handoff = _strict_json(handoff_path)
+    handoff_entries = handoff.get("entries")
+    if (
+        handoff.get("schema_version")
+        != "kvbench-phase13-prefix-seed-handoff-1.0.0"
+        or handoff.get("campaign_execution_git_sha") != git_sha
+        or handoff.get("seed_manifest_sha256")
+        != PERSISTENT_PREFIX_SEED_MANIFEST_SHA256
+        or handoff.get("reused_snapshot_count")
+        != PERSISTENT_PREFIX_SEED_EXPECTED_COUNT
+        or handoff.get("timing_samples_reused") is not False
+        or handoff.get("states_hardlinked_read_only") is not True
+        or not isinstance(handoff_entries, list)
+        or len(handoff_entries) != PERSISTENT_PREFIX_SEED_EXPECTED_COUNT
+    ):
+        raise Phase13PilotError("persistent prefix seed handoff differs")
+    reused_by_id = {
+        str(entry["snapshot_id"]): entry for entry in handoff_entries
+    }
+    if len(reused_by_id) != PERSISTENT_PREFIX_SEED_EXPECTED_COUNT:
+        raise Phase13PilotError("persistent prefix seed handoff is duplicated")
     plan = derive_prefix_catalog_plan(feasibility)
-    completed = [
-        _run_prefix_builder_process(
-            prefix_root=prefix_root,
-            entry=entry,
-            git_sha=git_sha,
+    completed: list[dict[str, Any]] = []
+    for entry in plan:
+        snapshot_id = str(entry["snapshot_id"])
+        reused = reused_by_id.get(snapshot_id)
+        snapshot_root = prefix_root / "states" / snapshot_id
+        if reused is None:
+            if snapshot_root.exists() or snapshot_root.is_symlink():
+                raise Phase13PilotError("unbound preexisting prefix state")
+            completed.append(
+                _run_prefix_builder_process(
+                    prefix_root=prefix_root,
+                    entry=entry,
+                    git_sha=git_sha,
+                )
+            )
+            continue
+        manifest = validate_prefix_state(
+            snapshot_root,
+            configuration=str(entry["method_config_id"]),
+            family=str(entry["method_family"]),
+            batch=int(entry["source_batch"]),
+            historical=int(entry["historical_context"]),
+            method_config_fingerprint=str(entry["method_config_fingerprint"]),
+            verify_state_bytes=False,
         )
-        for entry in plan
-    ]
+        if (
+            manifest.get("state_file_sha256") != reused.get("state_file_sha256")
+            or manifest.get("state_file_bytes") != reused.get("state_file_bytes")
+            or manifest.get("source_layout_fingerprint")
+            != reused.get("source_layout_fingerprint")
+            or (snapshot_root / "state.safetensors").stat().st_size
+            != reused.get("state_file_bytes")
+        ):
+            raise Phase13PilotError("reused persistent prefix state differs")
+        completed.append(
+            {
+                **entry,
+                "snapshot_relative_path": f"states/{snapshot_id}",
+                "state_file_sha256": manifest["state_file_sha256"],
+                "state_file_bytes": manifest["state_file_bytes"],
+                "source_layout_fingerprint": manifest[
+                    "source_layout_fingerprint"
+                ],
+                "construction_provenance": "persistent_seed_reuse",
+                "persistent_seed_manifest_sha256": (
+                    PERSISTENT_PREFIX_SEED_MANIFEST_SHA256
+                ),
+                "source_execution_git_sha": (
+                    PERSISTENT_PREFIX_SEED_EXECUTION_GIT_SHA
+                ),
+                "reused_without_recomputation": True,
+                "state_bytes_verified_once_before_timing": True,
+            }
+        )
     payload = {
         "schema_version": "kvbench-phase13-prefix-catalog-1.0.0",
         "execution_git_sha": git_sha,
@@ -1857,6 +2741,14 @@ def prepare_prefix_catalog(
         "unique_feasible_points": len(completed),
         "formal_process_replicates": REPLICATES,
         "direct_constructions_per_snapshot": 1,
+        "persistent_seed_manifest_sha256": (
+            PERSISTENT_PREFIX_SEED_MANIFEST_SHA256
+        ),
+        "persistent_seed_reused": PERSISTENT_PREFIX_SEED_EXPECTED_COUNT,
+        "fresh_chunked_constructions": (
+            len(completed) - PERSISTENT_PREFIX_SEED_EXPECTED_COUNT
+        ),
+        "old_timing_samples_reused": False,
         "runtime_prefix_cache_sharing": False,
         "fresh_caller_owned_cache_per_timing_process": True,
         "restoration_outside_timing": True,
@@ -1893,6 +2785,41 @@ def _prefix_catalog_index(
     return index
 
 
+def prefix_build_duration_estimate(
+    *,
+    reference_elapsed_seconds: float,
+    feasibility: Sequence[Mapping[str, Any]],
+    reused_snapshot_ids: Sequence[str],
+) -> dict[str, Any]:
+    """Scale the observed q4 B8/L16384 setup work over missing prefixes."""
+
+    if reference_elapsed_seconds <= 0.0:
+        raise Phase13PilotError("prefix build reference duration differs")
+    plan = derive_prefix_catalog_plan(feasibility)
+    reused = set(reused_snapshot_ids)
+    missing = [entry for entry in plan if entry["snapshot_id"] not in reused]
+    if len(reused) != PERSISTENT_PREFIX_SEED_EXPECTED_COUNT or len(missing) != 60:
+        raise Phase13PilotError("prefix build estimate seed coverage differs")
+    reference_units = 8 * 16384
+    missing_units = sum(
+        int(entry["batch_size"]) * int(entry["historical_context"])
+        for entry in missing
+    )
+    estimate = reference_elapsed_seconds * missing_units / reference_units
+    return {
+        "schema_version": "kvbench-phase13-prefix-duration-estimate-1.0.0",
+        "reference_case": "kvq4/B8/L16384",
+        "reference_actual_build_seconds": reference_elapsed_seconds,
+        "reference_work_units": reference_units,
+        "missing_snapshot_count": len(missing),
+        "missing_work_units": missing_units,
+        "estimated_remaining_prefix_construction_seconds": estimate,
+        "estimate_basis": "batch_x_historical_context",
+        "arbitrary_time_pass_threshold": None,
+        "claim_eligible": False,
+    }
+
+
 def _direct_session_with_snapshot(
     *,
     loaded: Any,
@@ -1901,6 +2828,8 @@ def _direct_session_with_snapshot(
     historical: int,
     snapshot_root: Path,
     abort_after_snapshot: bool,
+    chunked_kvquant_prefix: bool = False,
+    construction_metrics_output: dict[str, Any] | None = None,
 ) -> Any | None:
     import torch
 
@@ -1917,7 +2846,20 @@ def _direct_session_with_snapshot(
 
     def callback(endpoint: Any, input_ids: Any, original: Any) -> Any:
         nonlocal captured
-        result = original(endpoint, input_ids)
+        if chunked_kvquant_prefix:
+            result, metrics = _execute_chunked_kvquant_prefix_construction(
+                endpoint=endpoint,
+                input_ids=input_ids,
+                original=original,
+                configuration=configuration,
+                batch=batch,
+                historical=historical,
+                context_label=historical,
+            )
+            if construction_metrics_output is not None:
+                construction_metrics_output.update(metrics)
+        else:
+            result = original(endpoint, input_ids)
         captured = save_prefix_state(
             cache=endpoint.cache,
             family=phase12._method_family(configuration),
@@ -1931,6 +2873,12 @@ def _direct_session_with_snapshot(
                 "method_config_fingerprint": CONFIG_FINGERPRINTS[configuration],
                 "operation_fingerprint_sha256": operation.operation_fingerprint_sha256,
                 "input_recipe_sha256": phase12.PHASE12_INPUT_RECIPE_SHA256,
+                "prefix_construction": (
+                    dict(construction_metrics_output)
+                    if chunked_kvquant_prefix
+                    and construction_metrics_output is not None
+                    else None
+                ),
             },
         )
         if abort_after_snapshot:
@@ -2580,6 +3528,258 @@ def run_prefix_equivalence_isolated(
         "timing_collected": False,
     }
     write_exclusive(handoff_output, json_bytes(handoff))
+    return payload
+
+
+def run_kvquant_prefix_chunk_validation(
+    *,
+    output: Path,
+    scratch_root: Path,
+    old_snapshot_root: Path,
+    git_sha: str,
+) -> dict[str, Any]:
+    """Prove the bounded q4 builder exact against the preserved long state."""
+
+    phase12._require_authorized_container_runtime()
+    if output.exists() or output.is_symlink():
+        raise Phase13PilotError("prefix chunk validation output already exists")
+    if (
+        not scratch_root.is_dir()
+        or scratch_root.is_symlink()
+        or any(scratch_root.iterdir())
+    ):
+        raise Phase13PilotError("prefix chunk validation scratch differs")
+    observed_head = subprocess.run(
+        ("/usr/bin/git", "rev-parse", "HEAD"),
+        cwd=REPOSITORY_ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    observed_status = subprocess.run(
+        ("/usr/bin/git", "status", "--porcelain=v1", "--untracked-files=all"),
+        cwd=REPOSITORY_ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout
+    if observed_head != git_sha or observed_status:
+        raise Phase13PilotError("prefix chunk validation source differs")
+    import torch
+
+    from kvbench.runtime.backend import forced_flash_execution
+    from kvbench.runtime.model_loader import load_frozen_model
+
+    configuration = "kvq4"
+    batch = 8
+    historical = 16384
+    family = phase12._method_family(configuration)
+    old_manifest = validate_prefix_state(
+        old_snapshot_root,
+        configuration=configuration,
+        family=family,
+        batch=batch,
+        historical=historical,
+        method_config_fingerprint=CONFIG_FINGERPRINTS[configuration],
+        verify_state_bytes=False,
+    )
+    if (
+        old_manifest.get("state_file_sha256")
+        != PERSISTENT_PREFIX_Q4_B8_L16384_STATE_SHA256
+        or old_manifest.get("source_layout_fingerprint")
+        != PERSISTENT_PREFIX_Q4_B8_L16384_LAYOUT_SHA256
+    ):
+        raise Phase13PilotError("preserved q4 long snapshot differs")
+    loaded = load_frozen_model(device=torch.device("cuda:0"))
+    new_state_root = scratch_root / "new-state"
+    direct_evidence_root = scratch_root / "chunked-direct-evidence"
+    restored_evidence_root = scratch_root / "preserved-restored-evidence"
+    direct_evidence_root.mkdir()
+    restored_evidence_root.mkdir()
+    construction_metrics: dict[str, Any] = {}
+    with torch.inference_mode(), forced_flash_execution():
+        with phase12._observable_cuda_graph_factory(torch) as direct_graphs:
+            direct_session = _direct_session_with_snapshot(
+                loaded=loaded,
+                configuration=configuration,
+                batch=batch,
+                historical=historical,
+                snapshot_root=new_state_root,
+                abort_after_snapshot=False,
+                chunked_kvquant_prefix=True,
+                construction_metrics_output=construction_metrics,
+            )
+    if (
+        direct_session is None
+        or len(direct_graphs) != 1
+        or direct_session.graph is None
+        or direct_session.graph.graph is not direct_graphs[0]
+    ):
+        raise Phase13PilotError("chunked q4 direct Graph differs")
+    new_manifest = validate_prefix_state(
+        new_state_root,
+        configuration=configuration,
+        family=family,
+        batch=batch,
+        historical=historical,
+        method_config_fingerprint=CONFIG_FINGERPRINTS[configuration],
+        verify_state_bytes=True,
+    )
+    _patch_phase12_point_globals(batch=batch, historical=historical)
+    prefix, decode = _point_inputs(
+        batch=batch,
+        historical=historical,
+        device=torch.device("cuda:0"),
+    )
+    operation = Phase13OperationKey.create(configuration, batch, historical)
+    with torch.inference_mode(), forced_flash_execution():
+        with phase12._observable_cuda_graph_factory(torch) as restored_graphs:
+            restored_session, restore_receipt = _build_restored_session(
+                loaded=loaded,
+                operation=operation,
+                prefix=prefix,
+                decode=decode,
+                snapshot_root=old_snapshot_root,
+                expected_state_sha256=str(old_manifest["state_file_sha256"]),
+            )
+    if (
+        len(restored_graphs) != 1
+        or restored_session.graph is None
+        or restored_session.graph.graph is not restored_graphs[0]
+    ):
+        raise Phase13PilotError("preserved q4 restored Graph differs")
+    direct = _equivalence_session_record(
+        direct_session,
+        configuration=configuration,
+        evidence_root=direct_evidence_root,
+    )
+    restored = _equivalence_session_record(
+        restored_session,
+        configuration=configuration,
+        evidence_root=restored_evidence_root,
+    )
+    exact_fields = (
+        "cache_layout_fingerprint",
+        "cache_accounting",
+        "cache_byte_breakdown",
+        "pointer_labels",
+        "pointer_count",
+        "pointers_stable",
+        "pointers_unique",
+        "raw_pointer_values_unique",
+        "nonallocated_null_pointer_labels",
+        "null_pointer_tensor_contract_verified",
+        "recognized_same_tensor_alias_groups",
+        "unexpected_pointer_alias_groups",
+        "output_checksum",
+        "kernel_path_fingerprint",
+        "kernel_count",
+        "graph_capture",
+        "graph_fallback",
+        "graph_replay_exact",
+        "eager_graph_agreement",
+    )
+    direct_pointers = {value for value in direct["pointer_values"] if value > 0}
+    restored_pointers = {
+        value for value in restored["pointer_values"] if value > 0
+    }
+    passed = bool(
+        new_manifest["state_file_sha256"]
+        == old_manifest["state_file_sha256"]
+        == PERSISTENT_PREFIX_Q4_B8_L16384_STATE_SHA256
+        and new_manifest["source_layout_fingerprint"]
+        == old_manifest["source_layout_fingerprint"]
+        == PERSISTENT_PREFIX_Q4_B8_L16384_LAYOUT_SHA256
+        and new_manifest["lifecycle"] == old_manifest["lifecycle"]
+        and all(direct[field] == restored[field] for field in exact_fields)
+        and direct_pointers.isdisjoint(restored_pointers)
+        and restore_receipt.get("fresh_target_allocation") is True
+        and restore_receipt.get("runtime_prefix_sharing") is False
+        and construction_metrics.get("within_frozen_memory_limit") is True
+        and construction_metrics.get("full_context_fp32_copy") is False
+    )
+    if not passed:
+        raise Phase13PilotError("bounded q4 prefix equivalence failed")
+    payload = {
+        "schema_version": "kvbench-phase13-kvquant-prefix-chunk-validation-1.0.0",
+        "status": "PASS",
+        "execution_git_sha": git_sha,
+        "authorized_container_digest": AUTHORIZED_CONTAINER_DIGEST,
+        "decision_id": "0037",
+        "configuration": configuration,
+        "batch_size": batch,
+        "historical_context": historical,
+        "state_file_sha256": new_manifest["state_file_sha256"],
+        "cache_bytes_exact": True,
+        "lifecycle_exact": True,
+        "layout_exact": True,
+        "allocation_exact": True,
+        "output_checksum_exact": True,
+        "kernel_path_exact": True,
+        "cuda_graph_result_exact": True,
+        "fresh_caller_owned_buffers": True,
+        "runtime_prefix_sharing": False,
+        "construction": construction_metrics,
+        "direct": direct,
+        "restored": restored,
+    }
+    write_exclusive(output, json_bytes(payload))
+    return payload
+
+
+def run_kvquant_prefix_chunk_validation_isolated(
+    *,
+    output: Path,
+    scratch_root: Path,
+    old_snapshot_root: Path,
+    git_sha: str,
+) -> dict[str, Any]:
+    """Run the long q4 proof in a disposable CUDA child and reap it."""
+
+    pre = phase12._capture_process_snapshot()
+    phase12._require_idle_snapshot(pre)
+    command = (
+        sys.executable,
+        str(REPOSITORY_ROOT / "scripts/phase13_pilot.py"),
+        "--validate-kvquant-prefix-chunk",
+        "--output",
+        str(output),
+        "--scratch-root",
+        str(scratch_root),
+        "--old-prefix-state-root",
+        str(old_snapshot_root),
+        "--git-sha",
+        git_sha,
+    )
+    result = subprocess.run(
+        command,
+        cwd=REPOSITORY_ROOT,
+        env=phase12._child_environment(),
+        check=False,
+        capture_output=True,
+    )
+    post = phase12._capture_process_snapshot()
+    phase12._require_idle_snapshot(post)
+    if result.returncode != 0:
+        raise Phase13PilotError("isolated q4 prefix chunk validation failed")
+    matches = [
+        line[len(PREFIX_CHUNK_VALIDATION_PREFIX) :]
+        for line in result.stdout.decode("utf-8", errors="strict").splitlines()
+        if line.startswith(PREFIX_CHUNK_VALIDATION_PREFIX)
+    ]
+    if len(matches) != 1:
+        raise Phase13PilotError("q4 prefix chunk validation channel differs")
+    channel = json.loads(matches[0])
+    payload = _strict_json(output)
+    if (
+        not isinstance(channel, dict)
+        or channel.get("status") != "PASS"
+        or payload != channel
+        or payload.get("execution_git_sha") != git_sha
+        or payload.get("state_file_sha256")
+        != PERSISTENT_PREFIX_Q4_B8_L16384_STATE_SHA256
+    ):
+        raise Phase13PilotError("q4 prefix chunk validation evidence differs")
     return payload
 
 
@@ -3243,12 +4443,47 @@ def run_campaign(
     order = _strict_json(REPOSITORY_ROOT / ORDER_PATH)
     validate_execution_order(order)
     feasibility = build_feasibility_records(order)
-    if not prefix_root.is_dir() or prefix_root.is_symlink() or any(prefix_root.iterdir()):
-        raise Phase13PilotError("mounted prefix root must be new and empty")
+    if (
+        not prefix_root.is_dir()
+        or prefix_root.is_symlink()
+        or {item.name for item in prefix_root.iterdir()}
+        != {"equivalence", "remediation", "catalog", "seed-handoff.json"}
+        or any((prefix_root / "equivalence").iterdir())
+        or any((prefix_root / "remediation").iterdir())
+        or {item.name for item in (prefix_root / "catalog").iterdir()}
+        != {"builds", "states"}
+    ):
+        raise Phase13PilotError("mounted persistent prefix root differs")
     equivalence_scratch = prefix_root / "equivalence"
+    chunk_validation_scratch = prefix_root / "remediation"
     catalog_root = prefix_root / "catalog"
-    equivalence_scratch.mkdir()
-    catalog_root.mkdir()
+    chunk_validation_path = (
+        resolved / "unified" / "prefix-chunk-validation.json"
+    )
+    chunk_validation = run_kvquant_prefix_chunk_validation_isolated(
+        output=chunk_validation_path,
+        scratch_root=chunk_validation_scratch,
+        old_snapshot_root=(
+            catalog_root / "states" / "prefix-kvq4-b8-l16384"
+        ),
+        git_sha=git_sha,
+    )
+    if chunk_validation.get("status") != "PASS":
+        raise Phase13PilotError("q4 prefix chunk validation did not pass")
+    seed_handoff = _strict_json(prefix_root / "seed-handoff.json")
+    duration_estimate = prefix_build_duration_estimate(
+        reference_elapsed_seconds=float(
+            chunk_validation["construction"]["elapsed_seconds"]
+        ),
+        feasibility=feasibility,
+        reused_snapshot_ids=[
+            str(entry["snapshot_id"]) for entry in seed_handoff["entries"]
+        ],
+    )
+    duration_estimate_path = (
+        resolved / "unified" / "prefix-build-duration-estimate.json"
+    )
+    write_exclusive(duration_estimate_path, json_bytes(duration_estimate))
     equivalence_path = resolved / "unified" / "prefix-equivalence.json"
     equivalence_handoff_path = (
         resolved / "unified" / "prefix-equivalence-handoff.json"
@@ -3318,6 +4553,31 @@ def run_campaign(
                 "planned_point_records": PLANNED_RECORD_COUNT,
                 "execution_order_sha256": sha256_file(resolved / "execution_order.json"),
                 "prefix_equivalence_sha256": sha256_file(equivalence_path),
+                "prefix_chunk_validation_sha256": sha256_file(
+                    chunk_validation_path
+                ),
+                "prefix_chunk_validation_status": "PASS",
+                "prefix_chunk_build_elapsed_seconds": chunk_validation[
+                    "construction"
+                ]["elapsed_seconds"],
+                "prefix_build_duration_estimate_sha256": sha256_file(
+                    duration_estimate_path
+                ),
+                "prefix_missing_snapshot_count": duration_estimate[
+                    "missing_snapshot_count"
+                ],
+                "prefix_estimated_remaining_construction_seconds": (
+                    duration_estimate[
+                        "estimated_remaining_prefix_construction_seconds"
+                    ]
+                ),
+                "prefix_fresh_actual_construction_seconds": sum(
+                    float(entry["prefix_construction"]["elapsed_seconds"])
+                    for entry in catalog["entries"]
+                    if entry.get("construction_provenance")
+                    == "fresh_chunked_builder"
+                ),
+                "prefix_arbitrary_time_pass_threshold": None,
                 "prefix_equivalence_handoff_sha256": sha256_file(
                     equivalence_handoff_path
                 ),
@@ -4598,15 +5858,80 @@ def validate_campaign(root: Path, *, expected_campaign_id: str | None = None) ->
     equivalence_handoff_path = (
         root / "unified" / "prefix-equivalence-handoff.json"
     )
+    chunk_validation_path = (
+        root / "unified" / "prefix-chunk-validation.json"
+    )
+    duration_estimate_path = (
+        root / "unified" / "prefix-build-duration-estimate.json"
+    )
     catalog_path = root / "unified" / "prefix-catalog.json"
     equivalence = _strict_json(equivalence_path)
     equivalence_handoff = _strict_json(equivalence_handoff_path)
+    new_prefix_contract = bool(
+        chunk_validation_path.is_file()
+        or duration_estimate_path.is_file()
+        or "prefix_chunk_validation_sha256" in campaign
+    )
+    chunk_validation: Mapping[str, Any] = {}
+    duration_estimate: Mapping[str, Any] = {}
+    new_prefix_contract_valid = not new_prefix_contract
+    if new_prefix_contract:
+        if chunk_validation_path.is_file() and duration_estimate_path.is_file():
+            chunk_validation = _strict_json(chunk_validation_path)
+            duration_estimate = _strict_json(duration_estimate_path)
+            new_prefix_contract_valid = bool(
+                campaign.get("prefix_chunk_validation_sha256")
+                == sha256_file(chunk_validation_path)
+                and campaign.get("prefix_chunk_validation_status") == "PASS"
+                and isinstance(
+                    campaign.get("prefix_chunk_build_elapsed_seconds"),
+                    (int, float),
+                )
+                and float(campaign["prefix_chunk_build_elapsed_seconds"]) > 0.0
+                and chunk_validation.get("status") == "PASS"
+                and chunk_validation.get("decision_id") == "0037"
+                and chunk_validation.get("execution_git_sha")
+                == campaign.get("execution_git_sha")
+                and chunk_validation.get("authorized_container_digest")
+                == AUTHORIZED_CONTAINER_DIGEST
+                and chunk_validation.get("configuration") == "kvq4"
+                and chunk_validation.get("batch_size") == 8
+                and chunk_validation.get("historical_context") == 16384
+                and chunk_validation.get("state_file_sha256")
+                == PERSISTENT_PREFIX_Q4_B8_L16384_STATE_SHA256
+                and chunk_validation.get("cache_bytes_exact") is True
+                and chunk_validation.get("layout_exact") is True
+                and chunk_validation.get("output_checksum_exact") is True
+                and chunk_validation.get("kernel_path_exact") is True
+                and chunk_validation.get("cuda_graph_result_exact") is True
+                and chunk_validation.get("runtime_prefix_sharing") is False
+                and chunk_validation.get("construction", {}).get(
+                    "within_frozen_memory_limit"
+                )
+                is True
+                and campaign.get("prefix_build_duration_estimate_sha256")
+                == sha256_file(duration_estimate_path)
+                and duration_estimate.get("missing_snapshot_count") == 60
+                and duration_estimate.get("arbitrary_time_pass_threshold")
+                is None
+                and duration_estimate.get("claim_eligible") is False
+                and campaign.get("prefix_missing_snapshot_count") == 60
+                and campaign.get("prefix_arbitrary_time_pass_threshold")
+                is None
+                and isinstance(
+                    campaign.get("prefix_fresh_actual_construction_seconds"),
+                    (int, float),
+                )
+                and float(campaign["prefix_fresh_actual_construction_seconds"])
+                > 0.0
+            )
     catalog = _strict_json(catalog_path)
     feasibility_payload = _strict_json(root / "unified" / "feasibility.json")
     feasibility = feasibility_payload.get("records")
     if (
         campaign.get("prefix_equivalence_sha256")
         != sha256_file(equivalence_path)
+        or not new_prefix_contract_valid
         or campaign.get("prefix_equivalence_handoff_sha256")
         != sha256_file(equivalence_handoff_path)
         or campaign.get("prefix_equivalence_child_isolated") is not True
@@ -4699,12 +6024,25 @@ def validate_campaign(root: Path, *, expected_campaign_id: str | None = None) ->
         for item in derive_prefix_catalog_plan(feasibility)
     }
     catalog_entries = catalog.get("entries")
+    new_catalog_contract_valid = bool(
+        not new_prefix_contract
+        or (
+            catalog.get("persistent_seed_manifest_sha256")
+            == PERSISTENT_PREFIX_SEED_MANIFEST_SHA256
+            and catalog.get("persistent_seed_reused")
+            == PERSISTENT_PREFIX_SEED_EXPECTED_COUNT
+            and catalog.get("fresh_chunked_constructions")
+            == 228 - PERSISTENT_PREFIX_SEED_EXPECTED_COUNT
+            and catalog.get("old_timing_samples_reused") is False
+        )
+    )
     if (
         catalog.get("snapshot_count") != 228
         or catalog.get("unique_feasible_points") != 228
         or catalog.get("runtime_prefix_cache_sharing") is not False
         or catalog.get("fresh_caller_owned_cache_per_timing_process") is not True
         or catalog.get("restoration_outside_timing") is not True
+        or not new_catalog_contract_valid
         or catalog.get("temporary_state_files_published") is not False
         or not isinstance(catalog_entries, list)
         or len(catalog_entries) != 228
@@ -4720,16 +6058,51 @@ def validate_campaign(root: Path, *, expected_campaign_id: str | None = None) ->
             int(entry.get("context_label", -1)),
         )
         expected = expected_catalog.get(key)
+        provenance = entry.get("construction_provenance")
+        reused_authority_valid = bool(
+            new_prefix_contract
+            and provenance == "persistent_seed_reuse"
+            and entry.get("persistent_seed_manifest_sha256")
+            == PERSISTENT_PREFIX_SEED_MANIFEST_SHA256
+            and entry.get("source_execution_git_sha")
+            == PERSISTENT_PREFIX_SEED_EXECUTION_GIT_SHA
+            and entry.get("reused_without_recomputation") is True
+            and "builder_supervision_sha256" not in entry
+        )
+        fresh_authority_valid = bool(
+            new_prefix_contract
+            and provenance == "fresh_chunked_builder"
+            and re.fullmatch(
+                r"[0-9a-f]{64}",
+                str(entry.get("builder_supervision_sha256")),
+            )
+            is not None
+            and entry.get("reused_without_recomputation") is False
+            and isinstance(entry.get("prefix_construction"), dict)
+            and entry["prefix_construction"].get("mode")
+            == "fixed_bounded_kvquant_chunks"
+            and entry["prefix_construction"].get("within_frozen_memory_limit")
+            is True
+        )
+        legacy_authority_valid = bool(
+            not new_prefix_contract
+            and re.fullmatch(
+                r"[0-9a-f]{64}",
+                str(entry.get("builder_supervision_sha256")),
+            )
+            is not None
+        )
         if (
             expected is None
             or key in catalog_index
             or any(entry.get(name) != value for name, value in expected.items())
             or re.fullmatch(r"[0-9a-f]{64}", str(entry.get("state_file_sha256")))
             is None
-            or re.fullmatch(
-                r"[0-9a-f]{64}", str(entry.get("builder_supervision_sha256"))
+            or not (
+                reused_authority_valid
+                or fresh_authority_valid
+                or legacy_authority_valid
             )
-            is None
             or entry.get("state_bytes_verified_once_before_timing") is not True
         ):
             raise Phase13PilotError("Phase 13 prefix catalog authority differs")
@@ -4794,6 +6167,10 @@ def _parse_arguments(argv: Sequence[str] | None = None) -> argparse.Namespace:
     actions.add_argument("--run-campaign", action="store_true")
     actions.add_argument("--run-worker", action="store_true")
     actions.add_argument("--build-prefix-state", action="store_true")
+    actions.add_argument("--freeze-prefix-seed", action="store_true")
+    actions.add_argument("--validate-prefix-seed", action="store_true")
+    actions.add_argument("--materialize-prefix-seed", action="store_true")
+    actions.add_argument("--validate-kvquant-prefix-chunk", action="store_true")
     actions.add_argument("--validate-prefix-equivalence", action="store_true")
     actions.add_argument("--materialize-analysis", action="store_true")
     actions.add_argument("--finalize-staged-campaign", action="store_true")
@@ -4817,6 +6194,9 @@ def _parse_arguments(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--snapshot-id")
     parser.add_argument("--source-batch", type=int)
     parser.add_argument("--build-root", type=Path)
+    parser.add_argument("--seed-root", type=Path)
+    parser.add_argument("--destination", type=Path)
+    parser.add_argument("--old-prefix-state-root", type=Path)
     return parser.parse_args(argv)
 
 
@@ -4938,6 +6318,68 @@ def main(argv: Sequence[str] | None = None) -> int:
             output=Path(args.output),
         )
         _emit_prefix_builder_result_and_exit(payload)
+    if args.freeze_prefix_seed:
+        if args.seed_root is None:
+            raise Phase13PilotError("--seed-root is required")
+        print(
+            json.dumps(
+                freeze_persistent_prefix_seed(args.seed_root), sort_keys=True
+            )
+        )
+        return 0
+    if args.validate_prefix_seed:
+        if args.seed_root is None:
+            raise Phase13PilotError("--seed-root is required")
+        seed = validate_persistent_prefix_seed(
+            args.seed_root, verify_state_bytes=False
+        )
+        print(
+            json.dumps(
+                {
+                    "status": "PASS",
+                    "seed_id": seed["seed_id"],
+                    "snapshot_count": seed["snapshot_count"],
+                    "manifest_sha256": sha256_file(
+                        args.seed_root / "seed-catalog.json"
+                    ),
+                },
+                sort_keys=True,
+            )
+        )
+        return 0
+    if args.materialize_prefix_seed:
+        if args.seed_root is None or args.destination is None or args.git_sha is None:
+            raise Phase13PilotError(
+                "seed root, destination, and Git SHA are required"
+            )
+        print(
+            json.dumps(
+                materialize_persistent_prefix_seed(
+                    seed_root=args.seed_root,
+                    destination=args.destination,
+                    git_sha=args.git_sha,
+                ),
+                sort_keys=True,
+            )
+        )
+        return 0
+    if args.validate_kvquant_prefix_chunk:
+        if (
+            args.output is None
+            or args.scratch_root is None
+            or args.old_prefix_state_root is None
+            or args.git_sha is None
+        ):
+            raise Phase13PilotError(
+                "q4 prefix validation paths and Git SHA are required"
+            )
+        payload = run_kvquant_prefix_chunk_validation(
+            output=args.output,
+            scratch_root=args.scratch_root,
+            old_snapshot_root=args.old_prefix_state_root,
+            git_sha=args.git_sha,
+        )
+        _emit_prefix_chunk_validation_result_and_exit(payload)
     if args.validate_prefix_equivalence:
         if args.output is None or args.scratch_root is None or args.git_sha is None:
             raise Phase13PilotError(
