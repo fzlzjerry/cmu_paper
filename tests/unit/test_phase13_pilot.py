@@ -98,6 +98,48 @@ class Phase13PilotTests(unittest.TestCase):
         self.assertNotIn(".float().contiguous()", source)
         self.assertNotIn("appendvecKsparseParallel", source)
 
+    def test_prefix_allocator_is_exact_child_only_and_fail_closed(self) -> None:
+        base = {"BASE": "preserved"}
+        with mock.patch.object(
+            phase13_pilot.phase12,
+            "_child_environment",
+            return_value=dict(base),
+        ):
+            child = phase13_pilot._prefix_builder_child_environment()
+        self.assertEqual(base, {"BASE": "preserved"})
+        self.assertEqual(child["BASE"], "preserved")
+        self.assertEqual(
+            child[
+                phase13_pilot.PREFIX_BUILDER_ALLOCATOR_ENVIRONMENT_VARIABLE
+            ],
+            phase13_pilot.PREFIX_BUILDER_ALLOCATOR_CONFIGURATION,
+        )
+
+        variable = phase13_pilot.PREFIX_BUILDER_ALLOCATOR_ENVIRONMENT_VARIABLE
+        with mock.patch.dict(
+            os.environ,
+            {
+                variable: phase13_pilot.PREFIX_BUILDER_ALLOCATOR_CONFIGURATION
+            },
+            clear=False,
+        ):
+            phase13_pilot._require_prefix_builder_allocator()
+        with mock.patch.dict(os.environ, {variable: "wrong"}, clear=False):
+            with self.assertRaisesRegex(
+                phase13_pilot.Phase13PilotError,
+                "allocator authority differs",
+            ):
+                phase13_pilot._require_prefix_builder_allocator()
+
+    def test_formal_timing_worker_does_not_inherit_prefix_allocator(self) -> None:
+        builder_source = inspect.getsource(
+            phase13_pilot._run_prefix_builder_process
+        )
+        timing_source = inspect.getsource(phase13_pilot._run_one_process)
+        self.assertIn("_prefix_builder_child_environment()", builder_source)
+        self.assertIn("phase12._child_environment()", timing_source)
+        self.assertNotIn("_prefix_builder_child_environment()", timing_source)
+
     def test_feasibility_includes_exact_kvquant_prefix_chunk_bytes(self) -> None:
         record = phase13_pilot.feasibility_record(
             {

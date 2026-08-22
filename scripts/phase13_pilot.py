@@ -194,8 +194,10 @@ PREFIX_EQUIVALENCE_CONTEXT = 17
 PREFIX_EQUIVALENCE_BATCHES = BATCH_SIZES
 KVQUANT_PREFIX_CHUNK_TOKENS = 128
 KVQUANT_PREFIX_CHUNK_FORMULA_VERSION = (
-    "kvbench-phase13-kvquant-prefix-chunk-v1"
+    "kvbench-phase13-kvquant-prefix-chunk-v2"
 )
+PREFIX_BUILDER_ALLOCATOR_ENVIRONMENT_VARIABLE = "PYTORCH_CUDA_ALLOC_CONF"
+PREFIX_BUILDER_ALLOCATOR_CONFIGURATION = "expandable_segments:True"
 PERSISTENT_PREFIX_SEED_ID = (
     "phase13-prefix-seed-20260822t185619z-b27442c4-168"
 )
@@ -944,6 +946,26 @@ def kvquant_prefix_chunk_workspace_spec(configuration: str) -> dict[str, Any]:
         "context_scaled": False,
         "full_context_fp32_copy": False,
     }
+
+
+def _prefix_builder_child_environment() -> dict[str, str]:
+    """Bind allocator geometry only in disposable untimed prefix children."""
+
+    environment = phase12._child_environment()
+    environment[PREFIX_BUILDER_ALLOCATOR_ENVIRONMENT_VARIABLE] = (
+        PREFIX_BUILDER_ALLOCATOR_CONFIGURATION
+    )
+    return environment
+
+
+def _require_prefix_builder_allocator() -> None:
+    """Fail closed if a KVQuant prefix child lacks Decision 0038 authority."""
+
+    if (
+        os.environ.get(PREFIX_BUILDER_ALLOCATOR_ENVIRONMENT_VARIABLE)
+        != PREFIX_BUILDER_ALLOCATOR_CONFIGURATION
+    ):
+        raise Phase13PilotError("prefix builder allocator authority differs")
 
 
 def _turboquant_cache_bytes(configuration: str, batch: int, capacity: int) -> int:
@@ -2057,6 +2079,7 @@ def _execute_chunked_kvquant_prefix_construction(
 
     import torch
 
+    _require_prefix_builder_allocator()
     device = endpoint.cache.device
     torch.cuda.synchronize(device=device)
     torch.cuda.reset_peak_memory_stats(device=device)
@@ -2089,6 +2112,12 @@ def _execute_chunked_kvquant_prefix_construction(
     metrics = {
         "formula_version": KVQUANT_PREFIX_CHUNK_FORMULA_VERSION,
         "mode": "fixed_bounded_kvquant_chunks",
+        "allocator_environment_variable": (
+            PREFIX_BUILDER_ALLOCATOR_ENVIRONMENT_VARIABLE
+        ),
+        "allocator_configuration": PREFIX_BUILDER_ALLOCATOR_CONFIGURATION,
+        "allocator_scope": "dedicated_untimed_prefix_child_only",
+        "formal_timing_allocator_changed": False,
         "chunk_tokens": KVQUANT_PREFIX_CHUNK_TOKENS,
         "chunk_workspace_bytes": int(chunk_workspace.allocated_bytes),
         "chunk_workspace_pointers_stable": (
@@ -2640,7 +2669,7 @@ def _run_prefix_builder_process(
     result = run_stage_supervised_command(
         command,
         working_directory=str(REPOSITORY_ROOT),
-        environment=phase12._child_environment(),
+        environment=_prefix_builder_child_environment(),
         stage_timeouts=timeouts,
         stage_observer=lambda: _read_stage_observations(
             root=build_root / "stage-progress",
@@ -2679,6 +2708,13 @@ def _run_prefix_builder_process(
     if (
         not isinstance(construction, dict)
         or construction.get("mode") != "fixed_bounded_kvquant_chunks"
+        or construction.get("allocator_environment_variable")
+        != PREFIX_BUILDER_ALLOCATOR_ENVIRONMENT_VARIABLE
+        or construction.get("allocator_configuration")
+        != PREFIX_BUILDER_ALLOCATOR_CONFIGURATION
+        or construction.get("allocator_scope")
+        != "dedicated_untimed_prefix_child_only"
+        or construction.get("formal_timing_allocator_changed") is not False
         or construction.get("chunk_tokens") != KVQUANT_PREFIX_CHUNK_TOKENS
         or construction.get("chunk_workspace_bytes")
         != expected_chunk["workspace_bytes"]
@@ -3789,6 +3825,7 @@ def run_kvquant_prefix_chunk_validation(
         "execution_git_sha": git_sha,
         "authorized_container_digest": AUTHORIZED_CONTAINER_DIGEST,
         "decision_id": "0037",
+        "allocator_decision_id": "0038",
         "configuration": configuration,
         "batch_size": batch,
         "historical_context": historical,
@@ -3837,7 +3874,7 @@ def run_kvquant_prefix_chunk_validation_isolated(
     result = subprocess.run(
         command,
         cwd=REPOSITORY_ROOT,
-        env=phase12._child_environment(),
+        env=_prefix_builder_child_environment(),
         check=False,
         capture_output=True,
     )
@@ -5973,6 +6010,7 @@ def validate_campaign(root: Path, *, expected_campaign_id: str | None = None) ->
                 and float(campaign["prefix_chunk_build_elapsed_seconds"]) > 0.0
                 and chunk_validation.get("status") == "PASS"
                 and chunk_validation.get("decision_id") == "0037"
+                and chunk_validation.get("allocator_decision_id") == "0038"
                 and chunk_validation.get("execution_git_sha")
                 == campaign.get("execution_git_sha")
                 and chunk_validation.get("authorized_container_digest")
@@ -5992,6 +6030,22 @@ def validate_campaign(root: Path, *, expected_campaign_id: str | None = None) ->
                     "within_frozen_memory_limit"
                 )
                 is True
+                and chunk_validation.get("construction", {}).get(
+                    "allocator_environment_variable"
+                )
+                == PREFIX_BUILDER_ALLOCATOR_ENVIRONMENT_VARIABLE
+                and chunk_validation.get("construction", {}).get(
+                    "allocator_configuration"
+                )
+                == PREFIX_BUILDER_ALLOCATOR_CONFIGURATION
+                and chunk_validation.get("construction", {}).get(
+                    "allocator_scope"
+                )
+                == "dedicated_untimed_prefix_child_only"
+                and chunk_validation.get("construction", {}).get(
+                    "formal_timing_allocator_changed"
+                )
+                is False
                 and campaign.get("prefix_build_duration_estimate_sha256")
                 == sha256_file(duration_estimate_path)
                 and duration_estimate.get("missing_snapshot_count") == 60
@@ -6164,6 +6218,14 @@ def validate_campaign(root: Path, *, expected_campaign_id: str | None = None) ->
             and isinstance(entry.get("prefix_construction"), dict)
             and entry["prefix_construction"].get("mode")
             == "fixed_bounded_kvquant_chunks"
+            and entry["prefix_construction"].get("allocator_configuration")
+            == PREFIX_BUILDER_ALLOCATOR_CONFIGURATION
+            and entry["prefix_construction"].get("allocator_scope")
+            == "dedicated_untimed_prefix_child_only"
+            and entry["prefix_construction"].get(
+                "formal_timing_allocator_changed"
+            )
+            is False
             and entry["prefix_construction"].get("within_frozen_memory_limit")
             is True
         )

@@ -13,6 +13,7 @@ EXPECTED = frozenset(
         "docs/blockers.md",
         "docs/decisions/0036-kvquant-q4-value-decode-workspace-geometry.md",
         "docs/decisions/0037-phase13-persistent-chunked-prefix-construction.md",
+        "docs/decisions/0038-phase13-prefix-child-allocator.md",
         "docs/evidence/phase13rq4/cuda-validation.json",
         "docs/evidence/phase13rq4/kvquant-q4-method-admission.json",
         "docs/evidence/phase13rq4/r2-publication.json",

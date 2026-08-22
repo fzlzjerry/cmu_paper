@@ -13,7 +13,7 @@ MethodAdmissionReport SHA-256
 are the current `kvq4` workspace authority. The refreshed global evidence keeps
 G0-G5 PASS and Pilot READY.
 
-Decision 0037 governs setup-only prefix construction.  The stopped
+Decisions 0037 and 0038 govern setup-only prefix construction.  The stopped
 `phase13-20260821t151036274823z-b27442c4-8a39d6` coordinator was terminated
 only after `prefix-kvq4-b8-l16384` finalized `COMPLETE`.  Its 168 fully
 checksum-validated states are frozen as local seed
@@ -23,7 +23,16 @@ only the 60 absent KVQuant states; no historical timing sample is reused.
 KVQuant setup packing uses one fixed 128-token tile and never materializes a
 complete-prefix FP32 Key or Value copy.  The tile scratch is included in the
 same conservative 0.88 memory calculation and changes no adapter fingerprint,
-cache layout, formal decode, grid, or timing boundary.
+cache layout, formal decode, grid, or timing boundary.  Only the disposable
+prefix-builder children bind `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True`
+before CUDA initialization; formal timing workers retain their frozen allocator
+environment.  The child records both allocated and reserved peaks and fails if
+either exceeds the unchanged 0.88 limit.
+
+The stopped successor attempt
+`phase13-20260822t130430172378z-356ee0ab-86ac68` remains local, immutable, and
+non-claim-bearing.  It completed no formal timing run and is not resumed or
+used as timing input.
 
 The immutable blocked campaign
 `phase13-20260804t111810342595z-a127b0d1-8649c3` is historical failure evidence
