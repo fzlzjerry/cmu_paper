@@ -1,0 +1,84 @@
+{
+  "artifact_id": "phase13-20260822t150835736582z-4ddd7b17-3a8fb3",
+  "bucket_lock": {
+    "bucket": "kvbench-artifacts",
+    "bucket_public": false,
+    "covered_prefix": "kvbench/sha256/",
+    "enabled": true,
+    "lock_rule_id": "kvbench-evidence-indefinite",
+    "lock_scope": "exact",
+    "public_state_result": "PASS",
+    "retention_type": "Indefinite",
+    "verification_result": "PASS",
+    "verified_at_utc": "2026-08-24T17:21:32.303331Z"
+  },
+  "clean_retrieval": {
+    "checksum_ledger_valid": true,
+    "complete_marker_valid": true,
+    "destination_initially_empty": true,
+    "inventory_valid": true,
+    "object_count": 17384,
+    "result": "PASS",
+    "retrieved_at_utc": "2026-08-24T17:44:31.844903Z",
+    "root_sha256": "feb2e5a8ebba8b729c182fc8170107c9acf8128edd3e5618c8f1b90530557531",
+    "unexpected_objects": false,
+    "uri": "r2://kvbench-artifacts/kvbench/sha256/feb2e5a8ebba8b729c182fc8170107c9acf8128edd3e5618c8f1b90530557531/",
+    "verification_result": "PASS"
+  },
+  "clean_retrieval_count": 1,
+  "complete_last": true,
+  "credential_handling": {
+    "credential_values_recorded": false,
+    "credentials_passed_to_measurement_container": false,
+    "env_file_read": true,
+    "env_file_read_operator_authorized": true,
+    "env_file_uploaded": false,
+    "required_variables": {
+      "AWS_ACCESS_KEY_ID": "PRESENT",
+      "AWS_SECRET_ACCESS_KEY": "PRESENT",
+      "CLOUDFLARE_API_TOKEN": "PRESENT",
+      "KVBENCH_R2_PREFIX": "PRESENT",
+      "R2_ACCOUNT_ID": "PRESENT",
+      "R2_BUCKET": "PRESENT",
+      "R2_ENDPOINT": "PRESENT"
+    }
+  },
+  "execution_git_sha": "4ddd7b1784de0327a8ed03508b1769f35e2cb8da",
+  "historical_campaign_preservation": {
+    "campaign_id": "phase13-20260804t111810342595z-a127b0d1-8649c3",
+    "complete_sha256": "959469514bf9277f029485f3f9814210b0de78b3f545e4057e311d4212a91e38",
+    "object_count": 3246,
+    "preserved": true,
+    "timing_reused": false
+  },
+  "local_validation": {
+    "artifact_path": "artifacts/phase13/phase13-20260822t150835736582z-4ddd7b17-3a8fb3",
+    "bytes": 12326995814,
+    "checksum_ledger_sha256": "f2fe37a9ed6c0b4de136788c5128a8f37aa8ad3f611f7cbe1c10836f719c3301",
+    "complete_sha256": "96d2be3c36691d506b281ab95aa1e063e53157a43ad991f534093be46a00a5fd",
+    "object_count": 17384,
+    "pilot_qc_sha256": "e7af6648297620f82fbd42b2b0dc317e3a7d7f6484f6f64e320f26559c74949b",
+    "provisional_knees_sha256": "7e89f868a569f06d0109f8ce48847cffc837d0919cb0a423ac7d8b00737a1ff8",
+    "root_sha256": "feb2e5a8ebba8b729c182fc8170107c9acf8128edd3e5618c8f1b90530557531",
+    "status": "PASS"
+  },
+  "publication": {
+    "complete_last": true,
+    "conditional_writes": true,
+    "content_addressed": true,
+    "object_count": 17384,
+    "publication_order_sha256": "eec7c1afccbeae755cadc7df7504b5f993e1c14faf5f803c502a1a939bcea255",
+    "published_at_utc": "2026-08-24T17:21:22.521485Z",
+    "root_sha256": "feb2e5a8ebba8b729c182fc8170107c9acf8128edd3e5618c8f1b90530557531",
+    "status": "PASS",
+    "uploaded_count": 11376,
+    "uri": "r2://kvbench-artifacts/kvbench/sha256/feb2e5a8ebba8b729c182fc8170107c9acf8128edd3e5618c8f1b90530557531/",
+    "verified_existing_count": 6008
+  },
+  "schema_version": "kvbench-phase13-successor-r2-publication-1.0.0",
+  "self_reference_control": {
+    "included_in_bundle": false,
+    "receipt_path": "docs/evidence/phase13-successor/r2-publication.json"
+  },
+  "status": "PASS"
+}

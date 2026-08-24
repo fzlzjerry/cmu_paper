@@ -1,6 +1,6 @@
 # Blockers
 
-Last updated: 2026-08-20.
+Last updated: 2026-08-25.
 
 ## Current disposition
 
@@ -81,7 +81,7 @@ quality execution remains LOCKED.
 
 | B-018 | The exact pinned TurboQuant store-append-decode probe completed functionally, but Compute Sanitizer memcheck reported 2,093,260 leaked bytes in 28 allocations and exited 99 in final run `phase6-20260725t065153714z-ace9261a-083f14-4bit_nc-fixed-l128-eager`. | G2-TQ and the bounded admission grid | Resolved without changing the algorithm, fixtures, container, runner, timing, or sanitizer criteria. Commit `aac794c21b01b3e43ff93e317286285d21dbcd47` explicitly releases sanitizer-only CUDA storages and library resources. New runs `phase6-b018-20260725t141636785z-aac794c2-6444b4-4bit_nc-sanitizer`, `phase6-b018-20260725t141640440z-aac794c2-eb5675-k3v4_nc-sanitizer`, and `phase6-b018-20260725t141643545z-aac794c2-4d7433-3bit_nc-sanitizer` each pass the probe, exit 0, and record zero errors and zero leaked bytes with valid COMPLETE/inventory/checksum ledgers. Current-HEAD admission at `0df5bb4d445d48e6cba17e30723733f8de35cb14` independently reran all three probes successfully before the frozen grid passed 9/9. | resolved 2026-07-25; current-HEAD confirmation 2026-07-26 |
 | B-019 | The selected official KIVI `main` implementation advertises Llama 3/GQA support but calls Transformers `repeat_kv` for recent key/value regions. At H_Q=32/H_KV=8 the exact expand/reshape helper creates a distinct contiguous 32-head tensor with four times the eight-head storage. | Phase 7 KIVI Reference Lane, E07, E08, and G2-KIVI | Decision 0018 authorizes one exact project patch on the Decision 0017 commit. The patched tree passes exact BF16 formula, native-eight-head operand, forbidden-operation, head-mapping, and unsupported-geometry checks on CPU and SM120. Phase 7 reference evidence and Phase 8 static-adapter admission both preserve that exact patched authority. | resolved under patched-source authority 2026-07-26; confirmed by G2-KIVI 2026-07-27 |
-| B-020 | A Decision 0031-feasible kvq2 B=1/L=131072 Pilot worker exceeded the frozen 7,200-second supervision deadline and was terminated with return code -15 before finalizing a timing run. | Phase 13 completion and Phase 14 readiness | Decision 0032 and Phase 13T prove normal forward progress, bind ordered finite geometry-scaled stage deadlines, preserve the stopped campaign, and publish cleanly retrieved root `5e98c8103c6e15ca0877e39f7b9363a208ba8722bb6993ef67a04a06c9f795cb`. A wholly new Pilot ID is still required. | resolved 2026-08-03 |
+| B-020 | A Decision 0031-feasible kvq2 B=1/L=131072 Pilot worker exceeded the frozen 7,200-second supervision deadline and was terminated with return code -15 before finalizing a timing run. | Phase 13 completion and Phase 14 readiness | Decision 0032 and Phase 13T prove normal forward progress, bind ordered finite geometry-scaled stage deadlines, preserve the stopped campaign, and publish cleanly retrieved root `5e98c8103c6e15ca0877e39f7b9363a208ba8722bb6993ef67a04a06c9f795cb`. The later wholly new successor Pilot completes all 684 feasible records. | resolved 2026-08-03; successor Pilot PASS 2026-08-25 |
 | B-021 | The q4 Value-decode caller workspace was hard-coded to 32 tiles, so blocked Pilot `phase13-20260804t111810342595z-a127b0d1-8649c3` failed at kvq4 B=8/L=16384 before Graph capture because 128 tiles were required. | Phase 13 completion and successor Pilot | Decision 0036 derives immutable preallocated workspace geometry from declared total-attended capacity. All nine fixtures, targeted B=4/8 long-context controls, Graph/allocation/stream/sanitizer, successor q4 admission, q4 G5 refresh, R2 publication, and clean retrieval pass at root `9f027d64424844d0d62311daad5740e2b76960d1d5e7b8be26aa1ccba100a8db`. The blocked campaign remains immutable and cannot be resumed. | resolved 2026-08-20 |
 
 ## Phase 4 disposition
@@ -295,3 +295,16 @@ them. The unchanged feasibility matrix remains 810/684/126. The 16-object root
 5e98c8103c6e15ca0877e39f7b9363a208ba8722bb6993ef67a04a06c9f795cb is
 COMPLETE-last and passed one clean retrieval. B-020 is resolved for
 supervision; Phase 13 still requires a wholly new Pilot campaign.
+
+## Phase 13 successor Pilot disposition
+
+Fresh campaign `phase13-20260822t150835736582z-4ddd7b17-3a8fb3` completes
+684/684 feasible runs, records all 126 capacity-infeasible cases, and has zero
+failed, aborted, unstable, fallback, output-mismatch, kernel-drift,
+allocation-drift, or selective-rerun results. Its 17,384-object root
+`feb2e5a8ebba8b729c182fc8170107c9acf8128edd3e5618c8f1b90530557531`
+is COMPLETE-last and passed one clean retrieval. B-020 and B-021 remain
+resolved; no concrete execution blocker remains for Phase 13. Phase 14 remains
+gated because 25/30 provisional knees lack sufficient density, requiring a
+separately preregistered densification task rather than alteration or selective
+extension of this immutable campaign.

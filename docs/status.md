@@ -1,6 +1,6 @@
 # Project status
 
-Last updated: 2026-08-20
+Last updated: 2026-08-25
 Authoritative contracts: CODEX_WORKFLOW.md for active performance engineering;
 CODEX_POST_PERFORMANCE_QUALITY_VALIDATION.md for post-performance quality
 scheduling; CODEX_QUALITY_EVALUATION_ADDENDUM.md for non-conflicting quality
@@ -8,19 +8,21 @@ requirements; and AGENTS.md. Decision 0005 records precedence.
 
 ## Current state
 
-- Latest scoped phase: Phase 13R q4 workspace remediation PASS. Decision 0036
-  replaces only the hard-coded 32-tile q4 Value-decode workspace capacity with
-  a declared-total-attended-capacity formula. B=4/8 L=16384 numerical,
-  path/allocation, Graph, pointer, stream, and sanitizer controls pass; the
-  successor q4 MethodAdmissionReport and three-process standardized q4 G5
-  refresh pass. Nine unchanged configuration records plus the refreshed q4
-  record retain global G0-G5 PASS and Pilot READY. The 14-object remediation
-  root `9f027d64424844d0d62311daad5740e2b76960d1d5e7b8be26aa1ccba100a8db`
+- Latest scoped phase: the fresh Phase 13 successor Pilot PASS. Campaign
+  `phase13-20260822t150835736582z-4ddd7b17-3a8fb3` preserves all 810 planned
+  records: 684/684 feasible runs completed, 126 were predeclared
+  capacity-infeasible, no run failed or was selectively rerun, and all 228
+  evaluated points are stable with maximum three-process CV
+  `0.002218507701406616`. Output checksums, kernel paths, allocations, and
+  finite-output controls agree. All 30 provisional fit records have status
+  `knee_observed`, but only 5/30 have sufficient below/near/above density;
+  Phase 14 therefore remains gated on a separately preregistered
+  densification task. The 17,384-object root
+  `feb2e5a8ebba8b729c182fc8170107c9acf8128edd3e5618c8f1b90530557531`
   is COMPLETE-last and passed one clean R2 retrieval. The blocked Pilot
   `phase13-20260804t111810342595z-a127b0d1-8649c3` remains immutable and none
-  of its timing data may be reused. Phase 13 remains incomplete pending a
-  wholly new Pilot; Phase 14 is NOT READY, Full Scan is CLOSED, quality is
-  LOCKED, and PERFORMANCE_DATA_FROZEN is absent.
+  of its timing data was reused. Full Scan is CLOSED, quality is LOCKED, and
+  PERFORMANCE_DATA_FROZEN is absent.
 - Phase 6 status: PASS for method-specific G2-TQ at execution commit
   `0df5bb4d445d48e6cba17e30723733f8de35cb14`. The approved admission driver
   reran all three mandatory Compute Sanitizer probes against that clean HEAD
@@ -127,7 +129,8 @@ requirements; and AGENTS.md. Decision 0005 records precedence.
   MethodAdmissionReport remains unchanged. G2-KVQ remains PASS. At the
   Phase 11R-Q23 boundary, Global G2-G5 were NOT EVALUATED.
 - Active admission gate: G0 PASS; G1 PASS; G2 PASS; G3 PASS; G4 PASS; G5 PASS;
-  Pilot READY but not started; Full Scan CLOSED
+  Phase 13 successor Pilot PASS; knee densification required before Phase 14;
+  Full Scan CLOSED
 - Benchmark implementation changes: exact BF16 static cache, fixed-L and
   growing-context runners, eager and CUDA Graph lanes, timing, allocation,
   telemetry, campaign lifecycle, and source-backed G1 reporting are
@@ -754,7 +757,8 @@ reference execution is recorded separately above.
 | Phase 13R2 Pilot | BLOCKED | Fresh Decision 0031 campaign preserved 23 completed, one 7,200-second supervisor-timeout failure, 660 aborted, and 126 capacity-infeasible records; root 581b02a6ca1a09c976a899b2b5d7eeb7897c0ad8f7ed8ad9fb11be5f6475f327 is COMPLETE-last and cleanly retrieved. |
 | Phase 13T supervisor remediation | PASS | Decision 0032; the long-context diagnostic completed with normal forward progress; ordered finite stage deadlines pass focused and full regression tests; 16-object root `5e98c8103c6e15ca0877e39f7b9363a208ba8722bb6993ef67a04a06c9f795cb` is COMPLETE-last and cleanly retrieved. |
 | Phase 13R q4 workspace remediation | PASS | Decision 0036 capacity-derived q4 workspace; all nine fixture regressions, B=4/8 L=16384 targeted admission, Graph/allocation/stream/sanitizer controls, successor q4 admission, and three-process q4 G5 refresh pass; 14-object root `9f027d64424844d0d62311daad5740e2b76960d1d5e7b8be26aa1ccba100a8db` is COMPLETE-last and cleanly retrieved. |
-| Pilot/full-scan gates | FRESH PILOT REQUIRED / CLOSED | B-020 and B-021 are resolved. Preserve every stopped Phase 13 campaign and start a wholly new Pilot under the unchanged preregistered contract. Phase 14 remains not ready until that Pilot passes. |
+| Phase 13 successor Pilot | PASS | Fresh campaign `phase13-20260822t150835736582z-4ddd7b17-3a8fb3`; 810/810 records, 684 completed, 126 capacity-infeasible, 228 stable points, maximum CV 0.221851%, no failures or selective reruns; 17,384-object root `feb2e5a8ebba8b729c182fc8170107c9acf8128edd3e5618c8f1b90530557531` is COMPLETE-last and cleanly retrieved. |
+| Pilot/full-scan gates | DENSIFICATION REQUIRED / CLOSED | Pilot execution and custody pass, but only 5/30 provisional knees have sufficient density. A separate preregistered densification task is required before Phase 14; Full Scan remains closed. |
 | Post-performance quality validation | LOCKED | Decision 0005; `PERFORMANCE_DATA_FROZEN` absent |
 
 ## Phase 0 acceptance
@@ -776,11 +780,10 @@ Decision 0016 continues to authorize Measurement Lane CUDA only in the exact
 recorded image digest. All earlier failed and passing reports, campaigns,
 runs, fixtures, and publication roots remain unchanged.
 
-Phase 13B, Phase 13F, Phase 13T, and the prefix-remediation evidence remain
-preserved. Decision 0036 resolves the q4 capacity defect exposed by blocked
-campaign `phase13-20260804t111810342595z-a127b0d1-8649c3`; that campaign's
-3,246-object root remains checksum-identical and none of its 69 completed runs
-may enter successor timing. The next action is a wholly new Pilot campaign in
-a separate task. Do not resume or selectively repair any stopped campaign.
-Phase 14, profiling, Full Scan, performance claims, and quality execution
-remain closed.
+Phase 13B, Phase 13F, Phase 13T, and all prefix-remediation evidence remain
+preserved. The blocked campaign
+`phase13-20260804t111810342595z-a127b0d1-8649c3` remains checksum-identical,
+and none of its 69 completed runs entered the successful successor campaign.
+The next action is a separately preregistered Phase 13 knee-densification task
+covering the 25 insufficient-density fit records. Phase 14, profiling, Full
+Scan, performance claims, and quality execution remain closed.
