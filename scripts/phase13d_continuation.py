@@ -79,6 +79,18 @@ PREFIX_STATE_INDEX_SHA256 = (
 PREFIX_STATE_COUNT = 84
 SEGMENT_B_RECORDS = 201
 TOTAL_LOGICAL_RECORDS = 252
+MATERIALIZED_BEFORE_PLOTS = (
+    "target_table.parquet",
+    "candidate_generation.parquet",
+    "feasibility.parquet",
+    "raw_run_index.parquet",
+    "point_summary.parquet",
+    "combined_source_index.parquet",
+    "refined_knees.parquet",
+    "exclusions.parquet",
+    "densification_qc.json",
+    "densification_report.md",
+)
 SNAPSHOT_STATES = frozenset(
     {"clean", "foreign_process_detected", "query_failed"}
 )
@@ -1844,6 +1856,124 @@ def materialize_combined(root: Path, *, segment_id: str) -> dict[str, Any]:
     return qc
 
 
+def _require_reference_hashes(
+    root: Path,
+    reference_root: Path,
+    relative_paths: Sequence[str],
+) -> dict[str, str]:
+    hashes: dict[str, str] = {}
+    for relative in relative_paths:
+        actual = root / relative
+        reference = reference_root / relative
+        if not actual.is_file() or not reference.is_file():
+            raise Phase13DContinuationError(
+                f"materialization recovery file is missing: {relative}"
+            )
+        actual_sha = sha256_file(actual)
+        reference_sha = sha256_file(reference)
+        if actual_sha != reference_sha:
+            raise Phase13DContinuationError(
+                f"materialization recovery hash differs: {relative}"
+            )
+        hashes[relative] = actual_sha
+    return hashes
+
+
+def resume_materialization_after_plots_collision(
+    root: Path,
+    *,
+    segment_id: str,
+    reference_root: Path,
+) -> dict[str, Any]:
+    """Append only the outputs missing after the pre-existing plots collision."""
+
+    plots = root / "plots"
+    if not plots.is_dir() or any(plots.iterdir()):
+        raise Phase13DContinuationError(
+            "materialization recovery requires the original empty plots directory"
+        )
+    preplot_hashes = _require_reference_hashes(
+        root, reference_root, MATERIALIZED_BEFORE_PLOTS
+    )
+    qc = _strict_json(root / "densification_qc.json")
+    if (
+        qc.get("segment_id") != segment_id
+        or qc.get("phase13d_status") != "LOCAL_PASS_PENDING_PUBLICATION"
+        or qc.get("status_counts") != {"completed": TOTAL_LOGICAL_RECORDS}
+        or qc.get("stable_new_points") != 84
+        or qc.get("unstable_new_points") != 0
+        or qc.get("remaining_unresolved_targets") != []
+    ):
+        raise Phase13DContinuationError(
+            "materialization recovery QC is not locally complete"
+        )
+    source = phase13d._source_summaries()
+    summaries = phase13d._read_parquet(root / "point_summary.parquet")
+    fits = phase13d._read_parquet(root / "refined_knees.parquet")
+    phase13d._render_plots(root, source=source, densified=summaries, fits=fits)
+    _write_durable_exclusive(
+        root / "inventory.json",
+        {
+            "schema_version": (
+                "kvbench-phase13d-continuation-scientific-inventory-1.0.0"
+            ),
+            "campaign_id": CAMPAIGN_ID,
+            "raw_run_records": TOTAL_LOGICAL_RECORDS,
+            "segment_a_run_records": SEGMENT_A_VALID_RUNS,
+            "segment_b_run_records": SEGMENT_B_RECORDS,
+            "original_failed_runs_excluded": 1,
+            "new_point_summaries": len(summaries),
+            "refined_fit_records": len(fits),
+            "source_bundle_copied": False,
+            "r_hbm": None,
+        },
+    )
+    segment_result = _strict_json(
+        root / "segments" / segment_id / "segment-result.json"
+    )
+    _write_durable_exclusive(
+        root / "unified/combined-campaign.json",
+        {
+            "schema_version": "kvbench-phase13d-combined-campaign-1.0.0",
+            "campaign_id": CAMPAIGN_ID,
+            "segment_a_id": SEGMENT_A_ID,
+            "segment_b_id": segment_id,
+            "segment_a_execution_head": ORIGINAL_EXECUTION_HEAD,
+            "segment_b_execution_heads": segment_result["execution_heads"],
+            "logical_coverage": TOTAL_LOGICAL_RECORDS,
+            "original_failed_run_excluded": FAILED_RUN_ID,
+            "status": qc["phase13d_status"],
+        },
+    )
+    generated = [
+        "inventory.json",
+        "unified/combined-campaign.json",
+        *[
+            path.relative_to(root).as_posix()
+            for path in sorted((root / "plots").glob("*.svg"))
+        ],
+    ]
+    generated_hashes = _require_reference_hashes(
+        root, reference_root, generated
+    )
+    evidence = {
+        "schema_version": (
+            "kvbench-phase13d-materialization-continuation-1.0.0"
+        ),
+        "campaign_id": CAMPAIGN_ID,
+        "segment_id": segment_id,
+        "reason": "pre_existing_empty_plots_directory",
+        "existing_outputs_rewritten": False,
+        "reference_equivalence": "PASS",
+        "preplot_hashes": preplot_hashes,
+        "generated_hashes": generated_hashes,
+    }
+    _write_durable_exclusive(
+        root / "unified/materialization-continuation.json", evidence
+    )
+    return evidence
+
+
 def _payload_paths(root: Path, excluded: set[str]) -> list[Path]:
     paths = []
     for path in sorted(root.rglob("*"), key=lambda value: value.relative_to(root).as_posix()):
@@ -1977,6 +2107,7 @@ def _parse_arguments(argv: Sequence[str] | None = None) -> argparse.Namespace:
     actions.add_argument("--run-segment", action="store_true")
     actions.add_argument("--resume-segment", action="store_true")
     actions.add_argument("--materialize-combined", action="store_true")
+    actions.add_argument("--resume-materialization", action="store_true")
     actions.add_argument("--seal-combined", action="store_true")
     actions.add_argument("--validate-combined", action="store_true")
     parser.add_argument("--segment-id")
@@ -1984,6 +2115,7 @@ def _parse_arguments(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--segment-root", type=Path)
     parser.add_argument("--campaign-root", type=Path, default=ORIGINAL_STAGE)
     parser.add_argument("--prefix-root", type=Path, default=PREFIX_ROOT)
+    parser.add_argument("--reference-root", type=Path)
     return parser.parse_args(argv)
 
 
@@ -2058,6 +2190,22 @@ def main(argv: Sequence[str] | None = None) -> int:
         if args.segment_id is None:
             raise Phase13DContinuationError("segment ID is required")
         print(json.dumps(materialize_combined(args.campaign_root, segment_id=args.segment_id), sort_keys=True))
+        return 0
+    if args.resume_materialization:
+        if args.segment_id is None or args.reference_root is None:
+            raise Phase13DContinuationError(
+                "segment ID and reference root are required"
+            )
+        print(
+            json.dumps(
+                resume_materialization_after_plots_collision(
+                    args.campaign_root,
+                    segment_id=args.segment_id,
+                    reference_root=args.reference_root,
+                ),
+                sort_keys=True,
+            )
+        )
         return 0
     if args.seal_combined:
         if args.segment_id is None:

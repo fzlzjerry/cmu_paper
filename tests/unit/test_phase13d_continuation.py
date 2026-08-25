@@ -132,6 +132,43 @@ class Phase13DSnapshotContinuationTests(unittest.TestCase):
 
 
 class Phase13DContinuationOrderTests(unittest.TestCase):
+    def test_materialization_recovery_requires_byte_identical_reference(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "actual"
+            reference = Path(directory) / "reference"
+            root.mkdir()
+            reference.mkdir()
+            (root / "derived.json").write_bytes(b"same")
+            (reference / "derived.json").write_bytes(b"same")
+            self.assertEqual(
+                continuation._require_reference_hashes(
+                    root, reference, ["derived.json"]
+                ),
+                {"derived.json": sha256_file(root / "derived.json")},
+            )
+            (reference / "derived.json").write_bytes(b"tampered")
+            with self.assertRaises(continuation.Phase13DContinuationError):
+                continuation._require_reference_hashes(
+                    root, reference, ["derived.json"]
+                )
+
+    def test_materialization_recovery_rejects_nonempty_plots(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "actual"
+            reference = Path(directory) / "reference"
+            (root / "plots").mkdir(parents=True)
+            reference.mkdir()
+            (root / "plots" / "existing.svg").write_bytes(b"immutable")
+            with self.assertRaisesRegex(
+                continuation.Phase13DContinuationError,
+                "original empty plots directory",
+            ):
+                continuation.resume_materialization_after_plots_collision(
+                    root,
+                    segment_id="phase13dseg-20260825t000000000000z-aaaaaaaa-aaaaaa",
+                    reference_root=reference,
+                )
+
     def test_q4_manifest_does_not_require_nonexistent_order_workspace_field(self) -> None:
         record = next(
             row
