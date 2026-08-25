@@ -60,6 +60,7 @@ PHASE13PR_ENTRY_COMMIT = "3e022662364fdbd129d4ca327e3eae8078a04ea1"
 PHASE13PB_ENTRY_COMMIT = "5ff41722edfcdabe0ec96dc226f0546b008c6438"
 PHASE13PC_ENTRY_COMMIT = "91b984069e3305428db612a3515fdc483ec990ed"
 PHASE13RQ4_ENTRY_COMMIT = "a127b0d12f1815f9e51f21767686d4536b9b35e3"
+PHASE13D_ENTRY_COMMIT = "345d805126587f318e3180ef75356ec38600e9f0"
 QUALITY_COMMIT = "a7b8285dd8ed2fb598efbb3312e9f55064a0ee64"
 ENVIRONMENT_COMMIT = "ea176994921c793789ebbd9d42515ce20ae4baee"
 EVIDENCE_COMMIT = "fb164b5ea96031ca40b21f4b8436a49a3bb5b8d2"
@@ -1269,6 +1270,23 @@ PHASE13RQ4_ALLOWED_PATHS = frozenset(
         "tests/unit/test_phase13rq4_scope.py",
     }
 )
+PHASE13D_ALLOWED_PATHS = frozenset(
+    {
+        "Makefile",
+        "docs/evidence/phase13d/r2-publication.json",
+        "docs/phase_reports/phase13d-knee-densification.md",
+        "docs/plans/phase13d-candidate-table.json",
+        "docs/plans/phase13d-execution-order.json",
+        "docs/plans/phase13d-knee-densification.md",
+        "docs/risk_register.md",
+        "docs/status.md",
+        "docs/tasks.md",
+        "scripts/phase13d_knee_densification.py",
+        "scripts/validate_phase2.py",
+        "tests/unit/test_phase13_scope.py",
+        "tests/unit/test_phase13d_knee_densification.py",
+    }
+)
 
 
 RAW_RESULT_SUFFIXES = {
@@ -1963,10 +1981,25 @@ def current_phase13pc_paths() -> set[str]:
 
 
 def current_phase13rq4_paths() -> set[str]:
-    """Return tracked and untracked q4 workspace-remediation changes."""
+    """Return the frozen q4 remediation and successor-Pilot segment."""
+
+    return git_paths(
+        (
+            "diff",
+            "--name-only",
+            "-z",
+            PHASE13RQ4_ENTRY_COMMIT,
+            PHASE13D_ENTRY_COMMIT,
+            "--",
+        )
+    )
+
+
+def current_phase13d_paths() -> set[str]:
+    """Return tracked and untracked Phase 13D densification changes."""
 
     changed = git_paths(
-        ("diff", "--name-only", "-z", PHASE13RQ4_ENTRY_COMMIT, "--")
+        ("diff", "--name-only", "-z", PHASE13D_ENTRY_COMMIT, "--")
     )
     untracked = git_paths(
         ("ls-files", "--others", "--exclude-standard", "-z", "--")
@@ -2169,6 +2202,24 @@ def phase13rq4_path_is_allowed(relative: str) -> bool:
         and ".." not in candidate.parts
         and "\\" not in relative
         and relative in PHASE13RQ4_ALLOWED_PATHS
+    )
+
+
+def phase13d_path_is_allowed(relative: str) -> bool:
+    """Accept only canonical exact paths in the Phase 13D allowlist."""
+
+    try:
+        candidate = PurePosixPath(relative)
+    except (TypeError, ValueError):
+        return False
+    return (
+        isinstance(relative, str)
+        and relative == candidate.as_posix()
+        and relative not in {"", "."}
+        and not candidate.is_absolute()
+        and ".." not in candidate.parts
+        and "\\" not in relative
+        and relative in PHASE13D_ALLOWED_PATHS
     )
 
 
@@ -3194,6 +3245,7 @@ PHASE13T_APPROVED_ARTIFACT_ROOT_NAMES = frozenset({"phase13t"})
 PHASE13PB_APPROVED_ARTIFACT_ROOT_NAMES = frozenset({"phase13pb"})
 PHASE13PC_APPROVED_ARTIFACT_ROOT_NAMES = frozenset({"phase13pc"})
 PHASE13RQ4_APPROVED_ARTIFACT_ROOT_NAMES = frozenset({"phase13rq4"})
+PHASE13D_APPROVED_ARTIFACT_ROOT_NAMES = frozenset({"phase13d"})
 PHASE13_PREFIX_APPROVED_ARTIFACT_ROOT_NAMES = frozenset(
     {"phase13_prefix_catalogs"}
 )
@@ -3882,6 +3934,7 @@ def validate_phase3_artifact_root() -> list[str]:
                 | PHASE13PB_APPROVED_ARTIFACT_ROOT_NAMES
                 | PHASE13PC_APPROVED_ARTIFACT_ROOT_NAMES
                 | PHASE13RQ4_APPROVED_ARTIFACT_ROOT_NAMES
+                | PHASE13D_APPROVED_ARTIFACT_ROOT_NAMES
                 | PHASE13_PREFIX_APPROVED_ARTIFACT_ROOT_NAMES
                 | PHASE12_BLOCKED_ARTIFACT_ROOT_NAMES
             )
@@ -4640,6 +4693,38 @@ def check_scope() -> int:
         ):
             errors.append(
                 f"forbidden result tree in Phase 13R q4 scope: {relative}"
+            )
+    phase13d = current_phase13d_paths()
+    phase13d_unexpected = sorted(phase13d - PHASE13D_ALLOWED_PATHS)
+    if phase13d_unexpected:
+        errors.append(
+            "files outside the approved Phase 13D knee densification: "
+            f"{phase13d_unexpected!r}"
+        )
+    for relative in sorted(phase13d):
+        if relative.startswith("docs/evidence/e00/"):
+            errors.append(f"immutable E00 evidence changed: {relative}")
+        if relative in QUALITY_PROTOCOL_HASHES:
+            errors.append(
+                "quality protocol changed during Phase 13D: "
+                f"{relative}"
+            )
+        if Path(relative).suffix in RAW_RESULT_SUFFIXES:
+            errors.append(
+                "forbidden binary, kernel, model, or profiler artifact "
+                f"in Phase 13D Git scope: {relative}"
+            )
+        if relative.startswith(
+            (
+                "artifacts/profiler/",
+                "artifacts/quality/",
+                "paper-results/",
+                "paper_results/",
+                "results/",
+            )
+        ):
+            errors.append(
+                f"forbidden result tree in Phase 13D scope: {relative}"
             )
     e00_changes = git_paths(
         (

@@ -162,6 +162,23 @@ EXPECTED_PHASE13PC_PATHS = frozenset(
         "tests/unit/test_phase13pc_cuda_context_isolation.py",
     }
 )
+EXPECTED_PHASE13D_PATHS = frozenset(
+    {
+        "Makefile",
+        "docs/evidence/phase13d/r2-publication.json",
+        "docs/phase_reports/phase13d-knee-densification.md",
+        "docs/plans/phase13d-candidate-table.json",
+        "docs/plans/phase13d-execution-order.json",
+        "docs/plans/phase13d-knee-densification.md",
+        "docs/risk_register.md",
+        "docs/status.md",
+        "docs/tasks.md",
+        "scripts/phase13d_knee_densification.py",
+        "scripts/validate_phase2.py",
+        "tests/unit/test_phase13_scope.py",
+        "tests/unit/test_phase13d_knee_densification.py",
+    }
+)
 
 
 class Phase13ScopeTests(unittest.TestCase):
@@ -435,6 +452,35 @@ class Phase13ScopeTests(unittest.TestCase):
             self.assertFalse(
                 validate_phase2.phase13pc_path_is_allowed(relative)
             )
+
+    def test_phase13d_segment_and_allowlist_are_exact(self) -> None:
+        self.assertEqual(
+            validate_phase2.PHASE13D_ENTRY_COMMIT,
+            "345d805126587f318e3180ef75356ec38600e9f0",
+        )
+        self.assertEqual(
+            validate_phase2.PHASE13D_ALLOWED_PATHS,
+            EXPECTED_PHASE13D_PATHS,
+        )
+        self.assertEqual(
+            validate_phase2.PHASE13D_APPROVED_ARTIFACT_ROOT_NAMES,
+            frozenset({"phase13d"}),
+        )
+        for relative in EXPECTED_PHASE13D_PATHS:
+            self.assertTrue(validate_phase2.phase13d_path_is_allowed(relative))
+
+    def test_phase13d_near_miss_and_broad_paths_are_rejected(self) -> None:
+        for relative in (
+            "docs/evidence/phase13d",
+            "docs/evidence/phase13d/r2-publication.json.backup",
+            "scripts/phase13d_knee_densification.py.backup",
+            "artifacts/phase13d",
+            "artifacts/phase13d/*",
+            "../scripts/phase13d_knee_densification.py",
+            "/scripts/phase13d_knee_densification.py",
+            "scripts\\phase13d_knee_densification.py",
+        ):
+            self.assertFalse(validate_phase2.phase13d_path_is_allowed(relative))
 
     def test_phase3_backup_root_allowlist_is_exact(self) -> None:
         self.assertEqual(
