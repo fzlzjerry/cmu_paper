@@ -30,7 +30,7 @@ from typing import Any
 from preflight.run_preflight import json_bytes, rename_noreplace, write_exclusive
 from kvbench.runtime.artifacts import sha256_file
 from kvbench.runtime.process_supervision import run_stage_supervised_command
-from scripts.r2_artifact import validate_local_artifact
+from scripts.r2_artifact import _validate_artifact, validate_local_artifact
 from scripts import phase12_unified_admission as phase12
 from scripts import phase13_pilot as pilot
 from scripts import phase13d_knee_densification as phase13d
@@ -44,6 +44,7 @@ ORIGINAL_STAGE = (
     / "artifacts/phase13d/.kvbench-staging/"
     "phase13d-20260825t030556684636z-a06837a3-83761a.8f4bb4ac.staging"
 )
+FINAL_CAMPAIGN_ROOT = REPOSITORY_ROOT / "artifacts/phase13d" / CAMPAIGN_ID
 PREFIX_ROOT = Path(
     "/home/rockrock/phase13d_prefix_states/"
     "phase13d-20260825t030556684636z-a06837a3-83761a"
@@ -419,7 +420,16 @@ def validate_prefix_reuse(prefix_root: Path, *, verify_state_bytes: bool) -> dic
 
 def _order() -> dict[str, Any]:
     order = _strict_json(phase13d.ORDER_PATH)
-    staged = _strict_json(ORIGINAL_STAGE / "execution_order.json")
+    candidates = [
+        root
+        for root in (ORIGINAL_STAGE, FINAL_CAMPAIGN_ROOT)
+        if (root / "execution_order.json").is_file()
+    ]
+    if len(candidates) != 1:
+        raise Phase13DContinuationError(
+            "frozen execution order must exist in exactly one campaign location"
+        )
+    staged = _strict_json(candidates[0] / "execution_order.json")
     if order != staged or len(order.get("records", [])) != TOTAL_LOGICAL_RECORDS:
         raise Phase13DContinuationError("frozen execution order differs")
     return order
@@ -1989,6 +1999,42 @@ def _payload_paths(root: Path, excluded: set[str]) -> list[Path]:
     return paths
 
 
+def _make_final_tree_immutable(root: Path) -> None:
+    for path in sorted(root.rglob("*"), reverse=True):
+        path.chmod(0o555 if path.is_dir() else 0o444)
+    root.chmod(0o555)
+
+
+def recover_final_immutability(root: Path) -> dict[str, Any]:
+    expected = FINAL_CAMPAIGN_ROOT
+    if root.resolve(strict=True) != expected.resolve(strict=True):
+        raise Phase13DContinuationError(
+            "immutability recovery target is not the final campaign"
+        )
+    writable = _validate_artifact(
+        root,
+        environ={},
+        require_immutable=False,
+        expect_final_name=True,
+    )
+    _make_final_tree_immutable(root)
+    immutable = validate_local_artifact(root, environ={})
+    if immutable.root_sha256 != writable.root_sha256:
+        raise Phase13DContinuationError(
+            "immutability recovery changed the artifact root"
+        )
+    return {
+        "schema_version": (
+            "kvbench-phase13d-immutability-recovery-1.0.0"
+        ),
+        "campaign_id": CAMPAIGN_ID,
+        "root_sha256": immutable.root_sha256,
+        "object_count": len(immutable.files),
+        "content_changed": False,
+        "immutable_validation": "PASS",
+    }
+
+
 def seal_combined(root: Path, *, segment_id: str) -> Path:
     qc = _strict_json(root / "densification_qc.json")
     segment_result = _strict_json(root / "segments" / segment_id / "segment-result.json")
@@ -2053,10 +2099,11 @@ def seal_combined(root: Path, *, segment_id: str) -> Path:
             "written_last": True,
         },
     )
-    final = REPOSITORY_ROOT / "artifacts/phase13d" / CAMPAIGN_ID
+    final = FINAL_CAMPAIGN_ROOT
     if final.exists() or final.is_symlink():
         raise Phase13DContinuationError("final campaign path already exists")
     rename_noreplace(root, final)
+    _make_final_tree_immutable(final)
     return final
 
 
@@ -2109,6 +2156,7 @@ def _parse_arguments(argv: Sequence[str] | None = None) -> argparse.Namespace:
     actions.add_argument("--materialize-combined", action="store_true")
     actions.add_argument("--resume-materialization", action="store_true")
     actions.add_argument("--seal-combined", action="store_true")
+    actions.add_argument("--recover-final-immutability", action="store_true")
     actions.add_argument("--validate-combined", action="store_true")
     parser.add_argument("--segment-id")
     parser.add_argument("--execution-head")
@@ -2211,6 +2259,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         if args.segment_id is None:
             raise Phase13DContinuationError("segment ID is required")
         print(seal_combined(args.campaign_root, segment_id=args.segment_id))
+        return 0
+    if args.recover_final_immutability:
+        print(
+            json.dumps(
+                recover_final_immutability(args.campaign_root),
+                sort_keys=True,
+            )
+        )
         return 0
     if args.validate_combined:
         if args.segment_id is None:

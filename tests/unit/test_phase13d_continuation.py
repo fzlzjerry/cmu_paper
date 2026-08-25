@@ -132,6 +132,20 @@ class Phase13DSnapshotContinuationTests(unittest.TestCase):
 
 
 class Phase13DContinuationOrderTests(unittest.TestCase):
+    def test_final_tree_immutability_changes_permissions_only(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "artifact"
+            nested = root / "nested"
+            nested.mkdir(parents=True)
+            payload = nested / "payload.bin"
+            payload.write_bytes(b"content-bound")
+            digest = sha256_file(payload)
+            continuation._make_final_tree_immutable(root)
+            self.assertEqual(sha256_file(payload), digest)
+            self.assertEqual(payload.stat().st_mode & 0o777, 0o444)
+            self.assertEqual(nested.stat().st_mode & 0o777, 0o555)
+            self.assertEqual(root.stat().st_mode & 0o777, 0o555)
+
     def test_materialization_recovery_requires_byte_identical_reference(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory) / "actual"
