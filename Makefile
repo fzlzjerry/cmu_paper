@@ -1693,6 +1693,12 @@ densify-pilot-knees: verify-measurement-container
 		stage_relative="$${stage#$$repository_root/}"; \
 		mkdir -p "$$task_root/repository/$$(dirname "$$stage_relative")"; mkdir "$$task_root/repository/$$stage_relative"; \
 		mkdir -p "$$task_root/repository/artifacts/phase12" "$$task_root/repository/artifacts/phase13" "$$task_root/repository/artifacts/phase13b" "$$task_root/repository/artifacts/phase13rq4" "$$task_root/repository/artifacts/phase13d"; \
+		mkdir -p \
+			"$$task_root/repository/artifacts/phase13/phase13-20260822t150835736582z-4ddd7b17-3a8fb3" \
+			"$$task_root/repository/artifacts/phase13/phase13-20260804t111810342595z-a127b0d1-8649c3" \
+			"$$task_root/repository/artifacts/phase13b/phase13b-20260801t143138050263z-b862af64-batch-admission" \
+			"$$task_root/repository/artifacts/phase13rq4/phase13rq4-20260820t094629495794z-ab4e0b84-b8c7bd" \
+			"$$task_root/repository/artifacts/phase13d/$$campaign_id"; \
 		blocked_campaign="$$repository_root/artifacts/phase13/phase13-20260804t111810342595z-a127b0d1-8649c3"; \
 		test -d "$$blocked_campaign" && test ! -L "$$blocked_campaign"; \
 		docker run --rm --read-only --network=none --tmpfs /tmp:rw,exec,nosuid,nodev,size=2g \

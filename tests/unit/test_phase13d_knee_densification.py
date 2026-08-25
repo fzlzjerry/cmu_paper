@@ -86,6 +86,29 @@ class Phase13DCandidateTests(unittest.TestCase):
                 self.assertEqual(seen_blocks[-1], row["target_id"])
             self.assertEqual(len(seen_blocks), 25)
 
+    def test_read_only_nested_mountpoints_are_precreated_exactly(self) -> None:
+        makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
+        marker = (
+            '"$$task_root/repository/artifacts/phase13/'
+            'phase13-20260822t150835736582z-4ddd7b17-3a8fb3"'
+        )
+        blocked = (
+            '"$$task_root/repository/artifacts/phase13/'
+            'phase13-20260804t111810342595z-a127b0d1-8649c3"'
+        )
+        phase13b = (
+            '"$$task_root/repository/artifacts/phase13b/'
+            'phase13b-20260801t143138050263z-b862af64-batch-admission"'
+        )
+        phase13rq4 = (
+            '"$$task_root/repository/artifacts/phase13rq4/'
+            'phase13rq4-20260820t094629495794z-ab4e0b84-b8c7bd"'
+        )
+        final = '"$$task_root/repository/artifacts/phase13d/$$campaign_id"'
+        for value in (marker, blocked, phase13b, phase13rq4, final):
+            self.assertIn(value, makefile)
+        self.assertLess(makefile.index(marker), makefile.index("--validate-source"))
+
 
 class Phase13DResolutionTests(unittest.TestCase):
     def _target(self) -> dict[str, object]:
