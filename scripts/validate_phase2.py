@@ -1274,6 +1274,7 @@ PHASE13D_ALLOWED_PATHS = frozenset(
     {
         "Makefile",
         "docs/evidence/phase13d/r2-publication.json",
+        "docs/phase_reports/phase13d-continuation.md",
         "docs/phase_reports/phase13d-knee-densification.md",
         "docs/plans/phase13d-candidate-table.json",
         "docs/plans/phase13d-execution-order.json",
@@ -1282,8 +1283,10 @@ PHASE13D_ALLOWED_PATHS = frozenset(
         "docs/status.md",
         "docs/tasks.md",
         "scripts/phase13d_knee_densification.py",
+        "scripts/phase13d_continuation.py",
         "scripts/validate_phase2.py",
         "tests/unit/test_phase13_scope.py",
+        "tests/unit/test_phase13d_continuation.py",
         "tests/unit/test_phase13d_knee_densification.py",
     }
 )

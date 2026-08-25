@@ -166,6 +166,7 @@ EXPECTED_PHASE13D_PATHS = frozenset(
     {
         "Makefile",
         "docs/evidence/phase13d/r2-publication.json",
+        "docs/phase_reports/phase13d-continuation.md",
         "docs/phase_reports/phase13d-knee-densification.md",
         "docs/plans/phase13d-candidate-table.json",
         "docs/plans/phase13d-execution-order.json",
@@ -174,8 +175,10 @@ EXPECTED_PHASE13D_PATHS = frozenset(
         "docs/status.md",
         "docs/tasks.md",
         "scripts/phase13d_knee_densification.py",
+        "scripts/phase13d_continuation.py",
         "scripts/validate_phase2.py",
         "tests/unit/test_phase13_scope.py",
+        "tests/unit/test_phase13d_continuation.py",
         "tests/unit/test_phase13d_knee_densification.py",
     }
 )
@@ -473,11 +476,16 @@ class Phase13ScopeTests(unittest.TestCase):
         for relative in (
             "docs/evidence/phase13d",
             "docs/evidence/phase13d/r2-publication.json.backup",
+            "docs/phase_reports/phase13d-continuation.md.backup",
+            "scripts/phase13d_continuation.py.backup",
             "scripts/phase13d_knee_densification.py.backup",
             "artifacts/phase13d",
             "artifacts/phase13d/*",
+            "../scripts/phase13d_continuation.py",
             "../scripts/phase13d_knee_densification.py",
+            "/scripts/phase13d_continuation.py",
             "/scripts/phase13d_knee_densification.py",
+            "scripts\\phase13d_continuation.py",
             "scripts\\phase13d_knee_densification.py",
         ):
             self.assertFalse(validate_phase2.phase13d_path_is_allowed(relative))
