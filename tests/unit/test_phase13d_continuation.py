@@ -132,6 +132,27 @@ class Phase13DSnapshotContinuationTests(unittest.TestCase):
 
 
 class Phase13DContinuationOrderTests(unittest.TestCase):
+    def test_q4_manifest_does_not_require_nonexistent_order_workspace_field(self) -> None:
+        record = next(
+            row
+            for row in continuation.continuation_records(continuation._order())
+            if row["method_config_id"] == "kvq4"
+        )
+        self.assertNotIn("q4_value_decode_workspace", record)
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest = continuation._run_manifest(
+                root=root,
+                segment_id="phase13dseg-20260825t000000000000z-aaaaaaaa-aaaaaa",
+                execution_head="a" * 40,
+                run_id="phase13dseg-20260825t000000000000z-aaaaaaaa-aaaaaa-g063-r0-o063-kvq4-b8-l5120",
+                record=record,
+                status="completed",
+                reason=None,
+            )
+        self.assertEqual(manifest["status"], "completed")
+        self.assertNotIn("q4_value_decode_workspace", manifest)
+
     def test_continuation_preserves_exact_frozen_suffix(self) -> None:
         order = continuation._order()
         records = continuation.continuation_records(order)

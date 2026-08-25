@@ -764,10 +764,6 @@ def _run_manifest(
         "performance_claim_eligible": False,
         "r_hbm": None,
     }
-    if record["method_config_id"] == "kvq4":
-        manifest["q4_value_decode_workspace"] = dict(
-            record["q4_value_decode_workspace"]
-        )
     _write_durable_exclusive(root / "manifest.json", manifest)
     return manifest
 
@@ -1180,6 +1176,7 @@ def run_segment(
         "campaign_id": CAMPAIGN_ID,
         "segment_id": segment_id,
         "execution_head": execution_head,
+        "execution_heads": [execution_head],
         "planned_records": SEGMENT_B_RECORDS,
         "status_counts": dict(sorted(counts.items())),
         "segment_status": status,
@@ -1195,6 +1192,324 @@ def run_segment(
             "segment_id": segment_id,
             "status": status,
             "segment_result_sha256": sha256_file(segment_root / "segment-result.json"),
+            "written_last": True,
+        },
+    )
+    return result
+
+
+def _validate_completed_continuation_run(
+    *,
+    run_root: Path,
+    record: Mapping[str, Any],
+    require_manifest: bool,
+) -> dict[str, Any]:
+    run_id = _segment_run_id(run_root.parents[1].name, record)
+    result = _strict_json(run_root / "result.json")
+    summary = _strict_json(run_root / "worker.snapshot-summary.json")
+    required_stages = {
+        f"{sequence:02d}-{stage}-{state}.json"
+        for sequence, stage, state in (
+            (1, "model_load", "started"),
+            (2, "model_load", "completed"),
+            (3, "prefix_construction", "started"),
+            (4, "prefix_construction", "completed"),
+            (5, "graph_capture", "started"),
+            (6, "graph_capture", "completed"),
+            (7, "warmup_and_audit", "started"),
+            (8, "warmup_and_audit", "completed"),
+            (9, "measurement", "started"),
+            (10, "measurement", "completed"),
+            (11, "finalization", "started"),
+            (12, "finalization", "completed"),
+        )
+    }
+    observed_stages = {
+        path.name for path in (run_root / "stage-progress").glob("*.json")
+    }
+    if (
+        result.get("run_id") != run_id
+        or result.get("source_segment_id") != run_root.parents[1].name
+        or result.get("original_sequence_index")
+        != record["original_sequence_index"]
+        or result.get("original_logical_run_id")
+        != record["original_logical_run_id"]
+        or result.get("finite_output") is not True
+        or result.get("gpu_exclusive") is not True
+        or result.get("no_backend_fallback") is not True
+        or result.get("allocation_stable") is not True
+        or result.get("kernel_path_stable") is not True
+        or result.get("graph_replay_allocation", {}).get("passed") is not True
+        or result.get("graph_replay_allocation", {}).get(
+            "allocation_event_count"
+        )
+        != 0
+        or summary.get("preflight_state") != "clean"
+        or summary.get("postflight_state") != "clean"
+        or observed_stages != required_stages
+    ):
+        raise Phase13DContinuationError(
+            "completed continuation run evidence differs"
+        )
+    if require_manifest:
+        manifest = _strict_json(run_root / "manifest.json")
+        binding = _strict_json(run_root / "result-binding.json")
+        if (
+            manifest.get("run_id") != run_id
+            or manifest.get("status") != "completed"
+            or manifest.get("reason") is not None
+            or manifest.get("original_sequence_index")
+            != record["original_sequence_index"]
+            or manifest.get("execution_head") != result.get("execution_head")
+            or binding.get("run_id") != run_id
+            or binding.get("result_sha256") != sha256_file(run_root / "result.json")
+            or (run_root / "disposition.json").exists()
+        ):
+            raise Phase13DContinuationError(
+                "completed continuation manifest differs"
+            )
+    elif (
+        (run_root / "manifest.json").exists()
+        or (run_root / "result-binding.json").exists()
+        or (run_root / "disposition.json").exists()
+    ):
+        raise Phase13DContinuationError(
+            "repairable finalization has unexpected control files"
+        )
+    return result
+
+
+def _repair_completed_finalization(
+    *,
+    run_root: Path,
+    segment_id: str,
+    record: Mapping[str, Any],
+    repair_execution_head: str,
+) -> dict[str, Any]:
+    result = _validate_completed_continuation_run(
+        run_root=run_root, record=record, require_manifest=False
+    )
+    measurement_execution_head = str(result.get("execution_head"))
+    if re.fullmatch(r"[0-9a-f]{40}", measurement_execution_head) is None:
+        raise Phase13DContinuationError(
+            "repairable result execution HEAD differs"
+        )
+    _write_durable_exclusive(
+        run_root / "finalization-repair.json",
+        {
+            "schema_version": (
+                "kvbench-phase13d-continuation-finalization-repair-1.0.0"
+            ),
+            "run_id": result["run_id"],
+            "measurement_execution_head": measurement_execution_head,
+            "repair_execution_head": repair_execution_head,
+            "measurement_reexecuted": False,
+            "reason": "manifest_optional_q4_field_keyerror_after_clean_postflight",
+            "result_sha256": sha256_file(run_root / "result.json"),
+            "snapshot_summary_sha256": sha256_file(
+                run_root / "worker.snapshot-summary.json"
+            ),
+        },
+    )
+    manifest = _run_manifest(
+        root=run_root,
+        segment_id=segment_id,
+        execution_head=measurement_execution_head,
+        run_id=str(result["run_id"]),
+        record=record,
+        status="completed",
+        reason=None,
+    )
+    _write_durable_exclusive(
+        run_root / "result-binding.json",
+        {
+            "schema_version": (
+                "kvbench-phase13d-continuation-result-binding-1.0.0"
+            ),
+            "run_id": result["run_id"],
+            "result_sha256": sha256_file(run_root / "result.json"),
+        },
+    )
+    _validate_completed_continuation_run(
+        run_root=run_root, record=record, require_manifest=True
+    )
+    return manifest
+
+
+def resume_segment(
+    *,
+    segment_root: Path,
+    segment_id: str,
+    execution_head: str,
+    prefix_root: Path,
+) -> dict[str, Any]:
+    if segment_root != ORIGINAL_STAGE / "segments" / segment_id:
+        raise Phase13DContinuationError("segment path differs")
+    phase12._require_authorized_container_runtime()
+    if any(name in os.environ for name in pilot._FORBIDDEN_ENVIRONMENT):
+        raise Phase13DContinuationError(
+            "credentials entered Measurement Container"
+        )
+    phase13d._configure_pilot_contexts()
+    phase13d._require_clean_execution_sha(execution_head)
+    phase13d.validate_preregistration(replay_source=False)
+    if (segment_root / "SEGMENT_COMPLETE").exists():
+        raise Phase13DContinuationError("completed segment cannot resume")
+    initial_manifest = _strict_json(segment_root / "segment_manifest.json")
+    stored_order = _strict_json(segment_root / "continuation-order.json")
+    records = continuation_records(_order())
+    if (
+        initial_manifest.get("segment_id") != segment_id
+        or initial_manifest.get("execution_head")
+        != "93d60abad3f71a9872f86849753312d95a105be1"
+        or stored_order.get("records") != records
+        or stored_order.get("records_sha256") != _canonical_sha256(records)
+    ):
+        raise Phase13DContinuationError("resumable segment authority differs")
+    prefix = validate_prefix_reuse(prefix_root, verify_state_bytes=True)
+    equivalence = timing_critical_equivalence(execution_head)
+    _write_durable_exclusive(
+        segment_root / f"timing-critical-equivalence-{execution_head}.json",
+        equivalence,
+    )
+    existing_roots = sorted(
+        path.name
+        for path in (segment_root / "runs").iterdir()
+        if path.is_dir()
+    )
+    expected_roots: list[str] = []
+    preserved = 0
+    repaired = 0
+    start_index: int | None = None
+    for index, record in enumerate(records):
+        run_id = _segment_run_id(segment_id, record)
+        run_root = segment_root / "runs" / run_id
+        if not run_root.exists():
+            start_index = index
+            break
+        expected_roots.append(run_id)
+        if (run_root / "manifest.json").is_file():
+            _validate_completed_continuation_run(
+                run_root=run_root, record=record, require_manifest=True
+            )
+            preserved += 1
+            continue
+        _repair_completed_finalization(
+            run_root=run_root,
+            segment_id=segment_id,
+            record=record,
+            repair_execution_head=execution_head,
+        )
+        repaired += 1
+        preserved += 1
+    if start_index is None:
+        start_index = len(records)
+    if existing_roots != expected_roots or repaired != 1 or preserved != 13:
+        raise Phase13DContinuationError("resumable prefix differs")
+    _write_durable_exclusive(
+        segment_root / f"resume-manifest-{execution_head}.json",
+        {
+            "schema_version": (
+                "kvbench-phase13d-continuation-resume-1.0.0"
+            ),
+            "campaign_id": CAMPAIGN_ID,
+            "segment_id": segment_id,
+            "initial_execution_head": initial_manifest["execution_head"],
+            "resume_execution_head": execution_head,
+            "preserved_completed_runs": preserved,
+            "repaired_finalization_records": repaired,
+            "measurement_records_rerun": 0,
+            "resume_original_sequence_index": records[start_index][
+                "original_sequence_index"
+            ],
+            "remaining_records": len(records) - start_index,
+            "frozen_order_regenerated": False,
+            "prefix_states_regenerated": False,
+        },
+    )
+    index = _prefix_catalog_index(prefix_root)
+    manifests: list[dict[str, Any]] = [
+        _strict_json(
+            segment_root
+            / "runs"
+            / _segment_run_id(segment_id, record)
+            / "manifest.json"
+        )
+        for record in records[:start_index]
+    ]
+    abort_reason: str | None = None
+    for record in records[start_index:]:
+        if abort_reason is not None:
+            run_id = _segment_run_id(segment_id, record)
+            run_root = segment_root / "runs" / run_id
+            run_root.mkdir()
+            _record_disposition(
+                root=run_root,
+                run_id=run_id,
+                status="aborted",
+                reason=abort_reason,
+                launched=False,
+            )
+            manifests.append(
+                _run_manifest(
+                    root=run_root,
+                    segment_id=segment_id,
+                    execution_head=execution_head,
+                    run_id=run_id,
+                    record=record,
+                    status="aborted",
+                    reason=abort_reason,
+                )
+            )
+            continue
+        key = (
+            str(record["method_config_id"]),
+            int(record["batch_size"]),
+            int(record["historical_context"]),
+        )
+        manifest, abort = _run_one(
+            segment_root=segment_root,
+            segment_id=segment_id,
+            execution_head=execution_head,
+            record=record,
+            prefix_entry=index[key],
+        )
+        manifests.append(manifest)
+        if abort or manifest["status"] == "runtime_failed":
+            abort_reason = str(manifest["reason"])
+    counts = Counter(str(item["status"]) for item in manifests)
+    completed = counts.get("completed", 0)
+    status = "LOCAL_COMPLETE" if completed == SEGMENT_B_RECORDS else "PARTIAL"
+    execution_heads = sorted(
+        {str(item["execution_head"]) for item in manifests}
+    )
+    result = {
+        "schema_version": "kvbench-phase13d-continuation-local-1.0.0",
+        "campaign_id": CAMPAIGN_ID,
+        "segment_id": segment_id,
+        "execution_heads": execution_heads,
+        "planned_records": SEGMENT_B_RECORDS,
+        "status_counts": dict(sorted(counts.items())),
+        "segment_status": status,
+        "abort_reason": abort_reason,
+        "selective_reruns": 0,
+        "measurement_records_rerun": 0,
+        "segment_a_runs_rerun": 0,
+        "preserved_resume_runs": preserved,
+        "repaired_finalization_records": repaired,
+    }
+    _write_durable_exclusive(segment_root / "segment-result.json", result)
+    _write_durable_exclusive(
+        segment_root / "SEGMENT_COMPLETE",
+        {
+            "schema_version": (
+                "kvbench-phase13d-continuation-complete-1.0.0"
+            ),
+            "segment_id": segment_id,
+            "status": status,
+            "segment_result_sha256": sha256_file(
+                segment_root / "segment-result.json"
+            ),
             "written_last": True,
         },
     )
@@ -1315,16 +1630,14 @@ def combined_run_records(root: Path, *, segment_id: str) -> list[dict[str, Any]]
     segment_order = _strict_json(segment_root / "continuation-order.json")["records"]
     for logical in segment_order:
         run_id = _segment_run_id(segment_id, logical)
+        manifest_path = segment_root / "runs" / run_id / "manifest.json"
+        run_manifest = _strict_json(manifest_path)
         records.append(
             _run_record(
                 root=root,
-                manifest_path=segment_root / "runs" / run_id / "manifest.json",
+                manifest_path=manifest_path,
                 source_segment_id=segment_id,
-                execution_head=str(
-                    _strict_json(segment_root / "segment_manifest.json")[
-                        "execution_head"
-                    ]
-                ),
+                execution_head=str(run_manifest["execution_head"]),
                 original_sequence_index=int(logical["original_sequence_index"]),
                 original_logical_run_id=str(logical["original_logical_run_id"]),
             )
@@ -1520,9 +1833,9 @@ def materialize_combined(root: Path, *, segment_id: str) -> dict[str, Any]:
             "segment_a_id": SEGMENT_A_ID,
             "segment_b_id": segment_id,
             "segment_a_execution_head": ORIGINAL_EXECUTION_HEAD,
-            "segment_b_execution_head": _strict_json(
-                root / "segments" / segment_id / "segment_manifest.json"
-            )["execution_head"],
+            "segment_b_execution_heads": _strict_json(
+                root / "segments" / segment_id / "segment-result.json"
+            )["execution_heads"],
             "logical_coverage": len(records),
             "original_failed_run_excluded": FAILED_RUN_ID,
             "status": qc["phase13d_status"],
@@ -1548,7 +1861,7 @@ def _payload_paths(root: Path, excluded: set[str]) -> list[Path]:
 
 def seal_combined(root: Path, *, segment_id: str) -> Path:
     qc = _strict_json(root / "densification_qc.json")
-    segment_manifest = _strict_json(root / "segments" / segment_id / "segment_manifest.json")
+    segment_result = _strict_json(root / "segments" / segment_id / "segment-result.json")
     _write_durable_exclusive(
         root / "manifest.json",
         {
@@ -1558,7 +1871,7 @@ def seal_combined(root: Path, *, segment_id: str) -> Path:
             "status": qc["phase13d_status"],
             "created_at_utc": _utc_now(),
             "original_execution_head": ORIGINAL_EXECUTION_HEAD,
-            "continuation_execution_head": segment_manifest["execution_head"],
+            "continuation_execution_heads": segment_result["execution_heads"],
             "segment_id": segment_id,
             "authorized_container_digest": phase13d.AUTHORIZED_CONTAINER_DIGEST,
             "append_only": True,
@@ -1662,6 +1975,7 @@ def _parse_arguments(argv: Sequence[str] | None = None) -> argparse.Namespace:
     actions.add_argument("--reserve-segment", action="store_true")
     actions.add_argument("--validate-entry", action="store_true")
     actions.add_argument("--run-segment", action="store_true")
+    actions.add_argument("--resume-segment", action="store_true")
     actions.add_argument("--materialize-combined", action="store_true")
     actions.add_argument("--seal-combined", action="store_true")
     actions.add_argument("--validate-combined", action="store_true")
@@ -1710,6 +2024,27 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(
             json.dumps(
                 run_segment(
+                    segment_root=args.segment_root,
+                    segment_id=args.segment_id,
+                    execution_head=args.execution_head,
+                    prefix_root=args.prefix_root,
+                ),
+                sort_keys=True,
+            )
+        )
+        return 0
+    if args.resume_segment:
+        if (
+            args.segment_id is None
+            or args.execution_head is None
+            or args.segment_root is None
+        ):
+            raise Phase13DContinuationError(
+                "segment resume arguments are required"
+            )
+        print(
+            json.dumps(
+                resume_segment(
                     segment_root=args.segment_root,
                     segment_id=args.segment_id,
                     execution_head=args.execution_head,
