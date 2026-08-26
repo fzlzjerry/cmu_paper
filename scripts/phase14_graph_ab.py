@@ -584,6 +584,30 @@ def _optional_telemetry_range(
     return min(converted), max(converted)
 
 
+def _allocation_contract(
+    audit: Any, *, graph_mode: str
+) -> tuple[bool, bool, str]:
+    if graph_mode not in GRAPH_MODES:
+        raise Phase14Error("allocation contract graph mode differs")
+    persistent_stable = bool(
+        audit.audit_available
+        and audit.allocated_after == audit.allocated_before
+        and audit.reserved_after == audit.reserved_before
+    )
+    if graph_mode == "cuda_graph":
+        passed = bool(
+            persistent_stable
+            and audit.passed
+            and audit.allocation_event_count == 0
+            and audit.allocation_event_bytes == 0
+        )
+        label = "graph_zero_replay_events_and_persistent_delta"
+    else:
+        passed = persistent_stable
+        label = "eager_zero_persistent_delta_with_events_recorded"
+    return passed, persistent_stable, label
+
+
 def _worker_owned_snapshot(
     *, run_root: Path, pid: int, start_ticks: int
 ) -> dict[str, Any]:
@@ -817,11 +841,12 @@ def _run_worker(
     audit_checksum = tensor_sha256_untimed(audit_output)
     audit_finite = bool(torch.isfinite(audit_output).all())
     allocation_record = allocation_audit.to_dict()
-    allocation_passed = bool(
-        allocation_audit.audit_available
-        and allocation_audit.passed
-        and allocation_audit.allocated_after == allocation_audit.allocated_before
-        and allocation_audit.reserved_after == allocation_audit.reserved_before
+    (
+        allocation_passed,
+        persistent_allocation_stable,
+        allocation_contract,
+    ) = _allocation_contract(
+        allocation_audit, graph_mode=graph_mode
     )
     if graph_mode == "cuda_graph":
         graph_passed = bool(
@@ -881,6 +906,8 @@ def _run_worker(
         "graph_mode": graph_mode,
         "execution_path_passed": path_passed,
         "allocation_passed": allocation_passed,
+        "allocation_contract": allocation_contract,
+        "persistent_allocation_stable": persistent_allocation_stable,
         "graph_passed": graph_passed,
         "output_matches_warmed": (
             (audit_checksum, audit_finite) == session._warmed_outputs[0]
@@ -1057,8 +1084,9 @@ def _run_worker(
         "source_path_witness": source_witness,
         "graph_capture": graph_mode == "cuda_graph",
         "graph_replay_allocation_zero": (
-            graph_mode != "cuda_graph"
-            or (
+            None
+            if graph_mode != "cuda_graph"
+            else (
                 allocation_audit.allocation_event_count == 0
                 and allocation_audit.allocation_event_bytes == 0
             )
@@ -1671,6 +1699,8 @@ def _point_summaries(records: Sequence[Mapping[str, Any]]) -> list[dict[str, Any
                             and all(row["gpu_exclusive"] is True for row in completed)
                             and all(
                                 row["graph_replay_allocation_zero"] is True
+                                if row["graph_mode"] == "cuda_graph"
+                                else row["graph_replay_allocation_zero"] is None
                                 for row in completed
                             )
                         )

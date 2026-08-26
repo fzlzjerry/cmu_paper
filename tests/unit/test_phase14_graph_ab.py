@@ -6,6 +6,7 @@ import copy
 import inspect
 import json
 from pathlib import Path
+from types import SimpleNamespace
 import unittest
 
 from scripts import phase14_graph_ab as phase14
@@ -129,6 +130,40 @@ class Phase14PreregistrationTests(unittest.TestCase):
 
 
 class Phase14MechanismTests(unittest.TestCase):
+    def test_allocation_contract_is_mode_specific_and_fail_closed(self) -> None:
+        eager_events = SimpleNamespace(
+            audit_available=True,
+            passed=False,
+            allocated_before=100,
+            allocated_after=100,
+            reserved_before=200,
+            reserved_after=200,
+            allocation_event_count=7,
+            allocation_event_bytes=4096,
+        )
+        eager = phase14._allocation_contract(eager_events, graph_mode="eager")
+        graph = phase14._allocation_contract(
+            eager_events, graph_mode="cuda_graph"
+        )
+        self.assertEqual(
+            eager,
+            (True, True, "eager_zero_persistent_delta_with_events_recorded"),
+        )
+        self.assertEqual(
+            graph,
+            (False, True, "graph_zero_replay_events_and_persistent_delta"),
+        )
+        zero_graph = copy.copy(eager_events)
+        zero_graph.passed = True
+        zero_graph.allocation_event_count = 0
+        zero_graph.allocation_event_bytes = 0
+        self.assertEqual(
+            phase14._allocation_contract(zero_graph, graph_mode="cuda_graph"),
+            (True, True, "graph_zero_replay_events_and_persistent_delta"),
+        )
+        with self.assertRaises(phase14.Phase14Error):
+            phase14._allocation_contract(eager_events, graph_mode="unknown")
+
     def test_eager_untimed_audit_retains_inference_backend_context(self) -> None:
         source = inspect.getsource(phase14._run_worker)
         self.assertIn(

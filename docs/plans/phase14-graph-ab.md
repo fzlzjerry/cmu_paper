@@ -55,6 +55,12 @@ reduction when `tau_eager / tau_graph >= 1.05`, and similar slope when
 `0.80 <= s_graph / s_eager <= 1.20`; neither flag is a performance or quality
 claim.
 
+The allocation contract is mode-specific and unchanged from the admitted
+runner: eager requires zero persistent allocated/reserved drift and preserves
+its observed transient-event audit for replicate agreement; CUDA Graph requires
+zero replay allocation events as well as zero persistent drift.  Eager events
+are not relabeled as Graph replay or silently discarded.
+
 ## Evidence and publication
 
 The append-only campaign is created under `artifacts/phase14/<campaign_id>/`
