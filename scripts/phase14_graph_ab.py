@@ -876,6 +876,40 @@ def _run_worker(
     if session.graph_evidence is not None:
         session.graph_evidence["replay_allocation"] = allocation_record
         session.graph_evidence["phase14_warmup_replays"] = WARMUP_STEPS
+    setup_audit = {
+        "schema_version": "kvbench-phase14-setup-audit-1.0.0",
+        "graph_mode": graph_mode,
+        "execution_path_passed": path_passed,
+        "allocation_passed": allocation_passed,
+        "graph_passed": graph_passed,
+        "output_matches_warmed": (
+            (audit_checksum, audit_finite) == session._warmed_outputs[0]
+        ),
+        "eager_graph_comparison_present": session.eager_graph_comparison is not None,
+        "eager_graph_comparison_passed": bool(
+            session.eager_graph_comparison is not None
+            and session.eager_graph_comparison.passed
+        ),
+        "allocation_audit": allocation_record,
+    }
+    write_exclusive(
+        run_artifact_root / "setup-audit.json", json_bytes(setup_audit)
+    )
+    if not all(
+        setup_audit[key] is True
+        for key in (
+            "execution_path_passed",
+            "allocation_passed",
+            "graph_passed",
+            "output_matches_warmed",
+            "eager_graph_comparison_present",
+            "eager_graph_comparison_passed",
+        )
+    ):
+        raise Phase14Error(
+            "mode setup audit differs: "
+            + json.dumps(setup_audit, sort_keys=True, separators=(",", ":"))
+        )
     session.admit(
         observed_outputs=((audit_checksum, audit_finite),),
         execution_path_passed=path_passed,
