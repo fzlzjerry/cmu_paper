@@ -172,6 +172,7 @@ class Phase14MechanismTests(unittest.TestCase):
         )
         self.assertIn("operation_callable = eager_operation", source)
         self.assertIn('run_artifact_root / "setup-audit.json"', source)
+        self.assertIn('run_artifact_root / "timing-verdict.json"', source)
 
     def test_eager_passthrough_executes_without_graph_claim(self) -> None:
         calls: list[int] = []

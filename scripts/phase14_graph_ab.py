@@ -971,18 +971,54 @@ def _run_worker(
         ):
             raise Phase14Error("measured CUDA Graph topology drifted")
     memory = runner.get("memory_evidence")
-    if (
-        runner.get("graph_mode") != graph_mode
-        or runner.get("output_finite") is not True
-        or runner.get("output_checksum") != audit_checksum
-        or runner.get("cache_pointers_stable") is not True
-        or runner.get("historical_cache_unchanged") is not True
-        or not isinstance(memory, Mapping)
-        or memory.get("timing_allocated_delta_bytes") != 0
-        or memory.get("timing_reserved_delta_bytes") != 0
-        or runner.get("r_hbm") is not None
-    ):
-        raise Phase14Error("Phase 14 timing stability or allocation failed")
+    timing_verdict = {
+        "schema_version": "kvbench-phase14-timing-verdict-1.0.0",
+        "graph_mode_matches": runner.get("graph_mode") == graph_mode,
+        "output_finite": runner.get("output_finite") is True,
+        "output_checksum_matches_audit": (
+            runner.get("output_checksum") == audit_checksum
+        ),
+        "cache_pointers_stable": runner.get("cache_pointers_stable") is True,
+        "historical_cache_unchanged": (
+            runner.get("historical_cache_unchanged") is True
+        ),
+        "memory_evidence_present": isinstance(memory, Mapping),
+        "timing_allocated_delta_bytes": (
+            memory.get("timing_allocated_delta_bytes")
+            if isinstance(memory, Mapping)
+            else None
+        ),
+        "timing_reserved_delta_bytes": (
+            memory.get("timing_reserved_delta_bytes")
+            if isinstance(memory, Mapping)
+            else None
+        ),
+        "r_hbm_is_null": runner.get("r_hbm") is None,
+    }
+    write_exclusive(
+        run_artifact_root / "timing-verdict.json", json_bytes(timing_verdict)
+    )
+    timing_passed = bool(
+        all(
+            timing_verdict[key] is True
+            for key in (
+                "graph_mode_matches",
+                "output_finite",
+                "output_checksum_matches_audit",
+                "cache_pointers_stable",
+                "historical_cache_unchanged",
+                "memory_evidence_present",
+                "r_hbm_is_null",
+            )
+        )
+        and timing_verdict["timing_allocated_delta_bytes"] == 0
+        and timing_verdict["timing_reserved_delta_bytes"] == 0
+    )
+    if not timing_passed:
+        raise Phase14Error(
+            "Phase 14 timing stability or allocation failed: "
+            + json.dumps(timing_verdict, sort_keys=True, separators=(",", ":"))
+        )
     samples = runner["timing"]["samples"]
     wall_values = [
         float(item["host_ns_per_operation"]) / 1_000_000.0 for item in samples
