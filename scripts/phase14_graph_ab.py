@@ -348,6 +348,8 @@ def _source_prefix_index() -> dict[tuple[str, int, int], dict[str, Any]]:
             int(row["batch_size"]),
             int(row["context_label"]),
         )
+        if key[1] not in BATCH_SIZES or key[2] not in CONTEXT_LABELS:
+            continue
         if key in index:
             raise Phase14Error("Phase 13 prefix catalog contains duplicates")
         root = SOURCE_PREFIX_ROOT / str(row["snapshot_relative_path"])
@@ -370,6 +372,8 @@ def _source_prefix_index() -> dict[tuple[str, int, int], dict[str, Any]]:
             raise Phase14Error("Phase 13 prefix state authority differs")
         row["snapshot_root"] = str(root)
         index[key] = row
+    if len(index) != 110:
+        raise Phase14Error("Phase 14 exact prefix-state coverage differs")
     return index
 
 

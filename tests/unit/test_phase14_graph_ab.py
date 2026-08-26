@@ -102,6 +102,16 @@ class Phase14PreregistrationTests(unittest.TestCase):
             all(row["status"] == "pair_capacity_infeasible" for row in top_b4)
         )
 
+    def test_prefix_catalog_selects_only_exact_phase14_feasible_states(self) -> None:
+        index = phase14._source_prefix_index()
+        self.assertEqual(len(index), 110)
+        self.assertTrue(
+            all(batch in (1, 4) and label in phase14.CONTEXT_LABELS for _, batch, label in index)
+        )
+        self.assertTrue(
+            all((configuration, 4, 131072) not in index for configuration in phase14.CONFIGURATIONS)
+        )
+
     def test_plan_freezes_mechanism_only_claim_boundaries(self) -> None:
         text = phase14.PLAN_PATH.read_text(encoding="utf-8")
         for required in (
