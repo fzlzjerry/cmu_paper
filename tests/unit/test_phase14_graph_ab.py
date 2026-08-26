@@ -177,14 +177,30 @@ class Phase14MechanismTests(unittest.TestCase):
                 (
                     True,
                     expected_bytes,
-                    "eager_exact_retained_output_allocation",
+                    "eager_exact_retained_output_with_bounded_reserve_segment",
                 ),
+            )
+            self.assertTrue(
+                phase14._timing_allocation_contract(
+                    graph_mode="eager",
+                    allocated_delta_bytes=expected_bytes,
+                    reserved_delta_bytes=2 * 1024 * 1024,
+                    retained_output_bytes=expected_bytes,
+                )[0]
             )
             self.assertFalse(
                 phase14._timing_allocation_contract(
                     graph_mode="eager",
                     allocated_delta_bytes=expected_bytes + 2,
                     reserved_delta_bytes=0,
+                    retained_output_bytes=expected_bytes,
+                )[0]
+            )
+            self.assertFalse(
+                phase14._timing_allocation_contract(
+                    graph_mode="eager",
+                    allocated_delta_bytes=expected_bytes,
+                    reserved_delta_bytes=4 * 1024 * 1024,
                     retained_output_bytes=expected_bytes,
                 )[0]
             )

@@ -68,6 +68,7 @@ WARMUP_STEPS = 64
 MEASURED_STEPS = 128
 MEASURED_BATCHES = pilot.MEASURED_BATCHES
 CV_THRESHOLD = 0.03
+CUDA_CACHING_ALLOCATOR_SEGMENT_BYTES = 2 * 1024 * 1024
 PAIR_COUNT_PER_REPLICATE = len(CONFIGURATIONS) * len(BATCH_SIZES) * len(CONTEXT_LABELS)
 PLANNED_PAIR_RECORDS = PAIR_COUNT_PER_REPLICATE * REPLICATES
 PLANNED_RUN_RECORDS = PLANNED_PAIR_RECORDS * len(GRAPH_MODES)
@@ -630,12 +631,17 @@ def _timing_allocation_contract(
     if graph_mode == "cuda_graph":
         expected_allocated_delta = 0
         label = "graph_zero_timing_allocation_delta"
+        reserved_delta_permitted = reserved_delta_bytes == 0
     else:
         expected_allocated_delta = retained_output_bytes
-        label = "eager_exact_retained_output_allocation"
+        label = "eager_exact_retained_output_with_bounded_reserve_segment"
+        reserved_delta_permitted = reserved_delta_bytes in {
+            0,
+            CUDA_CACHING_ALLOCATOR_SEGMENT_BYTES,
+        }
     passed = bool(
         allocated_delta_bytes == expected_allocated_delta
-        and reserved_delta_bytes == 0
+        and reserved_delta_permitted
     )
     return passed, expected_allocated_delta, label
 

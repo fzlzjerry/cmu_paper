@@ -63,8 +63,11 @@ are not relabeled as Graph replay or silently discarded.  The eager timing
 result retains exactly its final BF16 logits tensor as the runner's output
 evidence, so its post-timing allocated delta must equal that tensor's exact
 `numel * element_size` (256,512 bytes at B=1 and 1,026,048 bytes at B=4), with
-zero reserved-memory delta.  Graph replay reuses its captured output and remains
-strictly zero-delta.  Any other timing allocation delta fails closed.
+either zero reserved-memory growth or exactly one recorded 2 MiB PyTorch CUDA
+caching-allocator segment.  The bounded segment is cached reserve, not live
+cache or output storage, and its exact value must agree across the three fresh
+processes.  Graph replay reuses its captured output and remains strictly
+zero/zero.  Any other live or reserved timing allocation delta fails closed.
 
 ## Evidence and publication
 
