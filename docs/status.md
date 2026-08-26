@@ -1,6 +1,6 @@
 # Project status
 
-Last updated: 2026-08-25
+Last updated: 2026-08-26
 Authoritative contracts: CODEX_WORKFLOW.md for active performance engineering;
 CODEX_POST_PERFORMANCE_QUALITY_VALIDATION.md for post-performance quality
 scheduling; CODEX_QUALITY_EVALUATION_ADDENDUM.md for non-conflicting quality
@@ -8,7 +8,7 @@ requirements; and AGENTS.md. Decision 0005 records precedence.
 
 ## Current state
 
-- Latest scoped phase: Phase 13D knee densification BLOCKED. The successful
+- Latest scoped phase: Phase 13D knee densification continuation PASS. The successful
   Phase 13 successor Pilot remains PASS. Campaign
   `phase13-20260822t150835736582z-4ddd7b17-3a8fb3` preserves all 810 planned
   records: 684/684 feasible runs completed, 126 were predeclared
@@ -17,14 +17,18 @@ requirements; and AGENTS.md. Decision 0005 records precedence.
   `0.002218507701406616`. Output checksums, kernel paths, allocations, and
   finite-output controls agree. All 30 provisional fit records have status
   `knee_observed`, but only 5/30 have sufficient below/near/above density;
-  Phase 13D preregistered 25 targets and 84 new contexts, completed all 84
-  prefix states, then preserved 51 finalized runs before the next `kvq3`
-  B=8/L=5120 worker reached finalization and the common post-run GPU-process
-  snapshot failed closed. The rejected snapshot payload was not durably
-  recorded, so the exact query/foreign/unknown subpredicate is unavailable;
-  the staging campaign was not resumed, finalized, or published. Phase 14
-  remains gated on a fresh successor densification campaign after separate
-  snapshot-handoff remediation. The successful Pilot's 17,384-object root
+  Phase 13D preregistered 25 targets and 84 new contexts. A post-measurement
+  snapshot finalization failure preserved 51 valid runs and one failed record;
+  the minimal continuation fix now persists every raw snapshot before assigning
+  exactly `clean`, `foreign_process_detected`, or `query_failed`. Segment A's
+  51 runs were not changed or rerun, Segment B completed the replacement plus
+  the frozen remaining 200 records, and the 84 prefix states were reused
+  checksum-verified and read-only. The combined 252/252 records form 84 stable
+  points with maximum CV `0.0019765939935609987`; all 25 targets resolve as one
+  `density_sufficient` and 24 `insufficient_feasible_span`. The 7,381-object
+  root `a8559a5e01edaad949df1e128c4bddff37638801cfc89f2eb8d4894c31ef82d2`
+  is COMPLETE-last and passed one clean R2 retrieval. Phase 14 is READY but was
+  not started. The successful Pilot's 17,384-object root
   `feb2e5a8ebba8b729c182fc8170107c9acf8128edd3e5618c8f1b90530557531`
   is COMPLETE-last and passed one clean R2 retrieval. The blocked Pilot
   `phase13-20260804t111810342595z-a127b0d1-8649c3` remains immutable and none
@@ -765,8 +769,8 @@ reference execution is recorded separately above.
 | Phase 13T supervisor remediation | PASS | Decision 0032; the long-context diagnostic completed with normal forward progress; ordered finite stage deadlines pass focused and full regression tests; 16-object root `5e98c8103c6e15ca0877e39f7b9363a208ba8722bb6993ef67a04a06c9f795cb` is COMPLETE-last and cleanly retrieved. |
 | Phase 13R q4 workspace remediation | PASS | Decision 0036 capacity-derived q4 workspace; all nine fixture regressions, B=4/8 L=16384 targeted admission, Graph/allocation/stream/sanitizer controls, successor q4 admission, and three-process q4 G5 refresh pass; 14-object root `9f027d64424844d0d62311daad5740e2b76960d1d5e7b8be26aa1ccba100a8db` is COMPLETE-last and cleanly retrieved. |
 | Phase 13 successor Pilot | PASS | Fresh campaign `phase13-20260822t150835736582z-4ddd7b17-3a8fb3`; 810/810 records, 684 completed, 126 capacity-infeasible, 228 stable points, maximum CV 0.221851%, no failures or selective reruns; 17,384-object root `feb2e5a8ebba8b729c182fc8170107c9acf8128edd3e5618c8f1b90530557531` is COMPLETE-last and cleanly retrieved. |
-| Phase 13D knee densification | BLOCKED | Campaign `phase13d-20260825t030556684636z-a06837a3-83761a` completed 84/84 prefix states and 51/252 timing records, then stopped during finalization of `kvq3` B=8/L=5120 when the common post-run GPU-process snapshot failed closed. The staging evidence is preserved without COMPLETE, final root, publication, continuation, or selective retry. |
-| Pilot/full-scan gates | DENSIFICATION BLOCKED / CLOSED | Pilot execution and custody pass, but only 5/30 provisional knees have sufficient density. Phase 13D did not resolve the 25 remaining targets; Phase 14 and Full Scan remain closed. |
+| Phase 13D knee densification | PASS | Campaign family `phase13d-20260825t030556684636z-a06837a3-83761a` preserves Segment A's 51 valid runs and the original failed-finalization run unchanged. Segment B completes one replacement plus the frozen remaining 200 records without rerunning Segment A or regenerating 84 prefix states. All 252 logical records pass QC; root `a8559a5e01edaad949df1e128c4bddff37638801cfc89f2eb8d4894c31ef82d2` is COMPLETE-last and cleanly retrieved. |
+| Pilot/full-scan gates | PHASE 14 READY / CLOSED | All 25 densification targets have resolved statuses: one `density_sufficient` and 24 `insufficient_feasible_span`. Phase 14 may be proposed separately; Full Scan remains CLOSED. |
 | Post-performance quality validation | LOCKED | Decision 0005; `PERFORMANCE_DATA_FROZEN` absent |
 
 ## Phase 0 acceptance
@@ -792,10 +796,9 @@ Phase 13B, Phase 13F, Phase 13T, and all prefix-remediation evidence remain
 preserved. The blocked campaign
 `phase13-20260804t111810342595z-a127b0d1-8649c3` remains checksum-identical,
 and none of its 69 completed runs entered the successful successor campaign.
-The Phase 13D staging campaign
-`phase13d-20260825t030556684636z-a06837a3-83761a` remains append-only and must
-not be resumed or selectively repaired. The next action is a separately
-authorized post-worker GPU-process snapshot-handoff remediation that preserves
-the rejected payload while retaining fail-closed process checks, followed by a
-newly preregistered successor densification campaign. Phase 14, profiling,
-Full Scan, performance claims, and quality execution remain closed.
+The Phase 13D campaign family
+`phase13d-20260825t030556684636z-a06837a3-83761a` remains append-only. Its 51
+original valid runs, failed-finalization record, and 84 prefix states remain
+unchanged; the authorized continuation is a separate segment with its own ID
+and execution heads. Phase 14 CUDA Graph A/B may be proposed separately.
+Profiling, Full Scan, performance claims, and quality execution remain closed.
