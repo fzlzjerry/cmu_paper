@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+import inspect
 import json
 from pathlib import Path
 import unittest
@@ -128,6 +129,14 @@ class Phase14PreregistrationTests(unittest.TestCase):
 
 
 class Phase14MechanismTests(unittest.TestCase):
+    def test_eager_untimed_audit_retains_inference_backend_context(self) -> None:
+        source = inspect.getsource(phase14._run_worker)
+        self.assertIn(
+            "with torch.inference_mode(), forced_flash_execution():",
+            source,
+        )
+        self.assertIn("operation_callable = eager_operation", source)
+
     def test_eager_passthrough_executes_without_graph_claim(self) -> None:
         calls: list[int] = []
         eager = phase14._EagerPassthrough(lambda: calls.append(1) or 7)

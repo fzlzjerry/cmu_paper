@@ -798,7 +798,11 @@ def _run_worker(
         )
         operation_callable = session.graph.replay
     else:
-        operation_callable = lambda: session.execute_audit_step(0)
+        def eager_operation() -> Any:
+            with torch.inference_mode(), forced_flash_execution():
+                return session.execute_audit_step(0)
+
+        operation_callable = eager_operation
     warm_output = warmup_operations(
         operation_callable, count=WARMUP_STEPS, device=session.cache_device
     )
