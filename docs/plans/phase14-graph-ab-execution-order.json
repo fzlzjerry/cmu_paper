@@ -1,0 +1,4031 @@
+{
+  "blocked_randomization": true,
+  "configuration_blocks": true,
+  "mode_first_randomized": true,
+  "pair_members_back_to_back": true,
+  "pair_orders": [
+    {
+      "configuration_order": [
+        "tq_3bit_nc",
+        "k2v4",
+        "k4v4",
+        "tq_4bit_nc",
+        "tq_k3v4_nc",
+        "kvq2",
+        "k2v2",
+        "bf16",
+        "kvq3",
+        "kvq4"
+      ],
+      "pairs": [
+        {
+          "batch_size": 1,
+          "context_label": 4096,
+          "method_config_id": "tq_3bit_nc",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r0-tq_3bit_nc-b1-l4096",
+          "pair_order_index": 0
+        },
+        {
+          "batch_size": 4,
+          "context_label": 24576,
+          "method_config_id": "tq_3bit_nc",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r0-tq_3bit_nc-b4-l24576",
+          "pair_order_index": 1
+        },
+        {
+          "batch_size": 1,
+          "context_label": 24576,
+          "method_config_id": "tq_3bit_nc",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r0-tq_3bit_nc-b1-l24576",
+          "pair_order_index": 2
+        },
+        {
+          "batch_size": 4,
+          "context_label": 32768,
+          "method_config_id": "tq_3bit_nc",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r0-tq_3bit_nc-b4-l32768",
+          "pair_order_index": 3
+        },
+        {
+          "batch_size": 4,
+          "context_label": 4096,
+          "method_config_id": "tq_3bit_nc",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r0-tq_3bit_nc-b4-l4096",
+          "pair_order_index": 4
+        },
+        {
+          "batch_size": 1,
+          "context_label": 32768,
+          "method_config_id": "tq_3bit_nc",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r0-tq_3bit_nc-b1-l32768",
+          "pair_order_index": 5
+        },
+        {
+          "batch_size": 4,
+          "context_label": 131072,
+          "method_config_id": "tq_3bit_nc",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r0-tq_3bit_nc-b4-l131072",
+          "pair_order_index": 6
+        },
+        {
+          "batch_size": 4,
+          "context_label": 65536,
+          "method_config_id": "tq_3bit_nc",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r0-tq_3bit_nc-b4-l65536",
+          "pair_order_index": 7
+        },
+        {
+          "batch_size": 4,
+          "context_label": 16384,
+          "method_config_id": "tq_3bit_nc",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r0-tq_3bit_nc-b4-l16384",
+          "pair_order_index": 8
+        },
+        {
+          "batch_size": 1,
+          "context_label": 65536,
+          "method_config_id": "tq_3bit_nc",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r0-tq_3bit_nc-b1-l65536",
+          "pair_order_index": 9
+        },
+        {
+          "batch_size": 1,
+          "context_label": 16384,
+          "method_config_id": "tq_3bit_nc",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r0-tq_3bit_nc-b1-l16384",
+          "pair_order_index": 10
+        },
+        {
+          "batch_size": 1,
+          "context_label": 131072,
+          "method_config_id": "tq_3bit_nc",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r0-tq_3bit_nc-b1-l131072",
+          "pair_order_index": 11
+        },
+        {
+          "batch_size": 4,
+          "context_label": 4096,
+          "method_config_id": "k2v4",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r0-k2v4-b4-l4096",
+          "pair_order_index": 12
+        },
+        {
+          "batch_size": 1,
+          "context_label": 131072,
+          "method_config_id": "k2v4",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r0-k2v4-b1-l131072",
+          "pair_order_index": 13
+        },
+        {
+          "batch_size": 4,
+          "context_label": 32768,
+          "method_config_id": "k2v4",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r0-k2v4-b4-l32768",
+          "pair_order_index": 14
+        },
+        {
+          "batch_size": 1,
+          "context_label": 65536,
+          "method_config_id": "k2v4",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r0-k2v4-b1-l65536",
+          "pair_order_index": 15
+        },
+        {
+          "batch_size": 4,
+          "context_label": 65536,
+          "method_config_id": "k2v4",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r0-k2v4-b4-l65536",
+          "pair_order_index": 16
+        },
+        {
+          "batch_size": 4,
+          "context_label": 16384,
+          "method_config_id": "k2v4",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r0-k2v4-b4-l16384",
+          "pair_order_index": 17
+        },
+        {
+          "batch_size": 4,
+          "context_label": 131072,
+          "method_config_id": "k2v4",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r0-k2v4-b4-l131072",
+          "pair_order_index": 18
+        },
+        {
+          "batch_size": 1,
+          "context_label": 24576,
+          "method_config_id": "k2v4",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r0-k2v4-b1-l24576",
+          "pair_order_index": 19
+        },
+        {
+          "batch_size": 4,
+          "context_label": 24576,
+          "method_config_id": "k2v4",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r0-k2v4-b4-l24576",
+          "pair_order_index": 20
+        },
+        {
+          "batch_size": 1,
+          "context_label": 16384,
+          "method_config_id": "k2v4",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r0-k2v4-b1-l16384",
+          "pair_order_index": 21
+        },
+        {
+          "batch_size": 1,
+          "context_label": 4096,
+          "method_config_id": "k2v4",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r0-k2v4-b1-l4096",
+          "pair_order_index": 22
+        },
+        {
+          "batch_size": 1,
+          "context_label": 32768,
+          "method_config_id": "k2v4",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r0-k2v4-b1-l32768",
+          "pair_order_index": 23
+        },
+        {
+          "batch_size": 4,
+          "context_label": 24576,
+          "method_config_id": "k4v4",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r0-k4v4-b4-l24576",
+          "pair_order_index": 24
+        },
+        {
+          "batch_size": 1,
+          "context_label": 16384,
+          "method_config_id": "k4v4",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r0-k4v4-b1-l16384",
+          "pair_order_index": 25
+        },
+        {
+          "batch_size": 1,
+          "context_label": 4096,
+          "method_config_id": "k4v4",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r0-k4v4-b1-l4096",
+          "pair_order_index": 26
+        },
+        {
+          "batch_size": 1,
+          "context_label": 24576,
+          "method_config_id": "k4v4",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r0-k4v4-b1-l24576",
+          "pair_order_index": 27
+        },
+        {
+          "batch_size": 4,
+          "context_label": 131072,
+          "method_config_id": "k4v4",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r0-k4v4-b4-l131072",
+          "pair_order_index": 28
+        },
+        {
+          "batch_size": 4,
+          "context_label": 16384,
+          "method_config_id": "k4v4",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r0-k4v4-b4-l16384",
+          "pair_order_index": 29
+        },
+        {
+          "batch_size": 4,
+          "context_label": 65536,
+          "method_config_id": "k4v4",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r0-k4v4-b4-l65536",
+          "pair_order_index": 30
+        },
+        {
+          "batch_size": 1,
+          "context_label": 32768,
+          "method_config_id": "k4v4",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r0-k4v4-b1-l32768",
+          "pair_order_index": 31
+        },
+        {
+          "batch_size": 4,
+          "context_label": 4096,
+          "method_config_id": "k4v4",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r0-k4v4-b4-l4096",
+          "pair_order_index": 32
+        },
+        {
+          "batch_size": 1,
+          "context_label": 131072,
+          "method_config_id": "k4v4",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r0-k4v4-b1-l131072",
+          "pair_order_index": 33
+        },
+        {
+          "batch_size": 4,
+          "context_label": 32768,
+          "method_config_id": "k4v4",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r0-k4v4-b4-l32768",
+          "pair_order_index": 34
+        },
+        {
+          "batch_size": 1,
+          "context_label": 65536,
+          "method_config_id": "k4v4",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r0-k4v4-b1-l65536",
+          "pair_order_index": 35
+        },
+        {
+          "batch_size": 1,
+          "context_label": 24576,
+          "method_config_id": "tq_4bit_nc",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r0-tq_4bit_nc-b1-l24576",
+          "pair_order_index": 36
+        },
+        {
+          "batch_size": 1,
+          "context_label": 131072,
+          "method_config_id": "tq_4bit_nc",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r0-tq_4bit_nc-b1-l131072",
+          "pair_order_index": 37
+        },
+        {
+          "batch_size": 1,
+          "context_label": 65536,
+          "method_config_id": "tq_4bit_nc",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r0-tq_4bit_nc-b1-l65536",
+          "pair_order_index": 38
+        },
+        {
+          "batch_size": 4,
+          "context_label": 4096,
+          "method_config_id": "tq_4bit_nc",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r0-tq_4bit_nc-b4-l4096",
+          "pair_order_index": 39
+        },
+        {
+          "batch_size": 4,
+          "context_label": 32768,
+          "method_config_id": "tq_4bit_nc",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r0-tq_4bit_nc-b4-l32768",
+          "pair_order_index": 40
+        },
+        {
+          "batch_size": 4,
+          "context_label": 24576,
+          "method_config_id": "tq_4bit_nc",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r0-tq_4bit_nc-b4-l24576",
+          "pair_order_index": 41
+        },
+        {
+          "batch_size": 1,
+          "context_label": 16384,
+          "method_config_id": "tq_4bit_nc",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r0-tq_4bit_nc-b1-l16384",
+          "pair_order_index": 42
+        },
+        {
+          "batch_size": 4,
+          "context_label": 16384,
+          "method_config_id": "tq_4bit_nc",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r0-tq_4bit_nc-b4-l16384",
+          "pair_order_index": 43
+        },
+        {
+          "batch_size": 4,
+          "context_label": 65536,
+          "method_config_id": "tq_4bit_nc",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r0-tq_4bit_nc-b4-l65536",
+          "pair_order_index": 44
+        },
+        {
+          "batch_size": 4,
+          "context_label": 131072,
+          "method_config_id": "tq_4bit_nc",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r0-tq_4bit_nc-b4-l131072",
+          "pair_order_index": 45
+        },
+        {
+          "batch_size": 1,
+          "context_label": 4096,
+          "method_config_id": "tq_4bit_nc",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r0-tq_4bit_nc-b1-l4096",
+          "pair_order_index": 46
+        },
+        {
+          "batch_size": 1,
+          "context_label": 32768,
+          "method_config_id": "tq_4bit_nc",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r0-tq_4bit_nc-b1-l32768",
+          "pair_order_index": 47
+        },
+        {
+          "batch_size": 1,
+          "context_label": 4096,
+          "method_config_id": "tq_k3v4_nc",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r0-tq_k3v4_nc-b1-l4096",
+          "pair_order_index": 48
+        },
+        {
+          "batch_size": 4,
+          "context_label": 32768,
+          "method_config_id": "tq_k3v4_nc",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r0-tq_k3v4_nc-b4-l32768",
+          "pair_order_index": 49
+        },
+        {
+          "batch_size": 1,
+          "context_label": 131072,
+          "method_config_id": "tq_k3v4_nc",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r0-tq_k3v4_nc-b1-l131072",
+          "pair_order_index": 50
+        },
+        {
+          "batch_size": 1,
+          "context_label": 16384,
+          "method_config_id": "tq_k3v4_nc",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r0-tq_k3v4_nc-b1-l16384",
+          "pair_order_index": 51
+        },
+        {
+          "batch_size": 1,
+          "context_label": 65536,
+          "method_config_id": "tq_k3v4_nc",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r0-tq_k3v4_nc-b1-l65536",
+          "pair_order_index": 52
+        },
+        {
+          "batch_size": 4,
+          "context_label": 131072,
+          "method_config_id": "tq_k3v4_nc",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r0-tq_k3v4_nc-b4-l131072",
+          "pair_order_index": 53
+        },
+        {
+          "batch_size": 4,
+          "context_label": 24576,
+          "method_config_id": "tq_k3v4_nc",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r0-tq_k3v4_nc-b4-l24576",
+          "pair_order_index": 54
+        },
+        {
+          "batch_size": 1,
+          "context_label": 32768,
+          "method_config_id": "tq_k3v4_nc",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r0-tq_k3v4_nc-b1-l32768",
+          "pair_order_index": 55
+        },
+        {
+          "batch_size": 1,
+          "context_label": 24576,
+          "method_config_id": "tq_k3v4_nc",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r0-tq_k3v4_nc-b1-l24576",
+          "pair_order_index": 56
+        },
+        {
+          "batch_size": 4,
+          "context_label": 16384,
+          "method_config_id": "tq_k3v4_nc",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r0-tq_k3v4_nc-b4-l16384",
+          "pair_order_index": 57
+        },
+        {
+          "batch_size": 4,
+          "context_label": 65536,
+          "method_config_id": "tq_k3v4_nc",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r0-tq_k3v4_nc-b4-l65536",
+          "pair_order_index": 58
+        },
+        {
+          "batch_size": 4,
+          "context_label": 4096,
+          "method_config_id": "tq_k3v4_nc",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r0-tq_k3v4_nc-b4-l4096",
+          "pair_order_index": 59
+        },
+        {
+          "batch_size": 4,
+          "context_label": 65536,
+          "method_config_id": "kvq2",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r0-kvq2-b4-l65536",
+          "pair_order_index": 60
+        },
+        {
+          "batch_size": 1,
+          "context_label": 16384,
+          "method_config_id": "kvq2",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r0-kvq2-b1-l16384",
+          "pair_order_index": 61
+        },
+        {
+          "batch_size": 1,
+          "context_label": 131072,
+          "method_config_id": "kvq2",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r0-kvq2-b1-l131072",
+          "pair_order_index": 62
+        },
+        {
+          "batch_size": 1,
+          "context_label": 65536,
+          "method_config_id": "kvq2",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r0-kvq2-b1-l65536",
+          "pair_order_index": 63
+        },
+        {
+          "batch_size": 4,
+          "context_label": 16384,
+          "method_config_id": "kvq2",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r0-kvq2-b4-l16384",
+          "pair_order_index": 64
+        },
+        {
+          "batch_size": 1,
+          "context_label": 4096,
+          "method_config_id": "kvq2",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r0-kvq2-b1-l4096",
+          "pair_order_index": 65
+        },
+        {
+          "batch_size": 1,
+          "context_label": 32768,
+          "method_config_id": "kvq2",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r0-kvq2-b1-l32768",
+          "pair_order_index": 66
+        },
+        {
+          "batch_size": 4,
+          "context_label": 4096,
+          "method_config_id": "kvq2",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r0-kvq2-b4-l4096",
+          "pair_order_index": 67
+        },
+        {
+          "batch_size": 4,
+          "context_label": 24576,
+          "method_config_id": "kvq2",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r0-kvq2-b4-l24576",
+          "pair_order_index": 68
+        },
+        {
+          "batch_size": 1,
+          "context_label": 24576,
+          "method_config_id": "kvq2",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r0-kvq2-b1-l24576",
+          "pair_order_index": 69
+        },
+        {
+          "batch_size": 4,
+          "context_label": 131072,
+          "method_config_id": "kvq2",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r0-kvq2-b4-l131072",
+          "pair_order_index": 70
+        },
+        {
+          "batch_size": 4,
+          "context_label": 32768,
+          "method_config_id": "kvq2",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r0-kvq2-b4-l32768",
+          "pair_order_index": 71
+        },
+        {
+          "batch_size": 4,
+          "context_label": 4096,
+          "method_config_id": "k2v2",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r0-k2v2-b4-l4096",
+          "pair_order_index": 72
+        },
+        {
+          "batch_size": 1,
+          "context_label": 4096,
+          "method_config_id": "k2v2",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r0-k2v2-b1-l4096",
+          "pair_order_index": 73
+        },
+        {
+          "batch_size": 1,
+          "context_label": 32768,
+          "method_config_id": "k2v2",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r0-k2v2-b1-l32768",
+          "pair_order_index": 74
+        },
+        {
+          "batch_size": 4,
+          "context_label": 131072,
+          "method_config_id": "k2v2",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r0-k2v2-b4-l131072",
+          "pair_order_index": 75
+        },
+        {
+          "batch_size": 4,
+          "context_label": 32768,
+          "method_config_id": "k2v2",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r0-k2v2-b4-l32768",
+          "pair_order_index": 76
+        },
+        {
+          "batch_size": 4,
+          "context_label": 16384,
+          "method_config_id": "k2v2",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r0-k2v2-b4-l16384",
+          "pair_order_index": 77
+        },
+        {
+          "batch_size": 4,
+          "context_label": 65536,
+          "method_config_id": "k2v2",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r0-k2v2-b4-l65536",
+          "pair_order_index": 78
+        },
+        {
+          "batch_size": 1,
+          "context_label": 16384,
+          "method_config_id": "k2v2",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r0-k2v2-b1-l16384",
+          "pair_order_index": 79
+        },
+        {
+          "batch_size": 1,
+          "context_label": 131072,
+          "method_config_id": "k2v2",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r0-k2v2-b1-l131072",
+          "pair_order_index": 80
+        },
+        {
+          "batch_size": 1,
+          "context_label": 65536,
+          "method_config_id": "k2v2",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r0-k2v2-b1-l65536",
+          "pair_order_index": 81
+        },
+        {
+          "batch_size": 1,
+          "context_label": 24576,
+          "method_config_id": "k2v2",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r0-k2v2-b1-l24576",
+          "pair_order_index": 82
+        },
+        {
+          "batch_size": 4,
+          "context_label": 24576,
+          "method_config_id": "k2v2",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r0-k2v2-b4-l24576",
+          "pair_order_index": 83
+        },
+        {
+          "batch_size": 4,
+          "context_label": 131072,
+          "method_config_id": "bf16",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r0-bf16-b4-l131072",
+          "pair_order_index": 84
+        },
+        {
+          "batch_size": 1,
+          "context_label": 16384,
+          "method_config_id": "bf16",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r0-bf16-b1-l16384",
+          "pair_order_index": 85
+        },
+        {
+          "batch_size": 1,
+          "context_label": 24576,
+          "method_config_id": "bf16",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r0-bf16-b1-l24576",
+          "pair_order_index": 86
+        },
+        {
+          "batch_size": 1,
+          "context_label": 131072,
+          "method_config_id": "bf16",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r0-bf16-b1-l131072",
+          "pair_order_index": 87
+        },
+        {
+          "batch_size": 4,
+          "context_label": 32768,
+          "method_config_id": "bf16",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r0-bf16-b4-l32768",
+          "pair_order_index": 88
+        },
+        {
+          "batch_size": 4,
+          "context_label": 4096,
+          "method_config_id": "bf16",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r0-bf16-b4-l4096",
+          "pair_order_index": 89
+        },
+        {
+          "batch_size": 1,
+          "context_label": 32768,
+          "method_config_id": "bf16",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r0-bf16-b1-l32768",
+          "pair_order_index": 90
+        },
+        {
+          "batch_size": 4,
+          "context_label": 24576,
+          "method_config_id": "bf16",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r0-bf16-b4-l24576",
+          "pair_order_index": 91
+        },
+        {
+          "batch_size": 4,
+          "context_label": 65536,
+          "method_config_id": "bf16",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r0-bf16-b4-l65536",
+          "pair_order_index": 92
+        },
+        {
+          "batch_size": 4,
+          "context_label": 16384,
+          "method_config_id": "bf16",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r0-bf16-b4-l16384",
+          "pair_order_index": 93
+        },
+        {
+          "batch_size": 1,
+          "context_label": 4096,
+          "method_config_id": "bf16",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r0-bf16-b1-l4096",
+          "pair_order_index": 94
+        },
+        {
+          "batch_size": 1,
+          "context_label": 65536,
+          "method_config_id": "bf16",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r0-bf16-b1-l65536",
+          "pair_order_index": 95
+        },
+        {
+          "batch_size": 4,
+          "context_label": 16384,
+          "method_config_id": "kvq3",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r0-kvq3-b4-l16384",
+          "pair_order_index": 96
+        },
+        {
+          "batch_size": 4,
+          "context_label": 131072,
+          "method_config_id": "kvq3",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r0-kvq3-b4-l131072",
+          "pair_order_index": 97
+        },
+        {
+          "batch_size": 1,
+          "context_label": 24576,
+          "method_config_id": "kvq3",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r0-kvq3-b1-l24576",
+          "pair_order_index": 98
+        },
+        {
+          "batch_size": 1,
+          "context_label": 131072,
+          "method_config_id": "kvq3",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r0-kvq3-b1-l131072",
+          "pair_order_index": 99
+        },
+        {
+          "batch_size": 4,
+          "context_label": 4096,
+          "method_config_id": "kvq3",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r0-kvq3-b4-l4096",
+          "pair_order_index": 100
+        },
+        {
+          "batch_size": 1,
+          "context_label": 4096,
+          "method_config_id": "kvq3",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r0-kvq3-b1-l4096",
+          "pair_order_index": 101
+        },
+        {
+          "batch_size": 1,
+          "context_label": 32768,
+          "method_config_id": "kvq3",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r0-kvq3-b1-l32768",
+          "pair_order_index": 102
+        },
+        {
+          "batch_size": 4,
+          "context_label": 24576,
+          "method_config_id": "kvq3",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r0-kvq3-b4-l24576",
+          "pair_order_index": 103
+        },
+        {
+          "batch_size": 1,
+          "context_label": 65536,
+          "method_config_id": "kvq3",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r0-kvq3-b1-l65536",
+          "pair_order_index": 104
+        },
+        {
+          "batch_size": 4,
+          "context_label": 32768,
+          "method_config_id": "kvq3",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r0-kvq3-b4-l32768",
+          "pair_order_index": 105
+        },
+        {
+          "batch_size": 4,
+          "context_label": 65536,
+          "method_config_id": "kvq3",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r0-kvq3-b4-l65536",
+          "pair_order_index": 106
+        },
+        {
+          "batch_size": 1,
+          "context_label": 16384,
+          "method_config_id": "kvq3",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r0-kvq3-b1-l16384",
+          "pair_order_index": 107
+        },
+        {
+          "batch_size": 4,
+          "context_label": 131072,
+          "method_config_id": "kvq4",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r0-kvq4-b4-l131072",
+          "pair_order_index": 108
+        },
+        {
+          "batch_size": 4,
+          "context_label": 24576,
+          "method_config_id": "kvq4",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r0-kvq4-b4-l24576",
+          "pair_order_index": 109
+        },
+        {
+          "batch_size": 4,
+          "context_label": 4096,
+          "method_config_id": "kvq4",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r0-kvq4-b4-l4096",
+          "pair_order_index": 110
+        },
+        {
+          "batch_size": 1,
+          "context_label": 16384,
+          "method_config_id": "kvq4",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r0-kvq4-b1-l16384",
+          "pair_order_index": 111
+        },
+        {
+          "batch_size": 1,
+          "context_label": 24576,
+          "method_config_id": "kvq4",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r0-kvq4-b1-l24576",
+          "pair_order_index": 112
+        },
+        {
+          "batch_size": 1,
+          "context_label": 131072,
+          "method_config_id": "kvq4",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r0-kvq4-b1-l131072",
+          "pair_order_index": 113
+        },
+        {
+          "batch_size": 1,
+          "context_label": 4096,
+          "method_config_id": "kvq4",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r0-kvq4-b1-l4096",
+          "pair_order_index": 114
+        },
+        {
+          "batch_size": 1,
+          "context_label": 32768,
+          "method_config_id": "kvq4",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r0-kvq4-b1-l32768",
+          "pair_order_index": 115
+        },
+        {
+          "batch_size": 4,
+          "context_label": 32768,
+          "method_config_id": "kvq4",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r0-kvq4-b4-l32768",
+          "pair_order_index": 116
+        },
+        {
+          "batch_size": 1,
+          "context_label": 65536,
+          "method_config_id": "kvq4",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r0-kvq4-b1-l65536",
+          "pair_order_index": 117
+        },
+        {
+          "batch_size": 4,
+          "context_label": 16384,
+          "method_config_id": "kvq4",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r0-kvq4-b4-l16384",
+          "pair_order_index": 118
+        },
+        {
+          "batch_size": 4,
+          "context_label": 65536,
+          "method_config_id": "kvq4",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r0-kvq4-b4-l65536",
+          "pair_order_index": 119
+        }
+      ],
+      "replicate_index": 0,
+      "seed": 20260826
+    },
+    {
+      "configuration_order": [
+        "kvq2",
+        "tq_4bit_nc",
+        "k2v4",
+        "k2v2",
+        "k4v4",
+        "bf16",
+        "kvq4",
+        "tq_3bit_nc",
+        "tq_k3v4_nc",
+        "kvq3"
+      ],
+      "pairs": [
+        {
+          "batch_size": 1,
+          "context_label": 16384,
+          "method_config_id": "kvq2",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r1-kvq2-b1-l16384",
+          "pair_order_index": 0
+        },
+        {
+          "batch_size": 1,
+          "context_label": 4096,
+          "method_config_id": "kvq2",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r1-kvq2-b1-l4096",
+          "pair_order_index": 1
+        },
+        {
+          "batch_size": 4,
+          "context_label": 16384,
+          "method_config_id": "kvq2",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r1-kvq2-b4-l16384",
+          "pair_order_index": 2
+        },
+        {
+          "batch_size": 4,
+          "context_label": 131072,
+          "method_config_id": "kvq2",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r1-kvq2-b4-l131072",
+          "pair_order_index": 3
+        },
+        {
+          "batch_size": 4,
+          "context_label": 24576,
+          "method_config_id": "kvq2",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r1-kvq2-b4-l24576",
+          "pair_order_index": 4
+        },
+        {
+          "batch_size": 4,
+          "context_label": 32768,
+          "method_config_id": "kvq2",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r1-kvq2-b4-l32768",
+          "pair_order_index": 5
+        },
+        {
+          "batch_size": 4,
+          "context_label": 65536,
+          "method_config_id": "kvq2",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r1-kvq2-b4-l65536",
+          "pair_order_index": 6
+        },
+        {
+          "batch_size": 1,
+          "context_label": 65536,
+          "method_config_id": "kvq2",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r1-kvq2-b1-l65536",
+          "pair_order_index": 7
+        },
+        {
+          "batch_size": 1,
+          "context_label": 32768,
+          "method_config_id": "kvq2",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r1-kvq2-b1-l32768",
+          "pair_order_index": 8
+        },
+        {
+          "batch_size": 4,
+          "context_label": 4096,
+          "method_config_id": "kvq2",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r1-kvq2-b4-l4096",
+          "pair_order_index": 9
+        },
+        {
+          "batch_size": 1,
+          "context_label": 24576,
+          "method_config_id": "kvq2",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r1-kvq2-b1-l24576",
+          "pair_order_index": 10
+        },
+        {
+          "batch_size": 1,
+          "context_label": 131072,
+          "method_config_id": "kvq2",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r1-kvq2-b1-l131072",
+          "pair_order_index": 11
+        },
+        {
+          "batch_size": 1,
+          "context_label": 24576,
+          "method_config_id": "tq_4bit_nc",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r1-tq_4bit_nc-b1-l24576",
+          "pair_order_index": 12
+        },
+        {
+          "batch_size": 1,
+          "context_label": 32768,
+          "method_config_id": "tq_4bit_nc",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r1-tq_4bit_nc-b1-l32768",
+          "pair_order_index": 13
+        },
+        {
+          "batch_size": 4,
+          "context_label": 32768,
+          "method_config_id": "tq_4bit_nc",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r1-tq_4bit_nc-b4-l32768",
+          "pair_order_index": 14
+        },
+        {
+          "batch_size": 1,
+          "context_label": 16384,
+          "method_config_id": "tq_4bit_nc",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r1-tq_4bit_nc-b1-l16384",
+          "pair_order_index": 15
+        },
+        {
+          "batch_size": 4,
+          "context_label": 24576,
+          "method_config_id": "tq_4bit_nc",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r1-tq_4bit_nc-b4-l24576",
+          "pair_order_index": 16
+        },
+        {
+          "batch_size": 4,
+          "context_label": 16384,
+          "method_config_id": "tq_4bit_nc",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r1-tq_4bit_nc-b4-l16384",
+          "pair_order_index": 17
+        },
+        {
+          "batch_size": 1,
+          "context_label": 4096,
+          "method_config_id": "tq_4bit_nc",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r1-tq_4bit_nc-b1-l4096",
+          "pair_order_index": 18
+        },
+        {
+          "batch_size": 1,
+          "context_label": 65536,
+          "method_config_id": "tq_4bit_nc",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r1-tq_4bit_nc-b1-l65536",
+          "pair_order_index": 19
+        },
+        {
+          "batch_size": 1,
+          "context_label": 131072,
+          "method_config_id": "tq_4bit_nc",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r1-tq_4bit_nc-b1-l131072",
+          "pair_order_index": 20
+        },
+        {
+          "batch_size": 4,
+          "context_label": 65536,
+          "method_config_id": "tq_4bit_nc",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r1-tq_4bit_nc-b4-l65536",
+          "pair_order_index": 21
+        },
+        {
+          "batch_size": 4,
+          "context_label": 131072,
+          "method_config_id": "tq_4bit_nc",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r1-tq_4bit_nc-b4-l131072",
+          "pair_order_index": 22
+        },
+        {
+          "batch_size": 4,
+          "context_label": 4096,
+          "method_config_id": "tq_4bit_nc",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r1-tq_4bit_nc-b4-l4096",
+          "pair_order_index": 23
+        },
+        {
+          "batch_size": 1,
+          "context_label": 32768,
+          "method_config_id": "k2v4",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r1-k2v4-b1-l32768",
+          "pair_order_index": 24
+        },
+        {
+          "batch_size": 1,
+          "context_label": 4096,
+          "method_config_id": "k2v4",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r1-k2v4-b1-l4096",
+          "pair_order_index": 25
+        },
+        {
+          "batch_size": 4,
+          "context_label": 65536,
+          "method_config_id": "k2v4",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r1-k2v4-b4-l65536",
+          "pair_order_index": 26
+        },
+        {
+          "batch_size": 4,
+          "context_label": 32768,
+          "method_config_id": "k2v4",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r1-k2v4-b4-l32768",
+          "pair_order_index": 27
+        },
+        {
+          "batch_size": 4,
+          "context_label": 24576,
+          "method_config_id": "k2v4",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r1-k2v4-b4-l24576",
+          "pair_order_index": 28
+        },
+        {
+          "batch_size": 1,
+          "context_label": 131072,
+          "method_config_id": "k2v4",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r1-k2v4-b1-l131072",
+          "pair_order_index": 29
+        },
+        {
+          "batch_size": 1,
+          "context_label": 16384,
+          "method_config_id": "k2v4",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r1-k2v4-b1-l16384",
+          "pair_order_index": 30
+        },
+        {
+          "batch_size": 1,
+          "context_label": 24576,
+          "method_config_id": "k2v4",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r1-k2v4-b1-l24576",
+          "pair_order_index": 31
+        },
+        {
+          "batch_size": 4,
+          "context_label": 16384,
+          "method_config_id": "k2v4",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r1-k2v4-b4-l16384",
+          "pair_order_index": 32
+        },
+        {
+          "batch_size": 4,
+          "context_label": 131072,
+          "method_config_id": "k2v4",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r1-k2v4-b4-l131072",
+          "pair_order_index": 33
+        },
+        {
+          "batch_size": 4,
+          "context_label": 4096,
+          "method_config_id": "k2v4",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r1-k2v4-b4-l4096",
+          "pair_order_index": 34
+        },
+        {
+          "batch_size": 1,
+          "context_label": 65536,
+          "method_config_id": "k2v4",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r1-k2v4-b1-l65536",
+          "pair_order_index": 35
+        },
+        {
+          "batch_size": 4,
+          "context_label": 65536,
+          "method_config_id": "k2v2",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r1-k2v2-b4-l65536",
+          "pair_order_index": 36
+        },
+        {
+          "batch_size": 1,
+          "context_label": 32768,
+          "method_config_id": "k2v2",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r1-k2v2-b1-l32768",
+          "pair_order_index": 37
+        },
+        {
+          "batch_size": 1,
+          "context_label": 65536,
+          "method_config_id": "k2v2",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r1-k2v2-b1-l65536",
+          "pair_order_index": 38
+        },
+        {
+          "batch_size": 4,
+          "context_label": 24576,
+          "method_config_id": "k2v2",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r1-k2v2-b4-l24576",
+          "pair_order_index": 39
+        },
+        {
+          "batch_size": 1,
+          "context_label": 131072,
+          "method_config_id": "k2v2",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r1-k2v2-b1-l131072",
+          "pair_order_index": 40
+        },
+        {
+          "batch_size": 4,
+          "context_label": 4096,
+          "method_config_id": "k2v2",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r1-k2v2-b4-l4096",
+          "pair_order_index": 41
+        },
+        {
+          "batch_size": 1,
+          "context_label": 4096,
+          "method_config_id": "k2v2",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r1-k2v2-b1-l4096",
+          "pair_order_index": 42
+        },
+        {
+          "batch_size": 4,
+          "context_label": 131072,
+          "method_config_id": "k2v2",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r1-k2v2-b4-l131072",
+          "pair_order_index": 43
+        },
+        {
+          "batch_size": 1,
+          "context_label": 16384,
+          "method_config_id": "k2v2",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r1-k2v2-b1-l16384",
+          "pair_order_index": 44
+        },
+        {
+          "batch_size": 4,
+          "context_label": 16384,
+          "method_config_id": "k2v2",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r1-k2v2-b4-l16384",
+          "pair_order_index": 45
+        },
+        {
+          "batch_size": 1,
+          "context_label": 24576,
+          "method_config_id": "k2v2",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r1-k2v2-b1-l24576",
+          "pair_order_index": 46
+        },
+        {
+          "batch_size": 4,
+          "context_label": 32768,
+          "method_config_id": "k2v2",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r1-k2v2-b4-l32768",
+          "pair_order_index": 47
+        },
+        {
+          "batch_size": 4,
+          "context_label": 4096,
+          "method_config_id": "k4v4",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r1-k4v4-b4-l4096",
+          "pair_order_index": 48
+        },
+        {
+          "batch_size": 4,
+          "context_label": 65536,
+          "method_config_id": "k4v4",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r1-k4v4-b4-l65536",
+          "pair_order_index": 49
+        },
+        {
+          "batch_size": 1,
+          "context_label": 4096,
+          "method_config_id": "k4v4",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r1-k4v4-b1-l4096",
+          "pair_order_index": 50
+        },
+        {
+          "batch_size": 1,
+          "context_label": 32768,
+          "method_config_id": "k4v4",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r1-k4v4-b1-l32768",
+          "pair_order_index": 51
+        },
+        {
+          "batch_size": 4,
+          "context_label": 24576,
+          "method_config_id": "k4v4",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r1-k4v4-b4-l24576",
+          "pair_order_index": 52
+        },
+        {
+          "batch_size": 4,
+          "context_label": 32768,
+          "method_config_id": "k4v4",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r1-k4v4-b4-l32768",
+          "pair_order_index": 53
+        },
+        {
+          "batch_size": 1,
+          "context_label": 131072,
+          "method_config_id": "k4v4",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r1-k4v4-b1-l131072",
+          "pair_order_index": 54
+        },
+        {
+          "batch_size": 1,
+          "context_label": 16384,
+          "method_config_id": "k4v4",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r1-k4v4-b1-l16384",
+          "pair_order_index": 55
+        },
+        {
+          "batch_size": 1,
+          "context_label": 65536,
+          "method_config_id": "k4v4",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r1-k4v4-b1-l65536",
+          "pair_order_index": 56
+        },
+        {
+          "batch_size": 1,
+          "context_label": 24576,
+          "method_config_id": "k4v4",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r1-k4v4-b1-l24576",
+          "pair_order_index": 57
+        },
+        {
+          "batch_size": 4,
+          "context_label": 131072,
+          "method_config_id": "k4v4",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r1-k4v4-b4-l131072",
+          "pair_order_index": 58
+        },
+        {
+          "batch_size": 4,
+          "context_label": 16384,
+          "method_config_id": "k4v4",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r1-k4v4-b4-l16384",
+          "pair_order_index": 59
+        },
+        {
+          "batch_size": 1,
+          "context_label": 16384,
+          "method_config_id": "bf16",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r1-bf16-b1-l16384",
+          "pair_order_index": 60
+        },
+        {
+          "batch_size": 4,
+          "context_label": 131072,
+          "method_config_id": "bf16",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r1-bf16-b4-l131072",
+          "pair_order_index": 61
+        },
+        {
+          "batch_size": 1,
+          "context_label": 24576,
+          "method_config_id": "bf16",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r1-bf16-b1-l24576",
+          "pair_order_index": 62
+        },
+        {
+          "batch_size": 1,
+          "context_label": 4096,
+          "method_config_id": "bf16",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r1-bf16-b1-l4096",
+          "pair_order_index": 63
+        },
+        {
+          "batch_size": 4,
+          "context_label": 24576,
+          "method_config_id": "bf16",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r1-bf16-b4-l24576",
+          "pair_order_index": 64
+        },
+        {
+          "batch_size": 4,
+          "context_label": 16384,
+          "method_config_id": "bf16",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r1-bf16-b4-l16384",
+          "pair_order_index": 65
+        },
+        {
+          "batch_size": 4,
+          "context_label": 4096,
+          "method_config_id": "bf16",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r1-bf16-b4-l4096",
+          "pair_order_index": 66
+        },
+        {
+          "batch_size": 4,
+          "context_label": 32768,
+          "method_config_id": "bf16",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r1-bf16-b4-l32768",
+          "pair_order_index": 67
+        },
+        {
+          "batch_size": 1,
+          "context_label": 65536,
+          "method_config_id": "bf16",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r1-bf16-b1-l65536",
+          "pair_order_index": 68
+        },
+        {
+          "batch_size": 1,
+          "context_label": 131072,
+          "method_config_id": "bf16",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r1-bf16-b1-l131072",
+          "pair_order_index": 69
+        },
+        {
+          "batch_size": 4,
+          "context_label": 65536,
+          "method_config_id": "bf16",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r1-bf16-b4-l65536",
+          "pair_order_index": 70
+        },
+        {
+          "batch_size": 1,
+          "context_label": 32768,
+          "method_config_id": "bf16",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r1-bf16-b1-l32768",
+          "pair_order_index": 71
+        },
+        {
+          "batch_size": 1,
+          "context_label": 65536,
+          "method_config_id": "kvq4",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r1-kvq4-b1-l65536",
+          "pair_order_index": 72
+        },
+        {
+          "batch_size": 4,
+          "context_label": 32768,
+          "method_config_id": "kvq4",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r1-kvq4-b4-l32768",
+          "pair_order_index": 73
+        },
+        {
+          "batch_size": 4,
+          "context_label": 65536,
+          "method_config_id": "kvq4",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r1-kvq4-b4-l65536",
+          "pair_order_index": 74
+        },
+        {
+          "batch_size": 1,
+          "context_label": 4096,
+          "method_config_id": "kvq4",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r1-kvq4-b1-l4096",
+          "pair_order_index": 75
+        },
+        {
+          "batch_size": 4,
+          "context_label": 131072,
+          "method_config_id": "kvq4",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r1-kvq4-b4-l131072",
+          "pair_order_index": 76
+        },
+        {
+          "batch_size": 1,
+          "context_label": 131072,
+          "method_config_id": "kvq4",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r1-kvq4-b1-l131072",
+          "pair_order_index": 77
+        },
+        {
+          "batch_size": 4,
+          "context_label": 24576,
+          "method_config_id": "kvq4",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r1-kvq4-b4-l24576",
+          "pair_order_index": 78
+        },
+        {
+          "batch_size": 4,
+          "context_label": 16384,
+          "method_config_id": "kvq4",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r1-kvq4-b4-l16384",
+          "pair_order_index": 79
+        },
+        {
+          "batch_size": 4,
+          "context_label": 4096,
+          "method_config_id": "kvq4",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r1-kvq4-b4-l4096",
+          "pair_order_index": 80
+        },
+        {
+          "batch_size": 1,
+          "context_label": 16384,
+          "method_config_id": "kvq4",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r1-kvq4-b1-l16384",
+          "pair_order_index": 81
+        },
+        {
+          "batch_size": 1,
+          "context_label": 24576,
+          "method_config_id": "kvq4",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r1-kvq4-b1-l24576",
+          "pair_order_index": 82
+        },
+        {
+          "batch_size": 1,
+          "context_label": 32768,
+          "method_config_id": "kvq4",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r1-kvq4-b1-l32768",
+          "pair_order_index": 83
+        },
+        {
+          "batch_size": 4,
+          "context_label": 16384,
+          "method_config_id": "tq_3bit_nc",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r1-tq_3bit_nc-b4-l16384",
+          "pair_order_index": 84
+        },
+        {
+          "batch_size": 1,
+          "context_label": 4096,
+          "method_config_id": "tq_3bit_nc",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r1-tq_3bit_nc-b1-l4096",
+          "pair_order_index": 85
+        },
+        {
+          "batch_size": 4,
+          "context_label": 4096,
+          "method_config_id": "tq_3bit_nc",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r1-tq_3bit_nc-b4-l4096",
+          "pair_order_index": 86
+        },
+        {
+          "batch_size": 1,
+          "context_label": 131072,
+          "method_config_id": "tq_3bit_nc",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r1-tq_3bit_nc-b1-l131072",
+          "pair_order_index": 87
+        },
+        {
+          "batch_size": 4,
+          "context_label": 24576,
+          "method_config_id": "tq_3bit_nc",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r1-tq_3bit_nc-b4-l24576",
+          "pair_order_index": 88
+        },
+        {
+          "batch_size": 4,
+          "context_label": 32768,
+          "method_config_id": "tq_3bit_nc",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r1-tq_3bit_nc-b4-l32768",
+          "pair_order_index": 89
+        },
+        {
+          "batch_size": 1,
+          "context_label": 65536,
+          "method_config_id": "tq_3bit_nc",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r1-tq_3bit_nc-b1-l65536",
+          "pair_order_index": 90
+        },
+        {
+          "batch_size": 1,
+          "context_label": 16384,
+          "method_config_id": "tq_3bit_nc",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r1-tq_3bit_nc-b1-l16384",
+          "pair_order_index": 91
+        },
+        {
+          "batch_size": 4,
+          "context_label": 65536,
+          "method_config_id": "tq_3bit_nc",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r1-tq_3bit_nc-b4-l65536",
+          "pair_order_index": 92
+        },
+        {
+          "batch_size": 1,
+          "context_label": 32768,
+          "method_config_id": "tq_3bit_nc",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r1-tq_3bit_nc-b1-l32768",
+          "pair_order_index": 93
+        },
+        {
+          "batch_size": 1,
+          "context_label": 24576,
+          "method_config_id": "tq_3bit_nc",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r1-tq_3bit_nc-b1-l24576",
+          "pair_order_index": 94
+        },
+        {
+          "batch_size": 4,
+          "context_label": 131072,
+          "method_config_id": "tq_3bit_nc",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r1-tq_3bit_nc-b4-l131072",
+          "pair_order_index": 95
+        },
+        {
+          "batch_size": 4,
+          "context_label": 131072,
+          "method_config_id": "tq_k3v4_nc",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r1-tq_k3v4_nc-b4-l131072",
+          "pair_order_index": 96
+        },
+        {
+          "batch_size": 4,
+          "context_label": 32768,
+          "method_config_id": "tq_k3v4_nc",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r1-tq_k3v4_nc-b4-l32768",
+          "pair_order_index": 97
+        },
+        {
+          "batch_size": 4,
+          "context_label": 4096,
+          "method_config_id": "tq_k3v4_nc",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r1-tq_k3v4_nc-b4-l4096",
+          "pair_order_index": 98
+        },
+        {
+          "batch_size": 1,
+          "context_label": 32768,
+          "method_config_id": "tq_k3v4_nc",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r1-tq_k3v4_nc-b1-l32768",
+          "pair_order_index": 99
+        },
+        {
+          "batch_size": 4,
+          "context_label": 65536,
+          "method_config_id": "tq_k3v4_nc",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r1-tq_k3v4_nc-b4-l65536",
+          "pair_order_index": 100
+        },
+        {
+          "batch_size": 4,
+          "context_label": 16384,
+          "method_config_id": "tq_k3v4_nc",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r1-tq_k3v4_nc-b4-l16384",
+          "pair_order_index": 101
+        },
+        {
+          "batch_size": 1,
+          "context_label": 65536,
+          "method_config_id": "tq_k3v4_nc",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r1-tq_k3v4_nc-b1-l65536",
+          "pair_order_index": 102
+        },
+        {
+          "batch_size": 4,
+          "context_label": 24576,
+          "method_config_id": "tq_k3v4_nc",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r1-tq_k3v4_nc-b4-l24576",
+          "pair_order_index": 103
+        },
+        {
+          "batch_size": 1,
+          "context_label": 131072,
+          "method_config_id": "tq_k3v4_nc",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r1-tq_k3v4_nc-b1-l131072",
+          "pair_order_index": 104
+        },
+        {
+          "batch_size": 1,
+          "context_label": 24576,
+          "method_config_id": "tq_k3v4_nc",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r1-tq_k3v4_nc-b1-l24576",
+          "pair_order_index": 105
+        },
+        {
+          "batch_size": 1,
+          "context_label": 4096,
+          "method_config_id": "tq_k3v4_nc",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r1-tq_k3v4_nc-b1-l4096",
+          "pair_order_index": 106
+        },
+        {
+          "batch_size": 1,
+          "context_label": 16384,
+          "method_config_id": "tq_k3v4_nc",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r1-tq_k3v4_nc-b1-l16384",
+          "pair_order_index": 107
+        },
+        {
+          "batch_size": 4,
+          "context_label": 65536,
+          "method_config_id": "kvq3",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r1-kvq3-b4-l65536",
+          "pair_order_index": 108
+        },
+        {
+          "batch_size": 4,
+          "context_label": 16384,
+          "method_config_id": "kvq3",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r1-kvq3-b4-l16384",
+          "pair_order_index": 109
+        },
+        {
+          "batch_size": 4,
+          "context_label": 4096,
+          "method_config_id": "kvq3",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r1-kvq3-b4-l4096",
+          "pair_order_index": 110
+        },
+        {
+          "batch_size": 4,
+          "context_label": 32768,
+          "method_config_id": "kvq3",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r1-kvq3-b4-l32768",
+          "pair_order_index": 111
+        },
+        {
+          "batch_size": 4,
+          "context_label": 131072,
+          "method_config_id": "kvq3",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r1-kvq3-b4-l131072",
+          "pair_order_index": 112
+        },
+        {
+          "batch_size": 1,
+          "context_label": 131072,
+          "method_config_id": "kvq3",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r1-kvq3-b1-l131072",
+          "pair_order_index": 113
+        },
+        {
+          "batch_size": 1,
+          "context_label": 65536,
+          "method_config_id": "kvq3",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r1-kvq3-b1-l65536",
+          "pair_order_index": 114
+        },
+        {
+          "batch_size": 1,
+          "context_label": 16384,
+          "method_config_id": "kvq3",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r1-kvq3-b1-l16384",
+          "pair_order_index": 115
+        },
+        {
+          "batch_size": 4,
+          "context_label": 24576,
+          "method_config_id": "kvq3",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r1-kvq3-b4-l24576",
+          "pair_order_index": 116
+        },
+        {
+          "batch_size": 1,
+          "context_label": 4096,
+          "method_config_id": "kvq3",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r1-kvq3-b1-l4096",
+          "pair_order_index": 117
+        },
+        {
+          "batch_size": 1,
+          "context_label": 32768,
+          "method_config_id": "kvq3",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r1-kvq3-b1-l32768",
+          "pair_order_index": 118
+        },
+        {
+          "batch_size": 1,
+          "context_label": 24576,
+          "method_config_id": "kvq3",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r1-kvq3-b1-l24576",
+          "pair_order_index": 119
+        }
+      ],
+      "replicate_index": 1,
+      "seed": 20260827
+    },
+    {
+      "configuration_order": [
+        "k2v2",
+        "kvq3",
+        "bf16",
+        "tq_4bit_nc",
+        "k4v4",
+        "kvq4",
+        "tq_k3v4_nc",
+        "tq_3bit_nc",
+        "kvq2",
+        "k2v4"
+      ],
+      "pairs": [
+        {
+          "batch_size": 1,
+          "context_label": 32768,
+          "method_config_id": "k2v2",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r2-k2v2-b1-l32768",
+          "pair_order_index": 0
+        },
+        {
+          "batch_size": 1,
+          "context_label": 4096,
+          "method_config_id": "k2v2",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r2-k2v2-b1-l4096",
+          "pair_order_index": 1
+        },
+        {
+          "batch_size": 4,
+          "context_label": 65536,
+          "method_config_id": "k2v2",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r2-k2v2-b4-l65536",
+          "pair_order_index": 2
+        },
+        {
+          "batch_size": 4,
+          "context_label": 4096,
+          "method_config_id": "k2v2",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r2-k2v2-b4-l4096",
+          "pair_order_index": 3
+        },
+        {
+          "batch_size": 4,
+          "context_label": 131072,
+          "method_config_id": "k2v2",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r2-k2v2-b4-l131072",
+          "pair_order_index": 4
+        },
+        {
+          "batch_size": 1,
+          "context_label": 16384,
+          "method_config_id": "k2v2",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r2-k2v2-b1-l16384",
+          "pair_order_index": 5
+        },
+        {
+          "batch_size": 4,
+          "context_label": 16384,
+          "method_config_id": "k2v2",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r2-k2v2-b4-l16384",
+          "pair_order_index": 6
+        },
+        {
+          "batch_size": 1,
+          "context_label": 24576,
+          "method_config_id": "k2v2",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r2-k2v2-b1-l24576",
+          "pair_order_index": 7
+        },
+        {
+          "batch_size": 4,
+          "context_label": 32768,
+          "method_config_id": "k2v2",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r2-k2v2-b4-l32768",
+          "pair_order_index": 8
+        },
+        {
+          "batch_size": 1,
+          "context_label": 65536,
+          "method_config_id": "k2v2",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r2-k2v2-b1-l65536",
+          "pair_order_index": 9
+        },
+        {
+          "batch_size": 1,
+          "context_label": 131072,
+          "method_config_id": "k2v2",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r2-k2v2-b1-l131072",
+          "pair_order_index": 10
+        },
+        {
+          "batch_size": 4,
+          "context_label": 24576,
+          "method_config_id": "k2v2",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r2-k2v2-b4-l24576",
+          "pair_order_index": 11
+        },
+        {
+          "batch_size": 1,
+          "context_label": 131072,
+          "method_config_id": "kvq3",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r2-kvq3-b1-l131072",
+          "pair_order_index": 12
+        },
+        {
+          "batch_size": 4,
+          "context_label": 16384,
+          "method_config_id": "kvq3",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r2-kvq3-b4-l16384",
+          "pair_order_index": 13
+        },
+        {
+          "batch_size": 1,
+          "context_label": 4096,
+          "method_config_id": "kvq3",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r2-kvq3-b1-l4096",
+          "pair_order_index": 14
+        },
+        {
+          "batch_size": 4,
+          "context_label": 65536,
+          "method_config_id": "kvq3",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r2-kvq3-b4-l65536",
+          "pair_order_index": 15
+        },
+        {
+          "batch_size": 4,
+          "context_label": 24576,
+          "method_config_id": "kvq3",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r2-kvq3-b4-l24576",
+          "pair_order_index": 16
+        },
+        {
+          "batch_size": 1,
+          "context_label": 65536,
+          "method_config_id": "kvq3",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r2-kvq3-b1-l65536",
+          "pair_order_index": 17
+        },
+        {
+          "batch_size": 1,
+          "context_label": 16384,
+          "method_config_id": "kvq3",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r2-kvq3-b1-l16384",
+          "pair_order_index": 18
+        },
+        {
+          "batch_size": 1,
+          "context_label": 24576,
+          "method_config_id": "kvq3",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r2-kvq3-b1-l24576",
+          "pair_order_index": 19
+        },
+        {
+          "batch_size": 4,
+          "context_label": 32768,
+          "method_config_id": "kvq3",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r2-kvq3-b4-l32768",
+          "pair_order_index": 20
+        },
+        {
+          "batch_size": 4,
+          "context_label": 4096,
+          "method_config_id": "kvq3",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r2-kvq3-b4-l4096",
+          "pair_order_index": 21
+        },
+        {
+          "batch_size": 1,
+          "context_label": 32768,
+          "method_config_id": "kvq3",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r2-kvq3-b1-l32768",
+          "pair_order_index": 22
+        },
+        {
+          "batch_size": 4,
+          "context_label": 131072,
+          "method_config_id": "kvq3",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r2-kvq3-b4-l131072",
+          "pair_order_index": 23
+        },
+        {
+          "batch_size": 1,
+          "context_label": 4096,
+          "method_config_id": "bf16",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r2-bf16-b1-l4096",
+          "pair_order_index": 24
+        },
+        {
+          "batch_size": 1,
+          "context_label": 65536,
+          "method_config_id": "bf16",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r2-bf16-b1-l65536",
+          "pair_order_index": 25
+        },
+        {
+          "batch_size": 1,
+          "context_label": 32768,
+          "method_config_id": "bf16",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r2-bf16-b1-l32768",
+          "pair_order_index": 26
+        },
+        {
+          "batch_size": 4,
+          "context_label": 24576,
+          "method_config_id": "bf16",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r2-bf16-b4-l24576",
+          "pair_order_index": 27
+        },
+        {
+          "batch_size": 1,
+          "context_label": 131072,
+          "method_config_id": "bf16",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r2-bf16-b1-l131072",
+          "pair_order_index": 28
+        },
+        {
+          "batch_size": 4,
+          "context_label": 4096,
+          "method_config_id": "bf16",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r2-bf16-b4-l4096",
+          "pair_order_index": 29
+        },
+        {
+          "batch_size": 4,
+          "context_label": 32768,
+          "method_config_id": "bf16",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r2-bf16-b4-l32768",
+          "pair_order_index": 30
+        },
+        {
+          "batch_size": 4,
+          "context_label": 65536,
+          "method_config_id": "bf16",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r2-bf16-b4-l65536",
+          "pair_order_index": 31
+        },
+        {
+          "batch_size": 1,
+          "context_label": 16384,
+          "method_config_id": "bf16",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r2-bf16-b1-l16384",
+          "pair_order_index": 32
+        },
+        {
+          "batch_size": 4,
+          "context_label": 131072,
+          "method_config_id": "bf16",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r2-bf16-b4-l131072",
+          "pair_order_index": 33
+        },
+        {
+          "batch_size": 4,
+          "context_label": 16384,
+          "method_config_id": "bf16",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r2-bf16-b4-l16384",
+          "pair_order_index": 34
+        },
+        {
+          "batch_size": 1,
+          "context_label": 24576,
+          "method_config_id": "bf16",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r2-bf16-b1-l24576",
+          "pair_order_index": 35
+        },
+        {
+          "batch_size": 1,
+          "context_label": 16384,
+          "method_config_id": "tq_4bit_nc",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r2-tq_4bit_nc-b1-l16384",
+          "pair_order_index": 36
+        },
+        {
+          "batch_size": 1,
+          "context_label": 4096,
+          "method_config_id": "tq_4bit_nc",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r2-tq_4bit_nc-b1-l4096",
+          "pair_order_index": 37
+        },
+        {
+          "batch_size": 4,
+          "context_label": 32768,
+          "method_config_id": "tq_4bit_nc",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r2-tq_4bit_nc-b4-l32768",
+          "pair_order_index": 38
+        },
+        {
+          "batch_size": 4,
+          "context_label": 24576,
+          "method_config_id": "tq_4bit_nc",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r2-tq_4bit_nc-b4-l24576",
+          "pair_order_index": 39
+        },
+        {
+          "batch_size": 4,
+          "context_label": 131072,
+          "method_config_id": "tq_4bit_nc",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r2-tq_4bit_nc-b4-l131072",
+          "pair_order_index": 40
+        },
+        {
+          "batch_size": 4,
+          "context_label": 16384,
+          "method_config_id": "tq_4bit_nc",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r2-tq_4bit_nc-b4-l16384",
+          "pair_order_index": 41
+        },
+        {
+          "batch_size": 4,
+          "context_label": 65536,
+          "method_config_id": "tq_4bit_nc",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r2-tq_4bit_nc-b4-l65536",
+          "pair_order_index": 42
+        },
+        {
+          "batch_size": 4,
+          "context_label": 4096,
+          "method_config_id": "tq_4bit_nc",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r2-tq_4bit_nc-b4-l4096",
+          "pair_order_index": 43
+        },
+        {
+          "batch_size": 1,
+          "context_label": 65536,
+          "method_config_id": "tq_4bit_nc",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r2-tq_4bit_nc-b1-l65536",
+          "pair_order_index": 44
+        },
+        {
+          "batch_size": 1,
+          "context_label": 24576,
+          "method_config_id": "tq_4bit_nc",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r2-tq_4bit_nc-b1-l24576",
+          "pair_order_index": 45
+        },
+        {
+          "batch_size": 1,
+          "context_label": 131072,
+          "method_config_id": "tq_4bit_nc",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r2-tq_4bit_nc-b1-l131072",
+          "pair_order_index": 46
+        },
+        {
+          "batch_size": 1,
+          "context_label": 32768,
+          "method_config_id": "tq_4bit_nc",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r2-tq_4bit_nc-b1-l32768",
+          "pair_order_index": 47
+        },
+        {
+          "batch_size": 1,
+          "context_label": 131072,
+          "method_config_id": "k4v4",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r2-k4v4-b1-l131072",
+          "pair_order_index": 48
+        },
+        {
+          "batch_size": 4,
+          "context_label": 32768,
+          "method_config_id": "k4v4",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r2-k4v4-b4-l32768",
+          "pair_order_index": 49
+        },
+        {
+          "batch_size": 4,
+          "context_label": 4096,
+          "method_config_id": "k4v4",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r2-k4v4-b4-l4096",
+          "pair_order_index": 50
+        },
+        {
+          "batch_size": 1,
+          "context_label": 24576,
+          "method_config_id": "k4v4",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r2-k4v4-b1-l24576",
+          "pair_order_index": 51
+        },
+        {
+          "batch_size": 4,
+          "context_label": 131072,
+          "method_config_id": "k4v4",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r2-k4v4-b4-l131072",
+          "pair_order_index": 52
+        },
+        {
+          "batch_size": 1,
+          "context_label": 32768,
+          "method_config_id": "k4v4",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r2-k4v4-b1-l32768",
+          "pair_order_index": 53
+        },
+        {
+          "batch_size": 4,
+          "context_label": 24576,
+          "method_config_id": "k4v4",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r2-k4v4-b4-l24576",
+          "pair_order_index": 54
+        },
+        {
+          "batch_size": 4,
+          "context_label": 65536,
+          "method_config_id": "k4v4",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r2-k4v4-b4-l65536",
+          "pair_order_index": 55
+        },
+        {
+          "batch_size": 1,
+          "context_label": 4096,
+          "method_config_id": "k4v4",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r2-k4v4-b1-l4096",
+          "pair_order_index": 56
+        },
+        {
+          "batch_size": 1,
+          "context_label": 16384,
+          "method_config_id": "k4v4",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r2-k4v4-b1-l16384",
+          "pair_order_index": 57
+        },
+        {
+          "batch_size": 4,
+          "context_label": 16384,
+          "method_config_id": "k4v4",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r2-k4v4-b4-l16384",
+          "pair_order_index": 58
+        },
+        {
+          "batch_size": 1,
+          "context_label": 65536,
+          "method_config_id": "k4v4",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r2-k4v4-b1-l65536",
+          "pair_order_index": 59
+        },
+        {
+          "batch_size": 4,
+          "context_label": 32768,
+          "method_config_id": "kvq4",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r2-kvq4-b4-l32768",
+          "pair_order_index": 60
+        },
+        {
+          "batch_size": 1,
+          "context_label": 32768,
+          "method_config_id": "kvq4",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r2-kvq4-b1-l32768",
+          "pair_order_index": 61
+        },
+        {
+          "batch_size": 1,
+          "context_label": 131072,
+          "method_config_id": "kvq4",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r2-kvq4-b1-l131072",
+          "pair_order_index": 62
+        },
+        {
+          "batch_size": 4,
+          "context_label": 65536,
+          "method_config_id": "kvq4",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r2-kvq4-b4-l65536",
+          "pair_order_index": 63
+        },
+        {
+          "batch_size": 4,
+          "context_label": 131072,
+          "method_config_id": "kvq4",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r2-kvq4-b4-l131072",
+          "pair_order_index": 64
+        },
+        {
+          "batch_size": 1,
+          "context_label": 65536,
+          "method_config_id": "kvq4",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r2-kvq4-b1-l65536",
+          "pair_order_index": 65
+        },
+        {
+          "batch_size": 1,
+          "context_label": 24576,
+          "method_config_id": "kvq4",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r2-kvq4-b1-l24576",
+          "pair_order_index": 66
+        },
+        {
+          "batch_size": 4,
+          "context_label": 16384,
+          "method_config_id": "kvq4",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r2-kvq4-b4-l16384",
+          "pair_order_index": 67
+        },
+        {
+          "batch_size": 4,
+          "context_label": 24576,
+          "method_config_id": "kvq4",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r2-kvq4-b4-l24576",
+          "pair_order_index": 68
+        },
+        {
+          "batch_size": 1,
+          "context_label": 16384,
+          "method_config_id": "kvq4",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r2-kvq4-b1-l16384",
+          "pair_order_index": 69
+        },
+        {
+          "batch_size": 4,
+          "context_label": 4096,
+          "method_config_id": "kvq4",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r2-kvq4-b4-l4096",
+          "pair_order_index": 70
+        },
+        {
+          "batch_size": 1,
+          "context_label": 4096,
+          "method_config_id": "kvq4",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r2-kvq4-b1-l4096",
+          "pair_order_index": 71
+        },
+        {
+          "batch_size": 4,
+          "context_label": 131072,
+          "method_config_id": "tq_k3v4_nc",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r2-tq_k3v4_nc-b4-l131072",
+          "pair_order_index": 72
+        },
+        {
+          "batch_size": 4,
+          "context_label": 65536,
+          "method_config_id": "tq_k3v4_nc",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r2-tq_k3v4_nc-b4-l65536",
+          "pair_order_index": 73
+        },
+        {
+          "batch_size": 4,
+          "context_label": 16384,
+          "method_config_id": "tq_k3v4_nc",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r2-tq_k3v4_nc-b4-l16384",
+          "pair_order_index": 74
+        },
+        {
+          "batch_size": 1,
+          "context_label": 65536,
+          "method_config_id": "tq_k3v4_nc",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r2-tq_k3v4_nc-b1-l65536",
+          "pair_order_index": 75
+        },
+        {
+          "batch_size": 1,
+          "context_label": 16384,
+          "method_config_id": "tq_k3v4_nc",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r2-tq_k3v4_nc-b1-l16384",
+          "pair_order_index": 76
+        },
+        {
+          "batch_size": 1,
+          "context_label": 131072,
+          "method_config_id": "tq_k3v4_nc",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r2-tq_k3v4_nc-b1-l131072",
+          "pair_order_index": 77
+        },
+        {
+          "batch_size": 4,
+          "context_label": 4096,
+          "method_config_id": "tq_k3v4_nc",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r2-tq_k3v4_nc-b4-l4096",
+          "pair_order_index": 78
+        },
+        {
+          "batch_size": 4,
+          "context_label": 24576,
+          "method_config_id": "tq_k3v4_nc",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r2-tq_k3v4_nc-b4-l24576",
+          "pair_order_index": 79
+        },
+        {
+          "batch_size": 1,
+          "context_label": 24576,
+          "method_config_id": "tq_k3v4_nc",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r2-tq_k3v4_nc-b1-l24576",
+          "pair_order_index": 80
+        },
+        {
+          "batch_size": 1,
+          "context_label": 32768,
+          "method_config_id": "tq_k3v4_nc",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r2-tq_k3v4_nc-b1-l32768",
+          "pair_order_index": 81
+        },
+        {
+          "batch_size": 4,
+          "context_label": 32768,
+          "method_config_id": "tq_k3v4_nc",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r2-tq_k3v4_nc-b4-l32768",
+          "pair_order_index": 82
+        },
+        {
+          "batch_size": 1,
+          "context_label": 4096,
+          "method_config_id": "tq_k3v4_nc",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r2-tq_k3v4_nc-b1-l4096",
+          "pair_order_index": 83
+        },
+        {
+          "batch_size": 4,
+          "context_label": 32768,
+          "method_config_id": "tq_3bit_nc",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r2-tq_3bit_nc-b4-l32768",
+          "pair_order_index": 84
+        },
+        {
+          "batch_size": 4,
+          "context_label": 65536,
+          "method_config_id": "tq_3bit_nc",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r2-tq_3bit_nc-b4-l65536",
+          "pair_order_index": 85
+        },
+        {
+          "batch_size": 1,
+          "context_label": 16384,
+          "method_config_id": "tq_3bit_nc",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r2-tq_3bit_nc-b1-l16384",
+          "pair_order_index": 86
+        },
+        {
+          "batch_size": 1,
+          "context_label": 65536,
+          "method_config_id": "tq_3bit_nc",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r2-tq_3bit_nc-b1-l65536",
+          "pair_order_index": 87
+        },
+        {
+          "batch_size": 4,
+          "context_label": 4096,
+          "method_config_id": "tq_3bit_nc",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r2-tq_3bit_nc-b4-l4096",
+          "pair_order_index": 88
+        },
+        {
+          "batch_size": 1,
+          "context_label": 24576,
+          "method_config_id": "tq_3bit_nc",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r2-tq_3bit_nc-b1-l24576",
+          "pair_order_index": 89
+        },
+        {
+          "batch_size": 1,
+          "context_label": 131072,
+          "method_config_id": "tq_3bit_nc",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r2-tq_3bit_nc-b1-l131072",
+          "pair_order_index": 90
+        },
+        {
+          "batch_size": 4,
+          "context_label": 16384,
+          "method_config_id": "tq_3bit_nc",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r2-tq_3bit_nc-b4-l16384",
+          "pair_order_index": 91
+        },
+        {
+          "batch_size": 1,
+          "context_label": 4096,
+          "method_config_id": "tq_3bit_nc",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r2-tq_3bit_nc-b1-l4096",
+          "pair_order_index": 92
+        },
+        {
+          "batch_size": 4,
+          "context_label": 131072,
+          "method_config_id": "tq_3bit_nc",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r2-tq_3bit_nc-b4-l131072",
+          "pair_order_index": 93
+        },
+        {
+          "batch_size": 4,
+          "context_label": 24576,
+          "method_config_id": "tq_3bit_nc",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r2-tq_3bit_nc-b4-l24576",
+          "pair_order_index": 94
+        },
+        {
+          "batch_size": 1,
+          "context_label": 32768,
+          "method_config_id": "tq_3bit_nc",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r2-tq_3bit_nc-b1-l32768",
+          "pair_order_index": 95
+        },
+        {
+          "batch_size": 1,
+          "context_label": 131072,
+          "method_config_id": "kvq2",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r2-kvq2-b1-l131072",
+          "pair_order_index": 96
+        },
+        {
+          "batch_size": 1,
+          "context_label": 65536,
+          "method_config_id": "kvq2",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r2-kvq2-b1-l65536",
+          "pair_order_index": 97
+        },
+        {
+          "batch_size": 1,
+          "context_label": 16384,
+          "method_config_id": "kvq2",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r2-kvq2-b1-l16384",
+          "pair_order_index": 98
+        },
+        {
+          "batch_size": 4,
+          "context_label": 4096,
+          "method_config_id": "kvq2",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r2-kvq2-b4-l4096",
+          "pair_order_index": 99
+        },
+        {
+          "batch_size": 1,
+          "context_label": 24576,
+          "method_config_id": "kvq2",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r2-kvq2-b1-l24576",
+          "pair_order_index": 100
+        },
+        {
+          "batch_size": 4,
+          "context_label": 32768,
+          "method_config_id": "kvq2",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r2-kvq2-b4-l32768",
+          "pair_order_index": 101
+        },
+        {
+          "batch_size": 1,
+          "context_label": 32768,
+          "method_config_id": "kvq2",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r2-kvq2-b1-l32768",
+          "pair_order_index": 102
+        },
+        {
+          "batch_size": 1,
+          "context_label": 4096,
+          "method_config_id": "kvq2",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r2-kvq2-b1-l4096",
+          "pair_order_index": 103
+        },
+        {
+          "batch_size": 4,
+          "context_label": 65536,
+          "method_config_id": "kvq2",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r2-kvq2-b4-l65536",
+          "pair_order_index": 104
+        },
+        {
+          "batch_size": 4,
+          "context_label": 131072,
+          "method_config_id": "kvq2",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r2-kvq2-b4-l131072",
+          "pair_order_index": 105
+        },
+        {
+          "batch_size": 4,
+          "context_label": 24576,
+          "method_config_id": "kvq2",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r2-kvq2-b4-l24576",
+          "pair_order_index": 106
+        },
+        {
+          "batch_size": 4,
+          "context_label": 16384,
+          "method_config_id": "kvq2",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r2-kvq2-b4-l16384",
+          "pair_order_index": 107
+        },
+        {
+          "batch_size": 4,
+          "context_label": 16384,
+          "method_config_id": "k2v4",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r2-k2v4-b4-l16384",
+          "pair_order_index": 108
+        },
+        {
+          "batch_size": 1,
+          "context_label": 65536,
+          "method_config_id": "k2v4",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r2-k2v4-b1-l65536",
+          "pair_order_index": 109
+        },
+        {
+          "batch_size": 1,
+          "context_label": 16384,
+          "method_config_id": "k2v4",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r2-k2v4-b1-l16384",
+          "pair_order_index": 110
+        },
+        {
+          "batch_size": 4,
+          "context_label": 65536,
+          "method_config_id": "k2v4",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r2-k2v4-b4-l65536",
+          "pair_order_index": 111
+        },
+        {
+          "batch_size": 4,
+          "context_label": 131072,
+          "method_config_id": "k2v4",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r2-k2v4-b4-l131072",
+          "pair_order_index": 112
+        },
+        {
+          "batch_size": 4,
+          "context_label": 4096,
+          "method_config_id": "k2v4",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r2-k2v4-b4-l4096",
+          "pair_order_index": 113
+        },
+        {
+          "batch_size": 1,
+          "context_label": 131072,
+          "method_config_id": "k2v4",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r2-k2v4-b1-l131072",
+          "pair_order_index": 114
+        },
+        {
+          "batch_size": 4,
+          "context_label": 24576,
+          "method_config_id": "k2v4",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r2-k2v4-b4-l24576",
+          "pair_order_index": 115
+        },
+        {
+          "batch_size": 1,
+          "context_label": 32768,
+          "method_config_id": "k2v4",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r2-k2v4-b1-l32768",
+          "pair_order_index": 116
+        },
+        {
+          "batch_size": 1,
+          "context_label": 24576,
+          "method_config_id": "k2v4",
+          "mode_order": [
+            "cuda_graph",
+            "eager"
+          ],
+          "pair_key": "r2-k2v4-b1-l24576",
+          "pair_order_index": 117
+        },
+        {
+          "batch_size": 1,
+          "context_label": 4096,
+          "method_config_id": "k2v4",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r2-k2v4-b1-l4096",
+          "pair_order_index": 118
+        },
+        {
+          "batch_size": 4,
+          "context_label": 32768,
+          "method_config_id": "k2v4",
+          "mode_order": [
+            "eager",
+            "cuda_graph"
+          ],
+          "pair_key": "r2-k2v4-b4-l32768",
+          "pair_order_index": 119
+        }
+      ],
+      "replicate_index": 2,
+      "seed": 20260828
+    }
+  ],
+  "planned_pair_records": 360,
+  "planned_run_records": 720,
+  "records_sha256": "ae4a3c9ca85cfab3ebb37d32e7689f3338168dddf08cb080c0e685a75a39563d",
+  "schema_version": "kvbench-phase14-execution-order-1.0.0",
+  "seeds": [
+    20260826,
+    20260827,
+    20260828
+  ]
+}
