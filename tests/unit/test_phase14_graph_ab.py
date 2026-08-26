@@ -164,6 +164,48 @@ class Phase14MechanismTests(unittest.TestCase):
         with self.assertRaises(phase14.Phase14Error):
             phase14._allocation_contract(eager_events, graph_mode="unknown")
 
+    def test_timing_allocation_contract_retains_exact_eager_logits(self) -> None:
+        for batch, expected_bytes in ((1, 256_512), (4, 1_026_048)):
+            self.assertEqual(expected_bytes, batch * 128_256 * 2)
+            self.assertEqual(
+                phase14._timing_allocation_contract(
+                    graph_mode="eager",
+                    allocated_delta_bytes=expected_bytes,
+                    reserved_delta_bytes=0,
+                    retained_output_bytes=expected_bytes,
+                ),
+                (
+                    True,
+                    expected_bytes,
+                    "eager_exact_retained_output_allocation",
+                ),
+            )
+            self.assertFalse(
+                phase14._timing_allocation_contract(
+                    graph_mode="eager",
+                    allocated_delta_bytes=expected_bytes + 2,
+                    reserved_delta_bytes=0,
+                    retained_output_bytes=expected_bytes,
+                )[0]
+            )
+        self.assertEqual(
+            phase14._timing_allocation_contract(
+                graph_mode="cuda_graph",
+                allocated_delta_bytes=0,
+                reserved_delta_bytes=0,
+                retained_output_bytes=256_512,
+            ),
+            (True, 0, "graph_zero_timing_allocation_delta"),
+        )
+        self.assertFalse(
+            phase14._timing_allocation_contract(
+                graph_mode="cuda_graph",
+                allocated_delta_bytes=256_512,
+                reserved_delta_bytes=0,
+                retained_output_bytes=256_512,
+            )[0]
+        )
+
     def test_eager_untimed_audit_retains_inference_backend_context(self) -> None:
         source = inspect.getsource(phase14._run_worker)
         self.assertIn(

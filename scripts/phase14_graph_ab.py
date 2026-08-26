@@ -608,6 +608,38 @@ def _allocation_contract(
     return passed, persistent_stable, label
 
 
+def _timing_allocation_contract(
+    *,
+    graph_mode: str,
+    allocated_delta_bytes: int,
+    reserved_delta_bytes: int,
+    retained_output_bytes: int,
+) -> tuple[bool, int, str]:
+    if graph_mode not in GRAPH_MODES:
+        raise Phase14Error("timing allocation graph mode differs")
+    values = (
+        allocated_delta_bytes,
+        reserved_delta_bytes,
+        retained_output_bytes,
+    )
+    if any(
+        isinstance(value, bool) or not isinstance(value, int) or value < 0
+        for value in values
+    ):
+        raise Phase14Error("timing allocation evidence is invalid")
+    if graph_mode == "cuda_graph":
+        expected_allocated_delta = 0
+        label = "graph_zero_timing_allocation_delta"
+    else:
+        expected_allocated_delta = retained_output_bytes
+        label = "eager_exact_retained_output_allocation"
+    passed = bool(
+        allocated_delta_bytes == expected_allocated_delta
+        and reserved_delta_bytes == 0
+    )
+    return passed, expected_allocated_delta, label
+
+
 def _worker_owned_snapshot(
     *, run_root: Path, pid: int, start_ticks: int
 ) -> dict[str, Any]:
@@ -947,11 +979,23 @@ def _run_worker(
         session.eager_graph_comparison = None
     recorder.record("warmup_and_audit", "completed")
     recorder.record("measurement", "started")
-    raw_runner = run_fixed_l(
+    fixed_result = run_fixed_l(
         session,
         measured_steps=MEASURED_STEPS,
         measured_batches=MEASURED_BATCHES,
-    ).to_dict()
+    )
+    retained_output = fixed_result.timing.last_output
+    retained_output_evidence = {
+        "shape": [int(value) for value in retained_output.shape],
+        "dtype": str(retained_output.dtype),
+        "numel": int(retained_output.numel()),
+        "element_size_bytes": int(retained_output.element_size()),
+        "requested_bytes": int(
+            retained_output.numel() * retained_output.element_size()
+        ),
+        "storage_bytes": int(retained_output.untyped_storage().nbytes()),
+    }
+    raw_runner = fixed_result.to_dict()
     recorder.record("measurement", "completed")
     recorder.record("finalization", "started")
     runner = phase12._normalize_runner_result(raw_runner)
@@ -971,6 +1015,33 @@ def _run_worker(
         ):
             raise Phase14Error("measured CUDA Graph topology drifted")
     memory = runner.get("memory_evidence")
+    timing_allocated_delta = (
+        memory.get("timing_allocated_delta_bytes")
+        if isinstance(memory, Mapping)
+        else None
+    )
+    timing_reserved_delta = (
+        memory.get("timing_reserved_delta_bytes")
+        if isinstance(memory, Mapping)
+        else None
+    )
+    if not isinstance(timing_allocated_delta, int) or not isinstance(
+        timing_reserved_delta, int
+    ):
+        timing_allocation_passed = False
+        expected_timing_allocated_delta = None
+        timing_allocation_contract = "missing_timing_memory_evidence"
+    else:
+        (
+            timing_allocation_passed,
+            expected_timing_allocated_delta,
+            timing_allocation_contract,
+        ) = _timing_allocation_contract(
+            graph_mode=graph_mode,
+            allocated_delta_bytes=timing_allocated_delta,
+            reserved_delta_bytes=timing_reserved_delta,
+            retained_output_bytes=retained_output_evidence["requested_bytes"],
+        )
     timing_verdict = {
         "schema_version": "kvbench-phase14-timing-verdict-1.0.0",
         "graph_mode_matches": runner.get("graph_mode") == graph_mode,
@@ -983,16 +1054,14 @@ def _run_worker(
             runner.get("historical_cache_unchanged") is True
         ),
         "memory_evidence_present": isinstance(memory, Mapping),
-        "timing_allocated_delta_bytes": (
-            memory.get("timing_allocated_delta_bytes")
-            if isinstance(memory, Mapping)
-            else None
+        "timing_allocated_delta_bytes": timing_allocated_delta,
+        "timing_reserved_delta_bytes": timing_reserved_delta,
+        "expected_timing_allocated_delta_bytes": (
+            expected_timing_allocated_delta
         ),
-        "timing_reserved_delta_bytes": (
-            memory.get("timing_reserved_delta_bytes")
-            if isinstance(memory, Mapping)
-            else None
-        ),
+        "timing_allocation_contract": timing_allocation_contract,
+        "timing_allocation_passed": timing_allocation_passed,
+        "retained_output": retained_output_evidence,
         "r_hbm_is_null": runner.get("r_hbm") is None,
     }
     write_exclusive(
@@ -1008,11 +1077,10 @@ def _run_worker(
                 "cache_pointers_stable",
                 "historical_cache_unchanged",
                 "memory_evidence_present",
+                "timing_allocation_passed",
                 "r_hbm_is_null",
             )
         )
-        and timing_verdict["timing_allocated_delta_bytes"] == 0
-        and timing_verdict["timing_reserved_delta_bytes"] == 0
     )
     if not timing_passed:
         raise Phase14Error(
@@ -1095,7 +1163,20 @@ def _run_worker(
         "semantic_kernel_path_fingerprint": semantic_path,
         "cache_identity_fingerprint": cache_identity,
         "mode_allocation_fingerprint": _canonical_sha256(
-            {"graph_mode": graph_mode, "audit": allocation_record, "cache": cache_identity}
+            {
+                "graph_mode": graph_mode,
+                "audit": allocation_record,
+                "cache": cache_identity,
+                "timing_allocation": {
+                    "contract": timing_allocation_contract,
+                    "allocated_delta_bytes": timing_allocated_delta,
+                    "reserved_delta_bytes": timing_reserved_delta,
+                    "expected_allocated_delta_bytes": (
+                        expected_timing_allocated_delta
+                    ),
+                    "retained_output": retained_output_evidence,
+                },
+            }
         ),
         "temperature_min_c": telemetry["temperature"][0],
         "temperature_max_c": telemetry["temperature"][1],
@@ -1116,6 +1197,14 @@ def _run_worker(
         "measured_steps": MEASURED_STEPS,
         "measured_batches": MEASURED_BATCHES,
         "allocation_audit": allocation_record,
+        "timing_allocation": {
+            "contract": timing_allocation_contract,
+            "passed": timing_allocation_passed,
+            "allocated_delta_bytes": timing_allocated_delta,
+            "reserved_delta_bytes": timing_reserved_delta,
+            "expected_allocated_delta_bytes": expected_timing_allocated_delta,
+            "retained_output": retained_output_evidence,
+        },
         "prefix_state_restore": restore,
         "source_path_witness": source_witness,
         "graph_capture": graph_mode == "cuda_graph",
