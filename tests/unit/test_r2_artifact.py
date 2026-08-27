@@ -770,6 +770,36 @@ class R2ArtifactTests(unittest.TestCase):
             headers["x-amz-content-sha256"], sha256_bytes(b"payload")
         )
 
+    def test_object_read_retries_transport_error(self) -> None:
+        attempts = 0
+
+        def opener(request: object, *, timeout: int) -> FakeResponse:
+            nonlocal attempts
+            self.assertEqual(timeout, 120)
+            attempts += 1
+            if attempts < 3:
+                raise urllib.error.URLError("transient transport failure")
+            return FakeResponse(b"payload")
+
+        client = R2S3Client(self.config, opener=opener)
+        self.assertEqual(client.get_object_or_none("safe/key"), b"payload")
+        self.assertEqual(attempts, 3)
+
+    def test_object_read_transport_error_fails_after_bound(self) -> None:
+        attempts = 0
+
+        def opener(request: object, *, timeout: int) -> FakeResponse:
+            nonlocal attempts
+            self.assertEqual(timeout, 120)
+            attempts += 1
+            raise urllib.error.URLError("persistent transport failure")
+
+        client = R2S3Client(self.config, opener=opener)
+        with self.assertRaises(RemoteRequestError) as caught:
+            client.get_object_or_none("safe/key")
+        self.assertEqual(caught.exception.code, "TransportError")
+        self.assertEqual(attempts, 3)
+
     def test_sigv4_multipart_is_conditional_and_completes_ordered_parts(
         self,
     ) -> None:

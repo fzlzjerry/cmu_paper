@@ -35,6 +35,7 @@ ENDPOINT_CLASS = "cloudflare_r2_s3"
 SINGLE_PUT_MAX_BYTES = 5 * 1024**3 - 5 * 1024**2
 MULTIPART_PART_SIZE_BYTES = 32 * 1024**2
 MULTIPART_UPLOAD_ATTEMPTS = 3
+OBJECT_READ_ATTEMPTS = 3
 MAX_MULTIPART_PARTS = 10_000
 RETRYABLE_MULTIPART_STATUSES = frozenset({429, 500, 502, 503, 504})
 CONTROL_FILES = (
@@ -1253,12 +1254,18 @@ class R2S3Client:
         return response_body
 
     def get_object_or_none(self, key: str) -> bytes | None:
-        try:
-            return self._request("GET", key=key)
-        except RemoteRequestError as error:
-            if error.status == 404:
-                return None
-            raise
+        for attempt in range(1, OBJECT_READ_ATTEMPTS + 1):
+            try:
+                return self._request("GET", key=key)
+            except RemoteRequestError as error:
+                if error.status == 404:
+                    return None
+                retryable = (
+                    error.status is None and error.code == "TransportError"
+                )
+                if not retryable or attempt == OBJECT_READ_ATTEMPTS:
+                    raise
+        raise AssertionError("object read retry loop exhausted")
 
     def put_object_if_absent(
         self,
