@@ -1302,9 +1302,11 @@ PHASE14_ALLOWED_PATHS = frozenset(
         "docs/status.md",
         "docs/tasks.md",
         "scripts/phase14_graph_ab.py",
+        "scripts/r2_artifact.py",
         "scripts/validate_phase2.py",
         "tests/unit/test_phase14_graph_ab.py",
         "tests/unit/test_phase14_scope.py",
+        "tests/unit/test_r2_artifact.py",
     }
 )
 

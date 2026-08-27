@@ -18,9 +18,11 @@ EXPECTED_PHASE14_PATHS = frozenset(
         "docs/status.md",
         "docs/tasks.md",
         "scripts/phase14_graph_ab.py",
+        "scripts/r2_artifact.py",
         "scripts/validate_phase2.py",
         "tests/unit/test_phase14_graph_ab.py",
         "tests/unit/test_phase14_scope.py",
+        "tests/unit/test_r2_artifact.py",
     }
 )
 
@@ -49,7 +51,9 @@ class Phase14ScopeTests(unittest.TestCase):
             "docs/phase_reports/phase14-graph-ab.md.backup",
             "docs/plans/phase14-*.md",
             "scripts/phase14_graph_ab.py.backup",
+            "scripts/r2_artifact.py.backup",
             "tests/unit/test_phase14_extra.py",
+            "tests/unit/test_r2_artifact_extra.py",
             "src/kvbench/runtime/fixed_l_runner.py",
             "src/kvbench/adapters/kvquant.py",
             "artifacts/phase14",
