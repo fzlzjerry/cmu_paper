@@ -275,9 +275,13 @@ class Phase15GovernanceTests(unittest.TestCase):
             profile_id = "p15-ncu-bf16-b1-l4096-graph"
             (stage / "runs").mkdir()
             self.assertEqual(phase15.next_profile_attempt(stage, profile_id), 0)
+            incomplete = stage / "runs" / f"{profile_id}-attempt0"
+            incomplete.mkdir()
+            (incomplete / "request.json").write_text("{}\n", encoding="utf-8")
+            self.assertEqual(phase15.next_profile_attempt(stage, profile_id), 1)
             for attempt in (0, 1):
                 run = stage / "runs" / f"{profile_id}-attempt{attempt}"
-                run.mkdir()
+                run.mkdir(exist_ok=True)
                 (run / "manifest.json").write_text(
                     json.dumps({"profile_id": profile_id, "attempt": attempt}),
                     encoding="utf-8",
