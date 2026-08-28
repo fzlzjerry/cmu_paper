@@ -30,7 +30,7 @@ authoritative local task index until issues are created elsewhere.
 
 | ID | Scope | Owner and schedule | Required evidence | Status |
 |---|---|---|---|---|
-| M14-GRAPH-AB | Phase 14 CUDA Graph A/B mechanism experiment | E04 harness owner; execute after E13 pilot admission and before E16 | same method/cache/backend/shape with only Graph mode changed; output/cache identity; floor, slope, knee, launch-gap proxy, and backend evidence | complete through Phase 14C: source campaign preserves 660/660 feasible runs and five eager `unstable` groups. Among 14 fully identifiable comparisons, 0 support the complete launch-floor-only criterion; 4 are inconclusive from eager instability and 2 have no positive eager slope. The negative heterogeneous-effect result makes Phase 15 READY without rerunning timing. |
+| M14-GRAPH-AB | Phase 14 CUDA Graph A/B mechanism experiment | E04 harness owner; execute after E13 pilot admission and before E16 | same method/cache/backend/shape with only Graph mode changed; output/cache identity; floor, slope, knee, launch-gap proxy, and backend evidence | complete through Phase 14C: source campaign preserves 660/660 feasible runs and five eager `unstable` groups. Among 14 fully identifiable comparisons, 0 support the complete launch-floor-only criterion; 4 are inconclusive from eager instability and 2 have no positive eager slope. The negative heterogeneous-effect result makes Phase 15 READY without rerunning timing; seven-object closure root `4cd29ea1b94201f493db8cef9ebd01933b4c4f573185eff317ec5af81e9fb000` is cleanly retrieved. |
 
 M14-GRAPH-AB is a named milestone, not a renumbering of the contract's E00-E18
 task list. E16 remains closed until its evidence is reviewed.

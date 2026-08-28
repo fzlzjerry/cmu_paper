@@ -128,6 +128,21 @@ class Phase14AnalysisClosureTests(unittest.TestCase):
         self.assertEqual(gates["quality"], "LOCKED")
         self.assertFalse(gates["performance_data_frozen"])
 
+    def test_small_closure_publication_is_complete_and_source_referential(
+        self,
+    ) -> None:
+        receipt = closure._strict_json(closure.CLOSURE_RECEIPT_PATH)
+        self.assertEqual(receipt["status"], "PASS")
+        self.assertEqual(receipt["publication"]["object_count"], 7)
+        self.assertTrue(receipt["publication"]["complete_last"])
+        self.assertEqual(receipt["clean_retrieval"]["result"], "PASS")
+        self.assertEqual(receipt["clean_retrieval_count"], 1)
+        self.assertFalse(receipt["source_phase14"]["objects_reuploaded"])
+        self.assertEqual(
+            receipt["source_phase14"]["r2_root_sha256"],
+            closure.SOURCE_CAMPAIGN_ROOT_SHA256,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

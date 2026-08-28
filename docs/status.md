@@ -24,9 +24,13 @@ requirements; and AGENTS.md. Decision 0005 records precedence.
   effect is heterogeneous and is not explained by a pure launch-floor
   reduction. The 18,628-object source root
   `22a613b07c1ee6d3e9a0a7fc81df6065ccc8a10bf783b1a69aded3c2eb8068f0`
-  and original BLOCKED report remain immutable. Phase 15 is `READY`; G0-G5
-  remain PASS from unified admission, Full Scan remains CLOSED, quality remains
-  LOCKED, and `PERFORMANCE_DATA_FROZEN` remains absent.
+  and original BLOCKED report remain immutable. The separate seven-object
+  closure root
+  `4cd29ea1b94201f493db8cef9ebd01933b4c4f573185eff317ec5af81e9fb000`
+  is COMPLETE-last and passed one clean R2 retrieval without reuploading source
+  objects. Phase 15 is `READY`; G0-G5 remain PASS from unified admission, Full
+  Scan remains CLOSED, quality remains LOCKED, and
+  `PERFORMANCE_DATA_FROZEN` remains absent.
 - Latest scoped phase: Phase 13D knee densification continuation PASS. The successful
   Phase 13 successor Pilot remains PASS. Campaign
   `phase13-20260822t150835736582z-4ddd7b17-3a8fb3` preserves all 810 planned
@@ -790,7 +794,7 @@ reference execution is recorded separately above.
 | Phase 13R q4 workspace remediation | PASS | Decision 0036 capacity-derived q4 workspace; all nine fixture regressions, B=4/8 L=16384 targeted admission, Graph/allocation/stream/sanitizer controls, successor q4 admission, and three-process q4 G5 refresh pass; 14-object root `9f027d64424844d0d62311daad5740e2b76960d1d5e7b8be26aa1ccba100a8db` is COMPLETE-last and cleanly retrieved. |
 | Phase 13 successor Pilot | PASS | Fresh campaign `phase13-20260822t150835736582z-4ddd7b17-3a8fb3`; 810/810 records, 684 completed, 126 capacity-infeasible, 228 stable points, maximum CV 0.221851%, no failures or selective reruns; 17,384-object root `feb2e5a8ebba8b729c182fc8170107c9acf8128edd3e5618c8f1b90530557531` is COMPLETE-last and cleanly retrieved. |
 | Phase 13D knee densification | PASS | Campaign family `phase13d-20260825t030556684636z-a06837a3-83761a` preserves Segment A's 51 valid runs and the original failed-finalization run unchanged. Segment B completes one replacement plus the frozen remaining 200 records without rerunning Segment A or regenerating 84 prefix states. All 252 logical records pass QC; root `a8559a5e01edaad949df1e128c4bddff37638801cfc89f2eb8d4894c31ef82d2` is COMPLETE-last and cleanly retrieved. |
-| Phase 14 CUDA Graph A/B / Phase 14C closure | PASS | The original campaign/report/root remain immutable and retain five eager `unstable` groups. Phase 14C separates 105 stable A/B conditions into 14 fully identifiable, four unstable-eager, and two no-positive-eager-slope comparisons. Complete launch-floor-only support is 0 of 14; the negative mechanism result is closure, not a timing failure. |
+| Phase 14 CUDA Graph A/B / Phase 14C closure | PASS | The original campaign/report/root remain immutable and retain five eager `unstable` groups. Phase 14C separates 105 stable A/B conditions into 14 fully identifiable, four unstable-eager, and two no-positive-eager-slope comparisons. Complete launch-floor-only support is 0 of 14; the negative mechanism result is closure, not a timing failure. Seven-object closure root `4cd29ea1b94201f493db8cef9ebd01933b4c4f573185eff317ec5af81e9fb000` is COMPLETE-last and cleanly retrieved. |
 | Phase 15/full-scan gates | READY / CLOSED | Phase 14C analysis closure PASS. Direct launch-gap and physical-traffic attribution remain deferred to separately authorized Phase 15 profiling. |
 | Post-performance quality validation | LOCKED | Decision 0005; `PERFORMANCE_DATA_FROZEN` absent |
 
