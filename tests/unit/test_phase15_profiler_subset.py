@@ -184,6 +184,18 @@ class Phase15NsysTests(unittest.TestCase):
             metric_map={"metric_names": ["dram__bytes_op_read.sum"]},
         )
         self.assertIn(f"--nvtx-include={phase15.NVTX_RANGE}/", ncu)
+        self.assertIn("--disable-extra-suffixes", ncu)
+
+    def test_ncu_launch_failure_is_kernel_replay_failure(self) -> None:
+        self.assertEqual(
+            phase15._classify_profiler_failure(
+                run_kind="ncu",
+                returncode=9,
+                stderr="counter library: LaunchFailed",
+                raw_exists=True,
+            ),
+            "kernel_replay_failed",
+        )
 
     def test_nsys_parser_separates_submission_idle_and_sync(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

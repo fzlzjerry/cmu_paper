@@ -1404,6 +1404,7 @@ def _profiler_command(
         f"--nvtx-include={NVTX_RANGE}/",
         "--replay-mode=kernel",
         "--graph-profiling=node",
+        "--disable-extra-suffixes",
         "--force-overwrite",
         "--metrics",
         ",".join(str(value) for value in metric_map["metric_names"]),
@@ -1419,7 +1420,7 @@ def _classify_profiler_failure(
     lowered = stderr.lower()
     if "metric" in lowered and ("not found" in lowered or "unavailable" in lowered):
         return "metric_unavailable"
-    if "replay" in lowered and "failed" in lowered:
+    if ("replay" in lowered and "failed" in lowered) or "launchfailed" in lowered:
         return "kernel_replay_failed"
     if run_kind == "ncu" and "graph" in lowered and "failed" in lowered:
         return "graph_profile_failed"
@@ -1553,7 +1554,7 @@ def _run_profiler_point(
         status = _classify_profiler_failure(
             run_kind=str(record["run_kind"]),
             returncode=result.returncode,
-            stderr=result.stderr,
+            stderr=result.stdout + "\n" + result.stderr,
             raw_exists=raw_exists,
         )
         reason = "profiler_command_failed"
