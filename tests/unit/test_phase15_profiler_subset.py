@@ -157,6 +157,14 @@ class Phase15NsysTests(unittest.TestCase):
         self.assertIn("--env-var=NSYS_NVTX_PROFILER_REGISTER_ONLY=0", command)
         self.assertIn("--cuda-graph-trace=node", command)
 
+        ncu = phase15._profiler_command(
+            record={"run_kind": "ncu"},
+            worker=["python", "worker.py"],
+            raw_base=Path("/tmp/raw"),
+            metric_map={"metric_names": ["dram__bytes_op_read.sum"]},
+        )
+        self.assertIn(f"--nvtx-include={phase15.NVTX_RANGE}/", ncu)
+
     def test_nsys_parser_separates_submission_idle_and_sync(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "trace.sqlite"

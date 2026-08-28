@@ -1362,7 +1362,7 @@ def _profiler_command(
         "ncu",
         "--target-processes=application-only",
         "--nvtx",
-        f"--nvtx-include={NVTX_RANGE}",
+        f"--nvtx-include={NVTX_RANGE}/",
         "--replay-mode=kernel",
         "--graph-profiling=node",
         "--force-overwrite",
