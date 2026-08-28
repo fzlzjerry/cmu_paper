@@ -547,7 +547,19 @@ def classify_kernel(name: str, *, configuration: str, nvtx_ranges: Sequence[str]
         ("dense_cache_attention", ("flash_fwd", "fmha", "attention", "attn")),
         ("output_merge", ("output_merge", "merge_output", "correction_merge")),
         ("model_projection", ("gemm", "cutlass", "cublas", "projection", "linear")),
-        ("other_model", ("rmsnorm", "layer_norm", "rotary", "rope", "silu", "elementwise")),
+        (
+            "other_model",
+            (
+                "rmsnorm",
+                "layer_norm",
+                "meanops",
+                "indexselectsmallindex",
+                "rotary",
+                "rope",
+                "silu",
+                "elementwise",
+            ),
+        ),
     )
     for role, patterns in rules:
         if any(pattern in text for pattern in patterns):
@@ -1829,6 +1841,254 @@ def run_campaign(*, stage: Path, campaign_id: str, git_sha: str) -> dict[str, An
     }
 
 
+_CONTINUATION_ALLOWED_SOURCE_CHANGES = {
+    "scripts/phase15_profiler_subset.py",
+    "tests/unit/test_phase15_profiler_subset.py",
+}
+
+
+def _require_clean_execution_head(git_sha: str) -> None:
+    head = subprocess.run(
+        ("/usr/bin/git", "rev-parse", "HEAD"),
+        cwd=REPOSITORY_ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    status = subprocess.run(
+        ("/usr/bin/git", "status", "--porcelain=v1", "--untracked-files=all"),
+        cwd=REPOSITORY_ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout
+    if head != git_sha or status:
+        raise Phase15Error("Phase 15 continuation source is not clean and frozen")
+
+
+def _continuation_source_equivalence(
+    *, original_head: str, continuation_head: str
+) -> dict[str, Any]:
+    changed = subprocess.run(
+        (
+            "/usr/bin/git",
+            "diff",
+            "--name-only",
+            original_head,
+            continuation_head,
+            "--",
+        ),
+        cwd=REPOSITORY_ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.splitlines()
+    changed = sorted(value.strip() for value in changed if value.strip())
+    unexpected = sorted(set(changed) - _CONTINUATION_ALLOWED_SOURCE_CHANGES)
+    if unexpected:
+        raise Phase15Error(
+            f"timing-critical source changed before NCU continuation: {unexpected}"
+        )
+    return {
+        "schema_version": "kvbench-phase15-continuation-source-equivalence-1.0.0",
+        "original_execution_git_sha": original_head,
+        "continuation_execution_git_sha": continuation_head,
+        "changed_paths": changed,
+        "allowed_profiler_only_paths": sorted(_CONTINUATION_ALLOWED_SOURCE_CHANGES),
+        "timing_critical_source_changed": False,
+        "adapters_changed": False,
+        "cuda_changed": False,
+        "runner_or_timing_changed": False,
+        "model_or_method_config_changed": False,
+    }
+
+
+def _profile_attempts(stage: Path, profile_id: str) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for path in sorted((stage / "runs").glob(f"{profile_id}-attempt*/manifest.json")):
+        row = _strict_json(path)
+        if row.get("profile_id") != profile_id:
+            raise Phase15Error("profile attempt identity differs")
+        rows.append(row)
+    return sorted(rows, key=lambda row: int(row["attempt"]))
+
+
+def next_profile_attempt(stage: Path, profile_id: str) -> int:
+    attempts = _profile_attempts(stage, profile_id)
+    if not attempts:
+        return 0
+    observed = [int(row["attempt"]) for row in attempts]
+    if observed != list(range(max(observed) + 1)):
+        raise Phase15Error("profiler attempt sequence is not contiguous")
+    return max(observed) + 1
+
+
+def prepare_ncu_continuation(
+    *, stage: Path, campaign_id: str, git_sha: str
+) -> dict[str, Any]:
+    identifier = _validate_campaign_id(campaign_id)
+    _require_clean_execution_head(git_sha)
+    root = stage.resolve(strict=True)
+    if (root / "run-index.json").exists() or (root / "continuation-manifest.json").exists():
+        raise Phase15Error("Phase 15 NCU continuation was already prepared")
+    campaign = _strict_json(root / "campaign_manifest.json")
+    if campaign.get("campaign_id") != identifier:
+        raise Phase15Error("Phase 15 continuation campaign identity differs")
+    original_head = str(campaign.get("execution_git_sha"))
+    equivalence = _continuation_source_equivalence(
+        original_head=original_head, continuation_head=git_sha
+    )
+    selection = _strict_json(root / "selection.json")
+    validate_selection(selection)
+    manifests = _all_run_manifests(root)
+    completed_nsys = [
+        row
+        for row in manifests
+        if row.get("run_kind") == "nsys" and row.get("status") == "completed"
+    ]
+    completed_ncu = [
+        row
+        for row in manifests
+        if row.get("run_kind") == "ncu" and row.get("status") == "completed"
+    ]
+    if len(completed_nsys) != 32 or completed_ncu:
+        raise Phase15Error("Phase 15 continuation entry profile coverage differs")
+    payload = {
+        "schema_version": "kvbench-phase15-ncu-continuation-1.0.0",
+        "campaign_id": identifier,
+        "prepared_at_utc": _utc_now(),
+        "segment_a_completed_nsys_profiles": 32,
+        "segment_a_failed_ncu_attempts": sum(
+            row.get("run_kind") == "ncu" and row.get("status") != "completed"
+            for row in manifests
+        ),
+        "continuation_ncu_profiles": 22,
+        "fresh_authorized_outer_container_per_profile": True,
+        "disable_extra_metric_suffixes": True,
+        "normal_timing": False,
+        "selection_sha256": sha256_file(root / "selection.json"),
+        "metric_map_sha256": sha256_file(root / "metric_map.json"),
+        "source_equivalence": equivalence,
+    }
+    write_exclusive(root / "continuation-manifest.json", json_bytes(payload))
+    return payload
+
+
+def run_one_ncu_profile(
+    *, stage: Path, campaign_id: str, git_sha: str, profile_id: str, attempt: int
+) -> dict[str, Any]:
+    identifier = _validate_campaign_id(campaign_id)
+    phase12._require_authorized_container_runtime()
+    if any(name in os.environ for name in pilot._FORBIDDEN_ENVIRONMENT):
+        raise Phase15Error("credentials entered the Measurement Container")
+    _require_clean_execution_head(git_sha)
+    root = stage.resolve(strict=True)
+    continuation = _strict_json(root / "continuation-manifest.json")
+    if (
+        continuation.get("campaign_id") != identifier
+        or continuation.get("source_equivalence", {}).get(
+            "continuation_execution_git_sha"
+        )
+        != git_sha
+    ):
+        raise Phase15Error("Phase 15 NCU continuation authority differs")
+    selection = _strict_json(root / "selection.json")
+    validate_selection(selection)
+    matches = [
+        dict(row)
+        for row in selection["ncu_profiles"]
+        if row.get("profile_id") == profile_id
+    ]
+    if len(matches) != 1:
+        raise Phase15Error("Phase 15 selected NCU profile identity differs")
+    expected_attempt = next_profile_attempt(root, profile_id)
+    if attempt != expected_attempt:
+        raise Phase15Error("Phase 15 NCU continuation attempt differs")
+    record = matches[0]
+    key = (
+        str(record["method_config_id"]),
+        int(record["batch_size"]),
+        int(record["context_label"]),
+    )
+    return _run_profiler_point(
+        stage=root,
+        record=record,
+        git_sha=git_sha,
+        prefix=_prefix_catalog_index()[key],
+        metric_map=_strict_json(root / "metric_map.json"),
+        attempt=attempt,
+        smoke=False,
+    )
+
+
+def finalize_ncu_continuation_index(
+    *, stage: Path, campaign_id: str, git_sha: str
+) -> dict[str, Any]:
+    identifier = _validate_campaign_id(campaign_id)
+    _require_clean_execution_head(git_sha)
+    root = stage.resolve(strict=True)
+    if (root / "run-index.json").exists():
+        raise Phase15Error("Phase 15 run index already exists")
+    continuation = _strict_json(root / "continuation-manifest.json")
+    if continuation.get("campaign_id") != identifier:
+        raise Phase15Error("Phase 15 continuation identity differs")
+    selection = _strict_json(root / "selection.json")
+    validate_selection(selection)
+    chosen: list[dict[str, Any]] = []
+    for record in selection["nsys_profiles"]:
+        attempts = _profile_attempts(root, str(record["profile_id"]))
+        if len(attempts) != 1 or attempts[0].get("status") != "completed":
+            raise Phase15Error("Phase 15 Segment A Nsys coverage differs")
+        chosen.append(attempts[0])
+    for record in selection["ncu_profiles"]:
+        attempts = _profile_attempts(root, str(record["profile_id"]))
+        if not attempts or attempts[-1].get("status") != "completed":
+            raise Phase15Error(
+                f"Phase 15 NCU profile is not completed: {record['profile_id']}"
+            )
+        if attempts[-1].get("execution_git_sha") != git_sha:
+            raise Phase15Error("Phase 15 NCU continuation execution SHA differs")
+        chosen.append(attempts[-1])
+    if len(chosen) != 54:
+        raise Phase15Error("Phase 15 continuation chosen profile count differs")
+    all_runs = _all_run_manifests(root)
+    payload = {
+        "schema_version": "kvbench-phase15-run-index-1.0.0",
+        "campaign_id": identifier,
+        "records": chosen,
+        "profile_count": len(chosen),
+        "completed": sum(row["status"] == "completed" for row in chosen),
+        "failed": sum(row["status"] != "completed" for row in chosen),
+        "retried": sum(int(row["attempt"]) > 0 for row in chosen),
+        "historical_failed_attempts_preserved": sum(
+            row.get("status") != "completed" for row in all_runs
+        ),
+        "execution_git_shas": sorted(
+            {str(row["execution_git_sha"]) for row in chosen}
+        ),
+        "continuation": True,
+    }
+    write_exclusive(root / "run-index.json", json_bytes(payload))
+    write_exclusive(
+        root / "continuation-result.json",
+        json_bytes(
+            {
+                "schema_version": "kvbench-phase15-ncu-continuation-result-1.0.0",
+                "campaign_id": identifier,
+                "status": "PASS",
+                "completed_nsys_profiles": 32,
+                "completed_ncu_profiles": 22,
+                "historical_failed_attempts_preserved": payload[
+                    "historical_failed_attempts_preserved"
+                ],
+                "fresh_authorized_outer_container_per_ncu_profile": True,
+                "finished_at_utc": _utc_now(),
+            }
+        ),
+    )
+    return payload
+
+
 def _parquet_write(path: Path, rows: Sequence[Mapping[str, Any]]) -> None:
     try:
         import pyarrow as pa
@@ -2368,6 +2628,9 @@ def _arguments(argv: Sequence[str] | None = None) -> argparse.Namespace:
     actions.add_argument("--reserve-campaign", action="store_true")
     actions.add_argument("--run-campaign", action="store_true")
     actions.add_argument("--run-worker", action="store_true")
+    actions.add_argument("--prepare-ncu-continuation", action="store_true")
+    actions.add_argument("--run-one-ncu-profile", action="store_true")
+    actions.add_argument("--finalize-ncu-continuation-index", action="store_true")
     actions.add_argument("--materialize-analysis", action="store_true")
     actions.add_argument("--finalize-staged-campaign", action="store_true")
     actions.add_argument("--validate-campaign", action="store_true")
@@ -2376,6 +2639,8 @@ def _arguments(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--artifact", type=Path)
     parser.add_argument("--campaign-id")
     parser.add_argument("--git-sha")
+    parser.add_argument("--profile-id")
+    parser.add_argument("--attempt", type=int)
     parser.add_argument("--run-kind", choices=RUN_KINDS)
     parser.add_argument("--configuration", choices=CONFIGURATIONS)
     parser.add_argument("--batch-size", type=int)
@@ -2410,6 +2675,41 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(reserve_campaign(campaign_id=_require(args.campaign_id, "campaign-id"), git_sha=_require(args.git_sha, "git-sha")))
     elif args.run_campaign:
         print(json.dumps(run_campaign(stage=_require(args.stage, "stage"), campaign_id=_require(args.campaign_id, "campaign-id"), git_sha=_require(args.git_sha, "git-sha")), sort_keys=True))
+    elif args.prepare_ncu_continuation:
+        print(
+            json.dumps(
+                prepare_ncu_continuation(
+                    stage=_require(args.stage, "stage"),
+                    campaign_id=_require(args.campaign_id, "campaign-id"),
+                    git_sha=_require(args.git_sha, "git-sha"),
+                ),
+                sort_keys=True,
+            )
+        )
+    elif args.run_one_ncu_profile:
+        print(
+            json.dumps(
+                run_one_ncu_profile(
+                    stage=_require(args.stage, "stage"),
+                    campaign_id=_require(args.campaign_id, "campaign-id"),
+                    git_sha=_require(args.git_sha, "git-sha"),
+                    profile_id=_require(args.profile_id, "profile-id"),
+                    attempt=_require(args.attempt, "attempt"),
+                ),
+                sort_keys=True,
+            )
+        )
+    elif args.finalize_ncu_continuation_index:
+        print(
+            json.dumps(
+                finalize_ncu_continuation_index(
+                    stage=_require(args.stage, "stage"),
+                    campaign_id=_require(args.campaign_id, "campaign-id"),
+                    git_sha=_require(args.git_sha, "git-sha"),
+                ),
+                sort_keys=True,
+            )
+        )
     elif args.run_worker:
         payload = _run_profile_worker(
             run_kind=_require(args.run_kind, "run-kind"),

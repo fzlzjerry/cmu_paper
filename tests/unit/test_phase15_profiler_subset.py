@@ -151,6 +151,18 @@ class Phase15MetricTests(unittest.TestCase):
             phase15.classify_kernel("select_fixed_outliers", configuration="bf16")[0],
             "unknown",
         )
+        self.assertEqual(
+            phase15.classify_kernel(
+                "at::reduce_kernel<MeanOps<float>>", configuration="bf16"
+            )[0],
+            "other_model",
+        )
+        self.assertEqual(
+            phase15.classify_kernel(
+                "indexSelectSmallIndex", configuration="bf16"
+            )[0],
+            "other_model",
+        )
 
     def test_same_work_hbm_and_traffic_amplification(self) -> None:
         bf16 = {"cache_path_dram_bytes": 1000.0, "total_decode_dram_bytes": 2000.0}
@@ -257,6 +269,41 @@ class Phase15NsysTests(unittest.TestCase):
 
 
 class Phase15GovernanceTests(unittest.TestCase):
+    def test_ncu_continuation_attempts_are_append_only_and_contiguous(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            stage = Path(directory)
+            profile_id = "p15-ncu-bf16-b1-l4096-graph"
+            (stage / "runs").mkdir()
+            self.assertEqual(phase15.next_profile_attempt(stage, profile_id), 0)
+            for attempt in (0, 1):
+                run = stage / "runs" / f"{profile_id}-attempt{attempt}"
+                run.mkdir()
+                (run / "manifest.json").write_text(
+                    json.dumps({"profile_id": profile_id, "attempt": attempt}),
+                    encoding="utf-8",
+                )
+                self.assertEqual(
+                    phase15.next_profile_attempt(stage, profile_id), attempt + 1
+                )
+
+            gap = stage / "runs" / f"{profile_id}-attempt3"
+            gap.mkdir()
+            (gap / "manifest.json").write_text(
+                json.dumps({"profile_id": profile_id, "attempt": 3}),
+                encoding="utf-8",
+            )
+            with self.assertRaises(phase15.Phase15Error):
+                phase15.next_profile_attempt(stage, profile_id)
+
+    def test_ncu_continuation_allowlist_is_profiler_only(self) -> None:
+        self.assertEqual(
+            phase15._CONTINUATION_ALLOWED_SOURCE_CHANGES,
+            {
+                "scripts/phase15_profiler_subset.py",
+                "tests/unit/test_phase15_profiler_subset.py",
+            },
+        )
+
     def test_profiler_annotations_are_worker_only(self) -> None:
         source = inspect.getsource(phase15._run_profile_worker)
         self.assertIn("_install_profiler_adapter_nvtx_annotations", source)
