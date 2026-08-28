@@ -1,0 +1,254 @@
+{
+  "analysis_execution_git_sha": "d9587b77df09e5a7ec9d3b272c1a2a6be0eda6c7",
+  "analysis_scope": {
+    "analysis_only": true,
+    "cuda_run": false,
+    "cv_threshold_changed": false,
+    "fits_regenerated": false,
+    "source_campaign_modified": false,
+    "timing_rerun": false
+  },
+  "claims": {
+    "direct_launch_gap_measured": false,
+    "hbm_traffic_claim": false,
+    "mechanism_experiment": true,
+    "performance_claim_eligible": false,
+    "quality_status": "unvalidated"
+  },
+  "durable_publication": {
+    "bundle_scope": "closure_only",
+    "receipt_path": "docs/evidence/phase14/analysis-closure-r2-publication.json",
+    "self_reference_safe": true,
+    "source_phase14_objects_reuploaded": false,
+    "source_phase14_root_reference": "22a613b07c1ee6d3e9a0a7fc81df6065ccc8a10bf783b1a69aded3c2eb8068f0"
+  },
+  "gates": {
+    "full_scan": "CLOSED",
+    "performance_data_frozen": false,
+    "phase14_analysis_closure": "PASS",
+    "phase15": "READY",
+    "quality": "LOCKED"
+  },
+  "limitations": [
+    "Five eager condition groups remain unstable and their eager mechanism parameters are not claim-bearing.",
+    "Phase 15 profiling is required for direct launch-gap and physical traffic attribution."
+  ],
+  "mechanism_summary": {
+    "comparison_categories": {
+      "fully_identifiable": 14,
+      "no_positive_eager_slope": 2,
+      "other_non_identifiable": 0,
+      "unstable_eager": 4
+    },
+    "fit_status_counts": {
+      "knee_observed": 34,
+      "no_positive_slope": 2,
+      "unstable_data": 4
+    },
+    "fully_identifiable_comparisons": [
+      {
+        "batch_size": 1,
+        "method_config_id": "tq_4bit_nc"
+      },
+      {
+        "batch_size": 4,
+        "method_config_id": "tq_4bit_nc"
+      },
+      {
+        "batch_size": 1,
+        "method_config_id": "tq_k3v4_nc"
+      },
+      {
+        "batch_size": 4,
+        "method_config_id": "tq_k3v4_nc"
+      },
+      {
+        "batch_size": 1,
+        "method_config_id": "k4v4"
+      },
+      {
+        "batch_size": 1,
+        "method_config_id": "k2v4"
+      },
+      {
+        "batch_size": 4,
+        "method_config_id": "k2v4"
+      },
+      {
+        "batch_size": 1,
+        "method_config_id": "k2v2"
+      },
+      {
+        "batch_size": 1,
+        "method_config_id": "kvq4"
+      },
+      {
+        "batch_size": 4,
+        "method_config_id": "kvq4"
+      },
+      {
+        "batch_size": 1,
+        "method_config_id": "kvq3"
+      },
+      {
+        "batch_size": 4,
+        "method_config_id": "kvq3"
+      },
+      {
+        "batch_size": 1,
+        "method_config_id": "kvq2"
+      },
+      {
+        "batch_size": 4,
+        "method_config_id": "kvq2"
+      }
+    ],
+    "host_minus_device_proxy": {
+      "direct_launch_gap_measured": false,
+      "graph_lower_count": 23,
+      "graph_not_lower_count": 82,
+      "stable_pair_denominator": 105
+    },
+    "knee": {
+      "graph_knee_disappeared": 0,
+      "shift_counts": {
+        "-6144": 2,
+        "-61440": 3,
+        "0": 9
+      }
+    },
+    "launch_floor_only": {
+      "eligible_denominator": 14,
+      "floor_decreases": 14,
+      "material_floor_reductions": 8,
+      "semantics_unchanged": 14,
+      "slope_similar": 10,
+      "support_count": 0
+    },
+    "no_positive_eager_slope_comparisons": [
+      {
+        "batch_size": 4,
+        "method_config_id": "k4v4"
+      },
+      {
+        "batch_size": 4,
+        "method_config_id": "k2v2"
+      }
+    ],
+    "semantic_mismatches": 0,
+    "unstable_eager_comparisons": [
+      {
+        "batch_size": 1,
+        "method_config_id": "bf16"
+      },
+      {
+        "batch_size": 4,
+        "method_config_id": "bf16"
+      },
+      {
+        "batch_size": 1,
+        "method_config_id": "tq_3bit_nc"
+      },
+      {
+        "batch_size": 4,
+        "method_config_id": "tq_3bit_nc"
+      }
+    ]
+  },
+  "recorded_at_utc": "2026-08-28T09:46:23Z",
+  "schema_version": "kvbench-phase14-analysis-closure-1.0.0",
+  "scientific_interpretation": "The observed CUDA Graph effect is heterogeneous and is not explained by a pure launch-floor reduction model.",
+  "source_phase14": {
+    "campaign_id": "phase14-20260826t115110887808z-47ba4220-42fc95",
+    "campaign_report_sha256": "8ca872a4ef2ba0caaa3d00c60da317806a73aa89111c67c44adced70abb0b53b",
+    "capacity_infeasible_ab_replicate_pairs": 30,
+    "completed_mode_runs": 660,
+    "feasible_ab_replicate_pairs": 330,
+    "file_sha256": {
+      "artifacts/phase13/phase13-20260822t150835736582z-4ddd7b17-3a8fb3/provisional_knees.parquet": "7e89f868a569f06d0109f8ce48847cffc837d0919cb0a423ac7d8b00737a1ff8",
+      "artifacts/phase13d/phase13d-20260825t030556684636z-a06837a3-83761a/refined_knees.parquet": "100621fc81522a343a5c05bc7b0d5d3eacd32280eb0a78b35c364dda61032339",
+      "artifacts/phase14/phase14-20260826t115110887808z-47ba4220-42fc95/campaign_manifest.json": "fd84f79c6822e108b934af7a3dd2dfb5530843fe0634182ba9299062e82ed535",
+      "artifacts/phase14/phase14-20260826t115110887808z-47ba4220-42fc95/graph_ab_pairs.parquet": "fead54b996459cdafd6c33c50ed100906092b4a1bdb6d59671762392f6b8d447",
+      "artifacts/phase14/phase14-20260826t115110887808z-47ba4220-42fc95/graph_effects.parquet": "c873831e75e233544f2f24d267cc4e515aa025bafd6d32e1060d8a6b19e66996",
+      "artifacts/phase14/phase14-20260826t115110887808z-47ba4220-42fc95/mode_fits.parquet": "74d7a72df72c25b489ee1943c086d5f0c87e65d887eff9fd8162c3539566e660",
+      "artifacts/phase14/phase14-20260826t115110887808z-47ba4220-42fc95/phase14_qc.json": "ab353799906820bafa9f44b7f8c6cfb5c601647e5c45901bf87b013aabd7fe53",
+      "artifacts/phase14/phase14-20260826t115110887808z-47ba4220-42fc95/phase14_report.md": "8ca872a4ef2ba0caaa3d00c60da317806a73aa89111c67c44adced70abb0b53b",
+      "artifacts/phase14/phase14-20260826t115110887808z-47ba4220-42fc95/point_summary.parquet": "1e4993bdd5b75e62108881c9f9dfe402f3dbd785b576347a8b16c244f5163e4c",
+      "artifacts/phase14/phase14-20260826t115110887808z-47ba4220-42fc95/raw_run_index.parquet": "7fc4ef98354682b78d27114dd2f5365eb3217afb4f78dc6934e4c2903bd739cf",
+      "docs/evidence/phase14/r2-publication.json": "f5de7bc57f79ab40a9299d7f5c8bf9b90f0f7a8968db3666e8f0bab460050114",
+      "docs/phase_reports/phase14-graph-ab.md": "96210af393acfeaa00a92ed5e41e41f654bc9c7c67205db29abe81a1e9e5acb3"
+    },
+    "object_count": 18628,
+    "original_status": "BLOCKED",
+    "planned_ab_replicate_pairs": 360,
+    "r2_root_sha256": "22a613b07c1ee6d3e9a0a7fc81df6065ccc8a10bf783b1a69aded3c2eb8068f0",
+    "r2_uri": "r2://kvbench-artifacts/kvbench/sha256/22a613b07c1ee6d3e9a0a7fc81df6065ccc8a10bf783b1a69aded3c2eb8068f0/",
+    "report_path": "docs/phase_reports/phase14-graph-ab.md",
+    "report_sha256": "96210af393acfeaa00a92ed5e41e41f654bc9c7c67205db29abe81a1e9e5acb3",
+    "runtime_failures": 0,
+    "selective_reruns": 0
+  },
+  "stability": {
+    "cv_threshold": 0.03,
+    "stable_ab_condition_count": 105,
+    "unstable_eager_condition_count": 5,
+    "unstable_eager_conditions": [
+      {
+        "batch_size": 1,
+        "context_label": 16384,
+        "cv": 0.038078505745157795,
+        "graph_mode": "eager",
+        "method_config_id": "bf16",
+        "status": "unstable"
+      },
+      {
+        "batch_size": 1,
+        "context_label": 65536,
+        "cv": 0.038436836137135284,
+        "graph_mode": "eager",
+        "method_config_id": "bf16",
+        "status": "unstable"
+      },
+      {
+        "batch_size": 4,
+        "context_label": 4096,
+        "cv": 0.03157440999181538,
+        "graph_mode": "eager",
+        "method_config_id": "bf16",
+        "status": "unstable"
+      },
+      {
+        "batch_size": 1,
+        "context_label": 4096,
+        "cv": 0.03448706000458669,
+        "graph_mode": "eager",
+        "method_config_id": "tq_3bit_nc",
+        "status": "unstable"
+      },
+      {
+        "batch_size": 4,
+        "context_label": 4096,
+        "cv": 0.039634094975259174,
+        "graph_mode": "eager",
+        "method_config_id": "tq_3bit_nc",
+        "status": "unstable"
+      }
+    ],
+    "unstable_points_reclassified": 0
+  },
+  "status": "PASS",
+  "upstream_knee_tables": {
+    "phase13_fit_status_counts": {
+      "knee_observed": 30
+    },
+    "phase13_rows": 30,
+    "phase13d_fit_status_counts": {
+      "knee_observed": 30
+    },
+    "phase13d_resolution_status_counts": {
+      "density_sufficient": 6,
+      "insufficient_feasible_span": 24
+    },
+    "phase13d_rows": 30
+  }
+}

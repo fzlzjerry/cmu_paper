@@ -8,20 +8,25 @@ requirements; and AGENTS.md. Decision 0005 records precedence.
 
 ## Current state
 
-- Latest scoped phase: Phase 14 CUDA Graph OFF/ON mechanism experiment
-  `BLOCKED`. Campaign `phase14-20260826t115110887808z-47ba4220-42fc95`
-  preserves all 720 planned mode records: 660 feasible runs completed, 60
-  records belong to 30 predeclared capacity-infeasible pairs, and there were no
-  runtime failures or selective reruns. Five eager mode points exceed the
-  frozen 3% CV threshold; maximum overall eager CV is
-  `0.039634094975259174`, while maximum Graph CV is
-  `0.0019523078093870096`. Output, backend, cache identity, kernel path, and
-  allocation mismatches are zero, but the five unstable points prevent Phase
-  14 PASS and leave Phase 15 `NOT_READY`. The 18,628-object root
+- Latest scoped phase: Phase 14C analysis closure `PASS`. The immutable Phase
+  14 campaign `phase14-20260826t115110887808z-47ba4220-42fc95` preserves all
+  720 planned mode records: 660 feasible runs completed, 60 records belong to
+  30 predeclared capacity-infeasible pairs, and there were no runtime failures
+  or selective reruns. Five eager mode points remain `unstable` under the
+  unchanged 3% CV threshold and are not used for stable fitted mechanism
+  comparisons. The other 105 A/B condition groups are stable with zero output,
+  backend, cache-identity, kernel-path, or allocation mismatch. Fourteen
+  floor+slope+knee comparisons are fully identifiable; 0 of 14 satisfy the
+  complete launch-floor-only criterion, four comparisons are inconclusive
+  because eager data are unstable, and two have no positive eager slope. The
+  host-minus-device proxy is lower under Graph in only 23 of 105 stable pairs.
+  The resulting negative mechanism conclusion is that the observed Graph
+  effect is heterogeneous and is not explained by a pure launch-floor
+  reduction. The 18,628-object source root
   `22a613b07c1ee6d3e9a0a7fc81df6065ccc8a10bf783b1a69aded3c2eb8068f0`
-  is COMPLETE-last and passed one clean R2 retrieval. G0-G5 remain PASS from
-  unified admission; Full Scan remains CLOSED, quality remains LOCKED, and
-  `PERFORMANCE_DATA_FROZEN` remains absent.
+  and original BLOCKED report remain immutable. Phase 15 is `READY`; G0-G5
+  remain PASS from unified admission, Full Scan remains CLOSED, quality remains
+  LOCKED, and `PERFORMANCE_DATA_FROZEN` remains absent.
 - Latest scoped phase: Phase 13D knee densification continuation PASS. The successful
   Phase 13 successor Pilot remains PASS. Campaign
   `phase13-20260822t150835736582z-4ddd7b17-3a8fb3` preserves all 810 planned
@@ -785,8 +790,8 @@ reference execution is recorded separately above.
 | Phase 13R q4 workspace remediation | PASS | Decision 0036 capacity-derived q4 workspace; all nine fixture regressions, B=4/8 L=16384 targeted admission, Graph/allocation/stream/sanitizer controls, successor q4 admission, and three-process q4 G5 refresh pass; 14-object root `9f027d64424844d0d62311daad5740e2b76960d1d5e7b8be26aa1ccba100a8db` is COMPLETE-last and cleanly retrieved. |
 | Phase 13 successor Pilot | PASS | Fresh campaign `phase13-20260822t150835736582z-4ddd7b17-3a8fb3`; 810/810 records, 684 completed, 126 capacity-infeasible, 228 stable points, maximum CV 0.221851%, no failures or selective reruns; 17,384-object root `feb2e5a8ebba8b729c182fc8170107c9acf8128edd3e5618c8f1b90530557531` is COMPLETE-last and cleanly retrieved. |
 | Phase 13D knee densification | PASS | Campaign family `phase13d-20260825t030556684636z-a06837a3-83761a` preserves Segment A's 51 valid runs and the original failed-finalization run unchanged. Segment B completes one replacement plus the frozen remaining 200 records without rerunning Segment A or regenerating 84 prefix states. All 252 logical records pass QC; root `a8559a5e01edaad949df1e128c4bddff37638801cfc89f2eb8d4894c31ef82d2` is COMPLETE-last and cleanly retrieved. |
-| Phase 14 CUDA Graph A/B | BLOCKED | Campaign `phase14-20260826t115110887808z-47ba4220-42fc95`; 660/660 feasible mode runs completed and 60 infeasible records were preserved. Five eager mode points exceed the 3% CV gate; no semantic mismatch or selective rerun occurred. Root `22a613b07c1ee6d3e9a0a7fc81df6065ccc8a10bf783b1a69aded3c2eb8068f0` is COMPLETE-last and cleanly retrieved. |
-| Phase 15/full-scan gates | NOT_READY / CLOSED | Phase 14 stability QC is incomplete. A separately preregistered complete Phase 14 campaign is required; the five unstable points may not be selectively rerun. |
+| Phase 14 CUDA Graph A/B / Phase 14C closure | PASS | The original campaign/report/root remain immutable and retain five eager `unstable` groups. Phase 14C separates 105 stable A/B conditions into 14 fully identifiable, four unstable-eager, and two no-positive-eager-slope comparisons. Complete launch-floor-only support is 0 of 14; the negative mechanism result is closure, not a timing failure. |
+| Phase 15/full-scan gates | READY / CLOSED | Phase 14C analysis closure PASS. Direct launch-gap and physical-traffic attribution remain deferred to separately authorized Phase 15 profiling. |
 | Post-performance quality validation | LOCKED | Decision 0005; `PERFORMANCE_DATA_FROZEN` absent |
 
 ## Phase 0 acceptance
@@ -816,7 +821,8 @@ The Phase 13D campaign family
 `phase13d-20260825t030556684636z-a06837a3-83761a` remains append-only. Its 51
 original valid runs, failed-finalization record, and 84 prefix states remain
 unchanged; the authorized continuation is a separate segment with its own ID
-and execution heads. Phase 14 evidence is complete but scientifically BLOCKED
-by five eager CV failures. Any new timing requires a separately preregistered
-complete Phase 14 campaign; Phase 15, profiling, Full Scan, performance claims,
-and quality execution remain closed.
+and execution heads. The original Phase 14 BLOCKED report and R2 root remain
+unchanged; Phase 14C retains the five unstable eager groups, closes the 105
+stable conditions with explicit denominators, and records a negative mechanism
+result. Phase 15 is READY for a separately authorized profiler subset. Full
+Scan, performance claims, and quality execution remain closed.

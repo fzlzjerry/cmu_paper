@@ -106,6 +106,28 @@ class Phase14AnalysisClosureTests(unittest.TestCase):
         with self.assertRaises(closure.Phase14ClosureError):
             closure.validate_closure_payload(tampered)
 
+    def test_committed_closure_keeps_unstable_points_and_explicit_denominator(
+        self,
+    ) -> None:
+        payload = closure._strict_json(closure.CLOSURE_JSON_PATH)
+        closure.validate_closure_payload(payload)
+        unstable = payload["stability"]["unstable_eager_conditions"]
+        self.assertEqual(len(unstable), 5)
+        self.assertTrue(all(row["status"] == "unstable" for row in unstable))
+        self.assertTrue(all(row["cv"] > closure.CV_THRESHOLD for row in unstable))
+        report = closure.CLOSURE_REPORT_PATH.read_text(encoding="utf-8")
+        self.assertEqual(report, closure.render_report(payload))
+        self.assertIn("0 of 14 fully identifiable comparisons", report)
+        self.assertNotIn("0/20 support", report)
+
+    def test_committed_closure_opens_only_phase15(self) -> None:
+        payload = closure._strict_json(closure.CLOSURE_JSON_PATH)
+        gates = payload["gates"]
+        self.assertEqual(gates["phase15"], "READY")
+        self.assertEqual(gates["full_scan"], "CLOSED")
+        self.assertEqual(gates["quality"], "LOCKED")
+        self.assertFalse(gates["performance_data_frozen"])
+
 
 if __name__ == "__main__":
     unittest.main()
