@@ -94,6 +94,7 @@ class Phase15MetricTests(unittest.TestCase):
         self.assertIn("--list-sections", source)
         self.assertIn("section-query-transition.json", source)
         self.assertIn("section_inventory_only", source)
+        self.assertIn("result.stdout + result.stderr", source)
 
     def test_ncu_csv_parser_and_byte_aggregation(self) -> None:
         metric_map = phase15.resolve_metric_map(self._metric_text(), "sections")

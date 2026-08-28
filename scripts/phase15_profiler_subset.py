@@ -1600,7 +1600,9 @@ def _query_ncu(stage: Path) -> dict[str, Any]:
         write_exclusive(stage / name, payload.encode("utf-8"))
         if result.returncode == 0:
             outputs[action] = result.stdout
-        elif action == "--query-sections" and "unrecognised option" in result.stderr:
+        elif action == "--query-sections" and "unrecognised option" in (
+            result.stdout + result.stderr
+        ):
             # NCU 2026.2 removed the requested spelling. Preserve that rejected
             # query verbatim, then use its documented semantic replacement.
             replacement = subprocess.run(
