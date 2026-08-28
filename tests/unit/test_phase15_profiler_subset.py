@@ -88,6 +88,13 @@ class Phase15MetricTests(unittest.TestCase):
         with self.assertRaises(phase15.Phase15Error):
             phase15.resolve_metric_map("gpu__time_duration.sum", "sections")
 
+    def test_current_ncu_section_option_transition_is_narrow(self) -> None:
+        source = inspect.getsource(phase15._query_ncu)
+        self.assertIn("--query-sections", source)
+        self.assertIn("--list-sections", source)
+        self.assertIn("section-query-transition.json", source)
+        self.assertIn("section_inventory_only", source)
+
     def test_ncu_csv_parser_and_byte_aggregation(self) -> None:
         metric_map = phase15.resolve_metric_map(self._metric_text(), "sections")
         header = "ID,Kernel Name,Context,Stream,Metric Name,Metric Unit,Metric Value"

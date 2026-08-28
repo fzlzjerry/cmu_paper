@@ -27,7 +27,9 @@ end-of-range synchronization is explicitly classified as a profiler boundary,
 not a method synchronization or timing sample.
 
 NCU metrics are resolved from live SM120 `--query-metrics` and
-`--query-sections` output. Unavailable metrics remain explicit. Kernel roles use
+`--query-sections` output. NCU 2026.2 exposes the latter inventory as the
+documented `--list-sections`; if the requested spelling is rejected, both raw
+payloads and the exact semantic transition are preserved. Unavailable metrics remain explicit. Kernel roles use
 profiler-only adapter NVTX evidence, kernel identity, source authority, and the
 method manifest; ambiguous kernels remain `unknown`. Canonical `r_hbm` is
 BF16/method cache-path DRAM traffic at the exact common point and remains null
@@ -37,4 +39,3 @@ Isolated tool/export/parse failures are preserved and may receive one targeted
 profiler-only retry with a new run ID. CUDA correctness, authority drift, or a
 true foreign GPU process fails closed. The append-only bundle is finalized with
 `COMPLETE` last, published content-addressed to R2, and cleanly retrieved.
-

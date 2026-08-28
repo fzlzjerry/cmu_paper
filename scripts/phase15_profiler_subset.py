@@ -1598,9 +1598,44 @@ def _query_ncu(stage: Path) -> dict[str, Any]:
         )
         payload = result.stdout + ("\nSTDERR:\n" + result.stderr if result.stderr else "")
         write_exclusive(stage / name, payload.encode("utf-8"))
-        if result.returncode != 0:
+        if result.returncode == 0:
+            outputs[action] = result.stdout
+        elif action == "--query-sections" and "unrecognised option" in result.stderr:
+            # NCU 2026.2 removed the requested spelling. Preserve that rejected
+            # query verbatim, then use its documented semantic replacement.
+            replacement = subprocess.run(
+                ("ncu", "--list-sections"),
+                cwd=REPOSITORY_ROOT,
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=600,
+            )
+            replacement_payload = replacement.stdout + (
+                "\nSTDERR:\n" + replacement.stderr if replacement.stderr else ""
+            )
+            write_exclusive(
+                stage / "list-sections.txt", replacement_payload.encode("utf-8")
+            )
+            if replacement.returncode != 0:
+                raise Phase15Error("ncu section discovery is globally unavailable")
+            outputs[action] = replacement.stdout
+            write_exclusive(
+                stage / "section-query-transition.json",
+                json_bytes(
+                    {
+                        "requested_command": ["ncu", "--query-sections"],
+                        "requested_returncode": result.returncode,
+                        "requested_status": "tool_option_unavailable",
+                        "replacement_command": ["ncu", "--list-sections"],
+                        "replacement_returncode": replacement.returncode,
+                        "replacement_status": "PASS",
+                        "semantic_scope": "section_inventory_only",
+                    }
+                ),
+            )
+        else:
             raise Phase15Error(f"ncu {action} failed")
-        outputs[action] = result.stdout
     metric_map = resolve_metric_map(outputs["--query-metrics"], outputs["--query-sections"])
     write_exclusive(stage / "metric_map.json", json_bytes(metric_map))
     return metric_map
