@@ -155,6 +155,7 @@ class Phase15NsysTests(unittest.TestCase):
             metric_map={},
         )
         self.assertIn("--env-var=NSYS_NVTX_PROFILER_REGISTER_ONLY=0", command)
+        self.assertIn("--cuda-graph-trace=node", command)
 
     def test_nsys_parser_separates_submission_idle_and_sync(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

@@ -1353,7 +1353,7 @@ def _profiler_command(
             f"--nvtx-capture={NVTX_RANGE}",
             "--capture-range-end=stop",
             "--env-var=NSYS_NVTX_PROFILER_REGISTER_ONLY=0",
-            "--cuda-graph-trace=graph",
+            "--cuda-graph-trace=node",
             "--force-overwrite=true",
             f"--output={raw_base}",
             *worker,
