@@ -147,6 +147,15 @@ class Phase15MetricTests(unittest.TestCase):
 
 
 class Phase15NsysTests(unittest.TestCase):
+    def test_nsys_capture_accepts_dynamic_pytorch_nvtx_string(self) -> None:
+        command = phase15._profiler_command(
+            record={"run_kind": "nsys"},
+            worker=["python", "worker.py"],
+            raw_base=Path("/tmp/raw"),
+            metric_map={},
+        )
+        self.assertIn("--env-var=NSYS_NVTX_PROFILER_REGISTER_ONLY=0", command)
+
     def test_nsys_parser_separates_submission_idle_and_sync(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "trace.sqlite"
