@@ -1,6 +1,6 @@
 # Project status
 
-Last updated: 2026-08-26
+Last updated: 2026-08-28
 Authoritative contracts: CODEX_WORKFLOW.md for active performance engineering;
 CODEX_POST_PERFORMANCE_QUALITY_VALIDATION.md for post-performance quality
 scheduling; CODEX_QUALITY_EVALUATION_ADDENDUM.md for non-conflicting quality
@@ -8,6 +8,20 @@ requirements; and AGENTS.md. Decision 0005 records precedence.
 
 ## Current state
 
+- Latest scoped phase: Phase 14 CUDA Graph OFF/ON mechanism experiment
+  `BLOCKED`. Campaign `phase14-20260826t115110887808z-47ba4220-42fc95`
+  preserves all 720 planned mode records: 660 feasible runs completed, 60
+  records belong to 30 predeclared capacity-infeasible pairs, and there were no
+  runtime failures or selective reruns. Five eager mode points exceed the
+  frozen 3% CV threshold; maximum overall eager CV is
+  `0.039634094975259174`, while maximum Graph CV is
+  `0.0019523078093870096`. Output, backend, cache identity, kernel path, and
+  allocation mismatches are zero, but the five unstable points prevent Phase
+  14 PASS and leave Phase 15 `NOT_READY`. The 18,628-object root
+  `22a613b07c1ee6d3e9a0a7fc81df6065ccc8a10bf783b1a69aded3c2eb8068f0`
+  is COMPLETE-last and passed one clean R2 retrieval. G0-G5 remain PASS from
+  unified admission; Full Scan remains CLOSED, quality remains LOCKED, and
+  `PERFORMANCE_DATA_FROZEN` remains absent.
 - Latest scoped phase: Phase 13D knee densification continuation PASS. The successful
   Phase 13 successor Pilot remains PASS. Campaign
   `phase13-20260822t150835736582z-4ddd7b17-3a8fb3` preserves all 810 planned
@@ -27,8 +41,9 @@ requirements; and AGENTS.md. Decision 0005 records precedence.
   points with maximum CV `0.0019765939935609987`; all 25 targets resolve as one
   `density_sufficient` and 24 `insufficient_feasible_span`. The 7,381-object
   root `a8559a5e01edaad949df1e128c4bddff37638801cfc89f2eb8d4894c31ef82d2`
-  is COMPLETE-last and passed one clean R2 retrieval. Phase 14 is READY but was
-  not started. The successful Pilot's 17,384-object root
+  is COMPLETE-last and passed one clean R2 retrieval. This evidence supplied
+  the immutable entry authority for Phase 14. The successful Pilot's
+  17,384-object root
   `feb2e5a8ebba8b729c182fc8170107c9acf8128edd3e5618c8f1b90530557531`
   is COMPLETE-last and passed one clean R2 retrieval. The blocked Pilot
   `phase13-20260804t111810342595z-a127b0d1-8649c3` remains immutable and none
@@ -770,7 +785,8 @@ reference execution is recorded separately above.
 | Phase 13R q4 workspace remediation | PASS | Decision 0036 capacity-derived q4 workspace; all nine fixture regressions, B=4/8 L=16384 targeted admission, Graph/allocation/stream/sanitizer controls, successor q4 admission, and three-process q4 G5 refresh pass; 14-object root `9f027d64424844d0d62311daad5740e2b76960d1d5e7b8be26aa1ccba100a8db` is COMPLETE-last and cleanly retrieved. |
 | Phase 13 successor Pilot | PASS | Fresh campaign `phase13-20260822t150835736582z-4ddd7b17-3a8fb3`; 810/810 records, 684 completed, 126 capacity-infeasible, 228 stable points, maximum CV 0.221851%, no failures or selective reruns; 17,384-object root `feb2e5a8ebba8b729c182fc8170107c9acf8128edd3e5618c8f1b90530557531` is COMPLETE-last and cleanly retrieved. |
 | Phase 13D knee densification | PASS | Campaign family `phase13d-20260825t030556684636z-a06837a3-83761a` preserves Segment A's 51 valid runs and the original failed-finalization run unchanged. Segment B completes one replacement plus the frozen remaining 200 records without rerunning Segment A or regenerating 84 prefix states. All 252 logical records pass QC; root `a8559a5e01edaad949df1e128c4bddff37638801cfc89f2eb8d4894c31ef82d2` is COMPLETE-last and cleanly retrieved. |
-| Pilot/full-scan gates | PHASE 14 READY / CLOSED | All 25 densification targets have resolved statuses: one `density_sufficient` and 24 `insufficient_feasible_span`. Phase 14 may be proposed separately; Full Scan remains CLOSED. |
+| Phase 14 CUDA Graph A/B | BLOCKED | Campaign `phase14-20260826t115110887808z-47ba4220-42fc95`; 660/660 feasible mode runs completed and 60 infeasible records were preserved. Five eager mode points exceed the 3% CV gate; no semantic mismatch or selective rerun occurred. Root `22a613b07c1ee6d3e9a0a7fc81df6065ccc8a10bf783b1a69aded3c2eb8068f0` is COMPLETE-last and cleanly retrieved. |
+| Phase 15/full-scan gates | NOT_READY / CLOSED | Phase 14 stability QC is incomplete. A separately preregistered complete Phase 14 campaign is required; the five unstable points may not be selectively rerun. |
 | Post-performance quality validation | LOCKED | Decision 0005; `PERFORMANCE_DATA_FROZEN` absent |
 
 ## Phase 0 acceptance
@@ -800,5 +816,7 @@ The Phase 13D campaign family
 `phase13d-20260825t030556684636z-a06837a3-83761a` remains append-only. Its 51
 original valid runs, failed-finalization record, and 84 prefix states remain
 unchanged; the authorized continuation is a separate segment with its own ID
-and execution heads. Phase 14 CUDA Graph A/B may be proposed separately.
-Profiling, Full Scan, performance claims, and quality execution remain closed.
+and execution heads. Phase 14 evidence is complete but scientifically BLOCKED
+by five eager CV failures. Any new timing requires a separately preregistered
+complete Phase 14 campaign; Phase 15, profiling, Full Scan, performance claims,
+and quality execution remain closed.
