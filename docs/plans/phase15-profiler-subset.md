@@ -26,7 +26,7 @@ restore, compile/capture, and graph warmup remain outside the range. The single
 end-of-range synchronization is explicitly classified as a profiler boundary,
 not a method synchronization or timing sample.
 
-NCU metrics are resolved from live SM120 `--query-metrics` and
+NCU metrics are resolved from live SM120 `--query-metrics-mode=all` and
 `--query-sections` output. NCU 2026.2 exposes the latter inventory as the
 documented `--list-sections`; if the requested spelling is rejected, both raw
 payloads and the exact semantic transition are preserved. Unavailable metrics remain explicit. Kernel roles use

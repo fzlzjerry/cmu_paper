@@ -1587,9 +1587,17 @@ def _run_profiler_point(
 
 def _query_ncu(stage: Path) -> dict[str, Any]:
     outputs: dict[str, str] = {}
-    for action, name in (("--query-metrics", "query-metrics.txt"), ("--query-sections", "query-sections.txt")):
+    requests = (
+        (
+            "--query-metrics",
+            "query-metrics.txt",
+            ("ncu", "--query-metrics", "--query-metrics-mode=all"),
+        ),
+        ("--query-sections", "query-sections.txt", ("ncu", "--query-sections")),
+    )
+    for action, name, command in requests:
         result = subprocess.run(
-            ("ncu", action),
+            command,
             cwd=REPOSITORY_ROOT,
             check=False,
             capture_output=True,

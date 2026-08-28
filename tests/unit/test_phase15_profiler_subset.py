@@ -90,6 +90,7 @@ class Phase15MetricTests(unittest.TestCase):
 
     def test_current_ncu_section_option_transition_is_narrow(self) -> None:
         source = inspect.getsource(phase15._query_ncu)
+        self.assertIn("--query-metrics-mode=all", source)
         self.assertIn("--query-sections", source)
         self.assertIn("--list-sections", source)
         self.assertIn("section-query-transition.json", source)
