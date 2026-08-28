@@ -458,11 +458,50 @@ def parse_ncu_csv(text: str, metric_map: Mapping[str, Any]) -> list[dict[str, An
     lines = [line for line in text.splitlines() if not line.startswith("==") and line.strip()]
     if not lines:
         raise Phase15Error("NCU export is empty")
-    reader = csv.DictReader(io.StringIO("\n".join(lines)))
     semantic_by_metric = {
         row["metric"]: row["semantic"] for row in metric_map["selected_metrics"]
     }
     records: list[dict[str, Any]] = []
+    parsed_rows = list(csv.reader(io.StringIO("\n".join(lines))))
+    header = [str(value).strip() for value in parsed_rows[0]]
+    if "Metric Name" not in header:
+        if len(parsed_rows) < 3:
+            raise Phase15Error("NCU wide export is missing unit or data rows")
+        units = parsed_rows[1]
+        index = {name: position for position, name in enumerate(header)}
+        selected = {
+            metric: index[metric]
+            for metric in semantic_by_metric
+            if metric in index
+        }
+        if set(selected) != set(semantic_by_metric):
+            missing = sorted(set(semantic_by_metric) - set(selected))
+            raise Phase15Error(f"NCU wide export omitted selected metrics: {missing}")
+        for raw in parsed_rows[2:]:
+            if len(raw) != len(header):
+                raise Phase15Error("NCU wide export row has inconsistent width")
+            kernel = raw[index.get("Kernel Name", -1)] if "Kernel Name" in index else "unknown"
+            for metric, position in selected.items():
+                value = _numeric(raw[position])
+                if value is None:
+                    continue
+                records.append(
+                    {
+                        "kernel_name": str(kernel),
+                        "kernel_id": str(raw[index["ID"]]) if "ID" in index else "",
+                        "context": str(raw[index["Context"]]) if "Context" in index else "",
+                        "stream": str(raw[index["Stream"]]) if "Stream" in index else "",
+                        "metric_name": metric,
+                        "metric_semantic": semantic_by_metric[metric],
+                        "unit": str(units[position]).strip(),
+                        "metric_value": value,
+                    }
+                )
+        if not records:
+            raise Phase15Error("NCU export contains no selected metrics")
+        return records
+
+    reader = csv.DictReader(io.StringIO("\n".join(lines)))
     for raw in reader:
         normalized = {str(key).strip(): value for key, value in raw.items() if key is not None}
         metric = normalized.get("Metric Name") or normalized.get("Metric Name ")
@@ -1415,6 +1454,7 @@ def _export_ncu(report: Path, csv_path: Path) -> subprocess.CompletedProcess[str
             str(report),
             "--page=raw",
             "--csv",
+            "--print-units=base",
             "--log-file",
             str(csv_path),
         ],

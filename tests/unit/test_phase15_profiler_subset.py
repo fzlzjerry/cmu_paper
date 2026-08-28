@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import copy
+import csv
 import inspect
+import io
 import json
 from pathlib import Path
 import sqlite3
@@ -117,6 +119,24 @@ class Phase15MetricTests(unittest.TestCase):
         self.assertEqual(summary["total_decode_dram_bytes"], 120.0)
         self.assertEqual(summary["cache_path_dram_bytes"], 120.0)
         self.assertEqual(summary["total_decode_l2_bytes"], 160.0)
+
+    def test_ncu_wide_csv_parser_uses_exact_selected_columns(self) -> None:
+        metric_map = phase15.resolve_metric_map(self._metric_text(), "sections")
+        metrics = metric_map["metric_names"]
+        header = ["ID", "Kernel Name", "Context", "Stream", *metrics]
+        units = ["", "", "", "", *(
+            "byte" if "bytes" in metric else "sector" if "sectors" in metric else "ns"
+            for metric in metrics
+        )]
+        values = ["7", "flash_fwd", "1", "9", *("4" for _ in metrics)]
+        stream = io.StringIO()
+        writer = csv.writer(stream, lineterminator="\n")
+        writer.writerows((header, units, values))
+        parsed = phase15.parse_ncu_csv(stream.getvalue(), metric_map)
+        self.assertEqual(len(parsed), len(metrics))
+        self.assertEqual({row["kernel_id"] for row in parsed}, {"7"})
+        self.assertEqual({row["kernel_name"] for row in parsed}, {"flash_fwd"})
+        self.assertEqual({row["metric_name"] for row in parsed}, set(metrics))
 
     def test_kernel_classification_preserves_unknown(self) -> None:
         self.assertEqual(
