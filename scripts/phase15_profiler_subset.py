@@ -922,7 +922,7 @@ def _run_profile_worker(
     accounting = session.method_cache_accounting()
     geometry = session.gqa_cache_geometry()
     family = phase12._method_family(configuration)
-    live_fingerprint = phase12._validate_runtime_adapter_fingerprint(
+    fingerprint_passed = phase12._validate_runtime_adapter_fingerprint(
         method=session.method,
         cache=session.cache,
         observed=session.adapter_config_fingerprint,
@@ -931,7 +931,8 @@ def _run_profile_worker(
         not finite
         or pointers_before != pointers_after
         or history_before != history_after
-        or live_fingerprint != CONFIG_FINGERPRINTS[configuration]
+        or not fingerprint_passed
+        or session.adapter_config_fingerprint != CONFIG_FINGERPRINTS[configuration]
         or not phase12._gqa_geometry_passes(geometry, family=family)
     ):
         raise Phase15Error("profiler worker numerical or path identity drifted")
@@ -955,7 +956,8 @@ def _run_profile_worker(
         "cache_layout_fingerprint": session.cache_layout_fingerprint(),
         "cache_accounting": accounting,
         "gqa_geometry": geometry,
-        "adapter_config_fingerprint": live_fingerprint,
+        "adapter_config_fingerprint": session.adapter_config_fingerprint,
+        "adapter_config_fingerprint_validated": fingerprint_passed,
         "prefix_restore": receipt,
         "prefix_state_sha256": prefix_state_sha256,
         "nvtx_range": NVTX_RANGE,
