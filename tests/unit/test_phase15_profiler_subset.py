@@ -210,8 +210,11 @@ class Phase15GovernanceTests(unittest.TestCase):
     def test_profiler_annotations_are_worker_only(self) -> None:
         source = inspect.getsource(phase15._run_profile_worker)
         self.assertIn("_install_profiler_adapter_nvtx_annotations", source)
-        self.assertIn("not fingerprint_passed", source)
+        self.assertIn("replayed_adapter_fingerprint", source)
         self.assertIn("session.adapter_config_fingerprint", source)
+        self.assertNotIn(
+            "session.adapter_config_fingerprint != CONFIG_FINGERPRINTS", source
+        )
         self.assertNotIn("run_fixed_l", source)
         normal = (ROOT / "src/kvbench/runtime/timing.py").read_text(encoding="utf-8")
         self.assertNotIn("phase15_decode", normal)
