@@ -1,0 +1,18 @@
+{
+  "artifact_root_sha256": "641fc02d8fa598097885b74a336b1b1f454d9844b90025cf0c4b427bee02d5e8",
+  "complete_uploaded": false,
+  "credential_values_recorded": false,
+  "error": {
+    "provider_error_code": "TransportError",
+    "stage": "parallel_multipart_payload_upload",
+    "type": "RemoteRequestError"
+  },
+  "multipart_abort": "PASS",
+  "profiler_evidence_changed": false,
+  "recorded_at_utc": "2026-08-29T07:48:43Z",
+  "remote_completed_object_count_after_failure": 74,
+  "retry_policy": "Reduce bounded upload concurrency from eight to four and increase only transport-part retries from three to five; preserve read concurrency and never rerun profiler points.",
+  "schema_version": "kvbench-phase15-r2-publication-attempt-1.0.0",
+  "source_git_sha": "7e382d5476d1c2894b2dcc09eb16d1af35b63335",
+  "status": "transport_failed"
+}

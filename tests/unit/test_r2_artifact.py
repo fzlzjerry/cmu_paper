@@ -905,6 +905,7 @@ class R2ArtifactTests(unittest.TestCase):
         client = R2S3Client(self.config, opener=opener)
         with (
             patch("scripts.r2_artifact.MULTIPART_PART_SIZE_BYTES", 4),
+            patch("scripts.r2_artifact.MULTIPART_UPLOAD_ATTEMPTS", 3),
             self.assertRaises(RemoteRequestError),
         ):
             client.put_file_if_absent(
@@ -942,7 +943,7 @@ class R2ArtifactTests(unittest.TestCase):
         client = R2S3Client(self.config, opener=opener)
         with (
             patch("scripts.r2_artifact.OBJECT_RANGE_SIZE_BYTES", 4),
-            patch("scripts.r2_artifact.R2_TRANSFER_WORKERS", 3),
+            patch("scripts.r2_artifact.R2_READ_WORKERS", 3),
         ):
             identity = client.get_object_sha256_or_none("safe/key")
 

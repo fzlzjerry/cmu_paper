@@ -36,10 +36,11 @@ EXPECTED_R2_PREFIX = "kvbench/sha256"
 ENDPOINT_CLASS = "cloudflare_r2_s3"
 SINGLE_PUT_MAX_BYTES = 64 * 1024**2
 MULTIPART_PART_SIZE_BYTES = 32 * 1024**2
-MULTIPART_UPLOAD_ATTEMPTS = 3
+MULTIPART_UPLOAD_ATTEMPTS = 5
 OBJECT_READ_ATTEMPTS = 3
 OBJECT_RANGE_SIZE_BYTES = 32 * 1024**2
-R2_TRANSFER_WORKERS = 8
+R2_READ_WORKERS = 8
+R2_UPLOAD_WORKERS = 4
 MAX_MULTIPART_PARTS = 10_000
 RETRYABLE_MULTIPART_STATUSES = frozenset({429, 500, 502, 503, 504})
 CONTROL_FILES = (
@@ -1373,11 +1374,11 @@ class R2S3Client:
     ) -> None:
         if size == 0:
             return
-        with ThreadPoolExecutor(max_workers=R2_TRANSFER_WORKERS) as executor:
+        with ThreadPoolExecutor(max_workers=R2_READ_WORKERS) as executor:
             start = 0
             while start < size:
                 ranges: list[tuple[int, int]] = []
-                for _ in range(R2_TRANSFER_WORKERS):
+                for _ in range(R2_READ_WORKERS):
                     if start >= size:
                         break
                     end = min(size - 1, start + OBJECT_RANGE_SIZE_BYTES - 1)
@@ -1543,12 +1544,12 @@ class R2S3Client:
         try:
             with (
                 path.open("rb") as source,
-                ThreadPoolExecutor(max_workers=R2_TRANSFER_WORKERS) as executor,
+                ThreadPoolExecutor(max_workers=R2_UPLOAD_WORKERS) as executor,
             ):
                 part_number = 1
                 while True:
                     batch: list[tuple[int, bytes]] = []
-                    for _ in range(R2_TRANSFER_WORKERS):
+                    for _ in range(R2_UPLOAD_WORKERS):
                         data = source.read(MULTIPART_PART_SIZE_BYTES)
                         if not data:
                             break
