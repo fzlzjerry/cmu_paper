@@ -101,6 +101,7 @@ CAMPAIGN_SCHEMA = "kvbench-phase15-campaign-1.0.0"
 RUN_SCHEMA = "kvbench-phase15-profiler-run-1.0.0"
 SELECTION_SCHEMA = "kvbench-phase15-selection-1.0.0"
 METRIC_MAP_SCHEMA = "kvbench-phase15-ncu-metric-map-1.0.0"
+KERNEL_CLASSIFICATION_VERSION = "kvbench-phase15-kernel-classification-v2"
 WORKER_PREFIX = "PHASE15_WORKER_RESULT="
 _CAMPAIGN_RE = re.compile(
     r"phase15-[0-9]{8}t[0-9]{12}z-[0-9a-f]{8}-[0-9a-f]{6}\Z"
@@ -536,6 +537,61 @@ def parse_ncu_csv(text: str, metric_map: Mapping[str, Any]) -> list[dict[str, An
 def classify_kernel(name: str, *, configuration: str, nvtx_ranges: Sequence[str] = ()) -> tuple[str, str]:
     text = " ".join([name, *nvtx_ranges]).lower()
     family = phase12._method_family(configuration)
+    # These are exact method-authority symbols. Keep them family-scoped so an
+    # unrelated similarly named kernel cannot become cache-path traffic.
+    family_rules: dict[str, tuple[tuple[str, tuple[str, ...]], ...]] = {
+        "turboquant": (
+            ("dense_cache_attention", ("_tq_decode_stage1",)),
+            ("output_merge", ("_fwd_kernel_stage2",)),
+            ("quantize", ("_tq_fused_store_mse", "normtwoops")),
+        ),
+        "kivi": (
+            (
+                "dense_cache_attention",
+                (
+                    "bgemv2_kernel_outer_dim",
+                    "bgemv4_kernel_outer_dim",
+                    "cunn_softmaxforward",
+                ),
+            ),
+        ),
+        "kvquant": (
+            (
+                "dense_cache_attention",
+                (
+                    "matmulkernelnuqperchanneltransposedmhabatchedfusedoptdeterministictiles",
+                    "cunn_softmaxforward",
+                ),
+            ),
+            (
+                "output_merge",
+                (
+                    "matmulkernelnuqperchanneltransposedmhabatchedfusedoptdeterministicreduce",
+                ),
+            ),
+            ("kvquant_sparse_selection", ("selectfixedoutliers1024cap12kernel",)),
+            (
+                "kvquant_sparse_correction",
+                (
+                    "writekeysparseresidual1024cap12kernel",
+                    "writevaluemetadataandsparsekernel",
+                ),
+            ),
+            (
+                "cache_append",
+                (
+                    "vecquant2appendveck",
+                    "vecquant3appendveck",
+                    "vecquant4appendveck",
+                    "appendvaluesparsedeviceoutkernel",
+                    "clearvaluepackedcolumnkernel",
+                ),
+            ),
+        ),
+    }
+    for role, patterns in family_rules.get(family, ()):
+        if any(pattern in text for pattern in patterns):
+            return role, "exact_kernel_symbol_plus_method_authority"
     rules: tuple[tuple[str, tuple[str, ...]], ...] = (
         ("kvquant_sparse_selection", ("select_fixed_outlier", "sparse_selection")),
         ("kvquant_sparse_correction", ("kvquant_sparse", "sparse_correction", "value_sparse", "key_sparse_residual")),
@@ -569,6 +625,102 @@ def classify_kernel(name: str, *, configuration: str, nvtx_ranges: Sequence[str]
                 continue
             return role, "kernel_name_plus_method_authority"
     return "unknown", "insufficient_unambiguous_evidence"
+
+
+def reclassify_kernel_events(
+    rows: Sequence[Mapping[str, Any]],
+    *,
+    configuration: str,
+    recorded_summary: Mapping[str, Any],
+) -> tuple[list[dict[str, Any]], dict[str, Any], dict[str, float]]:
+    """Reclassify immutable NCU events and prove byte-total conservation."""
+
+    records: list[dict[str, Any]] = []
+    role_bytes: dict[str, float] = defaultdict(float)
+    totals: dict[str, float] = defaultdict(float)
+    unknown_dram = 0.0
+    unknown_kernels = 0
+    for raw in rows:
+        event = dict(raw)
+        recorded_role = str(event.get("kernel_role", "unknown"))
+        recorded_basis = str(
+            event.get("classification_basis", "insufficient_unambiguous_evidence")
+        )
+        role, basis = classify_kernel(
+            str(event.get("kernel_name", "")), configuration=configuration
+        )
+        dram_read = float(event.get("dram_read_bytes", 0.0))
+        dram_write = float(event.get("dram_write_bytes", 0.0))
+        dram = dram_read + dram_write
+        l2_read = float(event.get("l2_read_bytes", 0.0))
+        l2_write = float(event.get("l2_write_bytes", 0.0))
+        l2 = l2_read + l2_write
+        if not all(
+            math.isfinite(value) and value >= 0.0
+            for value in (dram_read, dram_write, l2_read, l2_write)
+        ):
+            raise Phase15Error("NCU kernel event contains invalid traffic bytes")
+        event.update(
+            {
+                "recorded_kernel_role": recorded_role,
+                "recorded_classification_basis": recorded_basis,
+                "kernel_role": role,
+                "classification_basis": basis,
+                "cache_path": kernel_is_cache_path(role),
+                "dram_bytes": dram,
+                "l2_bytes": l2,
+                "kernel_classification_version": KERNEL_CLASSIFICATION_VERSION,
+            }
+        )
+        records.append(event)
+        role_bytes[role] += dram
+        totals["dram_read"] += dram_read
+        totals["dram_write"] += dram_write
+        totals["l2_read"] += l2_read
+        totals["l2_write"] += l2_write
+        if role == "unknown":
+            unknown_kernels += 1
+            unknown_dram += dram
+
+    observed = {
+        "total_decode_dram_read_bytes": totals["dram_read"],
+        "total_decode_dram_write_bytes": totals["dram_write"],
+        "total_decode_dram_bytes": totals["dram_read"] + totals["dram_write"],
+        "total_decode_l2_read_bytes": totals["l2_read"],
+        "total_decode_l2_write_bytes": totals["l2_write"],
+        "total_decode_l2_bytes": totals["l2_read"] + totals["l2_write"],
+    }
+    for key, value in observed.items():
+        recorded = recorded_summary.get(key)
+        if not isinstance(recorded, (int, float)) or not math.isclose(
+            float(recorded), value, rel_tol=0.0, abs_tol=0.5
+        ):
+            raise Phase15Error(f"NCU reclassification changed recorded byte total: {key}")
+
+    summary = dict(recorded_summary)
+    summary.update(
+        {
+            **observed,
+            "cache_path_dram_bytes": sum(
+                value for role, value in role_bytes.items() if kernel_is_cache_path(role)
+            ),
+            "cache_path_l2_bytes": sum(
+                float(event["l2_bytes"])
+                for event in records
+                if bool(event["cache_path"])
+            ),
+            "unclassified_dram_bytes": unknown_dram,
+            "unclassified_dram_fraction": (
+                unknown_dram / observed["total_decode_dram_bytes"]
+                if observed["total_decode_dram_bytes"]
+                else None
+            ),
+            "unclassified_kernel_count": unknown_kernels,
+            "kernel_classification_version": KERNEL_CLASSIFICATION_VERSION,
+            "recorded_totals_conserved": True,
+        }
+    )
+    return records, summary, dict(sorted(role_bytes.items()))
 
 
 def kernel_is_cache_path(role: str) -> bool:
@@ -1294,6 +1446,22 @@ def nsys_pair_effect(eager: Mapping[str, Any], graph: Mapping[str, Any]) -> dict
         )
     result.update(
         {
+            "eager_cpu_cuda_submission_call_count": int(
+                eager["cpu_cuda_submission_call_count"]
+            ),
+            "graph_cpu_cuda_submission_call_count": int(
+                graph["cpu_cuda_submission_call_count"]
+            ),
+            "cpu_cuda_submission_call_reduction": int(
+                eager["cpu_cuda_submission_call_count"]
+            )
+            - int(graph["cpu_cuda_submission_call_count"]),
+            "eager_synchronization_call_count": int(
+                eager["synchronization_call_count"]
+            ),
+            "graph_synchronization_call_count": int(
+                graph["synchronization_call_count"]
+            ),
             "kernel_count_change": int(graph["kernel_count"]) - int(eager["kernel_count"]),
             "graph_launch_change": int(graph["graph_launch_count"]) - int(eager["graph_launch_count"]),
             "kernel_order_same": eager["kernel_order_sha256"] == graph["kernel_order_sha256"],
@@ -2340,13 +2508,17 @@ def materialize_analysis(stage: Path) -> dict[str, Any]:
             for event in _strict_json(event_path).get("records", []):
                 nsys_events.append({"run_id": manifest["run_id"], **dict(event)})
         else:
-            ncu_index.append({**index_row, **dict(manifest.get("summary", {}))})
             event_path = root / "runs" / str(manifest["run_id"]) / "events.json"
-            records = _strict_json(event_path).get("records", [])
-            role_bytes = defaultdict(float)
+            raw_records = _strict_json(event_path).get("records", [])
+            if not isinstance(raw_records, list):
+                raise Phase15Error("NCU event evidence is not a record list")
+            records, derived_summary, role_bytes = reclassify_kernel_events(
+                raw_records,
+                configuration=str(record["method_config_id"]),
+                recorded_summary=dict(manifest.get("summary", {})),
+            )
+            ncu_index.append({**index_row, **derived_summary})
             for event in records:
-                event = dict(event)
-                role_bytes[str(event["kernel_role"])] += float(event["dram_bytes"])
                 kernel_rows.append({"run_id": manifest["run_id"], **event})
                 classifications.append(
                     {
@@ -2367,7 +2539,7 @@ def materialize_analysis(stage: Path) -> dict[str, Any]:
             traffic_rows.append(
                 {
                     **index_row,
-                    **dict(manifest.get("summary", {})),
+                    **derived_summary,
                     "common_same_work": common,
                     "dram_bytes_by_role": dict(sorted(role_bytes.items())),
                 }
@@ -2480,6 +2652,8 @@ def materialize_analysis(stage: Path) -> dict[str, Any]:
         "common_same_work_point": selection["common_same_work"],
         "common_same_work_ncu_configurations": len(common),
         "hbm_ratio_populated": sum(row["r_hbm"] is not None for row in hbm_rows),
+        "kernel_classification_version": KERNEL_CLASSIFICATION_VERSION,
+        "recorded_ncu_totals_conserved": True,
         "anchors": anchor_summary,
         "phase14_result_preserved": True,
         "phase14_pure_launch_floor_only_supported": False,

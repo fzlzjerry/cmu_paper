@@ -164,6 +164,75 @@ class Phase15MetricTests(unittest.TestCase):
             "other_model",
         )
 
+    def test_method_authority_kernel_classification_is_family_scoped(self) -> None:
+        cases = (
+            ("_tq_decode_stage1", "tq_4bit_nc", "dense_cache_attention"),
+            ("_fwd_kernel_stage2", "tq_4bit_nc", "output_merge"),
+            ("_tq_fused_store_mse", "tq_4bit_nc", "quantize"),
+            ("bgemv4_kernel_outer_dim", "k4v4", "dense_cache_attention"),
+            (
+                "VecQuant4MatMulKernelNUQPerChannelTransposedMHABatchedFusedOptDeterministicTiles",
+                "kvq4",
+                "dense_cache_attention",
+            ),
+            (
+                "VecQuant4MatMulKernelNUQPerChannelTransposedMHABatchedFusedOptDeterministicReduce",
+                "kvq4",
+                "output_merge",
+            ),
+            ("VecQuant4AppendVecKSparse", "kvq4", "cache_append"),
+            (
+                "SelectFixedOutliers1024Cap12Kernel",
+                "kvq4",
+                "kvquant_sparse_selection",
+            ),
+        )
+        for symbol, configuration, expected in cases:
+            with self.subTest(symbol=symbol, configuration=configuration):
+                self.assertEqual(
+                    phase15.classify_kernel(symbol, configuration=configuration)[0],
+                    expected,
+                )
+        self.assertEqual(
+            phase15.classify_kernel("_tq_decode_stage1", configuration="bf16")[0],
+            "unknown",
+        )
+
+    def test_ncu_reclassification_conserves_recorded_totals(self) -> None:
+        rows = [
+            {
+                "kernel_id": "1",
+                "kernel_name": "_tq_decode_stage1",
+                "kernel_role": "unknown",
+                "classification_basis": "insufficient_unambiguous_evidence",
+                "dram_read_bytes": 100.0,
+                "dram_write_bytes": 20.0,
+                "l2_read_bytes": 64.0,
+                "l2_write_bytes": 32.0,
+            }
+        ]
+        recorded = {
+            "total_decode_dram_read_bytes": 100.0,
+            "total_decode_dram_write_bytes": 20.0,
+            "total_decode_dram_bytes": 120.0,
+            "total_decode_l2_read_bytes": 64.0,
+            "total_decode_l2_write_bytes": 32.0,
+            "total_decode_l2_bytes": 96.0,
+        }
+        events, summary, roles = phase15.reclassify_kernel_events(
+            rows, configuration="tq_4bit_nc", recorded_summary=recorded
+        )
+        self.assertEqual(events[0]["recorded_kernel_role"], "unknown")
+        self.assertEqual(events[0]["kernel_role"], "dense_cache_attention")
+        self.assertEqual(summary["cache_path_dram_bytes"], 120.0)
+        self.assertEqual(summary["unclassified_dram_bytes"], 0.0)
+        self.assertEqual(roles, {"dense_cache_attention": 120.0})
+        tampered = {**recorded, "total_decode_dram_bytes": 121.0}
+        with self.assertRaises(phase15.Phase15Error):
+            phase15.reclassify_kernel_events(
+                rows, configuration="tq_4bit_nc", recorded_summary=tampered
+            )
+
     def test_same_work_hbm_and_traffic_amplification(self) -> None:
         bf16 = {"cache_path_dram_bytes": 1000.0, "total_decode_dram_bytes": 2000.0}
         method = {"cache_path_dram_bytes": 400.0, "total_decode_dram_bytes": 1000.0}
@@ -258,14 +327,23 @@ class Phase15NsysTests(unittest.TestCase):
             "synchronization_time_ns": 6,
             "kernel_count": 4,
             "graph_launch_count": 0,
+            "cpu_cuda_submission_call_count": 8,
+            "synchronization_call_count": 1,
             "kernel_order_sha256": "a",
             "overlap_total_ns": 1,
         }
-        graph = {**base, "cpu_submission_interval_ns": 3, "kernel_count": 5, "graph_launch_count": 1}
+        graph = {
+            **base,
+            "cpu_submission_interval_ns": 3,
+            "kernel_count": 5,
+            "graph_launch_count": 1,
+            "cpu_cuda_submission_call_count": 1,
+        }
         effect = phase15.nsys_pair_effect(base, graph)
         self.assertEqual(effect["delta_cpu_submission_interval"], 7.0)
         self.assertEqual(effect["kernel_count_change"], 1)
         self.assertEqual(effect["graph_launch_change"], 1)
+        self.assertEqual(effect["cpu_cuda_submission_call_reduction"], 7)
 
 
 class Phase15GovernanceTests(unittest.TestCase):
