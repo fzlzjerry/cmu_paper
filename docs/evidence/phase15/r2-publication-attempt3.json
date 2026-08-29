@@ -1,0 +1,19 @@
+{
+  "artifact_root_sha256": "641fc02d8fa598097885b74a336b1b1f454d9844b90025cf0c4b427bee02d5e8",
+  "complete_uploaded": false,
+  "credential_values_recorded": false,
+  "error": {
+    "provider_error_code": "TransportError",
+    "stage": "payload_upload_or_authoritative_readback",
+    "type": "RemoteRequestError"
+  },
+  "profiler_evidence_changed": false,
+  "recorded_at_utc": "2026-08-29T17:27:35Z",
+  "remote_completed_object_count_after_failure": 656,
+  "remote_missing_bytes_after_failure": 686090187,
+  "remote_missing_object_count_after_failure": 237,
+  "retry_policy": "Increase only bounded GET/HEAD transport retries from three to eight for the thousands of fixed 32 MiB SHA-256 ranges; retain four upload workers and five part retries; never rerun profiler points.",
+  "schema_version": "kvbench-phase15-r2-publication-attempt-1.0.0",
+  "source_git_sha": "1b872116bc88b3ffad8518e637c2302089b4bdec",
+  "status": "transport_failed"
+}

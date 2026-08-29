@@ -801,7 +801,7 @@ class R2ArtifactTests(unittest.TestCase):
         with self.assertRaises(RemoteRequestError) as caught:
             client.get_object_or_none("safe/key")
         self.assertEqual(caught.exception.code, "TransportError")
-        self.assertEqual(attempts, 3)
+        self.assertEqual(attempts, 8)
 
     def test_sigv4_multipart_is_conditional_and_completes_ordered_parts(
         self,
