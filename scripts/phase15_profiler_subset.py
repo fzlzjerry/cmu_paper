@@ -3218,6 +3218,47 @@ def seal_campaign(stage: Path, *, campaign_id: str) -> Path:
     return final
 
 
+def validate_analysis_documents(
+    *,
+    qc: Mapping[str, Any],
+    mechanism: Mapping[str, Any],
+    detail: Mapping[str, Any],
+    replay: Mapping[str, Any],
+) -> None:
+    configurations = detail.get("ncu", {}).get("configurations", [])
+    if (
+        qc.get("status") != "PASS"
+        or qc.get("selected_nsys_profiles") != 32
+        or qc.get("selected_ncu_profiles") != 22
+        or qc.get("common_same_work_configurations") != 10
+        or mechanism.get("profiler_durations_used_as_normal_timing") is not False
+        or mechanism.get("phase14_pure_launch_floor_only_supported") is not False
+        or detail.get("profiler_durations_used_as_normal_timing") is not False
+        or detail.get("phase14_explanation", {}).get(
+            "pure_launch_floor_only_supported"
+        )
+        is not False
+        or detail.get("nsys", {}).get("pair_count") != 16
+        or detail.get("nsys", {}).get(
+            "cpu_submission_call_count_reduced_pairs"
+        )
+        != 16
+        or detail.get("nsys", {}).get("gpu_inter_kernel_idle_reduced_pairs")
+        != 16
+        or detail.get("ncu", {}).get("common_same_work_configuration_count")
+        != 10
+        or detail.get("ncu", {}).get("unclassified_common_dram_bytes") != 0.0
+        or not isinstance(configurations, list)
+        or len(configurations) != 10
+        or any(row.get("r_hbm") is None for row in configurations)
+        or replay.get("selected_profile_count") != 22
+        or replay.get("completed_profile_count") != 22
+        or replay.get("uniform_replay_pass_count") != 10
+        or replay.get("raw_stdout_preserved") is not True
+    ):
+        raise Phase15Error("Phase 15 analysis semantics differ")
+
+
 def validate_campaign(root: Path, *, expected_campaign_id: str | None = None) -> dict[str, Any]:
     artifact = validate_local_artifact(root, environ={})
     manifest = _strict_json(root / "manifest.json")
@@ -3226,15 +3267,14 @@ def validate_campaign(root: Path, *, expected_campaign_id: str | None = None) ->
         raise Phase15Error("Phase 15 campaign identity differs")
     qc = _strict_json(root / "phase15_qc.json")
     mechanism = _strict_json(root / "mechanism_summary.json")
+    detail = _strict_json(root / "mechanism_detail.json")
+    replay = _strict_json(root / "metric_replay_observation.json")
+    validate_analysis_documents(
+        qc=qc, mechanism=mechanism, detail=detail, replay=replay
+    )
     if (
         manifest.get("status") != "PASS"
         or manifest.get("profiler_duration_is_normal_timing") is not False
-        or qc.get("status") != "PASS"
-        or qc.get("selected_nsys_profiles") != 32
-        or qc.get("selected_ncu_profiles") != 22
-        or qc.get("common_same_work_configurations") != 10
-        or mechanism.get("profiler_durations_used_as_normal_timing") is not False
-        or mechanism.get("phase14_pure_launch_floor_only_supported") is not False
         or mechanism.get("full_scan") != "CLOSED"
         or mechanism.get("quality") != "LOCKED"
     ):

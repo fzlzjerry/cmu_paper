@@ -360,6 +360,47 @@ class Phase15NsysTests(unittest.TestCase):
 
 
 class Phase15GovernanceTests(unittest.TestCase):
+    def test_analysis_semantics_require_complete_mechanism_evidence(self) -> None:
+        qc = {
+            "status": "PASS",
+            "selected_nsys_profiles": 32,
+            "selected_ncu_profiles": 22,
+            "common_same_work_configurations": 10,
+        }
+        mechanism = {
+            "profiler_durations_used_as_normal_timing": False,
+            "phase14_pure_launch_floor_only_supported": False,
+        }
+        detail = {
+            "profiler_durations_used_as_normal_timing": False,
+            "phase14_explanation": {"pure_launch_floor_only_supported": False},
+            "nsys": {
+                "pair_count": 16,
+                "cpu_submission_call_count_reduced_pairs": 16,
+                "gpu_inter_kernel_idle_reduced_pairs": 16,
+            },
+            "ncu": {
+                "common_same_work_configuration_count": 10,
+                "unclassified_common_dram_bytes": 0.0,
+                "configurations": [{"r_hbm": 1.0}] * 10,
+            },
+        }
+        replay = {
+            "selected_profile_count": 22,
+            "completed_profile_count": 22,
+            "uniform_replay_pass_count": 10,
+            "raw_stdout_preserved": True,
+        }
+        phase15.validate_analysis_documents(
+            qc=qc, mechanism=mechanism, detail=detail, replay=replay
+        )
+        tampered = copy.deepcopy(detail)
+        tampered["ncu"]["configurations"][0]["r_hbm"] = None
+        with self.assertRaises(phase15.Phase15Error):
+            phase15.validate_analysis_documents(
+                qc=qc, mechanism=mechanism, detail=tampered, replay=replay
+            )
+
     def test_dependency_free_plots_are_complete_and_append_only(self) -> None:
         pair = {
             "method_config_id": "bf16",
