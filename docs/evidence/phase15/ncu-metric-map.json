@@ -1,0 +1,115 @@
+{
+  "campaign_id": "phase15-20260828t144810363697z-446b334e-90460f",
+  "gpu_architecture": "SM120",
+  "graph_profiling": "node",
+  "metric_map_sha256": "e124dc43f439dc465139bf79fc840f7df94e21727909f5631777b148fd5ebf4f",
+  "metric_names": [
+    "dram__bytes_op_read.sum",
+    "dram__bytes_op_write.sum",
+    "lts__t_sectors_op_read.sum",
+    "lts__t_sectors_op_write.sum",
+    "lts__t_sector_hit_rate.pct",
+    "dram__throughput.avg.pct_of_peak_sustained_elapsed",
+    "sm__throughput.avg.pct_of_peak_sustained_elapsed",
+    "sm__warps_active.avg.pct_of_peak_sustained_active",
+    "smsp__warps_active.avg.per_cycle_active",
+    "gpu__time_duration.sum",
+    "smsp__sass_thread_inst_executed_op_memory_pred_on.sum",
+    "smsp__inst_executed.sum"
+  ],
+  "observed_replay_pass_count": 10,
+  "query_metrics_sha256": "38a04841896be96a9b60416ed91548676436ab85006dca5e348997735f9664e4",
+  "query_sections_sha256": "ebb7286c43a625c6b6ba2ec965e24f21eba383e937d8709cd6fe7342f5ba1040",
+  "replay_mode": "kernel",
+  "replay_observation_sha256": "9edb5b9bf250a4136d007fa8ad09cfebd152a1482b80d28d1ca8748405913b7d",
+  "replay_pass_count_source": "selected NCU profiler stdout; uniform across all 22 selected profiles",
+  "schema_version": "kvbench-phase15-ncu-metric-map-publication-1.0.0",
+  "selected_metrics": [
+    {
+      "meaning": "physical DRAM read bytes",
+      "metric": "dram__bytes_op_read.sum",
+      "semantic": "dram_read_bytes",
+      "status": "raw",
+      "unit": "byte"
+    },
+    {
+      "meaning": "physical DRAM write bytes",
+      "metric": "dram__bytes_op_write.sum",
+      "semantic": "dram_write_bytes",
+      "status": "raw",
+      "unit": "byte"
+    },
+    {
+      "meaning": "L2 read sectors; derived bytes use 32 bytes per sector",
+      "metric": "lts__t_sectors_op_read.sum",
+      "semantic": "l2_read_sectors",
+      "status": "raw_with_derived_bytes",
+      "unit": "sector_32_bytes"
+    },
+    {
+      "meaning": "L2 write sectors; derived bytes use 32 bytes per sector",
+      "metric": "lts__t_sectors_op_write.sum",
+      "semantic": "l2_write_sectors",
+      "status": "raw_with_derived_bytes",
+      "unit": "sector_32_bytes"
+    },
+    {
+      "meaning": "L2 sector hit rate",
+      "metric": "lts__t_sector_hit_rate.pct",
+      "semantic": "l2_hit_rate",
+      "status": "raw",
+      "unit": "percent"
+    },
+    {
+      "meaning": "DRAM throughput utilization",
+      "metric": "dram__throughput.avg.pct_of_peak_sustained_elapsed",
+      "semantic": "memory_throughput",
+      "status": "raw",
+      "unit": "percent_of_peak"
+    },
+    {
+      "meaning": "SM throughput utilization",
+      "metric": "sm__throughput.avg.pct_of_peak_sustained_elapsed",
+      "semantic": "sm_activity",
+      "status": "raw",
+      "unit": "percent_of_peak"
+    },
+    {
+      "meaning": "active-warps occupancy",
+      "metric": "sm__warps_active.avg.pct_of_peak_sustained_active",
+      "semantic": "achieved_occupancy",
+      "status": "raw",
+      "unit": "percent"
+    },
+    {
+      "meaning": "active warps per active cycle",
+      "metric": "smsp__warps_active.avg.per_cycle_active",
+      "semantic": "active_warps",
+      "status": "raw",
+      "unit": "warps_per_cycle_active"
+    },
+    {
+      "meaning": "kernel elapsed duration",
+      "metric": "gpu__time_duration.sum",
+      "semantic": "kernel_elapsed",
+      "status": "raw",
+      "unit": "nanosecond"
+    },
+    {
+      "meaning": "executed load/store thread instructions",
+      "metric": "smsp__sass_thread_inst_executed_op_memory_pred_on.sum",
+      "semantic": "load_store_activity",
+      "status": "raw",
+      "unit": "thread_instructions"
+    },
+    {
+      "meaning": "executed SM subpartition instructions",
+      "metric": "smsp__inst_executed.sum",
+      "semantic": "executed_instructions",
+      "status": "raw",
+      "unit": "instructions"
+    }
+  ],
+  "selection_source": "live ncu --query-metrics and --query-sections",
+  "unavailable_requested_metrics": []
+}

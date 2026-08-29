@@ -90,6 +90,16 @@ class Phase15MetricTests(unittest.TestCase):
         with self.assertRaises(phase15.Phase15Error):
             phase15.resolve_metric_map("gpu__time_duration.sum", "sections")
 
+    def test_published_metric_map_binds_observed_replay_passes(self) -> None:
+        value = json.loads(phase15.METRIC_MAP_PATH.read_text(encoding="utf-8"))
+        self.assertEqual(value["gpu_architecture"], "SM120")
+        self.assertEqual(value["observed_replay_pass_count"], 10)
+        self.assertEqual(
+            value["metric_map_sha256"],
+            "e124dc43f439dc465139bf79fc840f7df94e21727909f5631777b148fd5ebf4f",
+        )
+        self.assertEqual(value["unavailable_requested_metrics"], [])
+
     def test_current_ncu_section_option_transition_is_narrow(self) -> None:
         source = inspect.getsource(phase15._query_ncu)
         self.assertIn("--query-metrics-mode=all", source)
