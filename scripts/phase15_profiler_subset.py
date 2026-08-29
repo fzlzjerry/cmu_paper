@@ -2373,6 +2373,13 @@ def _chosen_run_manifests(stage: Path) -> list[dict[str, Any]]:
     return [dict(row) for row in rows]
 
 
+def parse_ncu_replay_pass_count(text: str) -> int:
+    counts = {int(value) for value in re.findall(r"-\s+([0-9]+)\s+passes\b", text)}
+    if len(counts) != 1 or next(iter(counts)) <= 0:
+        raise Phase15Error("NCU replay-pass evidence is absent or inconsistent")
+    return next(iter(counts))
+
+
 def _plot_outputs(
     root: Path,
     *,
@@ -2656,6 +2663,8 @@ def materialize_analysis(stage: Path) -> dict[str, Any]:
     nsys_index: list[dict[str, Any]] = []
     ncu_index: list[dict[str, Any]] = []
     nsys_events: list[dict[str, Any]] = []
+    nsys_events_classified: list[dict[str, Any]] = []
+    ncu_replay_rows: list[dict[str, Any]] = []
     kernel_rows: list[dict[str, Any]] = []
     classifications: list[dict[str, Any]] = []
     traffic_rows: list[dict[str, Any]] = []
@@ -2684,7 +2693,27 @@ def materialize_analysis(stage: Path) -> dict[str, Any]:
             nsys_index.append({**index_row, **dict(manifest.get("summary", {}))})
             event_path = root / "runs" / str(manifest["run_id"]) / "events.json"
             for event in _strict_json(event_path).get("records", []):
-                nsys_events.append({"run_id": manifest["run_id"], **dict(event)})
+                recorded = {"run_id": manifest["run_id"], **dict(event)}
+                nsys_events.append(recorded)
+                classified = dict(recorded)
+                if event.get("event_kind") == "cuda_kernel":
+                    role, basis = classify_kernel(
+                        str(event.get("name", "")),
+                        configuration=str(record["method_config_id"]),
+                    )
+                    classified.update(
+                        {
+                            "recorded_kernel_role": event.get("kernel_role"),
+                            "recorded_classification_basis": event.get(
+                                "classification_basis"
+                            ),
+                            "kernel_role": role,
+                            "classification_basis": basis,
+                            "cache_path": kernel_is_cache_path(role),
+                            "kernel_classification_version": KERNEL_CLASSIFICATION_VERSION,
+                        }
+                    )
+                nsys_events_classified.append(classified)
         else:
             event_path = root / "runs" / str(manifest["run_id"]) / "events.json"
             raw_records = _strict_json(event_path).get("records", [])
@@ -2694,6 +2723,23 @@ def materialize_analysis(stage: Path) -> dict[str, Any]:
                 raw_records,
                 configuration=str(record["method_config_id"]),
                 recorded_summary=dict(manifest.get("summary", {})),
+            )
+            replay_pass_count = parse_ncu_replay_pass_count(
+                (
+                    root
+                    / "runs"
+                    / str(manifest["run_id"])
+                    / "profiler.stdout"
+                ).read_text(encoding="utf-8")
+            )
+            ncu_replay_rows.append(
+                {
+                    "run_id": manifest["run_id"],
+                    "profile_id": manifest["profile_id"],
+                    "method_config_id": record["method_config_id"],
+                    "replay_pass_count": replay_pass_count,
+                    "source": "selected NCU profiler stdout",
+                }
             )
             ncu_index.append({**index_row, **derived_summary})
             for event in records:
@@ -2842,11 +2888,168 @@ def materialize_analysis(stage: Path) -> dict[str, Any]:
         "performance_data_frozen_present": False,
     }
 
+    replay_pass_counts = sorted(
+        {int(row["replay_pass_count"]) for row in ncu_replay_rows}
+    )
+    metric_replay_observation = {
+        "schema_version": "kvbench-phase15-ncu-replay-observation-1.0.0",
+        "campaign_id": mechanism["campaign_id"],
+        "metric_map_sha256": sha256_file(root / "metric_map.json"),
+        "selected_profile_count": len(ncu_index),
+        "completed_profile_count": sum(
+            row["status"] == "completed" for row in ncu_index
+        ),
+        "observed_replay_pass_counts": replay_pass_counts,
+        "uniform_replay_pass_count": (
+            replay_pass_counts[0] if len(replay_pass_counts) == 1 else None
+        ),
+        "source": "selected NCU profiler stdout",
+        "raw_stdout_preserved": True,
+    }
+
+    hbm_by_configuration = {
+        str(row["method_config_id"]): row for row in hbm_rows
+    }
+    amplification_by_configuration = {
+        str(row["method_config_id"]): row for row in amplification_rows
+    }
+    details_by_configuration = []
+    for configuration in CONFIGURATIONS:
+        traffic = common[configuration]
+        details_by_configuration.append(
+            {
+                "method_config_id": configuration,
+                "cache_path_dram_bytes": traffic["cache_path_dram_bytes"],
+                "total_decode_dram_bytes": traffic["total_decode_dram_bytes"],
+                "cache_path_l2_bytes": traffic["cache_path_l2_bytes"],
+                "total_decode_l2_bytes": traffic["total_decode_l2_bytes"],
+                "l2_hit_rate": traffic["l2_hit_rate"],
+                "memory_throughput": traffic["memory_throughput"],
+                "sm_activity": traffic["sm_activity"],
+                "achieved_occupancy": traffic["achieved_occupancy"],
+                "active_warps": traffic["active_warps"],
+                "summed_kernel_duration_ns": traffic["summed_kernel_duration_ns"],
+                "unclassified_dram_bytes": traffic["unclassified_dram_bytes"],
+                "dram_bytes_by_role": traffic["dram_bytes_by_role"],
+                "r_hbm": hbm_by_configuration[configuration]["r_hbm"],
+                "r_hbm_total_decode": hbm_by_configuration[configuration][
+                    "r_hbm_total_decode"
+                ],
+                "rho_alloc": amplification_by_configuration[configuration][
+                    "rho_alloc"
+                ],
+                "r_alloc": amplification_by_configuration[configuration][
+                    "r_alloc"
+                ],
+                "r_nominal": amplification_by_configuration[configuration][
+                    "r_nominal"
+                ],
+                "A_traffic": amplification_by_configuration[configuration][
+                    "A_traffic"
+                ],
+            }
+        )
+
+    mechanism_detail = {
+        "schema_version": "kvbench-phase15-mechanism-detail-1.0.0",
+        "campaign_id": mechanism["campaign_id"],
+        "kernel_classification_version": KERNEL_CLASSIFICATION_VERSION,
+        "nsys": {
+            "pair_count": len(pair_rows),
+            "cpu_submission_call_count_reduced_pairs": sum(
+                int(row["cpu_cuda_submission_call_reduction"]) > 0
+                for row in pair_rows
+            ),
+            "cpu_submission_interval_reduced_pairs": sum(
+                float(row.get("delta_cpu_submission_interval") or 0.0) > 0
+                for row in pair_rows
+            ),
+            "api_to_gpu_start_reduced_pairs": sum(
+                float(row.get("delta_api_to_gpu_start_mean") or 0.0) > 0
+                for row in pair_rows
+            ),
+            "gpu_inter_kernel_idle_reduced_pairs": sum(
+                float(row.get("delta_gpu_inter_kernel_idle_total") or 0.0) > 0
+                for row in pair_rows
+            ),
+            "synchronization_time_reduced_pairs": sum(
+                float(row.get("delta_synchronization_time") or 0.0) > 0
+                for row in pair_rows
+            ),
+            "kernel_count_changed_pairs": sum(
+                int(row["kernel_count_change"]) != 0 for row in pair_rows
+            ),
+            "kernel_order_changed_pairs": sum(
+                row["kernel_order_same"] is False for row in pair_rows
+            ),
+            "overlap_changed_pairs": sum(
+                float(row["overlap_change_ns"]) != 0.0 for row in pair_rows
+            ),
+            "graph_launch_count_per_profile_region": sorted(
+                {int(row["graph_cpu_cuda_submission_call_count"]) for row in pair_rows}
+            ),
+            "explicit_profiler_boundary_sync_per_mode": 1,
+            "api_to_gpu_start_limitation": (
+                "Graph node timestamps correlate to one graph-launch API; later nodes "
+                "therefore include replay position and are not direct per-kernel launch latency."
+            ),
+            "synchronization_interpretation": (
+                "Both modes contain one required profiler-boundary synchronization; "
+                "the Graph-side wait drains rapidly queued replays and is not normal timing."
+            ),
+        },
+        "ncu": {
+            "profile_count": len(ncu_index),
+            "common_same_work": selection["common_same_work"],
+            "common_same_work_configuration_count": len(common),
+            "replay_pass_counts": replay_pass_counts,
+            "recorded_totals_conserved": True,
+            "unclassified_common_dram_bytes": sum(
+                float(row["unclassified_dram_bytes"]) for row in common.values()
+            ),
+            "configurations": details_by_configuration,
+        },
+        "temporary_traffic": {
+            "complete_prefix_materialization_observed": False,
+            "query_head_expanded_kv_observed": False,
+            "split_kv_intermediate_kernels_preserved": True,
+            "kivi_residual_separately_identifiable": False,
+            "kivi_residual_reason": (
+                "The available exact KIVI bgemv/softmax symbols do not isolate residual "
+                "copy traffic from the dense cache-attention path."
+            ),
+            "kvquant_sparse_value_index_and_metadata_kernels_identified": True,
+            "kvquant_workspace_tiles_and_fixed_order_reduce_identified": True,
+            "sink_and_metadata_bytes_separately_identifiable": False,
+            "non_identifiable_traffic_not_inferred_from_allocation": True,
+        },
+        "phase14_explanation": {
+            "classification": "method_specific_mixed",
+            "cpu_submission_calls_reduced": True,
+            "gpu_idle_reduced": True,
+            "kernel_count_or_order_changed": False,
+            "overlap_changed": False,
+            "graph_mode_ncu_comparison_available": False,
+            "pure_launch_floor_only_supported": False,
+            "interpretation": (
+                "Graph collapses per-kernel CPU submission and reduces traced GPU idle, "
+                "while Phase 14 slopes remain heterogeneous. The direct evidence therefore "
+                "supports method- and regime-specific submission/scheduling effects, not a "
+                "pure launch-floor-only model."
+            ),
+        },
+        "profiler_durations_used_as_normal_timing": False,
+        "performance_claim_eligible": False,
+        "quality_status": "unvalidated",
+    }
+
     selection_rows = [*selection["nsys_profiles"], *selection["ncu_profiles"]]
     _parquet_write(root / "selection_table.parquet", selection_rows)
     _parquet_write(root / "nsys_run_index.parquet", nsys_index)
     _parquet_write(root / "ncu_run_index.parquet", ncu_index)
+    _parquet_write(root / "ncu_replay_passes.parquet", ncu_replay_rows)
     _parquet_write(root / "nsys_events.parquet", nsys_events)
+    _parquet_write(root / "nsys_events_classified.parquet", nsys_events_classified)
     _parquet_write(root / "nsys_pair_effects.parquet", pair_rows)
     _parquet_write(root / "kernel_metrics.parquet", kernel_rows)
     _parquet_write(root / "kernel_classification.parquet", classifications)
@@ -2854,6 +3057,13 @@ def materialize_analysis(stage: Path) -> dict[str, Any]:
     _parquet_write(root / "hbm_ratios.parquet", hbm_rows)
     _parquet_write(root / "traffic_amplification.parquet", amplification_rows)
     _write_or_verify(root / "mechanism_summary.json", json_bytes(mechanism))
+    _write_or_verify(
+        root / "metric_replay_observation.json",
+        json_bytes(metric_replay_observation),
+    )
+    _write_or_verify(
+        root / "mechanism_detail.json", json_bytes(mechanism_detail)
+    )
     _plot_outputs(root, nsys_pairs=pair_rows, traffic=traffic_rows, amplifications=amplification_rows)
     report = (
         "# Phase 15 profiler subset\n\n"
@@ -2915,7 +3125,9 @@ def seal_campaign(stage: Path, *, campaign_id: str) -> Path:
         "metric_map.json",
         "nsys_run_index.parquet",
         "ncu_run_index.parquet",
+        "ncu_replay_passes.parquet",
         "nsys_events.parquet",
+        "nsys_events_classified.parquet",
         "nsys_pair_effects.parquet",
         "kernel_metrics.parquet",
         "kernel_classification.parquet",
@@ -2923,6 +3135,8 @@ def seal_campaign(stage: Path, *, campaign_id: str) -> Path:
         "hbm_ratios.parquet",
         "traffic_amplification.parquet",
         "mechanism_summary.json",
+        "mechanism_detail.json",
+        "metric_replay_observation.json",
         "phase15_report.md",
         "phase15_qc.json",
     }

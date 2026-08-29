@@ -278,6 +278,19 @@ class Phase15NsysTests(unittest.TestCase):
             "kernel_replay_failed",
         )
 
+    def test_ncu_replay_pass_count_is_explicit_and_consistent(self) -> None:
+        self.assertEqual(
+            phase15.parse_ncu_replay_pass_count(
+                '==PROF== Profiling "kernel" - 0: 100% - 10 passes\n'
+                '==PROF== Profiling "other" - 1: 100% - 10 passes\n'
+            ),
+            10,
+        )
+        for text in ("no pass evidence", "- 9 passes\n- 10 passes\n"):
+            with self.subTest(text=text):
+                with self.assertRaises(phase15.Phase15Error):
+                    phase15.parse_ncu_replay_pass_count(text)
+
     def test_nsys_parser_separates_submission_idle_and_sync(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "trace.sqlite"
