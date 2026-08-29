@@ -363,7 +363,7 @@ class Phase15GovernanceTests(unittest.TestCase):
             "l2_hit_rate": 50.0,
             "sm_activity": 40.0,
             "achieved_occupancy": 30.0,
-            "dram_bytes_by_role": json.dumps({"dense_cache_attention": 10.0}),
+            "dram_bytes_by_role": {"dense_cache_attention": 10.0},
         }
         amplification = {
             "method_config_id": "bf16",

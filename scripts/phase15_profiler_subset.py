@@ -2480,8 +2480,10 @@ def _plot_outputs(
     plt.close(figure)
     roles = defaultdict(float)
     for row in common:
-        for role, value in json.loads(str(row["dram_bytes_by_role"])).items():
-            roles[role] += float(value)
+        value = row["dram_bytes_by_role"]
+        role_map = value if isinstance(value, dict) else json.loads(str(value))
+        for role, role_bytes in role_map.items():
+            roles[role] += float(role_bytes)
     bar("traffic_by_kernel_role.png", list(roles), list(roles.values()), "summed DRAM bytes")
 
 
@@ -2628,8 +2630,10 @@ def _plot_outputs_svg(
     }
     roles: dict[str, float] = defaultdict(float)
     for row in common:
-        for role, value in json.loads(str(row["dram_bytes_by_role"])).items():
-            roles[role] += float(value)
+        value = row["dram_bytes_by_role"]
+        role_map = value if isinstance(value, dict) else json.loads(str(value))
+        for role, role_bytes in role_map.items():
+            roles[role] += float(role_bytes)
     plots["traffic_by_kernel_role.svg"] = document(
         title="Traffic breakdown by kernel role",
         labels=list(roles),
