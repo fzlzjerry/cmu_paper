@@ -2341,7 +2341,21 @@ def _parquet_write(path: Path, rows: Sequence[Mapping[str, Any]]) -> None:
         normalized.append(item)
     if not normalized:
         normalized = [{"empty": True}]
-    pq.write_table(pa.Table.from_pylist(normalized), path, compression="zstd")
+    expected = pa.Table.from_pylist(normalized)
+    if path.exists():
+        observed = pq.read_table(path)
+        if not observed.equals(expected):
+            raise Phase15Error(f"existing derived Parquet differs: {path.name}")
+        return
+    pq.write_table(expected, path, compression="zstd")
+
+
+def _write_or_verify(path: Path, payload: bytes) -> None:
+    if path.exists():
+        if path.read_bytes() != payload:
+            raise Phase15Error(f"existing derived output differs: {path.name}")
+        return
+    write_exclusive(path, payload)
 
 
 def _all_run_manifests(stage: Path) -> list[dict[str, Any]]:
@@ -2370,8 +2384,14 @@ def _plot_outputs(
         import matplotlib
         matplotlib.use("Agg")
         import matplotlib.pyplot as plt
-    except ImportError as error:
-        raise Phase15Error("analysis image lacks matplotlib") from error
+    except ImportError:
+        _plot_outputs_svg(
+            root,
+            nsys_pairs=nsys_pairs,
+            traffic=traffic,
+            amplifications=amplifications,
+        )
+        return
 
     plot_root = root / "plots"
 
@@ -2463,6 +2483,160 @@ def _plot_outputs(
         for role, value in json.loads(str(row["dram_bytes_by_role"])).items():
             roles[role] += float(value)
     bar("traffic_by_kernel_role.png", list(roles), list(roles.values()), "summed DRAM bytes")
+
+
+def _plot_outputs_svg(
+    root: Path,
+    *,
+    nsys_pairs: Sequence[Mapping[str, Any]],
+    traffic: Sequence[Mapping[str, Any]],
+    amplifications: Sequence[Mapping[str, Any]],
+) -> None:
+    """Dependency-free diagnostics for the pinned analysis image."""
+
+    from html import escape
+
+    plot_root = root / "plots"
+
+    def document(
+        *,
+        title: str,
+        labels: Sequence[str],
+        series: Sequence[tuple[str, Sequence[float]]],
+        kind: str = "bar",
+    ) -> bytes:
+        width, height = 1200, 620
+        left, top, plot_width, plot_height = 90, 60, 1060, 440
+        all_values = [float(value) for _, values in series for value in values]
+        minimum = min([0.0, *all_values]) if all_values else 0.0
+        maximum = max([0.0, *all_values]) if all_values else 1.0
+        span = maximum - minimum or 1.0
+
+        def y(value: float) -> float:
+            return top + plot_height - (float(value) - minimum) / span * plot_height
+
+        colors = ("#2f6f9f", "#d46a35", "#3f8f5f")
+        body = [
+            f'<rect width="{width}" height="{height}" fill="white"/>',
+            f'<text x="{width / 2}" y="30" text-anchor="middle" font-size="18">{escape(title)}</text>',
+            f'<line x1="{left}" y1="{top}" x2="{left}" y2="{top + plot_height}" stroke="#333"/>',
+            f'<line x1="{left}" y1="{y(0)}" x2="{left + plot_width}" y2="{y(0)}" stroke="#333"/>',
+            f'<text x="{left - 8}" y="{top + 4}" text-anchor="end" font-size="11">{maximum:.4g}</text>',
+            f'<text x="{left - 8}" y="{top + plot_height + 4}" text-anchor="end" font-size="11">{minimum:.4g}</text>',
+        ]
+        count = max(1, len(labels))
+        slot = plot_width / count
+        if kind == "scatter":
+            x_values = [float(value) for value in series[0][1]]
+            y_values = [float(value) for value in series[1][1]]
+            x_min, x_max = min([0.0, *x_values]), max([0.0, *x_values])
+            x_span = x_max - x_min or 1.0
+            for label, x_value, y_value in zip(labels, x_values, y_values):
+                x = left + (x_value - x_min) / x_span * plot_width
+                body.append(f'<circle cx="{x:.2f}" cy="{y(y_value):.2f}" r="5" fill="{colors[0]}"/>')
+                body.append(f'<text x="{x + 7:.2f}" y="{y(y_value) - 5:.2f}" font-size="10">{escape(label)}</text>')
+        elif kind == "line":
+            for series_index, (series_label, values) in enumerate(series):
+                points = []
+                for index, value in enumerate(values):
+                    x = left + (index + 0.5) * slot
+                    points.append(f"{x:.2f},{y(float(value)):.2f}")
+                body.append(f'<polyline points="{" ".join(points)}" fill="none" stroke="{colors[series_index]}" stroke-width="2"/>')
+                body.append(f'<text x="{left + 160 * series_index}" y="{height - 18}" fill="{colors[series_index]}" font-size="12">{escape(series_label)}</text>')
+        else:
+            bar_width = slot * 0.72 / max(1, len(series))
+            for series_index, (series_label, values) in enumerate(series):
+                for index, value in enumerate(values):
+                    value = float(value)
+                    x = left + index * slot + slot * 0.14 + series_index * bar_width
+                    y_value = y(max(0.0, value)) if value >= 0 else y(0.0)
+                    height_value = abs(y(value) - y(0.0))
+                    body.append(f'<rect x="{x:.2f}" y="{y_value:.2f}" width="{bar_width:.2f}" height="{height_value:.2f}" fill="{colors[series_index]}"/>')
+                body.append(f'<text x="{left + 180 * series_index}" y="{height - 18}" fill="{colors[series_index]}" font-size="12">{escape(series_label)}</text>')
+        for index, label in enumerate(labels):
+            x = left + (index + 0.5) * slot
+            body.append(f'<text x="{x:.2f}" y="{top + plot_height + 18}" text-anchor="end" transform="rotate(-50 {x:.2f} {top + plot_height + 18})" font-size="9">{escape(label)}</text>')
+        return (
+            '<?xml version="1.0" encoding="UTF-8"?>\n'
+            f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" viewBox="0 0 {width} {height}">'
+            + "".join(body)
+            + "</svg>\n"
+        ).encode("utf-8")
+
+    pair_labels = [
+        f"{row['method_config_id']}@{row['context_label']}" for row in nsys_pairs
+    ]
+    common = [row for row in traffic if row.get("common_same_work") is True]
+    labels = [str(row["method_config_id"]) for row in common]
+    plots = {
+        "cpu_submission_interval.svg": document(
+            title="Eager minus Graph CPU submission interval (ns; profiler only)",
+            labels=pair_labels,
+            series=(("eager - graph", [float(row.get("delta_cpu_submission_interval") or 0.0) for row in nsys_pairs]),),
+        ),
+        "gpu_idle_gaps.svg": document(
+            title="Eager minus Graph GPU inter-kernel idle (ns; profiler only)",
+            labels=pair_labels,
+            series=(("eager - graph", [float(row.get("delta_gpu_inter_kernel_idle_total") or 0.0) for row in nsys_pairs]),),
+        ),
+        "synchronization_time.svg": document(
+            title="Eager minus Graph synchronization time (ns; profiler only)",
+            labels=pair_labels,
+            series=(("eager - graph", [float(row.get("delta_synchronization_time") or 0.0) for row in nsys_pairs]),),
+        ),
+        "cache_path_dram_bytes.svg": document(
+            title="Cache-path DRAM bytes",
+            labels=labels,
+            series=(("cache path", [float(row["cache_path_dram_bytes"]) for row in common]),),
+        ),
+        "total_vs_cache_dram.svg": document(
+            title="Total-decode versus cache-path DRAM bytes",
+            labels=labels,
+            series=(
+                ("total", [float(row["total_decode_dram_bytes"]) for row in common]),
+                ("cache path", [float(row["cache_path_dram_bytes"]) for row in common]),
+            ),
+        ),
+        "allocated_vs_hbm_ratio.svg": document(
+            title="Allocated ratio versus measured cache-path HBM ratio",
+            labels=[str(row["method_config_id"]) for row in amplifications],
+            series=(
+                ("rho_alloc", [float(row["rho_alloc"]) for row in amplifications]),
+                ("rho_hbm", [float(row["rho_hbm"]) for row in amplifications]),
+            ),
+            kind="scatter",
+        ),
+        "traffic_amplification.svg": document(
+            title="Traffic amplification",
+            labels=[str(row["method_config_id"]) for row in amplifications],
+            series=(("A_traffic", [float(row["A_traffic"]) for row in amplifications]),),
+        ),
+        "l2_hit_rate.svg": document(
+            title="Weighted L2 hit rate",
+            labels=labels,
+            series=(("L2 hit rate", [float(row.get("l2_hit_rate") or 0.0) for row in common]),),
+        ),
+        "sm_activity_occupancy.svg": document(
+            title="SM activity and achieved occupancy",
+            labels=labels,
+            series=(
+                ("SM activity", [float(row.get("sm_activity") or 0.0) for row in common]),
+                ("occupancy", [float(row.get("achieved_occupancy") or 0.0) for row in common]),
+            ),
+            kind="line",
+        ),
+    }
+    roles: dict[str, float] = defaultdict(float)
+    for row in common:
+        for role, value in json.loads(str(row["dram_bytes_by_role"])).items():
+            roles[role] += float(value)
+    plots["traffic_by_kernel_role.svg"] = document(
+        title="Traffic breakdown by kernel role",
+        labels=list(roles),
+        series=(("DRAM bytes", list(roles.values())),),
+    )
+    for name, payload in plots.items():
+        _write_or_verify(plot_root / name, payload)
 
 
 def materialize_analysis(stage: Path) -> dict[str, Any]:
@@ -2675,7 +2849,7 @@ def materialize_analysis(stage: Path) -> dict[str, Any]:
     _parquet_write(root / "decode_traffic.parquet", traffic_rows)
     _parquet_write(root / "hbm_ratios.parquet", hbm_rows)
     _parquet_write(root / "traffic_amplification.parquet", amplification_rows)
-    write_exclusive(root / "mechanism_summary.json", json_bytes(mechanism))
+    _write_or_verify(root / "mechanism_summary.json", json_bytes(mechanism))
     _plot_outputs(root, nsys_pairs=pair_rows, traffic=traffic_rows, amplifications=amplification_rows)
     report = (
         "# Phase 15 profiler subset\n\n"
@@ -2688,7 +2862,7 @@ def materialize_analysis(stage: Path) -> dict[str, Any]:
         "The direct evidence preserves Phase 14's conclusion: CUDA Graph effects are heterogeneous and are not explained by a pure launch-floor-only model.\n\n"
         "Full Scan remains CLOSED. Quality remains LOCKED.\n"
     )
-    write_exclusive(root / "phase15_report.md", report.encode("utf-8"))
+    _write_or_verify(root / "phase15_report.md", report.encode("utf-8"))
     qc = {
         "schema_version": "kvbench-phase15-qc-1.0.0",
         "campaign_id": mechanism["campaign_id"],
@@ -2706,7 +2880,7 @@ def materialize_analysis(stage: Path) -> dict[str, Any]:
         "full_scan": "CLOSED",
         "quality": "LOCKED",
     }
-    write_exclusive(root / "phase15_qc.json", json_bytes(qc))
+    _write_or_verify(root / "phase15_qc.json", json_bytes(qc))
     return qc
 
 

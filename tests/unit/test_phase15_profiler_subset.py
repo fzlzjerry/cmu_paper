@@ -347,6 +347,58 @@ class Phase15NsysTests(unittest.TestCase):
 
 
 class Phase15GovernanceTests(unittest.TestCase):
+    def test_dependency_free_plots_are_complete_and_append_only(self) -> None:
+        pair = {
+            "method_config_id": "bf16",
+            "context_label": 4096,
+            "delta_cpu_submission_interval": 1.0,
+            "delta_gpu_inter_kernel_idle_total": 2.0,
+            "delta_synchronization_time": -3.0,
+        }
+        traffic = {
+            "method_config_id": "bf16",
+            "common_same_work": True,
+            "cache_path_dram_bytes": 10.0,
+            "total_decode_dram_bytes": 20.0,
+            "l2_hit_rate": 50.0,
+            "sm_activity": 40.0,
+            "achieved_occupancy": 30.0,
+            "dram_bytes_by_role": json.dumps({"dense_cache_attention": 10.0}),
+        }
+        amplification = {
+            "method_config_id": "bf16",
+            "rho_alloc": 1.0,
+            "rho_hbm": 1.0,
+            "A_traffic": 1.0,
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "plots").mkdir()
+            phase15._plot_outputs_svg(
+                root,
+                nsys_pairs=[pair],
+                traffic=[traffic],
+                amplifications=[amplification],
+            )
+            plots = sorted((root / "plots").glob("*.svg"))
+            self.assertEqual(len(plots), 10)
+            original = plots[0].read_bytes()
+            phase15._plot_outputs_svg(
+                root,
+                nsys_pairs=[pair],
+                traffic=[traffic],
+                amplifications=[amplification],
+            )
+            self.assertEqual(plots[0].read_bytes(), original)
+            plots[0].write_text("tampered", encoding="utf-8")
+            with self.assertRaises(phase15.Phase15Error):
+                phase15._plot_outputs_svg(
+                    root,
+                    nsys_pairs=[pair],
+                    traffic=[traffic],
+                    amplifications=[amplification],
+                )
+
     def test_ncu_continuation_attempts_are_append_only_and_contiguous(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             stage = Path(directory)
