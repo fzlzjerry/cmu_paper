@@ -370,6 +370,24 @@ class Phase15NsysTests(unittest.TestCase):
 
 
 class Phase15GovernanceTests(unittest.TestCase):
+    def test_artifact_inventory_uses_existing_control_contract(self) -> None:
+        value = phase15._artifact_inventory_document(
+            "phase15-20260828t144810363697z-446b334e-90460f",
+            [
+                {
+                    "path": "manifest.json",
+                    "role": "phase15_profiler_mechanism_evidence",
+                    "size_bytes": 1,
+                    "sha256": "0" * 64,
+                }
+            ],
+        )
+        self.assertEqual(
+            value["excluded_control_files"],
+            ["artifact_inventory.json", "checksums.sha256", "COMPLETE"],
+        )
+        self.assertEqual(value["files"][0]["path"], "manifest.json")
+
     def test_analysis_semantics_require_complete_mechanism_evidence(self) -> None:
         qc = {
             "status": "PASS",

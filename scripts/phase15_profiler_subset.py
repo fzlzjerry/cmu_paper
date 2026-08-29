@@ -3113,6 +3113,57 @@ def _payload_paths(root: Path, excluded: set[str]) -> list[Path]:
     return files
 
 
+def _artifact_inventory_document(
+    identifier: str, items: Sequence[Mapping[str, Any]]
+) -> dict[str, Any]:
+    return {
+        "schema_version": "kvbench-artifact-inventory-1.0.0",
+        "run_id": identifier,
+        "files": sorted((dict(item) for item in items), key=lambda item: item["path"]),
+        "excluded_control_files": [
+            "artifact_inventory.json",
+            "checksums.sha256",
+            "COMPLETE",
+        ],
+    }
+
+
+def _phase15_scientific_inventory(root: Path, identifier: str) -> dict[str, Any]:
+    chosen = _chosen_run_manifests(root)
+    all_runs = _all_run_manifests(root)
+    return {
+        "schema_version": "kvbench-phase15-scientific-inventory-1.0.0",
+        "campaign_id": identifier,
+        "selected_nsys_profiles": sum(row["run_kind"] == "nsys" for row in chosen),
+        "selected_ncu_profiles": sum(row["run_kind"] == "ncu" for row in chosen),
+        "selected_completed_profiles": sum(row["status"] == "completed" for row in chosen),
+        "preserved_failed_profiler_attempts": sum(
+            row.get("status") != "completed" for row in all_runs
+        ),
+        "preserved_incomplete_profiler_attempts": sum(
+            1
+            for directory in (root / "runs").iterdir()
+            if directory.is_dir() and not (directory / "manifest.json").exists()
+        ),
+        "plot_count": len(list((root / "plots").glob("*"))),
+        "normal_timing_records": 0,
+        "profiler_duration_is_normal_timing": False,
+    }
+
+
+def _completion_document(root: Path, identifier: str) -> dict[str, Any]:
+    return {
+        "schema_version": "kvbench-completion-1.0.0",
+        "run_id": identifier,
+        "status": "PASS",
+        "manifest_sha256": sha256_file(root / "manifest.json"),
+        "artifact_inventory_sha256": sha256_file(root / "artifact_inventory.json"),
+        "checksum_ledger_path": "checksums.sha256",
+        "checksum_ledger_sha256": sha256_file(root / "checksums.sha256"),
+        "written_last": True,
+    }
+
+
 def seal_campaign(stage: Path, *, campaign_id: str) -> Path:
     identifier = _validate_campaign_id(campaign_id)
     root = stage.resolve(strict=True)
@@ -3161,9 +3212,13 @@ def seal_campaign(stage: Path, *, campaign_id: str) -> Path:
             }
         ),
     )
+    write_exclusive(
+        root / "inventory.json",
+        json_bytes(_phase15_scientific_inventory(root, identifier)),
+    )
     payload = _payload_paths(
         root,
-        {"inventory.json", "artifact_inventory.json", "checksums.sha256", "COMPLETE"},
+        {"artifact_inventory.json", "checksums.sha256", "COMPLETE"},
     )
     items = [
         {
@@ -3174,18 +3229,7 @@ def seal_campaign(stage: Path, *, campaign_id: str) -> Path:
         }
         for path in payload
     ]
-    inventory = {
-        "schema_version": "kvbench-artifact-inventory-1.0.0",
-        "run_id": identifier,
-        "files": items,
-        "excluded_control_files": [
-            "inventory.json",
-            "artifact_inventory.json",
-            "checksums.sha256",
-            "COMPLETE",
-        ],
-    }
-    write_exclusive(root / "inventory.json", json_bytes(inventory))
+    inventory = _artifact_inventory_document(identifier, items)
     write_exclusive(root / "artifact_inventory.json", json_bytes(inventory))
     ledger = "".join(
         f"{sha256_file(path)}  {path.relative_to(root).as_posix()}\n"
@@ -3194,18 +3238,7 @@ def seal_campaign(stage: Path, *, campaign_id: str) -> Path:
     write_exclusive(root / "checksums.sha256", ledger)
     write_exclusive(
         root / "COMPLETE",
-        json_bytes(
-            {
-                "schema_version": "kvbench-completion-1.0.0",
-                "run_id": identifier,
-                "status": "PASS",
-                "manifest_sha256": sha256_file(root / "manifest.json"),
-                "artifact_inventory_sha256": sha256_file(root / "artifact_inventory.json"),
-                "checksum_ledger_path": "checksums.sha256",
-                "checksum_ledger_sha256": sha256_file(root / "checksums.sha256"),
-                "written_last": True,
-            }
-        ),
+        json_bytes(_completion_document(root, identifier)),
     )
     final = ARTIFACT_ROOT / identifier
     if final.exists() or final.is_symlink():
@@ -3216,6 +3249,144 @@ def seal_campaign(stage: Path, *, campaign_id: str) -> Path:
     final.chmod(0o555)
     validate_campaign(final, expected_campaign_id=identifier)
     return final
+
+
+def repair_failed_finalization(root: Path, *, campaign_id: str) -> Path:
+    """Repair only the known Phase 15 control-schema finalization failure."""
+
+    identifier = _validate_campaign_id(campaign_id)
+    artifact = root.resolve(strict=True)
+    if artifact != (ARTIFACT_ROOT / identifier).resolve(strict=True):
+        raise Phase15Error("failed-finalization artifact path differs")
+    controls = (
+        "manifest.json",
+        "inventory.json",
+        "artifact_inventory.json",
+        "checksums.sha256",
+        "COMPLETE",
+    )
+    old_inventory = _strict_json(artifact / "artifact_inventory.json")
+    old_completion = _strict_json(artifact / "COMPLETE")
+    if (
+        old_inventory != _strict_json(artifact / "inventory.json")
+        or old_inventory.get("run_id") != identifier
+        or old_inventory.get("excluded_control_files")
+        != [
+            "inventory.json",
+            "artifact_inventory.json",
+            "checksums.sha256",
+            "COMPLETE",
+        ]
+        or old_completion.get("written_last") is not True
+        or old_completion.get("manifest_sha256")
+        != sha256_file(artifact / "manifest.json")
+        or old_completion.get("artifact_inventory_sha256")
+        != sha256_file(artifact / "artifact_inventory.json")
+        or old_completion.get("checksum_ledger_sha256")
+        != sha256_file(artifact / "checksums.sha256")
+    ):
+        raise Phase15Error("failed finalization is not the recognized inventory defect")
+    old_items = old_inventory.get("files")
+    if not isinstance(old_items, list):
+        raise Phase15Error("failed finalization inventory records are absent")
+    old_by_path = {str(item.get("path")): dict(item) for item in old_items}
+    if len(old_by_path) != len(old_items) or "manifest.json" not in old_by_path:
+        raise Phase15Error("failed finalization inventory records differ")
+
+    repair_root = artifact / "failed-finalization-attempt0"
+    artifact.chmod(0o755)
+    repair_root.mkdir(mode=0o755)
+    preserved_controls = {}
+    for name in controls:
+        source = artifact / name
+        target = repair_root / name
+        if not source.is_file() or target.exists():
+            raise Phase15Error("failed finalization controls cannot be preserved")
+        source.rename(target)
+        preserved_controls[name] = {
+            "sha256": sha256_file(target),
+            "size_bytes": target.stat().st_size,
+        }
+    failure = {
+        "schema_version": "kvbench-phase15-finalization-failure-1.0.0",
+        "campaign_id": identifier,
+        "failure": "artifact inventory excluded inventory.json and therefore violated the existing artifact schema",
+        "raw_profiler_files_changed": False,
+        "preserved_controls": preserved_controls,
+        "repair_scope": "control_files_only",
+        "recorded_at_utc": _utc_now(),
+    }
+    write_exclusive(repair_root / "failure.json", json_bytes(failure))
+
+    manifest = {
+        "schema_version": "kvbench-phase15-artifact-manifest-1.0.0",
+        "run_id": identifier,
+        "campaign_id": identifier,
+        "status": "PASS",
+        "created_at_utc": _utc_now(),
+        "authorized_container_digest": AUTHORIZED_CONTAINER_DIGEST,
+        "append_only": True,
+        "complete_written_last": True,
+        "run_kind": "profiler_subset",
+        "profiler_duration_is_normal_timing": False,
+        "performance_claim_eligible": False,
+        "quality_status": "unvalidated",
+        "finalization_repair": {
+            "scope": "control_files_only",
+            "preserved_failure_path": "failed-finalization-attempt0",
+            "raw_profiler_files_changed": False,
+        },
+    }
+    write_exclusive(artifact / "manifest.json", json_bytes(manifest))
+    write_exclusive(
+        artifact / "inventory.json",
+        json_bytes(_phase15_scientific_inventory(artifact, identifier)),
+    )
+
+    items = [
+        item for path, item in old_by_path.items() if path != "manifest.json"
+    ]
+    for path in (artifact / "manifest.json", artifact / "inventory.json"):
+        items.append(
+            {
+                "path": path.relative_to(artifact).as_posix(),
+                "role": "phase15_profiler_mechanism_evidence",
+                "size_bytes": path.stat().st_size,
+                "sha256": sha256_file(path),
+            }
+        )
+    for path in sorted(repair_root.iterdir()):
+        items.append(
+            {
+                "path": path.relative_to(artifact).as_posix(),
+                "role": "phase15_failed_finalization_evidence",
+                "size_bytes": path.stat().st_size,
+                "sha256": sha256_file(path),
+            }
+        )
+    inventory = _artifact_inventory_document(identifier, items)
+    write_exclusive(artifact / "artifact_inventory.json", json_bytes(inventory))
+    ledger_entries = {
+        str(item["path"]): str(item["sha256"]) for item in inventory["files"]
+    }
+    ledger_entries["artifact_inventory.json"] = sha256_file(
+        artifact / "artifact_inventory.json"
+    )
+    write_exclusive(
+        artifact / "checksums.sha256",
+        "".join(
+            f"{digest}  {path}\n" for path, digest in sorted(ledger_entries.items())
+        ).encode("utf-8"),
+    )
+    write_exclusive(
+        artifact / "COMPLETE",
+        json_bytes(_completion_document(artifact, identifier)),
+    )
+    for path in sorted(artifact.rglob("*"), reverse=True):
+        path.chmod(0o555 if path.is_dir() else 0o444)
+    artifact.chmod(0o555)
+    validate_campaign(artifact, expected_campaign_id=identifier)
+    return artifact
 
 
 def validate_analysis_documents(
@@ -3306,6 +3477,7 @@ def _arguments(argv: Sequence[str] | None = None) -> argparse.Namespace:
     actions.add_argument("--finalize-ncu-continuation-index", action="store_true")
     actions.add_argument("--materialize-analysis", action="store_true")
     actions.add_argument("--finalize-staged-campaign", action="store_true")
+    actions.add_argument("--repair-failed-finalization", action="store_true")
     actions.add_argument("--validate-campaign", action="store_true")
     parser.add_argument("--output", type=Path)
     parser.add_argument("--stage", type=Path)
@@ -3402,6 +3574,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(json.dumps(materialize_analysis(_require(args.stage, "stage")), sort_keys=True))
     elif args.finalize_staged_campaign:
         print(seal_campaign(_require(args.stage, "stage"), campaign_id=_require(args.campaign_id, "campaign-id")))
+    elif args.repair_failed_finalization:
+        print(
+            repair_failed_finalization(
+                _require(args.artifact, "artifact"),
+                campaign_id=_require(args.campaign_id, "campaign-id"),
+            )
+        )
     elif args.validate_campaign:
         print(json.dumps(validate_campaign(_require(args.artifact, "artifact")), sort_keys=True))
     return 0
