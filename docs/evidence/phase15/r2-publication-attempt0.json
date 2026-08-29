@@ -1,0 +1,18 @@
+{
+  "artifact_root_sha256": "641fc02d8fa598097885b74a336b1b1f454d9844b90025cf0c4b427bee02d5e8",
+  "complete_uploaded": false,
+  "credential_values_recorded": false,
+  "error": {
+    "bytes_received_before_failure": 5465826944,
+    "bytes_remaining": 6606219752,
+    "stage": "authoritative_post_upload_object_readback",
+    "type": "IncompleteRead"
+  },
+  "profiler_evidence_changed": false,
+  "recorded_at_utc": "2026-08-29T06:35:11Z",
+  "remote_completed_object_count_after_failure": 73,
+  "retry_policy": "Retry publication only after bounded-memory ranged SHA-256 readback is validated; never rerun profiler points.",
+  "schema_version": "kvbench-phase15-r2-publication-attempt-1.0.0",
+  "source_git_sha": "a35570ab64029609d0fc5b83603a60c4d952e1c2",
+  "status": "transport_failed"
+}

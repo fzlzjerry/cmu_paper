@@ -5,9 +5,12 @@ from __future__ import annotations
 from contextlib import redirect_stdout
 import copy
 from datetime import datetime, timezone
+import http.client
 from io import BytesIO, StringIO
 import json
+import os
 from pathlib import Path
+import re
 import shutil
 import stat
 import tempfile
@@ -911,18 +914,95 @@ class R2ArtifactTests(unittest.TestCase):
                 expected_sha256=sha256_bytes(payload),
                 content_type=None,
             )
-        self.assertEqual(
-            [request.get_method() for request in requests],
-            ["POST", "PUT", "PUT", "PUT", "DELETE"],
-        )
-        self.assertEqual(
-            {
-                request.full_url
-                for request in requests[1:4]
-            },
-            {requests[1].full_url},
-        )
+        methods = [request.get_method() for request in requests]
+        self.assertEqual(methods[0], "POST")
+        self.assertEqual(methods[-1], "DELETE")
+        self.assertGreaterEqual(methods[1:-1].count("PUT"), 3)
+        self.assertEqual(set(methods[1:-1]), {"PUT"})
         self.assertIn("uploadId=upload-abort", requests[-1].full_url)
+
+    def test_parallel_range_identity_is_exact_and_bounded(self) -> None:
+        payload = b"parallel-range-identity"
+        observed_ranges: list[str] = []
+
+        def opener(request: object, *, timeout: int) -> FakeResponse:
+            self.assertEqual(timeout, 120)
+            if request.get_method() == "HEAD":
+                return FakeResponse(
+                    headers={"Content-Length": str(len(payload))}
+                )
+            requested = request.headers["Range"]
+            observed_ranges.append(requested)
+            match = re.fullmatch(r"bytes=(\d+)-(\d+)", requested)
+            self.assertIsNotNone(match)
+            assert match is not None
+            start, end = (int(value) for value in match.groups())
+            return FakeResponse(payload[start : end + 1], status=206)
+
+        client = R2S3Client(self.config, opener=opener)
+        with (
+            patch("scripts.r2_artifact.OBJECT_RANGE_SIZE_BYTES", 4),
+            patch("scripts.r2_artifact.R2_TRANSFER_WORKERS", 3),
+        ):
+            identity = client.get_object_sha256_or_none("safe/key")
+
+        self.assertEqual(identity, (sha256_bytes(payload), len(payload)))
+        self.assertEqual(len(observed_ranges), 6)
+        self.assertEqual(observed_ranges[0], "bytes=0-3")
+        self.assertEqual(observed_ranges[-1], "bytes=20-22")
+
+    def test_range_incomplete_read_is_retried_without_materializing_object(
+        self,
+    ) -> None:
+        payload = b"retry-range"
+        attempts = 0
+
+        class IncompleteResponse(FakeResponse):
+            def read(self, amount: int | None = None) -> bytes:
+                raise http.client.IncompleteRead(b"partial", 3)
+
+        def opener(request: object, *, timeout: int) -> FakeResponse:
+            nonlocal attempts
+            attempts += 1
+            if attempts == 1:
+                return IncompleteResponse(status=206)
+            return FakeResponse(payload, status=206)
+
+        client = R2S3Client(self.config, opener=opener)
+        self.assertEqual(
+            client._get_object_range("safe/key", 0, len(payload) - 1),
+            payload,
+        )
+        self.assertEqual(attempts, 2)
+
+    def test_streaming_download_writes_exact_bytes(self) -> None:
+        payload = b"streamed-clean-retrieval"
+
+        def opener(request: object, *, timeout: int) -> FakeResponse:
+            if request.get_method() == "HEAD":
+                return FakeResponse(
+                    headers={"Content-Length": str(len(payload))}
+                )
+            requested = request.headers["Range"]
+            match = re.fullmatch(r"bytes=(\d+)-(\d+)", requested)
+            self.assertIsNotNone(match)
+            assert match is not None
+            start, end = (int(value) for value in match.groups())
+            return FakeResponse(payload[start : end + 1], status=206)
+
+        target = self.base / "streamed.bin"
+        descriptor = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        try:
+            client = R2S3Client(self.config, opener=opener)
+            with patch("scripts.r2_artifact.OBJECT_RANGE_SIZE_BYTES", 5):
+                identity = client.download_object_to_descriptor(
+                    "safe/key", descriptor
+                )
+        finally:
+            os.close(descriptor)
+
+        self.assertEqual(identity, (sha256_bytes(payload), len(payload)))
+        self.assertEqual(target.read_bytes(), payload)
 
     def test_secret_presence_and_redaction_never_return_values(self) -> None:
         statuses = required_variable_status(self.environ)

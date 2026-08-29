@@ -10,10 +10,12 @@ from __future__ import annotations
 
 import argparse
 from collections.abc import Callable, Mapping, Sequence
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 import hashlib
 import hmac
+import http.client
 import json
 import mimetypes
 import os
@@ -32,10 +34,12 @@ REGION = "auto"
 SERVICE = "s3"
 EXPECTED_R2_PREFIX = "kvbench/sha256"
 ENDPOINT_CLASS = "cloudflare_r2_s3"
-SINGLE_PUT_MAX_BYTES = 5 * 1024**3 - 5 * 1024**2
+SINGLE_PUT_MAX_BYTES = 64 * 1024**2
 MULTIPART_PART_SIZE_BYTES = 32 * 1024**2
 MULTIPART_UPLOAD_ATTEMPTS = 3
 OBJECT_READ_ATTEMPTS = 3
+OBJECT_RANGE_SIZE_BYTES = 32 * 1024**2
+R2_TRANSFER_WORKERS = 8
 MAX_MULTIPART_PARTS = 10_000
 RETRYABLE_MULTIPART_STATUSES = frozenset({429, 500, 502, 503, 504})
 CONTROL_FILES = (
@@ -862,9 +866,9 @@ def publish_artifact(
             item.relative_path,
         )
         content_type = _content_type(item.relative_path)
-        existing = client.get_object_or_none(key)
+        existing = _remote_object_identity(client, key)
         if existing is not None:
-            if sha256_bytes(existing) != item.sha256:
+            if existing != (item.sha256, item.size_bytes):
                 raise ObjectConflictError(
                     "existing content-addressed object has different bytes"
                 )
@@ -895,15 +899,15 @@ def publish_artifact(
                 and error.code != "ObjectLockedByBucketPolicy"
             ):
                 raise
-            raced = client.get_object_or_none(key)
-            if raced is None or sha256_bytes(raced) != item.sha256:
+            raced = _remote_object_identity(client, key)
+            if raced != (item.sha256, item.size_bytes):
                 raise ObjectConflictError(
                     "conditional object creation did not preserve exact bytes"
                 ) from error
             verified_existing.append(item.relative_path)
             continue
-        retrieved = client.get_object_or_none(key)
-        if retrieved is None or sha256_bytes(retrieved) != item.sha256:
+        retrieved = _remote_object_identity(client, key)
+        if retrieved != (item.sha256, item.size_bytes):
             raise R2ArtifactError(
                 "uploaded object failed authoritative SHA-256 check"
             )
@@ -922,6 +926,23 @@ def publish_artifact(
     )
 
 
+def _remote_object_identity(
+    client: object,
+    key: str,
+) -> tuple[str, int] | None:
+    streaming = getattr(client, "get_object_sha256_or_none", None)
+    if callable(streaming):
+        identity = streaming(key)
+        if identity is None:
+            return None
+        digest, size = identity
+        return str(digest), int(size)
+    materialized = getattr(client, "get_object_or_none")(key)
+    if materialized is None:
+        return None
+    return sha256_bytes(materialized), len(materialized)
+
+
 def _ensure_empty_directory(path: Path) -> Path:
     if path.exists() or path.is_symlink():
         metadata = path.lstat()
@@ -934,7 +955,7 @@ def _ensure_empty_directory(path: Path) -> Path:
     return path.resolve(strict=True)
 
 
-def _write_downloaded_file(root: Path, relative: str, data: bytes) -> None:
+def _create_downloaded_file(root: Path, relative: str) -> int:
     safe = PurePosixPath(_require_safe_relative(relative))
     current = root
     for part in safe.parent.parts:
@@ -953,6 +974,11 @@ def _write_downloaded_file(root: Path, relative: str, data: bytes) -> None:
         descriptor = os.open(target, flags, 0o600)
     except FileExistsError as error:
         raise ArtifactValidationError("retrieval produced a duplicate path") from error
+    return descriptor
+
+
+def _write_downloaded_file(root: Path, relative: str, data: bytes) -> None:
+    descriptor = _create_downloaded_file(root, relative)
     try:
         view = memoryview(data)
         while view:
@@ -1020,10 +1046,24 @@ def verify_remote_artifact(
     target_root = _ensure_empty_directory(Path(destination).absolute())
     for relative in sorted(relatives, key=lambda item: (item == "COMPLETE", item)):
         key = artifact_object_key(config.prefix, digest, relative)
-        data = client.get_object_or_none(key)
-        if data is None:
-            raise ArtifactValidationError("remote listing changed during retrieval")
-        _write_downloaded_file(target_root, relative, data)
+        streaming = getattr(client, "download_object_to_descriptor", None)
+        if callable(streaming):
+            descriptor = _create_downloaded_file(target_root, relative)
+            try:
+                identity = streaming(key, descriptor)
+            finally:
+                os.close(descriptor)
+            if identity is None:
+                raise ArtifactValidationError(
+                    "remote listing changed during retrieval"
+                )
+        else:
+            data = client.get_object_or_none(key)
+            if data is None:
+                raise ArtifactValidationError(
+                    "remote listing changed during retrieval"
+                )
+            _write_downloaded_file(target_root, relative, data)
 
     reconstructed = _validate_artifact(
         target_root,
@@ -1232,7 +1272,12 @@ class R2S3Client:
                 status=error.code,
                 code=code,
             ) from None
-        except (urllib.error.URLError, TimeoutError, OSError):
+        except (
+            urllib.error.URLError,
+            http.client.IncompleteRead,
+            TimeoutError,
+            OSError,
+        ):
             raise RemoteRequestError(status=None, code="TransportError") from None
 
     def _request(
@@ -1266,6 +1311,126 @@ class R2S3Client:
                 if not retryable or attempt == OBJECT_READ_ATTEMPTS:
                     raise
         raise AssertionError("object read retry loop exhausted")
+
+    def _object_size_or_none(self, key: str) -> int | None:
+        for attempt in range(1, OBJECT_READ_ATTEMPTS + 1):
+            try:
+                _, headers, _ = self._request_with_metadata("HEAD", key=key)
+            except RemoteRequestError as error:
+                if error.status == 404:
+                    return None
+                retryable = (
+                    error.status is None and error.code == "TransportError"
+                )
+                if not retryable or attempt == OBJECT_READ_ATTEMPTS:
+                    raise
+                continue
+            raw_size = headers.get("content-length")
+            try:
+                size = int(raw_size) if raw_size is not None else -1
+            except ValueError as error:
+                raise RemoteRequestError(
+                    status=200,
+                    code="InvalidContentLength",
+                ) from error
+            if size < 0:
+                raise RemoteRequestError(
+                    status=200,
+                    code="InvalidContentLength",
+                )
+            return size
+        raise AssertionError("object HEAD retry loop exhausted")
+
+    def _get_object_range(self, key: str, start: int, end: int) -> bytes:
+        expected = end - start + 1
+        for attempt in range(1, OBJECT_READ_ATTEMPTS + 1):
+            try:
+                data, _, status = self._request_with_metadata(
+                    "GET",
+                    key=key,
+                    headers={"Range": f"bytes={start}-{end}"},
+                )
+            except RemoteRequestError as error:
+                retryable = (
+                    error.status is None and error.code == "TransportError"
+                ) or error.status in RETRYABLE_MULTIPART_STATUSES
+                if not retryable or attempt == OBJECT_READ_ATTEMPTS:
+                    raise
+                continue
+            if status != 206 or len(data) != expected:
+                raise RemoteRequestError(
+                    status=status,
+                    code="InvalidRangeResponse",
+                )
+            return data
+        raise AssertionError("object range retry loop exhausted")
+
+    def _consume_object_ranges(
+        self,
+        key: str,
+        size: int,
+        consume: Callable[[bytes], None],
+    ) -> None:
+        if size == 0:
+            return
+        with ThreadPoolExecutor(max_workers=R2_TRANSFER_WORKERS) as executor:
+            start = 0
+            while start < size:
+                ranges: list[tuple[int, int]] = []
+                for _ in range(R2_TRANSFER_WORKERS):
+                    if start >= size:
+                        break
+                    end = min(size - 1, start + OBJECT_RANGE_SIZE_BYTES - 1)
+                    ranges.append((start, end))
+                    start = end + 1
+                futures = [
+                    executor.submit(self._get_object_range, key, begin, end)
+                    for begin, end in ranges
+                ]
+                for future in futures:
+                    consume(future.result())
+
+    def get_object_sha256_or_none(
+        self,
+        key: str,
+    ) -> tuple[str, int] | None:
+        size = self._object_size_or_none(key)
+        if size is None:
+            return None
+        digest = hashlib.sha256()
+        self._consume_object_ranges(key, size, digest.update)
+        return digest.hexdigest(), size
+
+    def download_object_to_descriptor(
+        self,
+        key: str,
+        descriptor: int,
+    ) -> tuple[str, int] | None:
+        size = self._object_size_or_none(key)
+        if size is None:
+            return None
+        digest = hashlib.sha256()
+        written = 0
+
+        def consume(data: bytes) -> None:
+            nonlocal written
+            digest.update(data)
+            view = memoryview(data)
+            while view:
+                count = os.write(descriptor, view)
+                if count <= 0:
+                    raise OSError("retrieval write made no progress")
+                written += count
+                view = view[count:]
+
+        self._consume_object_ranges(key, size, consume)
+        if written != size:
+            raise RemoteRequestError(
+                status=200,
+                code="InvalidRetrievedSize",
+            )
+        os.fsync(descriptor)
+        return digest.hexdigest(), size
 
     def put_object_if_absent(
         self,
@@ -1376,26 +1541,44 @@ class R2S3Client:
         digest = hashlib.sha256()
         total_size = 0
         try:
-            with path.open("rb") as source:
+            with (
+                path.open("rb") as source,
+                ThreadPoolExecutor(max_workers=R2_TRANSFER_WORKERS) as executor,
+            ):
                 part_number = 1
                 while True:
-                    data = source.read(MULTIPART_PART_SIZE_BYTES)
-                    if not data:
+                    batch: list[tuple[int, bytes]] = []
+                    for _ in range(R2_TRANSFER_WORKERS):
+                        data = source.read(MULTIPART_PART_SIZE_BYTES)
+                        if not data:
+                            break
+                        if part_number > MAX_MULTIPART_PARTS:
+                            raise ArtifactValidationError(
+                                "multipart object exceeds the part-count limit"
+                            )
+                        digest.update(data)
+                        total_size += len(data)
+                        batch.append((part_number, data))
+                        part_number += 1
+                    if not batch:
                         break
-                    if part_number > MAX_MULTIPART_PARTS:
-                        raise ArtifactValidationError(
-                            "multipart object exceeds the part-count limit"
+                    futures = [
+                        (
+                            number,
+                            executor.submit(
+                                self._upload_multipart_part,
+                                key=key,
+                                upload_id=upload_id,
+                                part_number=number,
+                                data=data,
+                            ),
                         )
-                    digest.update(data)
-                    total_size += len(data)
-                    etag = self._upload_multipart_part(
-                        key=key,
-                        upload_id=upload_id,
-                        part_number=part_number,
-                        data=data,
+                        for number, data in batch
+                    ]
+                    parts.extend(
+                        (number, future.result())
+                        for number, future in futures
                     )
-                    parts.append((part_number, etag))
-                    part_number += 1
             if (
                 not parts
                 or total_size != expected_size
