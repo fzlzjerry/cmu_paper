@@ -195,7 +195,7 @@ class Phase13BStaticBatchGeometryTests(unittest.TestCase):
             lambda: TurboQuantStaticCache(
                 config_name="turboquant_4bit_nc",
                 num_layers=32,
-                batch_size=2,
+                batch_size=3,
                 num_query_heads=32,
                 num_kv_heads=8,
                 capacity=17,
@@ -205,7 +205,7 @@ class Phase13BStaticBatchGeometryTests(unittest.TestCase):
             lambda: KIVIStaticCache(
                 config_name="k4v4",
                 num_layers=1,
-                batch_size=2,
+                batch_size=3,
                 num_query_heads=32,
                 num_kv_heads=8,
                 capacity=64,
@@ -215,7 +215,7 @@ class Phase13BStaticBatchGeometryTests(unittest.TestCase):
             lambda: KVQuantStaticCache(
                 config_name="kvq4",
                 num_layers=32,
-                batch_size=2,
+                batch_size=3,
                 num_query_heads=32,
                 num_kv_heads=8,
                 capacity=18,

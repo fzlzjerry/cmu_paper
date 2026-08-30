@@ -10,6 +10,9 @@ import unittest
 import torch
 
 from kvbench.runtime.static_cache import BF16StaticCache
+from kvbench.runtime.kivi_cache import KIVIStaticCache
+from kvbench.runtime.kvquant_cache import KVQuantStaticCache
+from kvbench.runtime.turboquant_cache import TurboQuantStaticCache
 from kvbench.schema.phase16g import (
     PHASE16G_ADMITTED_BATCH_SIZES,
     PHASE16G_CONFIGURATIONS,
@@ -236,6 +239,79 @@ class Phase16GBatchGeometryTests(unittest.TestCase):
         with self.assertRaises(Phase16GGeometryError):
             require_admitted_geometry(payload, configuration="bf16", batch_size=3)
 
+    def test_compressed_cache_constructors_admit_b2_and_b16_only(self) -> None:
+        for batch in PHASE16G_NEW_BATCH_SIZES:
+            with self.subTest(family="turboquant", batch=batch):
+                cache = TurboQuantStaticCache(
+                    config_name="turboquant_4bit_nc",
+                    num_layers=32,
+                    batch_size=batch,
+                    num_query_heads=32,
+                    num_kv_heads=8,
+                    capacity=17,
+                    head_dim=128,
+                    device="cpu",
+                )
+                self.assertEqual(cache.batch_size, batch)
+            with self.subTest(family="kivi", batch=batch):
+                cache = KIVIStaticCache(
+                    config_name="k4v4",
+                    num_layers=1,
+                    batch_size=batch,
+                    num_query_heads=32,
+                    num_kv_heads=8,
+                    capacity=64,
+                    head_dim=128,
+                    device="cpu",
+                )
+                self.assertEqual(cache.batch_size, batch)
+            with self.subTest(family="kvquant", batch=batch):
+                cache = KVQuantStaticCache(
+                    config_name="kvq4",
+                    num_layers=32,
+                    batch_size=batch,
+                    num_query_heads=32,
+                    num_kv_heads=8,
+                    capacity=18,
+                    head_dim=128,
+                    device="cpu",
+                )
+                self.assertEqual(cache.batch_size, batch)
+        for constructor in (
+            lambda: TurboQuantStaticCache(
+                config_name="turboquant_4bit_nc",
+                num_layers=32,
+                batch_size=3,
+                num_query_heads=32,
+                num_kv_heads=8,
+                capacity=17,
+                head_dim=128,
+                device="cpu",
+            ),
+            lambda: KIVIStaticCache(
+                config_name="k4v4",
+                num_layers=1,
+                batch_size=3,
+                num_query_heads=32,
+                num_kv_heads=8,
+                capacity=64,
+                head_dim=128,
+                device="cpu",
+            ),
+            lambda: KVQuantStaticCache(
+                config_name="kvq4",
+                num_layers=32,
+                batch_size=3,
+                num_query_heads=32,
+                num_kv_heads=8,
+                capacity=18,
+                head_dim=128,
+                device="cpu",
+            ),
+        ):
+            with self.assertRaisesRegex(ValueError, "B in"):
+                constructor()
+
     def test_short_matrix_and_maximum_selection_contracts_are_exact(self) -> None:
         expected = {
             (configuration, batch, mode)
@@ -282,9 +358,13 @@ class Phase16GBatchGeometryTests(unittest.TestCase):
                 "scripts/phase13_prefix_state.py",
                 "scripts/phase16g_batch_geometry_admission.py",
                 "scripts/validate_phase2.py",
+                "src/kvbench/runtime/kivi_cache.py",
+                "src/kvbench/runtime/kvquant_cache.py",
+                "src/kvbench/runtime/turboquant_cache.py",
                 "src/kvbench/schema/phase16g.py",
                 "tests/cuda/phase16g_batch_sanitizer_probe.py",
                 "tests/unit/test_phase16g_batch_geometry.py",
+                "tests/unit/test_phase13b_batch_geometry.py",
             }
         )
         self.assertEqual(validate_phase2.PHASE16G_ALLOWED_PATHS, expected)

@@ -122,12 +122,12 @@ class KIVIStaticCache:
             _positive_int(head_dim, "head_dim"),
         )
         if (
-            geometry[1] not in {1, 4, 8}
+            geometry[1] not in {1, 2, 4, 8, 16}
             or geometry[2:4] != (32, 8)
             or geometry[5] != 128
         ):
             raise ValueError(
-                "KIVI cache requires frozen B in {1,4,8} "
+                "KIVI cache requires admitted B in {1,2,4,8,16} "
                 "H_Q=32 H_KV=8 D=128 geometry"
             )
         if isinstance(workspace_bytes, bool) or not isinstance(workspace_bytes, int):

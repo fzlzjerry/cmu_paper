@@ -27,7 +27,7 @@ KVQUANT_CONFIG_BITS: Final[dict[str, int]] = {
 }
 KVQUANT_NUM_LAYERS: Final[int] = 32
 KVQUANT_BATCH_SIZE: Final[int] = 1
-KVQUANT_SUPPORTED_BATCH_SIZES: Final[tuple[int, ...]] = (1, 4, 8)
+KVQUANT_SUPPORTED_BATCH_SIZES: Final[tuple[int, ...]] = (1, 2, 4, 8, 16)
 KVQUANT_NUM_QUERY_HEADS: Final[int] = 32
 KVQUANT_NUM_KV_HEADS: Final[int] = 8
 KVQUANT_HEAD_DIM: Final[int] = 128
@@ -243,7 +243,7 @@ class KVQuantStaticCache:
             or geometry[5] != KVQUANT_HEAD_DIM
         ):
             raise ValueError(
-                "KVQuant cache requires frozen layers=32 B in {1,4,8} "
+                "KVQuant cache requires admitted layers=32 B in {1,2,4,8,16} "
                 "H_Q=32 H_KV=8 D=128 geometry"
             )
         if geometry[4] < KVQUANT_SINK_TOKENS:

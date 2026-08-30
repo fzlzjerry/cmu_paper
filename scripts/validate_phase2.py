@@ -1349,9 +1349,13 @@ PHASE16G_ALLOWED_PATHS = frozenset(
         "scripts/phase13_prefix_state.py",
         "scripts/phase16g_batch_geometry_admission.py",
         "scripts/validate_phase2.py",
+        "src/kvbench/runtime/kivi_cache.py",
+        "src/kvbench/runtime/kvquant_cache.py",
+        "src/kvbench/runtime/turboquant_cache.py",
         "src/kvbench/schema/phase16g.py",
         "tests/cuda/phase16g_batch_sanitizer_probe.py",
         "tests/unit/test_phase16g_batch_geometry.py",
+        "tests/unit/test_phase13b_batch_geometry.py",
     }
 )
 

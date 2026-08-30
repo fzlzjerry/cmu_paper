@@ -170,12 +170,12 @@ class TurboQuantStaticCache:
         )
         if (
             geometry[0] != 32
-            or geometry[1] not in {1, 4, 8}
+            or geometry[1] not in {1, 2, 4, 8, 16}
             or geometry[2:4] != (32, 8)
             or geometry[5] != 128
         ):
             raise ValueError(
-                "TurboQuant cache requires frozen B in {1,4,8} "
+                "TurboQuant cache requires admitted B in {1,2,4,8,16} "
                 "Llama GQA geometry"
             )
         if (
