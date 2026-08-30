@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 import tempfile
+from types import SimpleNamespace
 import unittest
 
 import torch
@@ -333,6 +334,47 @@ class Phase16GBatchGeometryTests(unittest.TestCase):
                 int(record["capacity"]),
             )
             self.assertEqual(record["cache_allocated_bytes"], expected_cache)
+
+    def test_new_geometry_eager_allocation_control_is_exact_and_tamper_closed(
+        self,
+    ) -> None:
+        counts = {
+            "alloc": 898,
+            "free_completed": 898,
+            "free_requested": 898,
+        }
+        fields = {
+            "audit_available": True,
+            "allocation_event_count": 898,
+            "allocation_event_bytes": 21_586_552,
+            "event_counts": counts,
+            "allocated_before": 100,
+            "allocated_after": 100,
+            "reserved_before": 200,
+            "reserved_after": 200,
+        }
+        first = SimpleNamespace(**fields)
+        repeat = SimpleNamespace(**fields)
+        passed, control = phase16g._eager_allocation_passed(
+            first,
+            repeat,
+            family="turboquant",
+            batch=2,
+        )
+        self.assertTrue(passed)
+        self.assertTrue(control["repeat_exact"])
+        self.assertFalse(control["event_byte_extrapolation_used"])
+        tampered = SimpleNamespace(
+            **{**fields, "allocation_event_bytes": 21_586_553}
+        )
+        self.assertFalse(
+            phase16g._eager_allocation_passed(
+                first,
+                tampered,
+                family="turboquant",
+                batch=2,
+            )[0]
+        )
 
     def test_historical_method_admission_reports_are_unchanged(self) -> None:
         expected = {

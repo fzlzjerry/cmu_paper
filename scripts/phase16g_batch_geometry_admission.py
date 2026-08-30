@@ -425,21 +425,76 @@ def _allocation_passed(record: Any) -> bool:
     )
 
 
-def _eager_allocation_passed(record: Any, *, family: str, batch: int) -> tuple[bool, dict[str, Any]]:
-    if family == "bf16":
-        passed = bool(
-            record.audit_available
-            and record.allocated_after == record.allocated_before
-            and record.reserved_after == record.reserved_before
+def _eager_allocation_passed(
+    record: Any,
+    repeat: Any,
+    *,
+    family: str,
+    batch: int,
+) -> tuple[bool, dict[str, Any]]:
+    """Bind new batch geometry to repeated exact event topology.
+
+    Phase 13B admitted the exact B=1/4/8 event-byte values.  It did not admit
+    linear interpolation for previously unsupported batch sizes.  Phase 16G
+    therefore requires two identical audits of each new geometry, no
+    persistent allocator growth, and the existing family event count.
+    """
+
+    expected_count = None
+    authority: dict[str, Any] = {
+        "authority": "phase16g_batch_specific_repeated_event_topology",
+        "batch_size": batch,
+        "cache_persistent_growth_allowed": False,
+        "event_byte_extrapolation_used": False,
+    }
+    if family != "bf16":
+        historical = phase13b._eager_control(family=family, batch=1)
+        expected_count = int(historical["expected_allocation_event_count"])
+        authority.update(
+            {
+                "historical_report": historical["report"],
+                "historical_report_sha256": historical["report_sha256"],
+                "expected_allocation_event_count": expected_count,
+            }
         )
-        return passed, {
-            "authority": "historical_bf16_outer_model_ephemeral_allocation_contract",
-            "cache_persistent_growth_allowed": False,
-            "event_count_gated": False,
-            "persistent_allocator_state_exact": passed,
+    repeated_exact = bool(
+        record.allocation_event_count == repeat.allocation_event_count
+        and record.allocation_event_bytes == repeat.allocation_event_bytes
+        and record.event_counts == repeat.event_counts
+    )
+    persistent_exact = bool(
+        record.audit_available
+        and repeat.audit_available
+        and record.allocated_after == record.allocated_before
+        and record.reserved_after == record.reserved_before
+        and repeat.allocated_after == repeat.allocated_before
+        and repeat.reserved_after == repeat.reserved_before
+    )
+    count_exact = bool(
+        expected_count is None
+        or (
+            record.allocation_event_count == expected_count
+            and repeat.allocation_event_count == expected_count
+            and record.event_counts
+            == {
+                "alloc": expected_count,
+                "free_completed": expected_count,
+                "free_requested": expected_count,
+            }
+        )
+    )
+    passed = repeated_exact and persistent_exact and count_exact
+    authority.update(
+        {
+            "observed_allocation_event_count": record.allocation_event_count,
+            "observed_allocation_event_bytes": record.allocation_event_bytes,
+            "event_counts": record.event_counts,
+            "repeat_exact": repeated_exact,
+            "persistent_allocator_state_exact": persistent_exact,
+            "event_count_exact": count_exact,
         }
-    control = phase13b._eager_control(family=family, batch=batch)
-    return phase13b._eager_matches_outer_control(record, control), control
+    )
+    return passed, authority
 
 
 def _session_outputs_and_audits(session: Any) -> dict[str, Any]:
@@ -450,6 +505,10 @@ def _session_outputs_and_audits(session: Any) -> dict[str, Any]:
 
     with torch.inference_mode(), forced_flash_execution():
         eager_allocation = audit_cuda_allocations(
+            session._fixed_operation,
+            device=session.cache_device,
+        )
+        eager_allocation_repeat = audit_cuda_allocations(
             session._fixed_operation,
             device=session.cache_device,
         )
@@ -466,6 +525,7 @@ def _session_outputs_and_audits(session: Any) -> dict[str, Any]:
         "first_graph": first_graph,
         "second_graph": second_graph,
         "eager_allocation": eager_allocation,
+        "eager_allocation_repeat": eager_allocation_repeat,
         "graph_allocation": graph_allocation,
     }
 
@@ -508,6 +568,7 @@ def _record_for_session(
     )
     eager_allocation_passed, eager_control = _eager_allocation_passed(
         evidence["eager_allocation"],
+        evidence["eager_allocation_repeat"],
         family=family,
         batch=batch,
     )
@@ -565,6 +626,7 @@ def _record_for_session(
         "cache_geometry": geometry_passed,
         "allocation_error_below_one_percent": relative_error < 0.01,
         "eager_allocation_contract": eager_allocation_passed,
+        "eager_allocation_repeat_exact": eager_control["repeat_exact"],
         "graph_capture_replay": graph_passed,
         "zero_graph_replay_allocation": graph_allocation_passed,
         "eager_graph_agreement": eager_graph.passed,
@@ -596,6 +658,9 @@ def _record_for_session(
         "direct_restore_comparison": restored_direct.to_dict(),
         "eager_graph_comparison": eager_graph.to_dict(),
         "eager_allocation": evidence["eager_allocation"].to_dict(),
+        "eager_allocation_repeat": evidence[
+            "eager_allocation_repeat"
+        ].to_dict(),
         "eager_allocation_control": eager_control,
         "graph_allocation": evidence["graph_allocation"].to_dict(),
         "graph": dict(session.graph_evidence or {}),
@@ -848,6 +913,7 @@ def run_cuda_admission(
             mode_ids: dict[str, str] = {}
             restored_receipts: dict[str, dict[str, Any]] = {}
             geometry_fingerprints: dict[str, dict[str, str]] = {}
+            allocation_signatures: dict[str, tuple[int, int, str]] = {}
             for mode in MODES:
                 run_id = (
                     f"{campaign_id}-{configuration}-b{batch}-l4096-"
@@ -890,6 +956,16 @@ def run_cuda_admission(
                             record["cache_layout_fingerprint"]
                         ),
                     }
+                    allocation = record["eager_allocation"]
+                    allocation_signatures[mode] = (
+                        int(allocation["allocation_event_count"]),
+                        int(allocation["allocation_event_bytes"]),
+                        json.dumps(
+                            allocation["event_counts"],
+                            sort_keys=True,
+                            separators=(",", ":"),
+                        ),
+                    )
                 except BaseException as error:
                     record = {
                         "schema_version": POINT_SCHEMA,
@@ -922,6 +998,10 @@ def run_cuda_admission(
                 raise Phase16GError("eager/Graph adapter geometry fingerprint differs")
             if len(set(item["cache_layout_fingerprint"] for item in geometry_fingerprints.values())) != 1:
                 raise Phase16GError("eager/Graph cache layout fingerprint differs")
+            if len(set(allocation_signatures.values())) != 1:
+                raise Phase16GError(
+                    "eager allocation topology differs across fresh sessions"
+                )
             prefix_record = {
                 "schema_version": PREFIX_EVIDENCE_SCHEMA,
                 "status": "PASS",
@@ -944,6 +1024,7 @@ def run_cuda_admission(
                 "direct_output_sha256": direct_checksums,
                 "restored_run_ids": mode_ids,
                 "restore_receipts": restored_receipts,
+                "eager_allocation_cross_session_exact": True,
                 "raw_prefix_payload_published": False,
                 "local_prefix_state_preserved": True,
                 "timing_collected": False,
@@ -1155,6 +1236,7 @@ def validate_cuda_admission(root: Path) -> dict[str, Any]:
             or record.get("token_ids_exact") is not True
             or record.get("positions_exact") is not True
             or record.get("cache_tensor_shapes_exact") is not True
+            or record.get("eager_allocation_cross_session_exact") is not True
             or record.get("batch_broadcasting") is not False
             or record.get("implicit_repeat_or_truncation") is not False
             or record.get("raw_prefix_payload_published") is not False
