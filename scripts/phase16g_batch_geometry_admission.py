@@ -446,6 +446,8 @@ def _eager_allocation_passed(
         "batch_size": batch,
         "cache_persistent_growth_allowed": False,
         "event_byte_extrapolation_used": False,
+        "eager_priming_operations": 1,
+        "eager_priming_outside_allocation_audit": True,
     }
     if family != "bf16":
         historical = phase13b._eager_control(family=family, batch=1)
@@ -504,6 +506,12 @@ def _session_outputs_and_audits(session: Any) -> dict[str, Any]:
     from kvbench.runtime.backend import forced_flash_execution
 
     with torch.inference_mode(), forced_flash_execution():
+        # Graph setup need not reserve every segment used by the eager path at
+        # a new batch geometry. Prime that exact path once outside both audits
+        # so this records the post-warmup execution contract.
+        eager_prime = session._fixed_operation()
+        torch.cuda.synchronize(device=session.cache_device)
+        del eager_prime
         eager_allocation = audit_cuda_allocations(
             session._fixed_operation,
             device=session.cache_device,

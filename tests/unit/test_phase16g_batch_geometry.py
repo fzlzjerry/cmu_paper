@@ -7,6 +7,7 @@ from pathlib import Path
 import tempfile
 from types import SimpleNamespace
 import unittest
+from unittest.mock import patch
 
 import torch
 
@@ -374,6 +375,41 @@ class Phase16GBatchGeometryTests(unittest.TestCase):
                 family="turboquant",
                 batch=2,
             )[0]
+        )
+
+    def test_eager_allocator_is_primed_before_both_admission_audits(self) -> None:
+        calls: list[str] = []
+
+        class Session:
+            cache_device = torch.device("cpu")
+
+            @staticmethod
+            def _fixed_operation() -> torch.Tensor:
+                calls.append("operation")
+                return torch.zeros(1)
+
+        audit = SimpleNamespace()
+        session = Session()
+        session.graph = SimpleNamespace(replay=lambda: torch.zeros(1))
+
+        def fake_audit(operation, *, device):
+            del device
+            calls.append("audit")
+            operation()
+            return audit
+
+        with (
+            patch(
+                "kvbench.runtime.allocation.audit_cuda_allocations",
+                side_effect=fake_audit,
+            ),
+            patch("torch.cuda.synchronize"),
+        ):
+            phase16g._session_outputs_and_audits(session)
+
+        self.assertEqual(
+            calls[:5],
+            ["operation", "audit", "operation", "audit", "operation"],
         )
 
     def test_historical_method_admission_reports_are_unchanged(self) -> None:
