@@ -1728,17 +1728,19 @@ def validate_bundle(root: Path) -> dict[str, Any]:
     index = load_json(root / "batch-geometry-admission.json")
     validate_geometry_index(index)
     artifact = validate_local_artifact(root, environ={})
+    manifest = load_json(root / "manifest.json")
+    run_id = manifest.get("run_id")
     if (
-        artifact.run_id != cuda["campaign_id"]
-        or artifact.status != "PASS"
-        or load_json(root / "manifest.json").get("full_scan_executed") is not False
+        run_id != cuda["campaign_id"]
+        or manifest.get("status") != "PASS"
+        or manifest.get("full_scan_executed") is not False
     ):
         raise Phase16GError("final Phase 16G bundle identity differs")
     return {
         "status": "PASS",
-        "run_id": artifact.run_id,
+        "run_id": run_id,
         "root_sha256": artifact.root_sha256,
-        "object_count": artifact.object_count,
+        "object_count": len(artifact.files),
         "complete_last": True,
         "checksums": "PASS",
     }
