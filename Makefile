@@ -136,7 +136,7 @@ KIVI_REFERENCE_BUILD_REVISION := 3417ea0e7f322369eed21bb787a9a9a19b0a69bd
 .PHONY: bootstrap bootstrap-phase3 test checks format-check lint hot-path-check typecheck config-check
 .PHONY: provenance-check scope-check immutable-check package-lock-check
 .PHONY: phase3-package-lock-check test-cuda test-graph test-allocation
-.PHONY: smoke pilot full-scan profile-subset
+.PHONY: smoke pilot full-scan validate-full-scan test-phase16 profile-subset
 .PHONY: test-phase13f remediate-phase13-feasibility validate-phase13-feasibility
 .PHONY: test-phase13t validate-phase13-timeout
 .PHONY: densify-pilot-knees validate-pilot-densification
@@ -1899,6 +1899,13 @@ validate-phase13-timeout:
 full-scan:
 	@$(PHASE2_CLI) run --plan configs/plans/full_scan.yaml --dry-run
 	@echo '{"status":"validation_only","target":"full-scan","timing_collected":false}'
+
+test-phase16:
+	@$(PHASE3_ENV) $(PHASE3_PYTHON) -m unittest tests.unit.test_phase16_full_scan -v
+
+validate-full-scan:
+	@test -n "$(PHASE16_FULL_SCAN_ARTIFACT)" || { echo '{"status":"BLOCKED","reason":"PHASE16_FULL_SCAN_ARTIFACT_required"}' >&2; exit 2; }
+	@$(PHASE3_ENV) $(PHASE3_PYTHON) -m scripts.phase16_full_scan --validate-full-scan --artifact "$(PHASE16_FULL_SCAN_ARTIFACT)"
 
 profile-subset:
 	@$(PHASE2_CLI) run --plan configs/plans/profiler_subset.yaml --dry-run
