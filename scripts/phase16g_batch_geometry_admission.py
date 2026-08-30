@@ -47,6 +47,10 @@ POINT_SCHEMA = "kvbench-phase16g-admission-point-1.0.0"
 PREFIX_EVIDENCE_SCHEMA = "kvbench-phase16g-prefix-evidence-1.0.0"
 SANITIZER_SCHEMA = "kvbench-phase16g-sanitizer-evidence-1.0.0"
 BUNDLE_SCHEMA = "kvbench-phase16g-bundle-1.0.0"
+_SANITIZER_VERSION_RE = re.compile(
+    r"(?m)^Version [0-9]+(?:\.[0-9]+){2,3}(?: \(build [0-9]+\))? "
+    r"\(public-release\)$"
+)
 BASE_CONTEXT_LABELS = phase13.CONTEXT_LABELS
 MODES = ("eager", "cuda_graph")
 DECISION_ID = "0039"
@@ -1278,7 +1282,7 @@ def build_sanitizer_evidence(log_root: Path) -> dict[str, Any]:
     if not version_path.is_file() or version_path.is_symlink():
         raise Phase16GError("sanitizer version evidence is absent")
     version_text = version_path.read_text(encoding="utf-8").strip()
-    if "Compute Sanitizer version" not in version_text:
+    if not _compute_sanitizer_version_valid(version_text):
         raise Phase16GError("sanitizer version evidence differs")
     records: list[dict[str, Any]] = []
     for tool in ("memcheck", "initcheck"):
@@ -1368,7 +1372,9 @@ def validate_sanitizer_evidence(payload: Mapping[str, Any]) -> None:
         or payload.get("authorized_container_digest") != PHASE16G_CONTAINER_DIGEST
         or payload.get("zero_memory_errors") is not True
         or payload.get("zero_leaks") is not True
-        or "Compute Sanitizer version" not in str(payload.get("tool_version", ""))
+        or not _compute_sanitizer_version_valid(
+            str(payload.get("tool_version", ""))
+        )
         or _SHA256_RE.fullmatch(str(payload.get("tool_version_sha256", ""))) is None
         or not isinstance(records, list)
         or len(records) != len(expected)
@@ -1381,6 +1387,15 @@ def validate_sanitizer_evidence(payload: Mapping[str, Any]) -> None:
         )
     ):
         raise Phase16GError("sanitizer evidence contract differs")
+
+
+def _compute_sanitizer_version_valid(value: str) -> bool:
+    """Accept only the exact structured banner emitted by the locked tool."""
+
+    return (
+        value.splitlines()[:1] == ["NVIDIA (R) Compute Sanitizer"]
+        and _SANITIZER_VERSION_RE.search(value) is not None
+    )
 
 
 def build_geometry_index(

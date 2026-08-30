@@ -458,6 +458,26 @@ class Phase16GBatchGeometryTests(unittest.TestCase):
             ["graph_reset", "session_dropped", "gc", "empty_cache"],
         )
 
+    def test_compute_sanitizer_version_banner_is_exact_and_tamper_closed(
+        self,
+    ) -> None:
+        genuine = (
+            "NVIDIA (R) Compute Sanitizer\n"
+            "Copyright (c) 2020-2025 NVIDIA Corporation\n"
+            "Version 2025.3.1.0 (build 36400806) (public-release)"
+        )
+        self.assertTrue(phase16g._compute_sanitizer_version_valid(genuine))
+        self.assertFalse(
+            phase16g._compute_sanitizer_version_valid(
+                genuine.replace("NVIDIA (R) Compute Sanitizer", "other tool")
+            )
+        )
+        self.assertFalse(
+            phase16g._compute_sanitizer_version_valid(
+                genuine.replace("Version 2025.3.1.0", "Version unknown")
+            )
+        )
+
     def test_historical_method_admission_reports_are_unchanged(self) -> None:
         expected = {
             "docs/evidence/phase4/method-admission.json": "1362fd1817b8bb5706baaa09ed6e5115789fbc4d35d394f184d0b132a0e58d22",
