@@ -1351,6 +1351,7 @@ PHASE16G_ALLOWED_PATHS = frozenset(
         "scripts/validate_phase2.py",
         "src/kvbench/runtime/kivi_cache.py",
         "src/kvbench/runtime/kvquant_cache.py",
+        "src/kvbench/runtime/kvquant_session.py",
         "src/kvbench/runtime/turboquant_cache.py",
         "src/kvbench/schema/phase16g.py",
         "tests/cuda/phase16g_batch_sanitizer_probe.py",

@@ -13,7 +13,9 @@ import torch
 
 from kvbench.runtime.static_cache import BF16StaticCache
 from kvbench.runtime.kivi_cache import KIVIStaticCache
+from kvbench.runtime.kivi_cache import _raw_tensor_bytes_untimed
 from kvbench.runtime.kvquant_cache import KVQuantStaticCache
+from kvbench.runtime.kvquant_session import _key_active_entries_untimed
 from kvbench.runtime.turboquant_cache import TurboQuantStaticCache
 from kvbench.schema.phase16g import (
     PHASE16G_ADMITTED_BATCH_SIZES,
@@ -411,6 +413,19 @@ class Phase16GBatchGeometryTests(unittest.TestCase):
             calls[:5],
             ["operation", "audit", "operation", "audit", "operation"],
         )
+
+    def test_untimed_kivi_raw_buffer_preserves_exact_checksum_bytes(self) -> None:
+        tensor = torch.arange(257, dtype=torch.int32).reshape(257, 1)
+        legacy = bytes(tensor.untyped_storage())[
+            : tensor.numel() * tensor.element_size()
+        ]
+        current = bytes(_raw_tensor_bytes_untimed(tensor))
+        self.assertEqual(current, legacy)
+
+    def test_untimed_kvquant_count_buffer_preserves_exact_values(self) -> None:
+        counts = torch.tensor([[[3, 0, 7, 2, 5]]], dtype=torch.int32)
+        cache = SimpleNamespace(sink_tokens=1, key_active_counts=counts)
+        self.assertEqual(_key_active_entries_untimed(cache, 5), 12)
 
     def test_historical_method_admission_reports_are_unchanged(self) -> None:
         expected = {

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
+import ctypes
 from dataclasses import dataclass
 import hashlib
 import importlib
@@ -485,7 +486,10 @@ def _key_active_entries_untimed(
         .to(device="cpu", copy=True)
     )
     byte_count = int(selected.numel())
-    raw = bytes(selected.untyped_storage())[:byte_count]
+    raw_array = (ctypes.c_ubyte * byte_count).from_address(
+        int(selected.data_ptr())
+    )
+    raw = memoryview(raw_array).cast("B")
     if len(raw) != byte_count or byte_count % 4:
         raise EndpointSessionError("Key active-count bytes are incomplete")
     return sum(

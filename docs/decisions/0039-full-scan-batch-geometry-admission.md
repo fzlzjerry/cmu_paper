@@ -12,6 +12,11 @@ and checksum identities. The loader validates those stored identities only;
 it does not grant execution admission. Legacy v2 B=1/4/8 artifacts remain
 unchanged and readable.
 
+Untimed custody checksums may expose a fresh contiguous CPU tensor through a
+read-only byte buffer instead of iterating `UntypedStorage` one Python byte at
+a time. The byte sequence and digest are identical; this is outside decode,
+Graph replay, and timing and changes no stored tensor or cache semantics.
+
 After the checksum-bound Phase 16G B=2/B=16 numerical, allocation, path,
 prefix-restore, CUDA Graph, and focused sanitizer evidence passes and is
 durably published, the Full Scan execution gate admits exactly

@@ -9,6 +9,7 @@ kernel calls rather than cache growth or concatenation.
 
 from __future__ import annotations
 
+import ctypes
 from dataclasses import dataclass
 import hashlib
 import importlib
@@ -52,6 +53,17 @@ def _positive_int(value: int, name: str) -> int:
 
 def _storage_bytes(tensor: Any) -> int:
     return int(tensor.untyped_storage().nbytes())
+
+
+def _raw_tensor_bytes_untimed(tensor: Any) -> memoryview:
+    """Expose exact contiguous CPU tensor bytes without Python-byte iteration."""
+
+    byte_count = int(tensor.numel()) * int(tensor.element_size())
+    raw_array = (ctypes.c_ubyte * byte_count).from_address(int(tensor.data_ptr()))
+    raw_view = memoryview(raw_array).cast("B")
+    if len(raw_view) != byte_count:
+        raise CacheStateError("KIVI physical checksum storage is incomplete")
+    return raw_view
 
 
 @dataclass(frozen=True, slots=True)
@@ -1048,9 +1060,7 @@ class KIVIStaticCache:
         for name, tensor in tensors:
             copied = tensor.detach().to(device="cpu", copy=True).contiguous()
             byte_count = int(copied.numel()) * int(copied.element_size())
-            raw = bytes(copied.untyped_storage())[:byte_count]
-            if len(raw) != byte_count:
-                raise CacheStateError("KIVI physical checksum storage is incomplete")
+            raw = _raw_tensor_bytes_untimed(copied)
             digest.update(name.encode("ascii"))
             digest.update(str(tuple(int(item) for item in tensor.shape)).encode("ascii"))
             digest.update(str(tensor.dtype).encode("ascii"))
