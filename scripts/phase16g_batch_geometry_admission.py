@@ -248,11 +248,15 @@ def _prefix_positions(*, batch: int, historical: int, device: Any) -> Any:
 
 
 def _release_session(session: Any) -> None:
-    import torch
-
     if session is not None and session.graph is not None:
         session.graph.graph.reset()
-    del session
+
+
+def _reclaim_cuda_allocator() -> None:
+    """Release cached blocks only after the caller dropped its session."""
+
+    import torch
+
     gc.collect()
     torch.cuda.empty_cache()
 
@@ -916,7 +920,7 @@ def run_cuda_admission(
                     _release_session(direct_session)
                     direct_session = None
                 del prefix, decode, positions
-                gc.collect()
+                _reclaim_cuda_allocator()
 
             mode_ids: dict[str, str] = {}
             restored_receipts: dict[str, dict[str, Any]] = {}
@@ -996,7 +1000,7 @@ def run_cuda_admission(
                         _release_session(session)
                         session = None
                     del restored_prefix, restored_decode
-                    gc.collect()
+                    _reclaim_cuda_allocator()
                 _write_run_record(output, record)
                 short_records.append(record)
                 if record["status"] != "PASS":
@@ -1118,7 +1122,7 @@ def run_cuda_admission(
                 _release_session(session)
                 session = None
             del prefix, decode
-            gc.collect()
+            _reclaim_cuda_allocator()
         _write_run_record(output, record)
         max_records.append(record)
         if record["status"] != "PASS":

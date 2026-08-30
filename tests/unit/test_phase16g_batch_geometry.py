@@ -427,6 +427,37 @@ class Phase16GBatchGeometryTests(unittest.TestCase):
         cache = SimpleNamespace(sink_tokens=1, key_active_counts=counts)
         self.assertEqual(_key_active_entries_untimed(cache, 5), 12)
 
+    def test_allocator_reclaim_occurs_after_caller_drops_session(self) -> None:
+        events: list[str] = []
+
+        class Graph:
+            @staticmethod
+            def reset() -> None:
+                events.append("graph_reset")
+
+        class Session:
+            graph = SimpleNamespace(graph=Graph())
+
+            def __del__(self) -> None:
+                events.append("session_dropped")
+
+        session = Session()
+        with (
+            patch("gc.collect", side_effect=lambda: events.append("gc")),
+            patch(
+                "torch.cuda.empty_cache",
+                side_effect=lambda: events.append("empty_cache"),
+            ),
+        ):
+            phase16g._release_session(session)
+            session = None
+            phase16g._reclaim_cuda_allocator()
+
+        self.assertEqual(
+            events,
+            ["graph_reset", "session_dropped", "gc", "empty_cache"],
+        )
+
     def test_historical_method_admission_reports_are_unchanged(self) -> None:
         expected = {
             "docs/evidence/phase4/method-admission.json": "1362fd1817b8bb5706baaa09ed6e5115789fbc4d35d394f184d0b132a0e58d22",
@@ -453,6 +484,7 @@ class Phase16GBatchGeometryTests(unittest.TestCase):
                 "scripts/validate_phase2.py",
                 "src/kvbench/runtime/kivi_cache.py",
                 "src/kvbench/runtime/kvquant_cache.py",
+                "src/kvbench/runtime/kvquant_session.py",
                 "src/kvbench/runtime/turboquant_cache.py",
                 "src/kvbench/schema/phase16g.py",
                 "tests/cuda/phase16g_batch_sanitizer_probe.py",
