@@ -447,18 +447,19 @@ def _session_outputs_and_audits(session: Any) -> dict[str, Any]:
 
     from kvbench.runtime.allocation import audit_cuda_allocations
 
-    eager_allocation = audit_cuda_allocations(
-        session._fixed_operation,
-        device=session.cache_device,
-    )
-    graph_allocation = audit_cuda_allocations(
-        session.graph.replay,
-        device=session.cache_device,
-    )
-    eager = session._fixed_operation().detach().to(device="cpu", copy=True).clone()
-    first_graph = session.graph.replay().detach().to(device="cpu", copy=True).clone()
-    second_graph = session.graph.replay().detach().to(device="cpu", copy=True).clone()
-    torch.cuda.synchronize(device=session.cache_device)
+    with torch.inference_mode():
+        eager_allocation = audit_cuda_allocations(
+            session._fixed_operation,
+            device=session.cache_device,
+        )
+        graph_allocation = audit_cuda_allocations(
+            session.graph.replay,
+            device=session.cache_device,
+        )
+        eager = session._fixed_operation().detach().to(device="cpu", copy=True).clone()
+        first_graph = session.graph.replay().detach().to(device="cpu", copy=True).clone()
+        second_graph = session.graph.replay().detach().to(device="cpu", copy=True).clone()
+        torch.cuda.synchronize(device=session.cache_device)
     return {
         "eager": eager,
         "first_graph": first_graph,
@@ -611,9 +612,10 @@ def _record_for_session(
 def _direct_output_record(session: Any) -> dict[str, Any]:
     import torch
 
-    eager = session._fixed_operation().detach().to(device="cpu", copy=True).clone()
-    graph = session.graph.replay().detach().to(device="cpu", copy=True).clone()
-    torch.cuda.synchronize(device=session.cache_device)
+    with torch.inference_mode():
+        eager = session._fixed_operation().detach().to(device="cpu", copy=True).clone()
+        graph = session.graph.replay().detach().to(device="cpu", copy=True).clone()
+        torch.cuda.synchronize(device=session.cache_device)
     return {
         "eager": eager,
         "cuda_graph": graph,
@@ -696,13 +698,14 @@ def _max_smoke_record(
 
     pointers_before = phase12._phase12_session_pointers(session)
     history_before = session.current_historical_prefix_sha256()
-    allocation = audit_cuda_allocations(
-        session.graph.replay,
-        device=session.cache_device,
-    )
-    first = session.graph.replay().detach().to(device="cpu", copy=True).clone()
-    second = session.graph.replay().detach().to(device="cpu", copy=True).clone()
-    torch.cuda.synchronize(device=session.cache_device)
+    with torch.inference_mode():
+        allocation = audit_cuda_allocations(
+            session.graph.replay,
+            device=session.cache_device,
+        )
+        first = session.graph.replay().detach().to(device="cpu", copy=True).clone()
+        second = session.graph.replay().detach().to(device="cpu", copy=True).clone()
+        torch.cuda.synchronize(device=session.cache_device)
     accounting = session.method_cache_accounting()
     allocated = int(accounting["allocated_bytes"])
     predicted = int(accounting["predicted_tensor_bytes"])
