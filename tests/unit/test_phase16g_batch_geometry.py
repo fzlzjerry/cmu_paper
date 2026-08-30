@@ -472,6 +472,26 @@ class Phase16GBatchGeometryTests(unittest.TestCase):
                 genuine.replace("NVIDIA (R) Compute Sanitizer", "other tool")
             )
         )
+
+    def test_compute_sanitizer_result_channel_is_unique_and_tamper_closed(
+        self,
+    ) -> None:
+        result = '{"result":{"batch_size":16},"status":"PASS"}'
+        genuine = (
+            "========= COMPUTE-SANITIZER\n"
+            f"{result}\n"
+            "========= ERROR SUMMARY: 0 errors\n"
+        )
+        self.assertEqual(
+            phase16g._compute_sanitizer_result_channel(genuine)["status"],
+            "PASS",
+        )
+        with self.assertRaises(ValueError):
+            phase16g._compute_sanitizer_result_channel(genuine + result)
+        with self.assertRaises(ValueError):
+            phase16g._compute_sanitizer_result_channel(
+                genuine + "unexpected trailing text\n"
+            )
         self.assertFalse(
             phase16g._compute_sanitizer_version_valid(
                 genuine.replace("Version 2025.3.1.0", "Version unknown")

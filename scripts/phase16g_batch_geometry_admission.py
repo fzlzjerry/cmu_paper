@@ -1297,8 +1297,8 @@ def build_sanitizer_evidence(log_root: Path) -> dict[str, Any]:
             stderr = stderr_path.read_text(encoding="utf-8")
             try:
                 exit_code = int(exit_path.read_text(encoding="ascii").strip())
-                channel = json.loads(stdout.strip().splitlines()[-1])
-            except (ValueError, IndexError, json.JSONDecodeError) as error:
+                channel = _compute_sanitizer_result_channel(stdout)
+            except (ValueError, json.JSONDecodeError) as error:
                 raise Phase16GError("sanitizer result channel differs") from error
             combined = stdout + "\n" + stderr
             zero_errors = "ERROR SUMMARY: 0 errors" in combined
@@ -1396,6 +1396,27 @@ def _compute_sanitizer_version_valid(value: str) -> bool:
         value.splitlines()[:1] == ["NVIDIA (R) Compute Sanitizer"]
         and _SANITIZER_VERSION_RE.search(value) is not None
     )
+
+
+def _compute_sanitizer_result_channel(value: str) -> dict[str, Any]:
+    """Extract exactly one JSON result amid locked sanitizer banner lines."""
+
+    candidates: list[dict[str, Any]] = []
+    for line in value.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if stripped.startswith("========="):
+            continue
+        if not stripped.startswith("{"):
+            raise ValueError("unexpected sanitizer stdout line")
+        parsed = json.loads(stripped)
+        if not isinstance(parsed, dict):
+            raise ValueError("sanitizer result is not an object")
+        candidates.append(parsed)
+    if len(candidates) != 1:
+        raise ValueError("sanitizer result channel cardinality differs")
+    return candidates[0]
 
 
 def build_geometry_index(
