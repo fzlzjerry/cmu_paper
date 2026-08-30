@@ -1,0 +1,619 @@
+{
+  "admitted_full_scan_batches": [
+    1,
+    2,
+    4,
+    8,
+    16
+  ],
+  "authorized_container_digest": "sha256:059bc9be89387369d7de9e3e9b26d85b6e9902c41e7dbf002ebc45edd188fb7e",
+  "created_at_utc": "2026-08-30T07:51:26.522940Z",
+  "decision_id": "0039",
+  "execution_git_sha": "6c829edad5cd0401051a20ee42fc61eeb612a9ba",
+  "existing_geometry_authorities": {
+    "bf16": {
+      "existing_batches": [
+        1,
+        4,
+        8
+      ],
+      "historical_evidence_modified": false,
+      "path": "docs/evidence/phase4/method-admission.json",
+      "sha256": "1362fd1817b8bb5706baaa09ed6e5115789fbc4d35d394f184d0b132a0e58d22"
+    },
+    "k2v2": {
+      "existing_batches": [
+        1,
+        4,
+        8
+      ],
+      "historical_evidence_modified": false,
+      "path": "docs/evidence/phase13b/kivi-method-admission.json",
+      "sha256": "1e91730ac56af37e03d80edce7979a509d52049428faad89f61e61dc6bd48c51"
+    },
+    "k2v4": {
+      "existing_batches": [
+        1,
+        4,
+        8
+      ],
+      "historical_evidence_modified": false,
+      "path": "docs/evidence/phase13b/kivi-method-admission.json",
+      "sha256": "1e91730ac56af37e03d80edce7979a509d52049428faad89f61e61dc6bd48c51"
+    },
+    "k4v4": {
+      "existing_batches": [
+        1,
+        4,
+        8
+      ],
+      "historical_evidence_modified": false,
+      "path": "docs/evidence/phase13b/kivi-method-admission.json",
+      "sha256": "1e91730ac56af37e03d80edce7979a509d52049428faad89f61e61dc6bd48c51"
+    },
+    "kvq2": {
+      "existing_batches": [
+        1,
+        4,
+        8
+      ],
+      "historical_evidence_modified": false,
+      "path": "docs/evidence/phase13b/kvquant-method-admission.json",
+      "sha256": "e1cee8e1c514f9cf6323b5e710480c1fefab2804e5f4eafe6c473b29f4768481"
+    },
+    "kvq3": {
+      "existing_batches": [
+        1,
+        4,
+        8
+      ],
+      "historical_evidence_modified": false,
+      "path": "docs/evidence/phase13b/kvquant-method-admission.json",
+      "sha256": "e1cee8e1c514f9cf6323b5e710480c1fefab2804e5f4eafe6c473b29f4768481"
+    },
+    "kvq4": {
+      "existing_batches": [
+        1,
+        4,
+        8
+      ],
+      "historical_evidence_modified": false,
+      "path": "docs/evidence/phase13rq4/kvquant-q4-method-admission.json",
+      "sha256": "75605637f460a309081e1e0a4065e90e8e14194d365250cb513092616ef89ec7"
+    },
+    "tq_3bit_nc": {
+      "existing_batches": [
+        1,
+        4,
+        8
+      ],
+      "historical_evidence_modified": false,
+      "path": "docs/evidence/phase13b/turboquant-method-admission.json",
+      "sha256": "49799ef89646ec008a530c5180fdcef6cd4af9ca0d5772fe2b01d6e775e3b1c0"
+    },
+    "tq_4bit_nc": {
+      "existing_batches": [
+        1,
+        4,
+        8
+      ],
+      "historical_evidence_modified": false,
+      "path": "docs/evidence/phase13b/turboquant-method-admission.json",
+      "sha256": "49799ef89646ec008a530c5180fdcef6cd4af9ca0d5772fe2b01d6e775e3b1c0"
+    },
+    "tq_k3v4_nc": {
+      "existing_batches": [
+        1,
+        4,
+        8
+      ],
+      "historical_evidence_modified": false,
+      "path": "docs/evidence/phase13b/turboquant-method-admission.json",
+      "sha256": "49799ef89646ec008a530c5180fdcef6cd4af9ca0d5772fe2b01d6e775e3b1c0"
+    }
+  },
+  "existing_geometry_batches_unchanged": [
+    1,
+    4,
+    8
+  ],
+  "full_scan": "READY",
+  "gates": {
+    "G0": "PASS",
+    "G1": "PASS",
+    "G2": "PASS",
+    "G3": "PASS",
+    "G4": "PASS",
+    "G5": "PASS"
+  },
+  "maximum_feasible_smoke_count": 10,
+  "new_geometry_records": {
+    "bf16/B16": {
+      "adapter_config_fingerprint": "6ef408ff9a7959a8fbd42ac9d66078d980638a7fadbbdefcecd6b7805352aca2",
+      "allocation": "PASS",
+      "batch_size": 16,
+      "cache_layout_fingerprint": "4cf6a630fe0a57aa612e119854b9c3a81040e9e9ffddd64e17d1d2928ea107c8",
+      "configuration": "bf16",
+      "execution_path": "PASS",
+      "maximum_context_graph_smoke": "PASS",
+      "maximum_feasible_context": 16384,
+      "method_config_fingerprint": "81ca6a0d74727a9c8a54f14d6d222dee502ee5e9a9ab6e8c9a03b4fed98f371b",
+      "prefix_restore": "PASS",
+      "prefix_state_sha256": "5c7347db44cb1ea307a4eb55402f5a1d4e0e8f729ed502ce167e3cc349c71e75",
+      "sanitizer_coverage": {
+        "reason": "no_prefix_cuda_change",
+        "required": false
+      },
+      "short_cuda_graph": "PASS",
+      "short_cuda_graph_run_id": "phase16g-20260830t061918945302z-6c829eda-f16c0d-bf16-b16-l4096-graph",
+      "short_eager": "PASS",
+      "short_eager_run_id": "phase16g-20260830t061918945302z-6c829eda-f16c0d-bf16-b16-l4096-eager",
+      "status": "PASS"
+    },
+    "bf16/B2": {
+      "adapter_config_fingerprint": "c674df8e284faebc17a7c1dbd0a910977793f0a407ab2c759c8121128676dfdd",
+      "allocation": "PASS",
+      "batch_size": 2,
+      "cache_layout_fingerprint": "e86bb8db910442884015f674466879d0fad3653419f1550773ffe4f087b59da2",
+      "configuration": "bf16",
+      "execution_path": "PASS",
+      "maximum_context_graph_smoke": "NOT_APPLICABLE",
+      "maximum_feasible_context": null,
+      "method_config_fingerprint": "81ca6a0d74727a9c8a54f14d6d222dee502ee5e9a9ab6e8c9a03b4fed98f371b",
+      "prefix_restore": "PASS",
+      "prefix_state_sha256": "e7bbc06454a66027aa4762c7d58d15db113d994b131737c9e7a2828f1d99b715",
+      "sanitizer_coverage": {
+        "reason": "no_prefix_cuda_change",
+        "required": false
+      },
+      "short_cuda_graph": "PASS",
+      "short_cuda_graph_run_id": "phase16g-20260830t061918945302z-6c829eda-f16c0d-bf16-b2-l4096-graph",
+      "short_eager": "PASS",
+      "short_eager_run_id": "phase16g-20260830t061918945302z-6c829eda-f16c0d-bf16-b2-l4096-eager",
+      "status": "PASS"
+    },
+    "k2v2/B16": {
+      "adapter_config_fingerprint": "e2f7f88b0e749dda8865c9740c13876cc67a478809d3c58feb92f1633b08c40b",
+      "allocation": "PASS",
+      "batch_size": 16,
+      "cache_layout_fingerprint": "4afafae70afed9924196ddc4a0ae69c9dfde81d3d8d995cffacf05cd1923dcd7",
+      "configuration": "k2v2",
+      "execution_path": "PASS",
+      "maximum_context_graph_smoke": "PASS",
+      "maximum_feasible_context": 24576,
+      "method_config_fingerprint": "667395cefa882efc7c54f9088e3706dcdc3ba33c8734bdf8de9e0dd8ae1124b8",
+      "prefix_restore": "PASS",
+      "prefix_state_sha256": "e6825a61d1f13a1c8a90067b466eecd29a537cf05bba5ec0236ecd915f52702c",
+      "sanitizer_coverage": {
+        "covered_by": [
+          "k2v2"
+        ],
+        "required": true
+      },
+      "short_cuda_graph": "PASS",
+      "short_cuda_graph_run_id": "phase16g-20260830t061918945302z-6c829eda-f16c0d-k2v2-b16-l4096-graph",
+      "short_eager": "PASS",
+      "short_eager_run_id": "phase16g-20260830t061918945302z-6c829eda-f16c0d-k2v2-b16-l4096-eager",
+      "status": "PASS"
+    },
+    "k2v2/B2": {
+      "adapter_config_fingerprint": "7b14ad3e33150e06a967144326a5e0c9722eda822962a00984b1617f7dfdf79c",
+      "allocation": "PASS",
+      "batch_size": 2,
+      "cache_layout_fingerprint": "d1a8cccf374da4c724c9a87bce106854f2d947f4d23ee5b5d4adcffb946587b3",
+      "configuration": "k2v2",
+      "execution_path": "PASS",
+      "maximum_context_graph_smoke": "NOT_APPLICABLE",
+      "maximum_feasible_context": null,
+      "method_config_fingerprint": "667395cefa882efc7c54f9088e3706dcdc3ba33c8734bdf8de9e0dd8ae1124b8",
+      "prefix_restore": "PASS",
+      "prefix_state_sha256": "6e519334945a12504d0c4d8667b80dadf73ac35abf3d845bd4e22166c899f48c",
+      "sanitizer_coverage": {
+        "covered_by": [
+          "k2v2"
+        ],
+        "required": true
+      },
+      "short_cuda_graph": "PASS",
+      "short_cuda_graph_run_id": "phase16g-20260830t061918945302z-6c829eda-f16c0d-k2v2-b2-l4096-graph",
+      "short_eager": "PASS",
+      "short_eager_run_id": "phase16g-20260830t061918945302z-6c829eda-f16c0d-k2v2-b2-l4096-eager",
+      "status": "PASS"
+    },
+    "k2v4/B16": {
+      "adapter_config_fingerprint": "a1fd3ef9a0db134865e4cc2a257202664ca870b79c5290075d05c5366f752905",
+      "allocation": "PASS",
+      "batch_size": 16,
+      "cache_layout_fingerprint": "864a0be3bd2f2bd1c18b2c837a3692b8211344cf1e5b310330f6df17246f1c33",
+      "configuration": "k2v4",
+      "execution_path": "PASS",
+      "maximum_context_graph_smoke": "PASS",
+      "maximum_feasible_context": 24576,
+      "method_config_fingerprint": "568493e09cad122088716533c954beb6b25a01209fa28016f761b2ede4930a3f",
+      "prefix_restore": "PASS",
+      "prefix_state_sha256": "23ca3a6b96a6a2654ebf6faeeaa1371a781e47b83ccdafe058cbd32487ee9415",
+      "sanitizer_coverage": {
+        "covered_by": [
+          "k4v4",
+          "k2v2"
+        ],
+        "required": true
+      },
+      "short_cuda_graph": "PASS",
+      "short_cuda_graph_run_id": "phase16g-20260830t061918945302z-6c829eda-f16c0d-k2v4-b16-l4096-graph",
+      "short_eager": "PASS",
+      "short_eager_run_id": "phase16g-20260830t061918945302z-6c829eda-f16c0d-k2v4-b16-l4096-eager",
+      "status": "PASS"
+    },
+    "k2v4/B2": {
+      "adapter_config_fingerprint": "96a48daf230f2ddd6ac2aa13a68f2537ee11c22680325921274b1e47ba1fe80d",
+      "allocation": "PASS",
+      "batch_size": 2,
+      "cache_layout_fingerprint": "680c189fedd31b2ced1df27c1fceb2efc9dbc378a8d1782167bfbfe4e6fa69c6",
+      "configuration": "k2v4",
+      "execution_path": "PASS",
+      "maximum_context_graph_smoke": "NOT_APPLICABLE",
+      "maximum_feasible_context": null,
+      "method_config_fingerprint": "568493e09cad122088716533c954beb6b25a01209fa28016f761b2ede4930a3f",
+      "prefix_restore": "PASS",
+      "prefix_state_sha256": "fe1e8176b3848dad5b7c37b6065ea03ee74a550aeef6e1029c561c4b7b337881",
+      "sanitizer_coverage": {
+        "covered_by": [
+          "k4v4",
+          "k2v2"
+        ],
+        "required": true
+      },
+      "short_cuda_graph": "PASS",
+      "short_cuda_graph_run_id": "phase16g-20260830t061918945302z-6c829eda-f16c0d-k2v4-b2-l4096-graph",
+      "short_eager": "PASS",
+      "short_eager_run_id": "phase16g-20260830t061918945302z-6c829eda-f16c0d-k2v4-b2-l4096-eager",
+      "status": "PASS"
+    },
+    "k4v4/B16": {
+      "adapter_config_fingerprint": "cf712c789e8fffebea2fbf18e96177d32a72f6cf323fb28ac7368baa0904df7a",
+      "allocation": "PASS",
+      "batch_size": 16,
+      "cache_layout_fingerprint": "a02e40b1bad6bb505b320cead3e23859fe92924eb24199dc0e7a53f6c71085d2",
+      "configuration": "k4v4",
+      "execution_path": "PASS",
+      "maximum_context_graph_smoke": "PASS",
+      "maximum_feasible_context": 24576,
+      "method_config_fingerprint": "97289ed9c875e27013ddcf7659fc6e849b3d438c58d0d86bd3dcac5d82eefb09",
+      "prefix_restore": "PASS",
+      "prefix_state_sha256": "c49590bda925e825f402c00b8d9cac072a1eaa20652b1b7001de73ad366e9377",
+      "sanitizer_coverage": {
+        "covered_by": [
+          "k4v4"
+        ],
+        "required": true
+      },
+      "short_cuda_graph": "PASS",
+      "short_cuda_graph_run_id": "phase16g-20260830t061918945302z-6c829eda-f16c0d-k4v4-b16-l4096-graph",
+      "short_eager": "PASS",
+      "short_eager_run_id": "phase16g-20260830t061918945302z-6c829eda-f16c0d-k4v4-b16-l4096-eager",
+      "status": "PASS"
+    },
+    "k4v4/B2": {
+      "adapter_config_fingerprint": "f2121351163541f002f16abda0f3e259e7b9499253747173faa59e56b0e4e172",
+      "allocation": "PASS",
+      "batch_size": 2,
+      "cache_layout_fingerprint": "87e978a8c520a075091bb181edb2cd39690e8e299fe6d4efbb965815987e5f0c",
+      "configuration": "k4v4",
+      "execution_path": "PASS",
+      "maximum_context_graph_smoke": "NOT_APPLICABLE",
+      "maximum_feasible_context": null,
+      "method_config_fingerprint": "97289ed9c875e27013ddcf7659fc6e849b3d438c58d0d86bd3dcac5d82eefb09",
+      "prefix_restore": "PASS",
+      "prefix_state_sha256": "9bc63d31ff177952e6331eb0bbd441ad8ea7677fde350ee78a03880712c49e9a",
+      "sanitizer_coverage": {
+        "covered_by": [
+          "k4v4"
+        ],
+        "required": true
+      },
+      "short_cuda_graph": "PASS",
+      "short_cuda_graph_run_id": "phase16g-20260830t061918945302z-6c829eda-f16c0d-k4v4-b2-l4096-graph",
+      "short_eager": "PASS",
+      "short_eager_run_id": "phase16g-20260830t061918945302z-6c829eda-f16c0d-k4v4-b2-l4096-eager",
+      "status": "PASS"
+    },
+    "kvq2/B16": {
+      "adapter_config_fingerprint": "972da057be870f8442c4c00e56682d68591ceace68cd2b53bbb2de8a02dadca7",
+      "allocation": "PASS",
+      "batch_size": 16,
+      "cache_layout_fingerprint": "89058825614d6ee6cf2bee9ae3e7723d106db2ff93f3d6754e6a9bcd47dcc0f8",
+      "configuration": "kvq2",
+      "execution_path": "PASS",
+      "maximum_context_graph_smoke": "PASS",
+      "maximum_feasible_context": 24576,
+      "method_config_fingerprint": "eb75d6cbf8ff27365cd2799c4e0232649c94d6f094cb4d041bbe8c3ac1cda5ee",
+      "prefix_restore": "PASS",
+      "prefix_state_sha256": "946c17390b0a2deb6bbc8babcb8e4fd4e36c4f3f1ab40717f9f86be78f597ea4",
+      "sanitizer_coverage": {
+        "covered_by": [
+          "kvq2"
+        ],
+        "required": true
+      },
+      "short_cuda_graph": "PASS",
+      "short_cuda_graph_run_id": "phase16g-20260830t061918945302z-6c829eda-f16c0d-kvq2-b16-l4096-graph",
+      "short_eager": "PASS",
+      "short_eager_run_id": "phase16g-20260830t061918945302z-6c829eda-f16c0d-kvq2-b16-l4096-eager",
+      "status": "PASS"
+    },
+    "kvq2/B2": {
+      "adapter_config_fingerprint": "00edd41c05e662b09ffd9ca5114f0b8a5a61015f9a87715fc6a746b42a21ca0b",
+      "allocation": "PASS",
+      "batch_size": 2,
+      "cache_layout_fingerprint": "78f73bb465ec9f9ba424136e1956c445d2d8267fa6687b4a14d935a1ab297b5b",
+      "configuration": "kvq2",
+      "execution_path": "PASS",
+      "maximum_context_graph_smoke": "NOT_APPLICABLE",
+      "maximum_feasible_context": null,
+      "method_config_fingerprint": "eb75d6cbf8ff27365cd2799c4e0232649c94d6f094cb4d041bbe8c3ac1cda5ee",
+      "prefix_restore": "PASS",
+      "prefix_state_sha256": "bd59b8af204141c3e98b769e5f546a77b65e26bba1f9c4552c004739c21a94fe",
+      "sanitizer_coverage": {
+        "covered_by": [
+          "kvq2"
+        ],
+        "required": true
+      },
+      "short_cuda_graph": "PASS",
+      "short_cuda_graph_run_id": "phase16g-20260830t061918945302z-6c829eda-f16c0d-kvq2-b2-l4096-graph",
+      "short_eager": "PASS",
+      "short_eager_run_id": "phase16g-20260830t061918945302z-6c829eda-f16c0d-kvq2-b2-l4096-eager",
+      "status": "PASS"
+    },
+    "kvq3/B16": {
+      "adapter_config_fingerprint": "81db48c6723b8a276fdd31b1ece179f12daad26d03f0b1a93c90aa6d6a4e427b",
+      "allocation": "PASS",
+      "batch_size": 16,
+      "cache_layout_fingerprint": "7af1fdca08181a04531267bc86764b1c930dcc9d5b4001e792d0fe849aecf020",
+      "configuration": "kvq3",
+      "execution_path": "PASS",
+      "maximum_context_graph_smoke": "PASS",
+      "maximum_feasible_context": 24576,
+      "method_config_fingerprint": "2f0d1a99db2e6884745b6cd54c50eedfa17744b89a3e8b2ffd840986126bd802",
+      "prefix_restore": "PASS",
+      "prefix_state_sha256": "a29a0a7b0979afacb0496cf17fc5e520eb9254442ffb7e6c9ff1836d1c63bae9",
+      "sanitizer_coverage": {
+        "covered_by": [
+          "kvq3"
+        ],
+        "required": true
+      },
+      "short_cuda_graph": "PASS",
+      "short_cuda_graph_run_id": "phase16g-20260830t061918945302z-6c829eda-f16c0d-kvq3-b16-l4096-graph",
+      "short_eager": "PASS",
+      "short_eager_run_id": "phase16g-20260830t061918945302z-6c829eda-f16c0d-kvq3-b16-l4096-eager",
+      "status": "PASS"
+    },
+    "kvq3/B2": {
+      "adapter_config_fingerprint": "768b5073d819747f4887bfd71109270dfed51340ece6447e85ad54f81b21f2a3",
+      "allocation": "PASS",
+      "batch_size": 2,
+      "cache_layout_fingerprint": "c1bd1d71d4db452c30b9281559ef6a5561cbc6b40c816ac9363cb9889b986aa8",
+      "configuration": "kvq3",
+      "execution_path": "PASS",
+      "maximum_context_graph_smoke": "NOT_APPLICABLE",
+      "maximum_feasible_context": null,
+      "method_config_fingerprint": "2f0d1a99db2e6884745b6cd54c50eedfa17744b89a3e8b2ffd840986126bd802",
+      "prefix_restore": "PASS",
+      "prefix_state_sha256": "ea2eb20b00ff552b6b2584512df8207f8542acaf718b3e10c903885253fc7473",
+      "sanitizer_coverage": {
+        "covered_by": [
+          "kvq3"
+        ],
+        "required": true
+      },
+      "short_cuda_graph": "PASS",
+      "short_cuda_graph_run_id": "phase16g-20260830t061918945302z-6c829eda-f16c0d-kvq3-b2-l4096-graph",
+      "short_eager": "PASS",
+      "short_eager_run_id": "phase16g-20260830t061918945302z-6c829eda-f16c0d-kvq3-b2-l4096-eager",
+      "status": "PASS"
+    },
+    "kvq4/B16": {
+      "adapter_config_fingerprint": "c76af662ebc442971c609914c6fb1c61342910adf1520b2908dfc0a0fefeaafe",
+      "allocation": "PASS",
+      "batch_size": 16,
+      "cache_layout_fingerprint": "294b3716d5f0cca083a6f67d702fcf2ef249dbef84f62681aa3355e7d3d49180",
+      "configuration": "kvq4",
+      "execution_path": "PASS",
+      "maximum_context_graph_smoke": "PASS",
+      "maximum_feasible_context": 24576,
+      "method_config_fingerprint": "27b3af27e153491112ef974ea3a6d813987bfcb5083a699ce131fa3332c9703b",
+      "prefix_restore": "PASS",
+      "prefix_state_sha256": "48e272e0daf0bc574802662eec8f2e3eb9d114a1429cb917246014f5f5794ba0",
+      "sanitizer_coverage": {
+        "covered_by": [
+          "kvq4"
+        ],
+        "required": true
+      },
+      "short_cuda_graph": "PASS",
+      "short_cuda_graph_run_id": "phase16g-20260830t061918945302z-6c829eda-f16c0d-kvq4-b16-l4096-graph",
+      "short_eager": "PASS",
+      "short_eager_run_id": "phase16g-20260830t061918945302z-6c829eda-f16c0d-kvq4-b16-l4096-eager",
+      "status": "PASS"
+    },
+    "kvq4/B2": {
+      "adapter_config_fingerprint": "37e27c3b27a870caeeb25be62bbca1d64958a063e0bd4bee561eef48f7f917fb",
+      "allocation": "PASS",
+      "batch_size": 2,
+      "cache_layout_fingerprint": "6d8edabdd07797b0cad11b0104728abf90a71e8e18e7ded8b033189c4ca71e19",
+      "configuration": "kvq4",
+      "execution_path": "PASS",
+      "maximum_context_graph_smoke": "NOT_APPLICABLE",
+      "maximum_feasible_context": null,
+      "method_config_fingerprint": "27b3af27e153491112ef974ea3a6d813987bfcb5083a699ce131fa3332c9703b",
+      "prefix_restore": "PASS",
+      "prefix_state_sha256": "0eb0d66d7d15d06e367b8da8062a8ff4ab81d37c80190f876d5957c0ee83ed3a",
+      "sanitizer_coverage": {
+        "covered_by": [
+          "kvq4"
+        ],
+        "required": true
+      },
+      "short_cuda_graph": "PASS",
+      "short_cuda_graph_run_id": "phase16g-20260830t061918945302z-6c829eda-f16c0d-kvq4-b2-l4096-graph",
+      "short_eager": "PASS",
+      "short_eager_run_id": "phase16g-20260830t061918945302z-6c829eda-f16c0d-kvq4-b2-l4096-eager",
+      "status": "PASS"
+    },
+    "tq_3bit_nc/B16": {
+      "adapter_config_fingerprint": "b8072ca87e63bcba9eddd8f1d0bc18e5f2bd3d2110315a4ca7581e6e522511f0",
+      "allocation": "PASS",
+      "batch_size": 16,
+      "cache_layout_fingerprint": "498ec600a76aece6bdb0b4a6905a50d97320fb29fae81f708b2d86bf57b2aff6",
+      "configuration": "tq_3bit_nc",
+      "execution_path": "PASS",
+      "maximum_context_graph_smoke": "PASS",
+      "maximum_feasible_context": 24576,
+      "method_config_fingerprint": "0d17950c2502fe7399cf5a896efa429861eb53194060ab95a7369287889dc49a",
+      "prefix_restore": "PASS",
+      "prefix_state_sha256": "58c9ef9492f583640e0c79dcb499c5fe9974646c06150e88c900a973eb276ed0",
+      "sanitizer_coverage": {
+        "covered_by": [
+          "tq_3bit_nc"
+        ],
+        "required": true
+      },
+      "short_cuda_graph": "PASS",
+      "short_cuda_graph_run_id": "phase16g-20260830t061918945302z-6c829eda-f16c0d-tq_3bit_nc-b16-l4096-graph",
+      "short_eager": "PASS",
+      "short_eager_run_id": "phase16g-20260830t061918945302z-6c829eda-f16c0d-tq_3bit_nc-b16-l4096-eager",
+      "status": "PASS"
+    },
+    "tq_3bit_nc/B2": {
+      "adapter_config_fingerprint": "d40858a6a62cc849a01f9fd12fc0cdddf5cc6bd813590c3dfccb153fdafa7280",
+      "allocation": "PASS",
+      "batch_size": 2,
+      "cache_layout_fingerprint": "b6b77edbfe763b4b96e5514ee196f4dd8bec1a0791a8a1325c016867123e6d43",
+      "configuration": "tq_3bit_nc",
+      "execution_path": "PASS",
+      "maximum_context_graph_smoke": "NOT_APPLICABLE",
+      "maximum_feasible_context": null,
+      "method_config_fingerprint": "0d17950c2502fe7399cf5a896efa429861eb53194060ab95a7369287889dc49a",
+      "prefix_restore": "PASS",
+      "prefix_state_sha256": "e63d561578f1aa8696ac8f43851790cd89df0a2b688032683752c78389883b98",
+      "sanitizer_coverage": {
+        "covered_by": [
+          "tq_3bit_nc"
+        ],
+        "required": true
+      },
+      "short_cuda_graph": "PASS",
+      "short_cuda_graph_run_id": "phase16g-20260830t061918945302z-6c829eda-f16c0d-tq_3bit_nc-b2-l4096-graph",
+      "short_eager": "PASS",
+      "short_eager_run_id": "phase16g-20260830t061918945302z-6c829eda-f16c0d-tq_3bit_nc-b2-l4096-eager",
+      "status": "PASS"
+    },
+    "tq_4bit_nc/B16": {
+      "adapter_config_fingerprint": "422a5eb6a41117f4197f188db023cf9a0d8f2930a4270893990df251e68c81b1",
+      "allocation": "PASS",
+      "batch_size": 16,
+      "cache_layout_fingerprint": "cb105f5144fc358dbca1c69be3bc885d224fd0736c1317f93e00221c760ed0ae",
+      "configuration": "tq_4bit_nc",
+      "execution_path": "PASS",
+      "maximum_context_graph_smoke": "PASS",
+      "maximum_feasible_context": 24576,
+      "method_config_fingerprint": "5b56167c81ef2042be5fa45ed4e7f8ddc60670d5611283e19e848307076c27eb",
+      "prefix_restore": "PASS",
+      "prefix_state_sha256": "035e75ffaf45a3dd09bd4e7f702cc177bbaa9eec7f9182c359aad358c999974e",
+      "sanitizer_coverage": {
+        "covered_by": [
+          "tq_4bit_nc"
+        ],
+        "required": true
+      },
+      "short_cuda_graph": "PASS",
+      "short_cuda_graph_run_id": "phase16g-20260830t061918945302z-6c829eda-f16c0d-tq_4bit_nc-b16-l4096-graph",
+      "short_eager": "PASS",
+      "short_eager_run_id": "phase16g-20260830t061918945302z-6c829eda-f16c0d-tq_4bit_nc-b16-l4096-eager",
+      "status": "PASS"
+    },
+    "tq_4bit_nc/B2": {
+      "adapter_config_fingerprint": "718a152ff4d17922f2f8f4482efcfa8dc2a0a4ebaad922c4c2bfddef2cda5851",
+      "allocation": "PASS",
+      "batch_size": 2,
+      "cache_layout_fingerprint": "b442ee6685d329f9298ea4b08f60f1cf0270ae7af36a3c20b2adc374152bd7c4",
+      "configuration": "tq_4bit_nc",
+      "execution_path": "PASS",
+      "maximum_context_graph_smoke": "NOT_APPLICABLE",
+      "maximum_feasible_context": null,
+      "method_config_fingerprint": "5b56167c81ef2042be5fa45ed4e7f8ddc60670d5611283e19e848307076c27eb",
+      "prefix_restore": "PASS",
+      "prefix_state_sha256": "006005bb1b39e85dcee6289a7ad873b60fd0c78ebb24a25e7a231fd693515bad",
+      "sanitizer_coverage": {
+        "covered_by": [
+          "tq_4bit_nc"
+        ],
+        "required": true
+      },
+      "short_cuda_graph": "PASS",
+      "short_cuda_graph_run_id": "phase16g-20260830t061918945302z-6c829eda-f16c0d-tq_4bit_nc-b2-l4096-graph",
+      "short_eager": "PASS",
+      "short_eager_run_id": "phase16g-20260830t061918945302z-6c829eda-f16c0d-tq_4bit_nc-b2-l4096-eager",
+      "status": "PASS"
+    },
+    "tq_k3v4_nc/B16": {
+      "adapter_config_fingerprint": "9315cfc8823b964a1ae17b33ba90033b4aef8d941f64dcf7248834fdc2e668cb",
+      "allocation": "PASS",
+      "batch_size": 16,
+      "cache_layout_fingerprint": "8fd6a932eb442bb99135e61ee9a55e0cd8f5d4e74bc438ff858a5bc3fb7cc446",
+      "configuration": "tq_k3v4_nc",
+      "execution_path": "PASS",
+      "maximum_context_graph_smoke": "PASS",
+      "maximum_feasible_context": 24576,
+      "method_config_fingerprint": "ff92cd334059888584564bb84999353a698baf3b991a602a827a53aab726908e",
+      "prefix_restore": "PASS",
+      "prefix_state_sha256": "faad50eaf80552d2e582f0372b2a8b5976cfd822cceb5ccc73e8a3f5b9fcfc6a",
+      "sanitizer_coverage": {
+        "covered_by": [
+          "tq_k3v4_nc"
+        ],
+        "required": true
+      },
+      "short_cuda_graph": "PASS",
+      "short_cuda_graph_run_id": "phase16g-20260830t061918945302z-6c829eda-f16c0d-tq_k3v4_nc-b16-l4096-graph",
+      "short_eager": "PASS",
+      "short_eager_run_id": "phase16g-20260830t061918945302z-6c829eda-f16c0d-tq_k3v4_nc-b16-l4096-eager",
+      "status": "PASS"
+    },
+    "tq_k3v4_nc/B2": {
+      "adapter_config_fingerprint": "8be53b6c66d2453202aedffc37f9fab58cec853e6d04b301bff2ac968a9d78fa",
+      "allocation": "PASS",
+      "batch_size": 2,
+      "cache_layout_fingerprint": "654c81131c6995faccba28949c92d316503405b543a73f43dc58dacaa77b4c43",
+      "configuration": "tq_k3v4_nc",
+      "execution_path": "PASS",
+      "maximum_context_graph_smoke": "NOT_APPLICABLE",
+      "maximum_feasible_context": null,
+      "method_config_fingerprint": "ff92cd334059888584564bb84999353a698baf3b991a602a827a53aab726908e",
+      "prefix_restore": "PASS",
+      "prefix_state_sha256": "1cc6075ab1969e5cd46fdb5b045cadafa616483507f9ca992be93de3ef825bbd",
+      "sanitizer_coverage": {
+        "covered_by": [
+          "tq_k3v4_nc"
+        ],
+        "required": true
+      },
+      "short_cuda_graph": "PASS",
+      "short_cuda_graph_run_id": "phase16g-20260830t061918945302z-6c829eda-f16c0d-tq_k3v4_nc-b2-l4096-graph",
+      "short_eager": "PASS",
+      "short_eager_run_id": "phase16g-20260830t061918945302z-6c829eda-f16c0d-tq_k3v4_nc-b2-l4096-eager",
+      "status": "PASS"
+    }
+  },
+  "performance_claim_eligible": false,
+  "prefix_format_version": "kvbench-phase16g-prefix-state-3.0.0",
+  "quality_execution": "LOCKED",
+  "r_hbm": null,
+  "sanitizer_record_count": 16,
+  "schema_version": "kvbench-phase16g-geometry-admission-index-1.0.0",
+  "short_admission_count": 40,
+  "status": "PASS",
+  "timing_collected": false
+}
