@@ -116,6 +116,12 @@ CONTAINER_PREFIX_ROOTS = {
     "phase13d": Path("/opt/kvbench-prefix-phase13d"),
     "phase16g": Path("/opt/kvbench-prefix-phase16g"),
 }
+PREFIX_LAYOUT_SOURCE_BY_FAMILY = {
+    "bf16": "src/kvbench/runtime/static_cache.py",
+    "turboquant": "src/kvbench/runtime/turboquant_cache.py",
+    "kivi": "src/kvbench/runtime/kivi_cache.py",
+    "kvquant": "src/kvbench/runtime/kvquant_cache.py",
+}
 FAMILY_SCHEMA = "kvbench-phase16-full-scan-family-1.0.0"
 ORDER_SCHEMA = "kvbench-phase16-execution-orders-1.0.0"
 SEGMENT_SCHEMA = "kvbench-phase16-segment-1.0.0"
@@ -429,21 +435,55 @@ def reserve_family(*, family_id: str, git_sha: str) -> Path:
 def _prefix_catalog_entries(path: Path) -> list[dict[str, Any]]:
     payload = _strict_json(path / "catalog.json")
     entries = payload.get("entries")
+    execution_git_sha = payload.get("execution_git_sha")
     if not isinstance(entries, list) or not all(isinstance(item, dict) for item in entries):
         raise Phase16FullScanError(f"prefix catalog differs: {path}")
     if (
         payload.get("snapshot_count") != len(entries)
         or payload.get("restoration_outside_timing") is not True
         or payload.get("fresh_caller_owned_cache_per_timing_process") is not True
+        or not isinstance(execution_git_sha, str)
+        or re.fullmatch(r"[0-9a-f]{40}", execution_git_sha) is None
     ):
         raise Phase16FullScanError(f"prefix catalog authority differs: {path}")
+    normalized: list[dict[str, Any]] = []
     for item in entries:
         verified = item.get("state_bytes_verified_once_before_timing")
         if verified is None:
             verified = item.get("state_bytes_verified_before_timing")
         if verified is not True:
             raise Phase16FullScanError(f"prefix catalog verification differs: {path}")
-    return [dict(item) for item in entries]
+        record = dict(item)
+        record.setdefault("source_execution_git_sha", execution_git_sha)
+        normalized.append(record)
+    return normalized
+
+
+def _legacy_prefix_layout_source_matches_current(entry: Mapping[str, Any]) -> bool:
+    """Reject legacy snapshots whose layout-bound implementation has changed."""
+
+    family = entry.get("method_family")
+    source_execution_git_sha = entry.get("source_execution_git_sha")
+    if family not in PREFIX_LAYOUT_SOURCE_BY_FAMILY:
+        raise Phase16FullScanError("prefix method family differs")
+    if (
+        not isinstance(source_execution_git_sha, str)
+        or re.fullmatch(r"[0-9a-f]{40}", source_execution_git_sha) is None
+    ):
+        raise Phase16FullScanError("prefix source execution SHA differs")
+    relative = PREFIX_LAYOUT_SOURCE_BY_FAMILY[str(family)]
+    historical = subprocess.run(
+        ("/usr/bin/git", "cat-file", "blob", f"{source_execution_git_sha}:{relative}"),
+        cwd=REPOSITORY_ROOT,
+        check=False,
+        capture_output=True,
+    )
+    if historical.returncode != 0:
+        raise Phase16FullScanError("prefix layout source commit is unavailable")
+    current = REPOSITORY_ROOT / relative
+    if current.is_symlink() or not current.is_file():
+        raise Phase16FullScanError("current prefix layout source differs")
+    return hashlib.sha256(historical.stdout).hexdigest() == sha256_file(current)
 
 
 def prefix_index(*, container_paths: bool) -> dict[tuple[str, int, int], dict[str, Any]]:
@@ -456,10 +496,29 @@ def prefix_index(*, container_paths: bool) -> dict[tuple[str, int, int], dict[st
         mounted_root = CONTAINER_PREFIX_ROOTS[source_name] if container_paths else host_root
         read_root = mounted_root if container_paths else host_root
         for entry in _prefix_catalog_entries(read_root):
+            configuration = entry.get("method_config_id")
+            batch = entry.get("batch_size")
+            context = entry.get("context_label")
+            if (
+                configuration not in CONFIG_FINGERPRINTS
+                or entry.get("method_config_fingerprint")
+                != CONFIG_FINGERPRINTS[str(configuration)]
+                or not isinstance(batch, int)
+                or isinstance(batch, bool)
+                or batch not in BATCH_SIZES
+                or not isinstance(context, int)
+                or isinstance(context, bool)
+                or entry.get("historical_context")
+                != actual_historical_context(context)
+                or entry.get("capacity") != actual_historical_context(context) + 1
+            ):
+                raise Phase16FullScanError("legacy prefix identity differs")
+            if not _legacy_prefix_layout_source_matches_current(entry):
+                continue
             key = (
-                str(entry["method_config_id"]),
-                int(entry["batch_size"]),
-                int(entry["context_label"]),
+                str(configuration),
+                int(batch),
+                int(context),
             )
             if key in result:
                 raise Phase16FullScanError("prefix catalogs overlap")
@@ -469,6 +528,10 @@ def prefix_index(*, container_paths: bool) -> dict[tuple[str, int, int], dict[st
                 "snapshot_root": str(mounted_root / str(entry["snapshot_relative_path"])),
                 "state_file_sha256": str(entry["state_file_sha256"]),
                 "source": source_name,
+                "source_execution_git_sha": str(entry["source_execution_git_sha"]),
+                "layout_source_path": PREFIX_LAYOUT_SOURCE_BY_FAMILY[
+                    str(entry["method_family"])
+                ],
             }
     report = _strict_json(PHASE16G_REPORT_PATH)
     geometry_root = (
@@ -977,6 +1040,35 @@ def _worker_failure_status(stderr: str, timeout_stage: str | None) -> tuple[str,
     return "runtime_failed", "supervised_worker_failed"
 
 
+def _phase16_stage_timeout_contract(*, batch: int, historical: int) -> dict[str, float]:
+    """Apply the admitted Phase 13 stage scaling to the frozen Full Scan grid."""
+
+    admitted_historical = {
+        int(record["historical_context"]) for record in logical_points()
+    }
+    if (
+        not isinstance(batch, int)
+        or isinstance(batch, bool)
+        or batch not in BATCH_SIZES
+        or not isinstance(historical, int)
+        or isinstance(historical, bool)
+        or historical not in admitted_historical
+    ):
+        raise Phase16FullScanError("Full Scan timeout geometry is invalid")
+    return {
+        **phase13.FIXED_STAGE_TIMEOUTS_SECONDS,
+        "prefix_construction": float(
+            max(3_600, 1_800 + math.ceil(batch * historical / 4))
+        ),
+        "graph_capture": float(
+            max(7_200, 1_800 + math.ceil(batch * historical / 20))
+        ),
+        "warmup_and_audit": float(
+            max(10_800, 3_600 + math.ceil(batch * historical / 10))
+        ),
+    }
+
+
 def _run_one_process(
     *,
     segment_root: Path,
@@ -1040,7 +1132,7 @@ def _run_one_process(
         command,
         working_directory=str(REPOSITORY_ROOT),
         environment=phase12._child_environment(),
-        stage_timeouts=phase13.stage_timeout_contract(
+        stage_timeouts=_phase16_stage_timeout_contract(
             batch=int(record["batch_size"]),
             historical=int(record["historical_context"]),
         ),

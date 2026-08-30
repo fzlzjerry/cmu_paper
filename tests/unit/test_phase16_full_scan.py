@@ -49,7 +49,7 @@ class Phase16FullScanTests(unittest.TestCase):
 
     def test_prefix_sources_are_exact_and_missing_points_are_direct(self) -> None:
         index = phase16.prefix_index(container_paths=False)
-        self.assertEqual(len(index), 332)
+        self.assertEqual(len(index), 50)
         direct = sum(
             record["status"] == "feasible"
             and (
@@ -60,8 +60,29 @@ class Phase16FullScanTests(unittest.TestCase):
             not in index
             for record in self.feasibility
         )
-        self.assertEqual(direct, 109)
+        self.assertEqual(direct, 391)
         self.assertTrue(all(item["kind"] == "snapshot" for item in index.values()))
+        self.assertTrue(
+            all(
+                configuration == "bf16" or item["source"] == "phase16g"
+                for (configuration, _, _), item in index.items()
+            )
+        )
+
+    def test_legacy_compressed_prefixes_fail_layout_source_match(self) -> None:
+        entries = phase16._prefix_catalog_entries(
+            phase16.PHASE13_BASE_PREFIX_CATALOG
+        )
+        by_family = {entry["method_family"]: entry for entry in entries}
+        self.assertTrue(
+            phase16._legacy_prefix_layout_source_matches_current(by_family["bf16"])
+        )
+        for family in ("turboquant", "kivi", "kvquant"):
+            self.assertFalse(
+                phase16._legacy_prefix_layout_source_matches_current(
+                    by_family[family]
+                )
+            )
 
     def test_container_prefix_reads_use_mounted_roots(self) -> None:
         source = Path("scripts/phase16_full_scan.py").read_text(encoding="utf-8")
@@ -81,6 +102,16 @@ class Phase16FullScanTests(unittest.TestCase):
             phase16._worker_failure_status("anything", "measurement")[0],
             "infrastructure_failed",
         )
+
+    def test_phase16_timeout_scaling_accepts_new_and_adaptive_geometry(self) -> None:
+        b2 = phase16._phase16_stage_timeout_contract(batch=2, historical=131071)
+        b16 = phase16._phase16_stage_timeout_contract(batch=16, historical=24576)
+        adaptive = phase16._phase16_stage_timeout_contract(batch=1, historical=4480)
+        self.assertEqual(b2["prefix_construction"], 67336.0)
+        self.assertEqual(b16["graph_capture"], 21461.0)
+        self.assertEqual(adaptive["warmup_and_audit"], 10800.0)
+        with self.assertRaises(phase16.Phase16FullScanError):
+            phase16._phase16_stage_timeout_contract(batch=3, historical=4096)
 
     def test_phase16g_admits_every_requested_geometry(self) -> None:
         authority = phase16.load_phase16g_authority()["report"]

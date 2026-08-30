@@ -22,11 +22,16 @@ logical points; any drift fails before CUDA. Known-infeasible points receive
 five terminal records and are not launched.
 
 An exact checksum-valid Phase 13, Phase 13D, or Phase 16G prefix is restored
-read-only when available. Otherwise the same deterministic logical prefix is
-constructed in each fresh process outside timing; KVQuant uses the already
-admitted fixed bounded chunk prefill. Each timing process owns fresh cache and
-workspace buffers. No runtime cache, pointer, or Graph sharing occurs, and no
-new persistent prefix cache is created.
+read-only only when its layout-bound cache implementation blob is byte-exact at
+the current execution HEAD. Decision 0039 changed the compressed cache source
+identity, so legacy compressed snapshots fail that exact check and are rebuilt
+deterministically outside timing; unchanged BF16 and current Phase 16G snapshots
+remain reusable. KVQuant direct construction uses the already admitted fixed
+bounded chunk prefill. Each timing process owns fresh cache and workspace
+buffers. No runtime cache, pointer, or Graph sharing occurs, and no new
+persistent prefix cache is created. The Phase 13 stage-timeout scaling formulas
+are retained exactly and their input scope is extended only to the frozen Phase
+16 batch/context set.
 
 Each replicate is an independently sealed segment. Isolated point failures are
 preserved and execution continues. An actual foreign GPU process, source,
