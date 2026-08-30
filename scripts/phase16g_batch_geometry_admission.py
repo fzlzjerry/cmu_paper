@@ -446,8 +446,9 @@ def _session_outputs_and_audits(session: Any) -> dict[str, Any]:
     import torch
 
     from kvbench.runtime.allocation import audit_cuda_allocations
+    from kvbench.runtime.backend import forced_flash_execution
 
-    with torch.inference_mode():
+    with torch.inference_mode(), forced_flash_execution():
         eager_allocation = audit_cuda_allocations(
             session._fixed_operation,
             device=session.cache_device,
@@ -612,7 +613,9 @@ def _record_for_session(
 def _direct_output_record(session: Any) -> dict[str, Any]:
     import torch
 
-    with torch.inference_mode():
+    from kvbench.runtime.backend import forced_flash_execution
+
+    with torch.inference_mode(), forced_flash_execution():
         eager = session._fixed_operation().detach().to(device="cpu", copy=True).clone()
         graph = session.graph.replay().detach().to(device="cpu", copy=True).clone()
         torch.cuda.synchronize(device=session.cache_device)
@@ -694,11 +697,12 @@ def _max_smoke_record(
     import torch
 
     from kvbench.runtime.allocation import audit_cuda_allocations
+    from kvbench.runtime.backend import forced_flash_execution
     from kvbench.runtime.numerical import tensor_sha256_untimed
 
     pointers_before = phase12._phase12_session_pointers(session)
     history_before = session.current_historical_prefix_sha256()
-    with torch.inference_mode():
+    with torch.inference_mode(), forced_flash_execution():
         allocation = audit_cuda_allocations(
             session.graph.replay,
             device=session.cache_device,
