@@ -62,6 +62,8 @@ PHASE13PC_ENTRY_COMMIT = "91b984069e3305428db612a3515fdc483ec990ed"
 PHASE13RQ4_ENTRY_COMMIT = "a127b0d12f1815f9e51f21767686d4536b9b35e3"
 PHASE13D_ENTRY_COMMIT = "345d805126587f318e3180ef75356ec38600e9f0"
 PHASE14_ENTRY_COMMIT = "7b14043c0563607d92a9dc03d0069144db65508d"
+PHASE15_ENTRY_COMMIT = "68cd50b912d5d91ffe57710b7e36714f4fe43f22"
+PHASE16G_ENTRY_COMMIT = "a0c294f6c4f5dbb2f11953e42605a3bd1668359f"
 QUALITY_COMMIT = "a7b8285dd8ed2fb598efbb3312e9f55064a0ee64"
 ENVIRONMENT_COMMIT = "ea176994921c793789ebbd9d42515ce20ae4baee"
 EVIDENCE_COMMIT = "fb164b5ea96031ca40b21f4b8436a49a3bb5b8d2"
@@ -1314,6 +1316,44 @@ PHASE14_ALLOWED_PATHS = frozenset(
         "tests/unit/test_r2_artifact.py",
     }
 )
+PHASE15_ALLOWED_PATHS = frozenset(
+    {
+        "docs/evidence/phase15/ncu-metric-map.json",
+        "docs/evidence/phase15/r2-publication-attempt0.json",
+        "docs/evidence/phase15/r2-publication-attempt1.json",
+        "docs/evidence/phase15/r2-publication-attempt2.json",
+        "docs/evidence/phase15/r2-publication-attempt3.json",
+        "docs/evidence/phase15/r2-publication.json",
+        "docs/phase_reports/phase15-profiler-subset.md",
+        "docs/plans/phase15-profiler-selection.json",
+        "docs/plans/phase15-profiler-subset.md",
+        "docs/risk_register.md",
+        "docs/status.md",
+        "docs/tasks.md",
+        "scripts/phase15_profiler_subset.py",
+        "scripts/r2_artifact.py",
+        "scripts/validate_phase2.py",
+        "tests/unit/test_phase15_profiler_subset.py",
+        "tests/unit/test_r2_artifact.py",
+    }
+)
+PHASE16G_ALLOWED_PATHS = frozenset(
+    {
+        "docs/decisions/0039-full-scan-batch-geometry-admission.md",
+        "docs/evidence/phase16g/batch-geometry-admission.json",
+        "docs/evidence/phase16g/r2-publication.json",
+        "docs/phase_reports/phase16g-batch-geometry-admission.md",
+        "docs/risk_register.md",
+        "docs/status.md",
+        "docs/tasks.md",
+        "scripts/phase13_prefix_state.py",
+        "scripts/phase16g_batch_geometry_admission.py",
+        "scripts/validate_phase2.py",
+        "src/kvbench/schema/phase16g.py",
+        "tests/cuda/phase16g_batch_sanitizer_probe.py",
+        "tests/unit/test_phase16g_batch_geometry.py",
+    }
+)
 
 
 RAW_RESULT_SUFFIXES = {
@@ -2038,10 +2078,40 @@ def current_phase13d_paths() -> set[str]:
 
 
 def current_phase14_paths() -> set[str]:
-    """Return tracked and untracked Phase 14 mechanism changes."""
+    """Compatibility view of the completed Phase 14 segment."""
+
+    return git_paths(
+        (
+            "diff",
+            "--name-only",
+            "-z",
+            PHASE14_ENTRY_COMMIT,
+            PHASE15_ENTRY_COMMIT,
+            "--",
+        )
+    )
+
+
+def current_phase15_paths() -> set[str]:
+    """Compatibility view of the completed Phase 15 segment."""
+
+    return git_paths(
+        (
+            "diff",
+            "--name-only",
+            "-z",
+            PHASE15_ENTRY_COMMIT,
+            PHASE16G_ENTRY_COMMIT,
+            "--",
+        )
+    )
+
+
+def current_phase16g_paths() -> set[str]:
+    """Return tracked and untracked Phase 16G geometry changes."""
 
     changed = git_paths(
-        ("diff", "--name-only", "-z", PHASE14_ENTRY_COMMIT, "--")
+        ("diff", "--name-only", "-z", PHASE16G_ENTRY_COMMIT, "--")
     )
     untracked = git_paths(
         ("ls-files", "--others", "--exclude-standard", "-z", "--")
@@ -3312,6 +3382,8 @@ PHASE13PC_APPROVED_ARTIFACT_ROOT_NAMES = frozenset({"phase13pc"})
 PHASE13RQ4_APPROVED_ARTIFACT_ROOT_NAMES = frozenset({"phase13rq4"})
 PHASE13D_APPROVED_ARTIFACT_ROOT_NAMES = frozenset({"phase13d"})
 PHASE14_APPROVED_ARTIFACT_ROOT_NAMES = frozenset({"phase14"})
+PHASE15_APPROVED_ARTIFACT_ROOT_NAMES = frozenset({"phase15"})
+PHASE16G_APPROVED_ARTIFACT_ROOT_NAMES = frozenset({"phase16g"})
 PHASE13_PREFIX_APPROVED_ARTIFACT_ROOT_NAMES = frozenset(
     {"phase13_prefix_catalogs"}
 )
@@ -4002,6 +4074,8 @@ def validate_phase3_artifact_root() -> list[str]:
                 | PHASE13RQ4_APPROVED_ARTIFACT_ROOT_NAMES
                 | PHASE13D_APPROVED_ARTIFACT_ROOT_NAMES
                 | PHASE14_APPROVED_ARTIFACT_ROOT_NAMES
+                | PHASE15_APPROVED_ARTIFACT_ROOT_NAMES
+                | PHASE16G_APPROVED_ARTIFACT_ROOT_NAMES
                 | PHASE13_PREFIX_APPROVED_ARTIFACT_ROOT_NAMES
                 | PHASE12_BLOCKED_ARTIFACT_ROOT_NAMES
             )
@@ -4824,6 +4898,45 @@ def check_scope() -> int:
         ):
             errors.append(
                 f"forbidden result tree in Phase 14 scope: {relative}"
+            )
+    phase15 = current_phase15_paths()
+    phase15_unexpected = sorted(phase15 - PHASE15_ALLOWED_PATHS)
+    if phase15_unexpected:
+        errors.append(
+            "files outside the approved Phase 15 profiler subset: "
+            f"{phase15_unexpected!r}"
+        )
+    phase16g = current_phase16g_paths()
+    phase16g_unexpected = sorted(phase16g - PHASE16G_ALLOWED_PATHS)
+    if phase16g_unexpected:
+        errors.append(
+            "files outside the approved Phase 16G geometry admission: "
+            f"{phase16g_unexpected!r}"
+        )
+    for relative in sorted(phase16g):
+        if relative.startswith("docs/evidence/e00/"):
+            errors.append(f"immutable E00 evidence changed: {relative}")
+        if relative in QUALITY_PROTOCOL_HASHES:
+            errors.append(
+                "quality protocol changed during Phase 16G: "
+                f"{relative}"
+            )
+        if Path(relative).suffix in RAW_RESULT_SUFFIXES:
+            errors.append(
+                "forbidden binary, kernel, model, or profiler artifact "
+                f"in Phase 16G Git scope: {relative}"
+            )
+        if relative.startswith(
+            (
+                "artifacts/profiler/",
+                "artifacts/quality/",
+                "paper-results/",
+                "paper_results/",
+                "results/",
+            )
+        ):
+            errors.append(
+                f"forbidden result tree in Phase 16G scope: {relative}"
             )
     e00_changes = git_paths(
         (
