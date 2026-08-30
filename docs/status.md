@@ -1,6 +1,6 @@
 # Project status
 
-Last updated: 2026-08-28
+Last updated: 2026-08-30
 Authoritative contracts: CODEX_WORKFLOW.md for active performance engineering;
 CODEX_POST_PERFORMANCE_QUALITY_VALIDATION.md for post-performance quality
 scheduling; CODEX_QUALITY_EVALUATION_ADDENDUM.md for non-conflicting quality
@@ -8,6 +8,21 @@ requirements; and AGENTS.md. Decision 0005 records precedence.
 
 ## Current state
 
+- Latest scoped phase: Phase 15 Profiler Subset `PASS`. Campaign
+  `phase15-20260828t144810363697z-446b334e-90460f` completed 32/32 selected
+  Nsight Systems profiles and 22/22 selected Nsight Compute profiles with zero
+  selected profiler failures. The common B=1/L=131072 Graph point covers all
+  ten configurations and populates measured cache-path `r_hbm` for 10/10.
+  Across 16 anchor eager/Graph pairs, Graph reduces CPU CUDA submission-call
+  count and GPU inter-kernel idle in 16/16 while preserving kernel count,
+  ordering, and observed overlap. Combined with Phase 14, the supported
+  mechanism classification is `method_specific_mixed`, not a pure
+  launch-floor-only effect. Profiler durations remain excluded from normal
+  timing and fit data. The 893-object root
+  `641fc02d8fa598097885b74a336b1b1f454d9844b90025cf0c4b427bee02d5e8`
+  is COMPLETE-last and passed one clean R2 retrieval. Phase 16 is `READY` but
+  not started; G0-G5 remain PASS, Full Scan remains CLOSED, quality remains
+  LOCKED, and `PERFORMANCE_DATA_FROZEN` remains absent.
 - Latest scoped phase: Phase 14C analysis closure `PASS`. The immutable Phase
   14 campaign `phase14-20260826t115110887808z-47ba4220-42fc95` preserves all
   720 planned mode records: 660 feasible runs completed, 60 records belong to
@@ -795,7 +810,7 @@ reference execution is recorded separately above.
 | Phase 13 successor Pilot | PASS | Fresh campaign `phase13-20260822t150835736582z-4ddd7b17-3a8fb3`; 810/810 records, 684 completed, 126 capacity-infeasible, 228 stable points, maximum CV 0.221851%, no failures or selective reruns; 17,384-object root `feb2e5a8ebba8b729c182fc8170107c9acf8128edd3e5618c8f1b90530557531` is COMPLETE-last and cleanly retrieved. |
 | Phase 13D knee densification | PASS | Campaign family `phase13d-20260825t030556684636z-a06837a3-83761a` preserves Segment A's 51 valid runs and the original failed-finalization run unchanged. Segment B completes one replacement plus the frozen remaining 200 records without rerunning Segment A or regenerating 84 prefix states. All 252 logical records pass QC; root `a8559a5e01edaad949df1e128c4bddff37638801cfc89f2eb8d4894c31ef82d2` is COMPLETE-last and cleanly retrieved. |
 | Phase 14 CUDA Graph A/B / Phase 14C closure | PASS | The original campaign/report/root remain immutable and retain five eager `unstable` groups. Phase 14C separates 105 stable A/B conditions into 14 fully identifiable, four unstable-eager, and two no-positive-eager-slope comparisons. Complete launch-floor-only support is 0 of 14; the negative mechanism result is closure, not a timing failure. Seven-object closure root `4cd29ea1b94201f493db8cef9ebd01933b4c4f573185eff317ec5af81e9fb000` is COMPLETE-last and cleanly retrieved. |
-| Phase 15/full-scan gates | READY / CLOSED | Phase 14C analysis closure PASS. Direct launch-gap and physical-traffic attribution remain deferred to separately authorized Phase 15 profiling. |
+| Phase 15 profiler subset | PASS | 32/32 Nsys and 22/22 NCU selected profiles; all-ten common-point physical traffic; 893-object root `641fc02d8fa598097885b74a336b1b1f454d9844b90025cf0c4b427bee02d5e8` COMPLETE-last and cleanly retrieved. Phase 16 READY; Full Scan CLOSED. |
 | Post-performance quality validation | LOCKED | Decision 0005; `PERFORMANCE_DATA_FROZEN` absent |
 
 ## Phase 0 acceptance
@@ -828,5 +843,9 @@ unchanged; the authorized continuation is a separate segment with its own ID
 and execution heads. The original Phase 14 BLOCKED report and R2 root remain
 unchanged; Phase 14C retains the five unstable eager groups, closes the 105
 stable conditions with explicit denominators, and records a negative mechanism
-result. Phase 15 is READY for a separately authorized profiler subset. Full
-Scan, performance claims, and quality execution remain closed.
+result. Phase 15 directly records reduced CPU submission-call count and GPU
+idle under Graph together with heterogeneous device behavior, preserves the
+Phase 14 negative pure-launch-floor result, and measures same-work physical
+traffic without using profiler durations as benchmark timing. Phase 16 is
+READY for a separately proposed task but has not started. Full Scan,
+performance claims, and quality execution remain closed.

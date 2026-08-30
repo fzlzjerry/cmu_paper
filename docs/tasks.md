@@ -20,9 +20,9 @@ authoritative local task index until issues are created elsewhere.
 | E11 | KVQuant measurement adapter | E10 | fixed sparse buffers; byte breakdown; graph/path tests; G2-KVQ | complete: Decision 0027 deterministic q4 decode binding and Decision 0029 current-source re-admission remain preserved. Decision 0036 adds only capacity-derived preallocated q4 workspace geometry; all nine fixtures, long-context admission, Graph/allocation/stream/sanitizer checks pass. Successor q4 report SHA-256 `75605637f460a309081e1e0a4065e90e8e14194d365250cb513092616ef89ec7` is bound to cleanly retrieved root `9f027d64424844d0d62311daad5740e2b76960d1d5e7b8be26aa1ccba100a8db`; q3/q2 and historical evidence remain unchanged; G2-KVQ remains PASS. |
 | E12 | Admission gates | E02-E11 | machine-readable G1-G5 report for every main configuration | complete: original Phase 12R campaign `phase12-20260731t062914664948z-6165f78d-c78b9a` remains immutable. Phase 13R reuses nine unchanged records and refreshes only q4 with three independent standardized processes (CV 0.162733%); refreshed report SHA-256 `13553823a68f34a0a538674caeb5abf2f9e638d5086b90d21fbdb94aa66be05a`; G0-G5 PASS and no speedup/comparative claim. |
 | E13 | Pilot scan | E12 PASS; Phase 13B PASS; Phase 13F PASS; Phase 13T PASS; Phase 13R q4 workspace PASS | immutable randomized samples; QC; provisional knees; pilot gate | complete: fresh campaign `phase13-20260822t150835736582z-4ddd7b17-3a8fb3` preserves 810/810 records and cleanly retrieved root `feb2e5a8ebba8b729c182fc8170107c9acf8128edd3e5618c8f1b90530557531`. Phase 13D preserves its first 51 valid runs and failed-finalization record, then completes one replacement plus the frozen remaining 200 in a separate continuation segment. All 252 logical records pass QC, all 25 targets have resolved density/boundary statuses, and root `a8559a5e01edaad949df1e128c4bddff37638801cfc89f2eb8d4894c31ef82d2` is COMPLETE-last and cleanly retrieved. Phase 14 used this evidence as immutable entry authority. |
-| E14 | Nsight Systems integration | E13 and M14-GRAPH-AB PASS | nsys-only runs around knees; launch/sync/kernel evidence | ready after Phase 14C analysis closure PASS; not started |
-| E15 | Nsight Compute integration | E13 | current-SM metric discovery; measured traffic; ncu-only runs | pending |
-| E16 | Full scan | pilot gate, M14-GRAPH-AB, E14-E15 | preregistered grid; feasibility/exclusion records; immutable samples | pending |
+| E14 | Nsight Systems integration | E13 and M14-GRAPH-AB PASS | nsys-only runs around knees; launch/sync/kernel evidence | complete: 32/32 selected traces and 16 eager/Graph pairs; Graph reduces CPU CUDA-call count and GPU idle in 16/16 while kernel count/order and observed overlap remain unchanged; profiler durations remain mechanism-only |
+| E15 | Nsight Compute integration | E13 | current-SM metric discovery; measured traffic; ncu-only runs | complete: 22/22 selected profiles, live SM120 metric discovery, all-ten B=1/L=131072 same-work traffic, exact kernel classification, and measured cache-path `r_hbm`; root `641fc02d8fa598097885b74a336b1b1f454d9844b90025cf0c4b427bee02d5e8` cleanly retrieved |
+| E16 | Full scan | pilot gate, M14-GRAPH-AB, E14-E15 | preregistered grid; feasibility/exclusion records; immutable samples | ready after Phase 15 PASS; not started; Full Scan remains CLOSED pending separate authorization |
 | E17 | Knee and response-surface fitting | E16 | candidate models; strict holdouts; session bootstrap CIs | pending |
 | E18 | Reproducibility package | E17 and all gates | pinned containers; reproduction commands; figures; final report | pending |
 
@@ -85,9 +85,12 @@ task list. E16 remains closed until its evidence is reviewed.
   `feb2e5a8ebba8b729c182fc8170107c9acf8128edd3e5618c8f1b90530557531`.
   Phase 13D completes the separately preregistered densification with 252/252
   logical records and resolves all 25 targets as one `density_sufficient` and
-  24 `insufficient_feasible_span`. Phase 14 then completed its frozen A/B
-  campaign but is BLOCKED by five eager CV failures; Phase 15 is NOT_READY,
-  and profiling, Full Scan, and quality execution remain unopened.
+  24 `insufficient_feasible_span`. Phase 14C closes the frozen A/B campaign as
+  a valid heterogeneous negative mechanism result while retaining five eager
+  unstable groups. Phase 15 then completes 32 Nsys and 22 NCU selected
+  profiles, all-ten common-point physical traffic, durable publication, and
+  clean retrieval. Phase 16 is READY but not started; Full Scan and quality
+  execution remain unopened.
 - E12 includes an operator-level MHA control with identical head dimension and
   no GQA repetition.
 - B-011 through B-017 are resolved for native-host BF16 G1. The reporting-only
