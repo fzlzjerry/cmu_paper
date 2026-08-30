@@ -1,0 +1,77 @@
+{
+  "artifact_id": "phase16g-20260830t061918945302z-6c829eda-f16c0d",
+  "bucket_lock": {
+    "bucket": "kvbench-artifacts",
+    "bucket_public": false,
+    "covered_prefix": "kvbench/sha256/",
+    "enabled": true,
+    "lock_rule_id": "kvbench-evidence-indefinite",
+    "lock_scope": "exact",
+    "public_custom_domain": false,
+    "public_r2_dev": false,
+    "retention_type": "Indefinite",
+    "verification_result": "PASS",
+    "verified_at_utc": "2026-08-30T08:34:47.435844Z"
+  },
+  "clean_retrieval": {
+    "checksum_ledger_valid": true,
+    "complete_marker_valid": true,
+    "destination_initially_empty": true,
+    "inventory_valid": true,
+    "object_count": 232,
+    "result": "PASS",
+    "retrieved_at_utc": "2026-08-30T08:36:29.400533Z",
+    "root_sha256": "05f56ea69b30b784dfad51457d78832144d4d8260260f0ab245cbbf222f0e9da",
+    "unexpected_objects": false,
+    "uri": "r2://kvbench-artifacts/kvbench/sha256/05f56ea69b30b784dfad51457d78832144d4d8260260f0ab245cbbf222f0e9da/",
+    "verification_result": "PASS"
+  },
+  "clean_retrieval_count": 1,
+  "credential_handling": {
+    "credential_values_recorded": false,
+    "credentials_passed_to_container": false,
+    "env_file_read": true,
+    "env_file_read_operator_authorized": true,
+    "env_file_uploaded": false,
+    "required_variables": {
+      "AWS_ACCESS_KEY_ID": "PRESENT",
+      "AWS_SECRET_ACCESS_KEY": "PRESENT",
+      "CLOUDFLARE_API_TOKEN": "PRESENT",
+      "KVBENCH_R2_PREFIX": "PRESENT",
+      "R2_ACCOUNT_ID": "PRESENT",
+      "R2_BUCKET": "PRESENT",
+      "R2_ENDPOINT": "PRESENT"
+    }
+  },
+  "local_validation": {
+    "artifact_path": "artifacts/phase16g/phase16g-20260830t061918945302z-6c829eda-f16c0d",
+    "checksum_ledger_sha256": "acd94686330ff6c6b7c0a46f41b671c5820d4a6794266450b24823231ac01f41",
+    "object_count": 232,
+    "post_finalization_validation_sha256": "68d3e013f75c513bdc0f13ebf8ecab41df906a19668332fbe64a3bea8e9184ea",
+    "root_sha256": "05f56ea69b30b784dfad51457d78832144d4d8260260f0ab245cbbf222f0e9da",
+    "status": "PASS"
+  },
+  "publication": {
+    "complete_last": true,
+    "conditional_writes": true,
+    "content_addressed": true,
+    "object_count": 232,
+    "publication_order_sha256": "945bd7d655159a4b5335191de887945ba26c2548211c1513b3b4e67c2317f347",
+    "published_at_utc": "2026-08-30T08:34:02.123798Z",
+    "root_sha256": "05f56ea69b30b784dfad51457d78832144d4d8260260f0ab245cbbf222f0e9da",
+    "status": "PASS",
+    "uploaded_count": 232,
+    "uri": "r2://kvbench-artifacts/kvbench/sha256/05f56ea69b30b784dfad51457d78832144d4d8260260f0ab245cbbf222f0e9da/",
+    "verified_existing_count": 0
+  },
+  "publication_git_sha": "4096f98ea55a80f815dd9d08ffb51fc3ff4d3e0f",
+  "recorded_at_utc": "2026-08-30T08:37:16Z",
+  "report_bindings": {
+    "batch_geometry_admission_path": "docs/evidence/phase16g/batch-geometry-admission.json",
+    "batch_geometry_admission_sha256": "d245796fbe7c9e13a5e9105872a1dffce0335c1f830bdfee8ef71676917334ca",
+    "phase_report_path": "docs/phase_reports/phase16g-batch-geometry-admission.md",
+    "phase_report_sha256": "b5079c7221fe9f5693375a36a18d30c3dcb374f08e2b33d4059fa976118111b5"
+  },
+  "schema_version": "kvbench-phase16g-r2-publication-1.0.0",
+  "status": "PASS"
+}
