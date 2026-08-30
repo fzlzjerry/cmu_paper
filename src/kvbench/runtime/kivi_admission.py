@@ -82,6 +82,11 @@ from kvbench.schema.phase8 import (
     Phase8MethodAdmissionReport,
     Phase8RunManifest,
 )
+from kvbench.schema.phase16g import (
+    Phase16GGeometryError,
+    source_transition_recognized,
+    validate_source_transition,
+)
 from kvbench.schema.phase13b import Phase13BMethodAdmissionReport
 
 
@@ -397,6 +402,7 @@ def _validate_phase13b_kivi_successor_transition(
                 "Decision 0030 KIVI successor ancestry differs"
             )
 
+    phase16g_authority: dict[str, Any] | None = None
     for relative_path, expected in PHASE13B_KIVI_SOURCE_AUTHORITY.items():
         historical = _phase8_git_blob_sha256(
             repository_root,
@@ -432,8 +438,6 @@ def _validate_phase13b_kivi_successor_transition(
         if (
             historical != expected["historical_sha256"]
             or authority != expected["authority_sha256"]
-            or current_head != expected["authority_sha256"]
-            or current_file != expected["authority_sha256"]
         ):
             source_label = (
                 "adapter"
@@ -444,14 +448,37 @@ def _validate_phase13b_kivi_successor_transition(
                 f"KIVI {source_label} authority changed outside the exact "
                 "Decision 0030 successor"
             )
-        if (
-            transition != PHASE13B_DECISION_0030_COMMIT
-            or post_authority != ""
-        ):
+        if transition != PHASE13B_DECISION_0030_COMMIT:
             raise KIVIAdmissionError(
                 "KIVI adapter or cache changed outside the exact "
                 "Decision 0030 successor"
             )
+        if (
+            current_head != expected["authority_sha256"]
+            or current_file != expected["authority_sha256"]
+            or post_authority != ""
+        ):
+            if phase16g_authority is None:
+                try:
+                    phase16g_authority = validate_source_transition(
+                        repository_root
+                    )
+                except Phase16GGeometryError as error:
+                    raise KIVIAdmissionError(
+                        "Decision 0039 KIVI source authority differs"
+                    ) from error
+            if not source_transition_recognized(
+                phase16g_authority,
+                relative_path=relative_path,
+                predecessor_sha256=authority,
+                current_sha256=current_head,
+            ) or current_file != current_head:
+                raise KIVIAdmissionError(
+                    "KIVI adapter or cache changed outside the exact "
+                    "Decision 0039 successor"
+                )
+
+
 def resolve_phase8_historical_source_authority(
     *,
     repository_root: Path,

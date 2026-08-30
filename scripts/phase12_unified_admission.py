@@ -52,6 +52,11 @@ from kvbench.schema.phase3 import GateDisposition
 from kvbench.schema.phase8 import Phase8MethodAdmissionReport
 from kvbench.schema.phase11 import Phase11RQ23MethodAdmissionReport
 from kvbench.schema.phase13b import Phase13BMethodAdmissionReport
+from kvbench.schema.phase16g import (
+    Phase16GGeometryError,
+    source_transition_recognized,
+    validate_source_transition,
+)
 from kvbench.schema.phase12 import (
     PHASE12_AUTHORIZED_CONTAINER_DIGEST,
     PHASE12_BATCH_SIZE,
@@ -658,6 +663,7 @@ def _validate_phase13b_turboquant_successor_transition(
     )
     _require_ancestor(root, PHASE13B_SOURCE_AUTHORITY_COMMIT, head)
     sources: dict[str, dict[str, Any]] = {}
+    phase16g_authority: dict[str, Any] | None = None
     for path, expected in PHASE13B_TURBOQUANT_SOURCE_AUTHORITY.items():
         historical = _git_blob_authority(
             root,
@@ -670,30 +676,49 @@ def _validate_phase13b_turboquant_successor_transition(
             path=path,
         )
         current = _git_blob_authority(root, commit=head, path=path)
+        historical_transition = _path_transition_commits(
+            root,
+            start=execution_commit,
+            end=PHASE13B_SOURCE_AUTHORITY_COMMIT,
+            path=path,
+        )
+        post_authority = _path_transition_commits(
+            root,
+            start=PHASE13B_SOURCE_AUTHORITY_COMMIT,
+            end=head,
+            path=path,
+        )
         if (
             historical["blob"] != expected["historical_blob"]
             or historical["sha256"] != expected["historical_sha256"]
             or authority["blob"] != expected["authority_blob"]
             or authority["sha256"] != expected["authority_sha256"]
-            or current["blob"] != authority["blob"]
-            or current["sha256"] != authority["sha256"]
-            or _path_transition_commits(
-                root,
-                start=execution_commit,
-                end=PHASE13B_SOURCE_AUTHORITY_COMMIT,
-                path=path,
-            )
-            != (PHASE13B_DECISION0030_COMMIT,)
-            or _path_transition_commits(
-                root,
-                start=PHASE13B_SOURCE_AUTHORITY_COMMIT,
-                end=head,
-                path=path,
-            )
+            or historical_transition != (PHASE13B_DECISION0030_COMMIT,)
         ):
             raise Phase12UnifiedAdmissionError(
                 f"Decision 0030 source transition is unrecognized: {path}"
             )
+        if (
+            current["blob"] != authority["blob"]
+            or current["sha256"] != authority["sha256"]
+            or post_authority
+        ):
+            if phase16g_authority is None:
+                try:
+                    phase16g_authority = validate_source_transition(root)
+                except Phase16GGeometryError as error:
+                    raise Phase12UnifiedAdmissionError(
+                        "Decision 0039 source authority differs"
+                    ) from error
+            if not source_transition_recognized(
+                phase16g_authority,
+                relative_path=path,
+                predecessor_sha256=authority["sha256"],
+                current_sha256=current["sha256"],
+            ):
+                raise Phase12UnifiedAdmissionError(
+                    f"Decision 0039 source transition is unrecognized: {path}"
+                )
         sources[path] = {
             "historical": historical,
             "authority": authority,

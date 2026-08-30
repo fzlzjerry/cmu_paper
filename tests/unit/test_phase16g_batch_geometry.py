@@ -11,6 +11,7 @@ from unittest.mock import patch
 
 import torch
 
+from kvbench.schema import phase16g as phase16g_schema
 from kvbench.runtime.static_cache import BF16StaticCache
 from kvbench.runtime.kivi_cache import KIVIStaticCache
 from kvbench.runtime.kivi_cache import _raw_tensor_bytes_untimed
@@ -27,6 +28,8 @@ from kvbench.schema.phase16g import (
     Phase16GGeometryError,
     geometry_key,
     require_admitted_geometry,
+    source_transition_recognized,
+    validate_source_transition,
     validate_geometry_index,
 )
 from scripts import phase16g_batch_geometry_admission as phase16g
@@ -509,6 +512,42 @@ class Phase16GBatchGeometryTests(unittest.TestCase):
         for relative, digest in expected.items():
             self.assertEqual(phase16g.sha256_file(ROOT / relative), digest)
 
+    def test_decision0039_source_transition_is_exact_and_fail_closed(self) -> None:
+        authority = validate_source_transition(ROOT)
+        self.assertEqual(authority["decision"], "0039")
+        for relative, expected in phase16g_schema.PHASE16G_SOURCE_TRANSITIONS.items():
+            record = authority["sources"][relative]
+            for predecessor in expected["predecessors"].values():
+                self.assertTrue(
+                    source_transition_recognized(
+                        authority,
+                        relative_path=relative,
+                        predecessor_sha256=predecessor,
+                        current_sha256=expected["execution_sha256"],
+                    )
+                )
+            self.assertFalse(
+                source_transition_recognized(
+                    authority,
+                    relative_path=relative,
+                    predecessor_sha256="0" * 64,
+                    current_sha256=expected["execution_sha256"],
+                )
+            )
+            self.assertFalse(
+                source_transition_recognized(
+                    authority,
+                    relative_path=relative,
+                    predecessor_sha256=next(iter(expected["predecessors"].values())),
+                    current_sha256="0" * 64,
+                )
+            )
+        with patch.object(phase16g_schema, "_authority_sha256", return_value="0" * 64):
+            with self.assertRaisesRegex(
+                Phase16GGeometryError, "decision or report checksum"
+            ):
+                validate_source_transition(ROOT)
+
     def test_phase16g_scope_is_exact_and_full_scan_is_not_allowed(self) -> None:
         expected = frozenset(
             {
@@ -519,9 +558,12 @@ class Phase16GBatchGeometryTests(unittest.TestCase):
                 "docs/risk_register.md",
                 "docs/status.md",
                 "docs/tasks.md",
+                "scripts/phase12_unified_admission.py",
                 "scripts/phase13_prefix_state.py",
+                "scripts/phase13_pilot.py",
                 "scripts/phase16g_batch_geometry_admission.py",
                 "scripts/validate_phase2.py",
+                "src/kvbench/runtime/kivi_admission.py",
                 "src/kvbench/runtime/kivi_cache.py",
                 "src/kvbench/runtime/kvquant_cache.py",
                 "src/kvbench/runtime/kvquant_session.py",

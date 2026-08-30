@@ -45,6 +45,11 @@ from kvbench.schema.phase13b import (
     PHASE13B_FAMILY_CONFIGURATIONS,
     Phase13BMethodAdmissionReport,
 )
+from kvbench.schema.phase16g import (
+    Phase16GGeometryError,
+    source_transition_recognized,
+    validate_source_transition,
+)
 from scripts.r2_artifact import validate_local_artifact
 from scripts.phase13_prefix_state import (
     Phase13PrefixStateError,
@@ -457,7 +462,11 @@ def _phase13b_successor_authority() -> dict[str, Any]:
     decision = REPOSITORY_ROOT / PHASE13B_DECISION_PATH
     if sha256_file(decision) != PHASE13B_DECISION_SHA256:
         raise Phase13PilotError("Decision 0030 checksum differs")
-    q4_successor = _phase13rq4_successor_authority()
+    try:
+        phase16g_authority = validate_source_transition(REPOSITORY_ROOT)
+    except Phase16GGeometryError as error:
+        raise Phase13PilotError("Decision 0039 source authority differs") from error
+    q4_successor = _phase13rq4_successor_authority(phase16g_authority)
     families: dict[str, Any] = {}
     for family, (relative, expected_sha256) in PHASE13B_SUCCESSOR_REPORTS.items():
         path = REPOSITORY_ROOT / relative
@@ -506,7 +515,15 @@ def _phase13b_successor_authority() -> dict[str, Any]:
                     )
             else:
                 source = REPOSITORY_ROOT / relative_source
-                if sha256_file(source) != expected_source_sha256:
+                current_source_sha256 = sha256_file(source)
+                if current_source_sha256 != expected_source_sha256 and not (
+                    source_transition_recognized(
+                        phase16g_authority,
+                        relative_path=relative_source,
+                        predecessor_sha256=expected_source_sha256,
+                        current_sha256=current_source_sha256,
+                    )
+                ):
                     raise Phase13PilotError(
                         f"Phase 13B {family} admitted source differs: "
                         f"{relative_source}"
@@ -542,7 +559,9 @@ def _phase13b_successor_authority() -> dict[str, Any]:
     }
 
 
-def _phase13rq4_successor_authority() -> dict[str, Any]:
+def _phase13rq4_successor_authority(
+    phase16g_authority: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
     """Bind current q4 source to Decision 0036 without rewriting Phase 13B."""
 
     decision = REPOSITORY_ROOT / PHASE13RQ4_DECISION_PATH
@@ -575,15 +594,32 @@ def _phase13rq4_successor_authority() -> dict[str, Any]:
     ):
         raise Phase13PilotError("Phase 13R q4 successor authority differs")
     for relative_source, expected_source_sha256 in source_hashes.items():
-        if (
-            not isinstance(relative_source, str)
-            or not isinstance(expected_source_sha256, str)
-            or sha256_file(REPOSITORY_ROOT / relative_source)
-            != expected_source_sha256
+        if not isinstance(relative_source, str) or not isinstance(
+            expected_source_sha256, str
         ):
             raise Phase13PilotError(
                 f"Phase 13R q4 admitted source differs: {relative_source}"
             )
+        current_source_sha256 = sha256_file(REPOSITORY_ROOT / relative_source)
+        if current_source_sha256 != expected_source_sha256:
+            if phase16g_authority is None:
+                try:
+                    phase16g_authority = validate_source_transition(
+                        REPOSITORY_ROOT
+                    )
+                except Phase16GGeometryError as error:
+                    raise Phase13PilotError(
+                        "Decision 0039 q4 source authority differs"
+                    ) from error
+            if not source_transition_recognized(
+                phase16g_authority,
+                relative_path=relative_source,
+                predecessor_sha256=expected_source_sha256,
+                current_sha256=current_source_sha256,
+            ):
+                raise Phase13PilotError(
+                    f"Phase 13R q4 admitted source differs: {relative_source}"
+                )
     local_bundle = REPOSITORY_ROOT / PHASE13RQ4_LOCAL_BUNDLE_PATH
     artifact = validate_local_artifact(local_bundle, environ={})
     if (
