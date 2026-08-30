@@ -454,7 +454,8 @@ def prefix_index(*, container_paths: bool) -> dict[tuple[str, int, int], dict[st
     )
     for source_name, host_root in sources:
         mounted_root = CONTAINER_PREFIX_ROOTS[source_name] if container_paths else host_root
-        for entry in _prefix_catalog_entries(host_root):
+        read_root = mounted_root if container_paths else host_root
+        for entry in _prefix_catalog_entries(read_root):
             key = (
                 str(entry["method_config_id"]),
                 int(entry["batch_size"]),
@@ -477,9 +478,7 @@ def prefix_index(*, container_paths: bool) -> dict[tuple[str, int, int], dict[st
         for batch in (2, 16):
             record = report["new_geometry_records"][f"{configuration}/B{batch}"]
             matches = list(
-                PHASE16G_PREFIX_ROOT.glob(
-                    f"*-prefix-{configuration}-b{batch}-l4096"
-                )
+                geometry_root.glob(f"*-prefix-{configuration}-b{batch}-l4096")
             )
             if len(matches) != 1:
                 raise Phase16FullScanError("Phase 16G prefix path differs")

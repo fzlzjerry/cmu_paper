@@ -63,6 +63,11 @@ class Phase16FullScanTests(unittest.TestCase):
         self.assertEqual(direct, 109)
         self.assertTrue(all(item["kind"] == "snapshot" for item in index.values()))
 
+    def test_container_prefix_reads_use_mounted_roots(self) -> None:
+        source = Path("scripts/phase16_full_scan.py").read_text(encoding="utf-8")
+        self.assertIn("read_root = mounted_root if container_paths else host_root", source)
+        self.assertIn("geometry_root.glob", source)
+
     def test_failure_classification_does_not_reclassify_correctness(self) -> None:
         self.assertEqual(
             phase16._worker_failure_status("CUDA out of memory", None)[0],
