@@ -31,7 +31,9 @@ bounded chunk prefill. Each timing process owns fresh cache and workspace
 buffers. No runtime cache, pointer, or Graph sharing occurs, and no new
 persistent prefix cache is created. The Phase 13 stage-timeout scaling formulas
 are retained exactly and their input scope is extended only to the frozen Phase
-16 batch/context set.
+16 batch/context set. The reused worker's fixed-L context mapper is bound per
+process to that process record's exact frozen base or Phase 13D adaptive label;
+the mapping is restored when the worker exits.
 
 Each replicate is an independently sealed segment. Isolated point failures are
 preserved and execution continues. An actual foreign GPU process, source,

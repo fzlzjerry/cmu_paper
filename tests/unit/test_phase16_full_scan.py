@@ -28,6 +28,27 @@ class Phase16FullScanTests(unittest.TestCase):
     def test_top_context_mapping(self) -> None:
         self.assertEqual(phase16.actual_historical_context(131072), 131071)
         self.assertEqual(phase16.actual_historical_context(65536), 65536)
+        with self.assertRaises(phase16.Phase16FullScanError):
+            phase16.actual_historical_context(True)
+        with self.assertRaises(phase16.Phase16FullScanError):
+            phase16.actual_historical_context(131073)
+
+    def test_worker_context_scope_accepts_exact_adaptive_label_and_restores(self) -> None:
+        original = phase16.phase13.actual_historical_context
+        with phase16._worker_context_label_override(4480):
+            self.assertEqual(phase16.phase13.actual_historical_context(4480), 4480)
+            with self.assertRaises(phase16.Phase16FullScanError):
+                phase16.phase13.actual_historical_context(4096)
+        self.assertIs(phase16.phase13.actual_historical_context, original)
+
+    def test_worker_context_scope_preserves_top_context_mapping(self) -> None:
+        with phase16._worker_context_label_override(131072):
+            self.assertEqual(
+                phase16.phase13.actual_historical_context(131072), 131071
+            )
+        with self.assertRaises(phase16.Phase16FullScanError):
+            with phase16._worker_context_label_override(4097):
+                pass
 
     def test_feasibility_is_exact_and_r_hbm_is_not_populated(self) -> None:
         self.assertEqual(sum(r["status"] == "feasible" for r in self.feasibility), 441)

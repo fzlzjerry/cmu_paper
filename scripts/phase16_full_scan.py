@@ -197,6 +197,12 @@ def timing_critical_hashes() -> dict[str, Any]:
 
 
 def actual_historical_context(label: int) -> int:
+    if (
+        not isinstance(label, int)
+        or isinstance(label, bool)
+        or not 0 < label <= 131072
+    ):
+        raise Phase16FullScanError("invalid Phase 16 context label")
     return 131071 if label == 131072 else label
 
 
@@ -707,6 +713,28 @@ def _worker_overrides(*, batch: int, entry: Mapping[str, Any]) -> Any:
         phase13._phase13b_successor_authority = original_authority
 
 
+@contextmanager
+def _worker_context_label_override(context_label: int) -> Any:
+    """Bind the reused Pilot worker to one frozen Full Scan context label."""
+
+    frozen_labels = {int(point["context_label"]) for point in logical_points()}
+    if context_label not in frozen_labels:
+        raise Phase16FullScanError("context label is outside the frozen Full Scan")
+    historical = actual_historical_context(context_label)
+    original_mapper = phase13.actual_historical_context
+
+    def mapper(label: int) -> int:
+        if label != context_label:
+            raise Phase16FullScanError("worker context label differs from frozen record")
+        return historical
+
+    phase13.actual_historical_context = mapper
+    try:
+        yield
+    finally:
+        phase13.actual_historical_context = original_mapper
+
+
 def run_worker(
     *,
     run_id: str,
@@ -716,6 +744,7 @@ def run_worker(
     entry: Mapping[str, Any],
 ) -> dict[str, Any]:
     batch = int(record["batch_size"])
+    context_label = int(record["context_label"])
     fallback_root = run_root / "no-prefix-snapshot"
     snapshot_root = (
         Path(str(entry["snapshot_root"]))
@@ -727,12 +756,15 @@ def run_worker(
         if entry["state_file_sha256"] is not None
         else "0" * 64
     )
-    with _worker_overrides(batch=batch, entry=entry):
+    with (
+        _worker_overrides(batch=batch, entry=entry),
+        _worker_context_label_override(context_label),
+    ):
         payload = phase13._run_worker(
             run_id=run_id,
             configuration=str(record["method_config_id"]),
             batch=batch,
-            context_label=int(record["context_label"]),
+            context_label=context_label,
             replicate_index=int(record["replicate_index"]),
             order_index=int(record["order_index"]),
             git_sha=git_sha,
