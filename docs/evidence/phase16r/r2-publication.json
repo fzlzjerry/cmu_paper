@@ -1,0 +1,26 @@
+{
+  "bucket_lock": {
+    "enabled": true,
+    "lock_rule_id": "kvbench-evidence-indefinite",
+    "lock_scope": "exact",
+    "retention_condition": "Indefinite",
+    "verification_result": "PASS"
+  },
+  "clean_retrieval": {
+    "checksum_ledger_valid": true,
+    "complete_marker_valid": true,
+    "inventory_valid": true,
+    "object_count": 119,
+    "retrieved_at_utc": "2026-08-31T12:25:25.339891Z",
+    "unexpected_objects": false,
+    "verification_result": "PASS"
+  },
+  "complete_last": true,
+  "object_count": 119,
+  "published_at_utc": "2026-08-31T12:23:28.600159Z",
+  "root_sha256": "99cbc3197ba07a6b8ff8dbddad9fe611ca4cc27ad8387d2f362469d4111a7b94",
+  "schema_version": "kvbench-phase16r-r2-publication-1.0.0",
+  "status": "PASS",
+  "uploaded_count": 119,
+  "uri": "r2://kvbench-artifacts/kvbench/sha256/99cbc3197ba07a6b8ff8dbddad9fe611ca4cc27ad8387d2f362469d4111a7b94/"
+}

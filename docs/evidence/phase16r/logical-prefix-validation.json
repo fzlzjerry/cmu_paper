@@ -1,0 +1,82 @@
+{
+  "authorized_container_digest": "sha256:059bc9be89387369d7de9e3e9b26d85b6e9902c41e7dbf002ebc45edd188fb7e",
+  "decision": "0040",
+  "focused_tests": {
+    "count": 22,
+    "status": "PASS"
+  },
+  "legacy_snapshot_handling": {
+    "current_exact_layout_optional_restore_candidates": 50,
+    "legacy_readable_restore_incompatible": 282,
+    "strict_layout_fingerprint_validation": true
+  },
+  "logical_prefix_catalog": {
+    "artifact_count": 59,
+    "materialized_cache_snapshots_created": 0,
+    "materialized_cache_snapshots_required": 0,
+    "size_bytes": 54425655,
+    "token_dtype": "int32"
+  },
+  "plan": {
+    "capacity_infeasible_logical_points": 93,
+    "feasible_logical_points": 441,
+    "logical_points": 534,
+    "orders_sha256": "b63ea9565cf7fe46cdaa5ccd61eabf49e4f85e2bb69f11608585785fb422f18c",
+    "planned_process_records": 2670,
+    "status": "PASS"
+  },
+  "quality_status": "unvalidated",
+  "r_hbm": null,
+  "reconstruction_matrix": {
+    "allocation_agreement": true,
+    "cache_layout_agreement": true,
+    "case_count": 8,
+    "configurations": [
+      "bf16",
+      "tq_4bit_nc",
+      "k4v4",
+      "kvq4"
+    ],
+    "exact_output_agreement": true,
+    "geometries": [
+      {
+        "batch_size": 2,
+        "context_label": 4096
+      },
+      {
+        "batch_size": 16,
+        "context_label": 16384
+      }
+    ],
+    "graph_passed": true,
+    "independent_processes_per_case": 2,
+    "kernel_path_agreement": true,
+    "pointers_stable": true,
+    "process_records": 16,
+    "status": "PASS",
+    "zero_graph_replay_allocation": true
+  },
+  "schema_version": "kvbench-phase16r-logical-prefix-validation-1.0.0",
+  "snapshot_equivalence_smoke": {
+    "batch_size": 2,
+    "cache_layout_match": true,
+    "configuration": "bf16",
+    "context_label": 4096,
+    "graph_match": true,
+    "kernel_path_match": true,
+    "measured_semantics_match": true,
+    "output_checksum_match": true,
+    "setup_duration_compared": false,
+    "status": "PASS"
+  },
+  "starting_git_sha": "08a19c0f73bdd83ca1c2a939a77323710f9deba9",
+  "status": "PASS",
+  "stopped_campaign_preserved": "phase16-20260830t172802896531z-08a19c0f-0c0e2f",
+  "timing_critical_files_sha256": "bf8a25e6429dec6acd7cf9aa9ab998a9954d7cbc70bf7eae5ca4214ba23926e8",
+  "timing_critical_semantics_unchanged": true,
+  "validation_artifact": {
+    "local_root": "artifacts/phase16r/phase16r-20260831t114324254553z-21ff4f77-c83761",
+    "object_count": 119,
+    "root_sha256": "99cbc3197ba07a6b8ff8dbddad9fe611ca4cc27ad8387d2f362469d4111a7b94"
+  }
+}
