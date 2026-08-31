@@ -161,7 +161,7 @@ def main() -> int:
         graph_path = phase12._write_cuda_graph_path_witness(
             graph=session.graph.graph,
             run_root=evidence_root,
-            phase="validation",
+            phase="before",
         )
         allocation = audit_cuda_allocations(
             session.graph.replay, device=session.cache_device
