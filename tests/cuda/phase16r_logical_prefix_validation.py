@@ -235,7 +235,7 @@ def main() -> int:
                 "historical_cache_unchanged": runner[
                     "historical_cache_unchanged"
                 ],
-                "r_hbm": runner["r_hbm"],
+                "r_hbm": runner.get("r_hbm"),
             }
     owned = phase12._capture_process_snapshot(
         supervised_pid=pid, supervised_start_ticks=start_ticks
