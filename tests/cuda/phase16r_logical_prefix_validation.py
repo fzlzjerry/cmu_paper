@@ -140,22 +140,25 @@ def main() -> int:
             historical=historical,
             device=torch.device("cuda:0"),
         )
-        session, receipt = phase13._build_restored_session(
-            loaded=loaded,
-            operation=operation,
-            prefix=prefix,
-            decode=decode,
-            snapshot_root=(
-                arguments.snapshot_root
-                if arguments.snapshot_root is not None
-                else evidence_root / "no-snapshot"
-            ),
-            expected_state_sha256=(
-                arguments.snapshot_sha256
-                if arguments.snapshot_sha256 is not None
-                else "0" * 64
-            ),
-        )
+        with phase12._observable_cuda_graph_factory(torch) as observed_graphs:
+            session, receipt = phase13._build_restored_session(
+                loaded=loaded,
+                operation=operation,
+                prefix=prefix,
+                decode=decode,
+                snapshot_root=(
+                    arguments.snapshot_root
+                    if arguments.snapshot_root is not None
+                    else evidence_root / "no-snapshot"
+                ),
+                expected_state_sha256=(
+                    arguments.snapshot_sha256
+                    if arguments.snapshot_sha256 is not None
+                    else "0" * 64
+                ),
+            )
+        if len(observed_graphs) != 1:
+            raise Phase16RValidationError("focused Graph capture is ambiguous")
         pointers_before = phase12._phase12_session_pointers(session)
         history_before = session.current_historical_prefix_sha256()
         graph_path = phase12._write_cuda_graph_path_witness(
