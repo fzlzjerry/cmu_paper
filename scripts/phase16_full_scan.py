@@ -21,6 +21,7 @@ from pathlib import Path
 import random
 import re
 import secrets
+import shutil
 import stat
 import statistics
 import subprocess
@@ -44,6 +45,7 @@ import scripts.phase12_unified_admission as phase12
 import scripts.phase13_pilot as phase13
 import scripts.phase13d_continuation as phase13c
 import scripts.phase16g_batch_geometry_admission as phase16g
+import scripts.phase16_logical_prefix as logical_prefix
 
 
 class Phase16FullScanError(RuntimeError):
@@ -60,6 +62,12 @@ ADAPTIVE_AUTHORITY_PATH = (
     REPOSITORY_ROOT / "docs" / "plans" / "phase13d-candidate-table.json"
 )
 PHASE16G_REPORT_PATH = REPOSITORY_ROOT / PHASE16G_GEOMETRY_REPORT_PATH
+LOGICAL_PREFIX_DECISION_PATH = (
+    REPOSITORY_ROOT
+    / "docs"
+    / "decisions"
+    / "0040-full-scan-logical-prefix-reconstruction.md"
+)
 
 CONFIGURATIONS = tuple(phase13.CONFIGURATIONS)
 CONFIG_FINGERPRINTS = dict(phase13.CONFIG_FINGERPRINTS)
@@ -89,7 +97,9 @@ EXPECTED_FEASIBLE_LOGICAL_POINTS = 441
 EXPECTED_CAPACITY_INFEASIBLE_LOGICAL_POINTS = 93
 EXPECTED_FEASIBLE_PROCESS_RECORDS = 2205
 EXPECTED_CAPACITY_INFEASIBLE_PROCESS_RECORDS = 465
+EXPECTED_LOGICAL_PREFIX_ARTIFACTS = 59
 PHASE15_ROOT = "641fc02d8fa598097885b74a336b1b1f454d9844b90025cf0c4b427bee02d5e8"
+PHASE16R_STARTING_GIT_SHA = "08a19c0f73bdd83ca1c2a939a77323710f9deba9"
 PHASE15_ARTIFACT = (
     REPOSITORY_ROOT
     / "artifacts"
@@ -133,6 +143,7 @@ _FAMILY_RE = re.compile(
 _SHA256_RE = re.compile(r"[0-9a-f]{64}")
 TIMING_CRITICAL_PATHS = (
     "scripts/phase16_full_scan.py",
+    "scripts/phase16_logical_prefix.py",
     "scripts/phase13_pilot.py",
     "scripts/phase12_unified_admission.py",
     "src/kvbench/runtime/fixed_l_runner.py",
@@ -151,6 +162,11 @@ TIMING_CRITICAL_PATHS = (
     "configs/methods/kivi.yaml",
     "configs/methods/kvquant.yaml",
     "docs/plans/phase16-full-scan-execution-orders.json",
+)
+PRESERVED_TIMING_SEMANTICS_PATHS = tuple(
+    path
+    for path in TIMING_CRITICAL_PATHS
+    if path not in {"scripts/phase16_full_scan.py", "scripts/phase16_logical_prefix.py"}
 )
 
 
@@ -193,6 +209,41 @@ def timing_critical_hashes() -> dict[str, Any]:
         "files_sha256": _canonical_sha256(files),
         "authorized_container_digest": PHASE16G_CONTAINER_DIGEST,
         "method_config_fingerprints": CONFIG_FINGERPRINTS,
+    }
+
+
+def preserved_timing_semantics_hashes() -> dict[str, Any]:
+    """Prove Phase 16R did not change methods, Graph, runner, or timing."""
+
+    records: dict[str, dict[str, Any]] = {}
+    for relative in PRESERVED_TIMING_SEMANTICS_PATHS:
+        historical = subprocess.run(
+            (
+                "/usr/bin/git",
+                "cat-file",
+                "blob",
+                f"{PHASE16R_STARTING_GIT_SHA}:{relative}",
+            ),
+            cwd=REPOSITORY_ROOT,
+            check=False,
+            capture_output=True,
+        )
+        if historical.returncode != 0:
+            raise Phase16FullScanError("Phase 16R starting source is unavailable")
+        before = hashlib.sha256(historical.stdout).hexdigest()
+        after = sha256_file(REPOSITORY_ROOT / relative)
+        records[relative] = {
+            "starting_sha256": before,
+            "current_sha256": after,
+            "unchanged": before == after,
+        }
+    unchanged = all(item["unchanged"] is True for item in records.values())
+    return {
+        "schema_version": "kvbench-phase16r-preserved-timing-semantics-1.0.0",
+        "starting_git_sha": PHASE16R_STARTING_GIT_SHA,
+        "files": records,
+        "method_config_fingerprints": CONFIG_FINGERPRINTS,
+        "unchanged": unchanged,
     }
 
 
@@ -324,6 +375,165 @@ def logical_points() -> list[dict[str, Any]]:
     return points
 
 
+def logical_prefix_specs() -> list[dict[str, int]]:
+    """Deduplicate scientific input identity across methods and replicates."""
+
+    keys = {
+        (
+            int(item["batch_size"]),
+            int(item["context_label"]),
+            int(item["historical_context"]),
+        )
+        for item in logical_points()
+    }
+    specs = [
+        {
+            "batch_size": batch,
+            "configured_context_label": label,
+            "actual_historical_context": historical,
+        }
+        for batch, label, historical in sorted(keys)
+    ]
+    if len(specs) != EXPECTED_LOGICAL_PREFIX_ARTIFACTS:
+        raise Phase16FullScanError("logical prefix artifact cardinality differs")
+    return specs
+
+
+def create_logical_prefix_catalog(root: Path) -> dict[str, Any]:
+    """Create one compact token artifact per unique B/L logical input."""
+
+    if root.exists() or root.is_symlink():
+        raise Phase16FullScanError("logical prefix catalog already exists")
+    root.mkdir(parents=False, exist_ok=False)
+    entries: list[dict[str, Any]] = []
+    for spec in logical_prefix_specs():
+        artifact_id = logical_prefix.logical_prefix_id(
+            batch_size=spec["batch_size"],
+            configured_context_label=spec["configured_context_label"],
+            historical_context=spec["actual_historical_context"],
+        )
+        artifact_root = root / artifact_id
+        manifest = logical_prefix.create_logical_prefix_artifact(
+            artifact_root,
+            batch_size=spec["batch_size"],
+            configured_context_label=spec["configured_context_label"],
+            historical_context=spec["actual_historical_context"],
+        )
+        entries.append(
+            {
+                **spec,
+                "logical_prefix_id": artifact_id,
+                "relative_path": artifact_id,
+                "token_checksum": manifest["token_tensor"]["sha256"],
+                "decode_token_checksum": manifest["current_decode_token"][
+                    "sha256"
+                ],
+                "token_file_sha256": manifest["token_file_sha256"],
+                "artifact_size_bytes": logical_prefix.artifact_size_bytes(
+                    artifact_root
+                ),
+            }
+        )
+    payload = {
+        "schema_version": logical_prefix.LOGICAL_PREFIX_CATALOG_SCHEMA,
+        "decision": "0040",
+        "artifact_count": len(entries),
+        "total_size_bytes": sum(item["artifact_size_bytes"] for item in entries),
+        "method_specific_cache_snapshots": 0,
+        "shared_across_methods": True,
+        "shared_across_replicates": True,
+        "cache_reconstruction_outside_timing": True,
+        "entries": entries,
+    }
+    catalog_path = root / "catalog.json"
+    write_exclusive(catalog_path, json_bytes(payload))
+    catalog_path.chmod(0o444)
+    root.chmod(0o555)
+    return payload
+
+
+def load_logical_prefix_catalog(
+    root: Path, *, validate_artifacts: bool
+) -> dict[tuple[int, int], dict[str, Any]]:
+    payload = _strict_json(root / "catalog.json")
+    entries = payload.get("entries")
+    if (
+        payload.get("schema_version")
+        != logical_prefix.LOGICAL_PREFIX_CATALOG_SCHEMA
+        or payload.get("decision") != "0040"
+        or payload.get("artifact_count") != EXPECTED_LOGICAL_PREFIX_ARTIFACTS
+        or payload.get("method_specific_cache_snapshots") != 0
+        or payload.get("shared_across_methods") is not True
+        or payload.get("shared_across_replicates") is not True
+        or payload.get("cache_reconstruction_outside_timing") is not True
+        or not isinstance(entries, list)
+        or len(entries) != EXPECTED_LOGICAL_PREFIX_ARTIFACTS
+    ):
+        raise Phase16FullScanError("logical prefix catalog authority differs")
+    result: dict[tuple[int, int], dict[str, Any]] = {}
+    total_size = 0
+    for item in entries:
+        if not isinstance(item, Mapping):
+            raise Phase16FullScanError("logical prefix catalog entry differs")
+        batch = item.get("batch_size")
+        label = item.get("configured_context_label")
+        historical = item.get("actual_historical_context")
+        if (
+            not isinstance(batch, int)
+            or isinstance(batch, bool)
+            or not isinstance(label, int)
+            or isinstance(label, bool)
+            or not isinstance(historical, int)
+            or isinstance(historical, bool)
+        ):
+            raise Phase16FullScanError("logical prefix catalog geometry differs")
+        key = (batch, label)
+        artifact_id = logical_prefix.logical_prefix_id(
+            batch_size=batch,
+            configured_context_label=label,
+            historical_context=historical,
+        )
+        if (
+            key in result
+            or item.get("logical_prefix_id") != artifact_id
+            or item.get("relative_path") != artifact_id
+        ):
+            raise Phase16FullScanError("logical prefix catalog identity differs")
+        artifact_root = root / artifact_id
+        if validate_artifacts:
+            manifest, _, _ = logical_prefix.validate_logical_prefix_artifact(
+                artifact_root,
+                expected={
+                    "batch_size": batch,
+                    "configured_context_label": label,
+                    "actual_historical_context": historical,
+                },
+                load_tensors=False,
+            )
+            if (
+                manifest["token_tensor"]["sha256"] != item.get("token_checksum")
+                or manifest["current_decode_token"]["sha256"]
+                != item.get("decode_token_checksum")
+                or manifest["token_file_sha256"]
+                != item.get("token_file_sha256")
+                or logical_prefix.artifact_size_bytes(artifact_root)
+                != item.get("artifact_size_bytes")
+            ):
+                raise Phase16FullScanError("logical prefix catalog binding differs")
+        total_size += int(item.get("artifact_size_bytes", -1))
+        result[key] = {**dict(item), "artifact_root": str(artifact_root)}
+    expected_keys = {
+        (item["batch_size"], item["configured_context_label"])
+        for item in logical_prefix_specs()
+    }
+    if (
+        set(result) != expected_keys
+        or payload.get("total_size_bytes") != total_size
+    ):
+        raise Phase16FullScanError("logical prefix catalog coverage differs")
+    return result
+
+
 def feasibility_records() -> list[dict[str, Any]]:
     _configure_reused_phase13()
     records = [phase13.feasibility_record(point) for point in logical_points()]
@@ -408,10 +618,22 @@ def reserve_family(*, family_id: str, git_sha: str) -> Path:
         raise Phase16FullScanError("Full Scan execution SHA is invalid")
     validate_execution_orders(_strict_json(ORDER_PATH))
     load_phase16g_authority()
+    preservation = preserved_timing_semantics_hashes()
+    if preservation["unchanged"] is not True:
+        raise Phase16FullScanError("Phase 16R timing semantics changed")
+    if not LOGICAL_PREFIX_DECISION_PATH.is_file():
+        raise Phase16FullScanError("Decision 0040 is absent")
     root = ARTIFACT_ROOT / family_id
     root.mkdir(parents=True, exist_ok=False)
-    for relative in ("execution_orders", "segments", "publication", "outer-stage"):
+    for relative in (
+        "execution_orders",
+        "segments",
+        "publication",
+        "retained-segments",
+        "outer-stage",
+    ):
         (root / relative).mkdir()
+    logical_catalog = create_logical_prefix_catalog(root / "logical-prefixes")
     order = _strict_json(ORDER_PATH)
     for segment in order["segments"]:
         replicate = int(segment["replicate_index"])
@@ -431,6 +653,16 @@ def reserve_family(*, family_id: str, git_sha: str) -> Path:
                 "append_only": True,
                 "segment_count": REPLICATES,
                 "orders_sha256": order["orders_sha256"],
+                "logical_prefix_decision": "0040",
+                "logical_prefix_schema": logical_prefix.LOGICAL_PREFIX_SCHEMA,
+                "logical_prefix_artifact_count": logical_catalog[
+                    "artifact_count"
+                ],
+                "logical_prefix_total_size_bytes": logical_catalog[
+                    "total_size_bytes"
+                ],
+                "materialized_cache_snapshots_created": 0,
+                "preserved_timing_semantics": preservation,
                 "timing_critical_hashes": timing_critical_hashes(),
             }
         ),
@@ -561,21 +793,169 @@ def prefix_index(*, container_paths: bool) -> dict[tuple[str, int, int], dict[st
     return result
 
 
-def prefix_entry(record: Mapping[str, Any], *, container_paths: bool) -> dict[str, Any]:
+def restore_incompatible_prefix_index(
+    *, container_paths: bool
+) -> dict[tuple[str, int, int], dict[str, Any]]:
+    """Index readable legacy snapshots whose layout source is not current."""
+
+    result: dict[tuple[str, int, int], dict[str, Any]] = {}
+    for source_name, host_root in (
+        ("phase13_base", PHASE13_BASE_PREFIX_CATALOG),
+        ("phase13d", PHASE13D_PREFIX_CATALOG),
+    ):
+        mounted_root = (
+            CONTAINER_PREFIX_ROOTS[source_name] if container_paths else host_root
+        )
+        read_root = mounted_root if container_paths else host_root
+        for item in _prefix_catalog_entries(read_root):
+            configuration = item.get("method_config_id")
+            batch = item.get("batch_size")
+            context = item.get("context_label")
+            if (
+                configuration not in CONFIG_FINGERPRINTS
+                or item.get("method_config_fingerprint")
+                != CONFIG_FINGERPRINTS[str(configuration)]
+                or not isinstance(batch, int)
+                or isinstance(batch, bool)
+                or batch not in BATCH_SIZES
+                or not isinstance(context, int)
+                or isinstance(context, bool)
+                or item.get("historical_context")
+                != actual_historical_context(context)
+                or item.get("capacity") != actual_historical_context(context) + 1
+            ):
+                raise Phase16FullScanError("legacy prefix identity differs")
+            if _legacy_prefix_layout_source_matches_current(item):
+                continue
+            key = (str(configuration), int(batch), int(context))
+            if key in result:
+                raise Phase16FullScanError("incompatible prefix catalogs overlap")
+            result[key] = {
+                "schema_version": "kvbench-phase13-prefix-state-2.0.0",
+                "snapshot_root": str(
+                    mounted_root / str(item["snapshot_relative_path"])
+                ),
+                "state_file_sha256": str(item["state_file_sha256"]),
+                "source": source_name,
+                "source_execution_git_sha": str(
+                    item["source_execution_git_sha"]
+                ),
+                "layout_source_path": PREFIX_LAYOUT_SOURCE_BY_FAMILY[
+                    str(item["method_family"])
+                ],
+                "readability": "readable_historical_layout",
+                "restore_compatibility": "restore_incompatible",
+            }
+    return result
+
+
+def _validate_snapshot_metadata(
+    snapshot: Mapping[str, Any], record: Mapping[str, Any]
+) -> dict[str, Any]:
+    """Validate a selected snapshot without weakening layout restoration."""
+
+    from scripts.phase13_prefix_state import validate_prefix_state
+
+    configuration = str(record["method_config_id"])
+    try:
+        manifest = validate_prefix_state(
+            Path(str(snapshot["snapshot_root"])),
+            configuration=configuration,
+            family=phase12._method_family(configuration),
+            batch=int(record["batch_size"]),
+            historical=int(record["historical_context"]),
+            method_config_fingerprint=CONFIG_FINGERPRINTS[configuration],
+            verify_state_bytes=False,
+        )
+    except (OSError, RuntimeError, ValueError) as error:
+        raise Phase16FullScanError("prefix snapshot is corrupted or unreadable") from error
+    if manifest.get("state_file_sha256") != snapshot.get("state_file_sha256"):
+        raise Phase16FullScanError("prefix snapshot catalog binding differs")
+    return manifest
+
+
+def snapshot_restore_policy(
+    *,
+    current: Mapping[str, Any] | None,
+    legacy_incompatible: Mapping[str, Any] | None,
+) -> tuple[str, dict[str, Any]]:
+    """Separate readable metadata from layout-authorized restoration."""
+
+    if current is not None and legacy_incompatible is not None:
+        raise Phase16FullScanError("prefix snapshot classification overlaps")
+    if current is not None:
+        return "optional_exact_snapshot", {
+            **dict(current),
+            "readability": "readable_current_layout",
+            "restore_compatibility": "restore_allowed",
+        }
+    if legacy_incompatible is not None:
+        return "logical_reconstruct", dict(legacy_incompatible)
+    return "logical_reconstruct", {
+        "schema_version": None,
+        "snapshot_root": None,
+        "state_file_sha256": None,
+        "source": None,
+        "readability": "snapshot_absent",
+        "restore_compatibility": "not_applicable",
+    }
+
+
+def prefix_entry(
+    record: Mapping[str, Any], *, container_paths: bool, logical_root: Path
+) -> dict[str, Any]:
     key = (
         str(record["method_config_id"]),
         int(record["batch_size"]),
         int(record["context_label"]),
     )
+    logical = load_logical_prefix_catalog(
+        logical_root, validate_artifacts=False
+    ).get((int(record["batch_size"]), int(record["context_label"])))
+    if logical is None:
+        raise Phase16FullScanError("logical prefix input is absent")
+    logical_manifest, _, _ = logical_prefix.validate_logical_prefix_artifact(
+        Path(str(logical["artifact_root"])),
+        expected={
+            "batch_size": int(record["batch_size"]),
+            "configured_context_label": int(record["context_label"]),
+            "actual_historical_context": int(record["historical_context"]),
+        },
+        load_tensors=False,
+    )
+    if (
+        logical_manifest["token_tensor"]["sha256"]
+        != logical.get("token_checksum")
+        or logical_manifest["current_decode_token"]["sha256"]
+        != logical.get("decode_token_checksum")
+    ):
+        raise Phase16FullScanError("logical prefix catalog binding differs")
     existing = prefix_index(container_paths=container_paths).get(key)
+    incompatible = restore_incompatible_prefix_index(
+        container_paths=container_paths
+    ).get(key)
     if existing is not None:
-        return existing
+        _validate_snapshot_metadata(existing, record)
+    elif incompatible is not None:
+        _validate_snapshot_metadata(incompatible, record)
+    restore_mode, snapshot = snapshot_restore_policy(
+        current=existing, legacy_incompatible=incompatible
+    )
     return {
-        "kind": "direct_construct",
-        "schema_version": None,
-        "snapshot_root": None,
-        "state_file_sha256": None,
-        "source": "fresh_process_untimed_direct",
+        "kind": "logical_prefix",
+        "logical_prefix": logical,
+        "restore_mode": restore_mode,
+        "optional_snapshot": snapshot,
+        "schema_version": snapshot["schema_version"],
+        "snapshot_root": snapshot["snapshot_root"],
+        "state_file_sha256": snapshot["state_file_sha256"],
+        "source": (
+            "logical_prefix_with_optional_snapshot"
+            if restore_mode == "optional_exact_snapshot"
+            else "logical_prefix_untimed_reconstruction"
+        ),
+        "canonical_scientific_evidence": "logical_token_position_input",
+        "materialized_cache_snapshot_required": False,
     }
 
 
@@ -607,9 +987,14 @@ def _geometry_authority_for_batch(
 
 
 def _direct_session(
-    *, loaded: Any, operation: Any, prefix: Any, decode: Any
+    *,
+    loaded: Any,
+    operation: Any,
+    prefix: Any,
+    decode: Any,
+    logical_manifest: Mapping[str, Any],
 ) -> tuple[Any, dict[str, Any]]:
-    """Construct one admitted prefix directly, outside timing, without export."""
+    """Reconstruct one method cache outside timing from canonical token input."""
 
     import torch
 
@@ -623,8 +1008,10 @@ def _direct_session(
             "batch_size": operation.batch_size,
             "historical_context": operation.historical_context,
             "input_recipe_sha256": phase12.PHASE12_INPUT_RECIPE_SHA256,
-            "construction": "frozen_direct_prefill",
-            "decision": "0039",
+            "logical_prefix_id": logical_manifest["logical_prefix_id"],
+            "token_checksum": logical_manifest["token_tensor"]["sha256"],
+            "construction": "logical_prefix_frozen_prefill",
+            "decision": "0040",
         }
     )
     family = phase12._method_family(operation.configuration)
@@ -660,10 +1047,30 @@ def _direct_session(
             decode_input_ids=decode,
         )
     phase13._bind_session_prefix_witness(session, witness)
+    accounting = session.method_cache_accounting()
     return session, {
-        "schema_version": "kvbench-phase16-direct-prefix-receipt-1.0.0",
-        "mode": "fresh_process_untimed_direct",
+        "schema_version": "kvbench-phase16-prefix-build-receipt-1.0.0",
+        "mode": "logical_prefix_untimed_reconstruction",
+        "decision": "0040",
         "witness_sha256": witness,
+        "logical_prefix_id": logical_manifest["logical_prefix_id"],
+        "token_checksum": logical_manifest["token_tensor"]["sha256"],
+        "decode_token_checksum": logical_manifest["current_decode_token"][
+            "sha256"
+        ],
+        "method_config_fingerprint": CONFIG_FINGERPRINTS[
+            operation.configuration
+        ],
+        "cache_layout_fingerprint": session.cache_layout_fingerprint(),
+        "batch_size": operation.batch_size,
+        "historical_context": operation.historical_context,
+        "active_length": session.active_context,
+        "allocation_bytes": accounting["allocated_bytes"],
+        "validation_output_checksum": session.graph_evidence[
+            "second_replay_checksum"
+        ],
+        "validation_decode_before_graph_capture": True,
+        "build_status": "PASS",
         "fresh_target_allocation": True,
         "runtime_prefix_sharing": False,
         "snapshot_persisted": False,
@@ -678,15 +1085,92 @@ def _worker_overrides(*, batch: int, entry: Mapping[str, Any]) -> Any:
     _configure_reused_phase13()
     original_builder = phase13._build_restored_session
     original_authority = phase13._phase13b_successor_authority
+    original_inputs = phase13._point_inputs
+    logical_record = entry.get("logical_prefix")
+    if not isinstance(logical_record, Mapping):
+        raise Phase16FullScanError("worker logical prefix binding is absent")
+    logical_root = Path(str(logical_record.get("artifact_root")))
+    logical_manifest, logical_tokens, logical_decode = (
+        logical_prefix.validate_logical_prefix_artifact(
+            logical_root,
+            expected={
+                "batch_size": batch,
+                "configured_context_label": int(
+                    logical_record["configured_context_label"]
+                ),
+                "actual_historical_context": int(
+                    logical_record["actual_historical_context"]
+                ),
+            },
+            load_tensors=True,
+        )
+    )
+    if logical_tokens is None or logical_decode is None:
+        raise Phase16FullScanError("worker logical tokens are absent")
+
+    def point_inputs(*, batch: int, historical: int, device: Any) -> tuple[Any, Any]:
+        import torch
+
+        if (
+            batch != logical_manifest["batch_size"]
+            or historical != logical_manifest["actual_historical_context"]
+        ):
+            raise Phase16FullScanError("worker logical input geometry differs")
+        return (
+            logical_tokens.to(device=device, dtype=torch.long, copy=True),
+            logical_decode.to(device=device, dtype=torch.long, copy=True),
+        )
+
+    def bind_logical_receipt(
+        session: Any, receipt: Mapping[str, Any], *, mode: str
+    ) -> tuple[Any, dict[str, Any]]:
+        result = dict(receipt)
+        result.update(
+            {
+                "logical_prefix_decision": "0040",
+                "logical_prefix_id": logical_manifest["logical_prefix_id"],
+                "token_checksum": logical_manifest["token_tensor"]["sha256"],
+                "decode_token_checksum": logical_manifest[
+                    "current_decode_token"
+                ]["sha256"],
+                "logical_input_validated": True,
+                "cache_build_or_restore_outside_timing": True,
+                "materialized_snapshot_required": False,
+                "snapshot_handling": mode,
+                "method_config_fingerprint": CONFIG_FINGERPRINTS[
+                    session.operation_keys[0].configuration
+                ],
+                "cache_layout_fingerprint": session.cache_layout_fingerprint(),
+                "batch_size": session.operation_keys[0].batch_size,
+                "historical_context": session.operation_keys[
+                    0
+                ].historical_context,
+                "active_length": session.active_context,
+                "allocation_bytes": session.method_cache_accounting()[
+                    "allocated_bytes"
+                ],
+                "validation_output_checksum": session.graph_evidence[
+                    "second_replay_checksum"
+                ],
+                "build_status": "PASS",
+            }
+        )
+        return session, result
 
     def builder(**kwargs: Any) -> tuple[Any, dict[str, Any]]:
-        if entry["kind"] == "direct_construct":
-            return _direct_session(
+        if entry.get("restore_mode") == "logical_reconstruct":
+            session, receipt = _direct_session(
                 loaded=kwargs["loaded"],
                 operation=kwargs["operation"],
                 prefix=kwargs["prefix"],
                 decode=kwargs["decode"],
+                logical_manifest=logical_manifest,
             )
+            return bind_logical_receipt(
+                session, receipt, mode=str(entry["optional_snapshot"]["readability"])
+            )
+        if entry.get("restore_mode") != "optional_exact_snapshot":
+            raise Phase16FullScanError("worker snapshot handling differs")
         if entry["schema_version"] == PHASE16G_PREFIX_SCHEMA:
             operation = kwargs["operation"]
             manifest = _strict_json(Path(str(entry["snapshot_root"])) / "manifest.json")
@@ -698,19 +1182,26 @@ def _worker_overrides(*, batch: int, entry: Mapping[str, Any]) -> Any:
                 snapshot_root=Path(str(entry["snapshot_root"])),
                 manifest=manifest,
             )
-            return session, receipt
-        return original_builder(**kwargs)
+            return bind_logical_receipt(
+                session, receipt, mode="optional_exact_snapshot"
+            )
+        session, receipt = original_builder(**kwargs)
+        return bind_logical_receipt(
+            session, receipt, mode="optional_exact_snapshot"
+        )
 
     merged_authority = _geometry_authority_for_batch(
         batch, predecessor=original_authority()
     )
     phase13._build_restored_session = builder
     phase13._phase13b_successor_authority = lambda: merged_authority
+    phase13._point_inputs = point_inputs
     try:
         yield
     finally:
         phase13._build_restored_session = original_builder
         phase13._phase13b_successor_authority = original_authority
+        phase13._point_inputs = original_inputs
 
 
 @contextmanager
@@ -792,6 +1283,16 @@ def run_worker(
                 "report_path": PHASE16G_GEOMETRY_REPORT_PATH,
                 "report_sha256": PHASE16G_GEOMETRY_REPORT_SHA256,
                 "prefix_schema": PHASE16G_PREFIX_SCHEMA,
+            },
+            "phase16r_logical_prefix_binding": {
+                "decision": "0040",
+                "schema_version": logical_prefix.LOGICAL_PREFIX_SCHEMA,
+                "logical_prefix_id": entry["logical_prefix"][
+                    "logical_prefix_id"
+                ],
+                "token_checksum": entry["logical_prefix"]["token_checksum"],
+                "cache_reconstruction_outside_timing": True,
+                "materialized_cache_snapshot_required": False,
             },
             "prefix_source": dict(entry),
             "r_hbm": None,
@@ -1142,7 +1643,12 @@ def _run_one_process(
                 result_path=None,
             ),
         )
-    entry = prefix_entry(record, container_paths=True)
+    family_root = segment_root.parent.parent
+    entry = prefix_entry(
+        record,
+        container_paths=True,
+        logical_root=family_root / "logical-prefixes",
+    )
     write_exclusive(run_root / "prefix-entry.json", json_bytes(entry))
     command = (
         sys.executable,
@@ -1316,9 +1822,18 @@ def run_segment(
         raise Phase16FullScanError("segment source authority differs")
     family_id = family_root.name
     reservation = _strict_json(family_root / "family-reservation.json")
+    logical_catalog = load_logical_prefix_catalog(
+        family_root / "logical-prefixes", validate_artifacts=True
+    )
     if (
         reservation.get("execution_git_sha") != git_sha
         or reservation.get("timing_critical_hashes") != timing_critical_hashes()
+        or reservation.get("logical_prefix_decision") != "0040"
+        or reservation.get("logical_prefix_artifact_count")
+        != len(logical_catalog)
+        or reservation.get("materialized_cache_snapshots_created") != 0
+        or reservation.get("preserved_timing_semantics", {}).get("unchanged")
+        is not True
     ):
         raise Phase16FullScanError("timing-critical hash authority differs")
     segment_id = _segment_id(family_id, replicate)
@@ -1345,7 +1860,12 @@ def run_segment(
                 "seed": SEEDS[replicate],
                 "execution_git_sha": git_sha,
                 "authorized_container_digest": PHASE16G_CONTAINER_DIGEST,
-                "decision": "0039",
+                "decision": "0040",
+                "geometry_decision": "0039",
+                "logical_prefix_schema": logical_prefix.LOGICAL_PREFIX_SCHEMA,
+                "logical_prefix_artifact_count": EXPECTED_LOGICAL_PREFIX_ARTIFACTS,
+                "materialized_cache_snapshots_created": 0,
+                "cache_reconstruction_outside_timing": True,
                 "phase16g_authority": authority,
                 "logical_records": LOGICAL_POINTS,
                 "append_only": True,
@@ -1435,6 +1955,14 @@ def _segment_records(segment_root: Path) -> list[dict[str, Any]]:
                 "fitting_eligible",
             ):
                 record[field] = result.get(field)
+            runner = result.get("runner")
+            if isinstance(runner, Mapping):
+                for field in (
+                    "cache_accounting",
+                    "cache_byte_breakdown",
+                    "memory_evidence",
+                ):
+                    record[field] = runner.get(field)
         records.append(record)
     return records
 
@@ -1585,7 +2113,24 @@ def finalize_segment(segment_root: Path) -> dict[str, Any]:
 
 
 def _byte_features(completed: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
-    base = phase13._point_byte_features(completed)
+    normalized_completed: list[Mapping[str, Any]] = []
+    for record in completed:
+        if isinstance(record.get("runner"), Mapping):
+            normalized_completed.append(record)
+        else:
+            normalized_completed.append(
+                {
+                    **record,
+                    "runner": {
+                        "cache_accounting": record.get("cache_accounting"),
+                        "cache_byte_breakdown": record.get(
+                            "cache_byte_breakdown"
+                        ),
+                        "r_hbm": None,
+                    },
+                }
+            )
+    base = phase13._point_byte_features(normalized_completed)
     if not completed:
         return {
             **base,
@@ -1594,8 +2139,13 @@ def _byte_features(completed: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
             "norm_bytes": None,
             "peak_memory_bytes": None,
         }
-    runner = completed[0]["runner"]
-    breakdown = runner["cache_byte_breakdown"]
+    first = completed[0]
+    runner = first.get("runner")
+    breakdown = (
+        runner["cache_byte_breakdown"]
+        if isinstance(runner, Mapping)
+        else first["cache_byte_breakdown"]
+    )
     configuration = str(completed[0]["method_config_id"])
     family = phase12._method_family(configuration)
     if family == "turboquant":
@@ -1626,7 +2176,12 @@ def _byte_features(completed: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
         norm = 0
     peak_values = []
     for record in completed:
-        memory = record["runner"].get("memory_evidence")
+        record_runner = record.get("runner")
+        memory = (
+            record_runner.get("memory_evidence")
+            if isinstance(record_runner, Mapping)
+            else record.get("memory_evidence")
+        )
         if isinstance(memory, Mapping):
             for key in (
                 "max_memory_allocated_bytes",
@@ -1975,10 +2530,36 @@ def _publication_record(family_root: Path, replicate: int) -> dict[str, Any]:
         or publication.get("complete_last") is not True
     ):
         raise Phase16FullScanError("segment R2 receipt identity differs")
+    promotion_path = (
+        family_root
+        / "retained-segments"
+        / f"replicate-{replicate}"
+        / "remote-authoritative.json"
+    )
+    promotion = _strict_json(promotion_path) if promotion_path.is_file() else None
+    if promotion is not None and (
+        promotion.get("root_sha256") != publication["root_sha256"]
+        or promotion.get("r2_uri") != publication["uri"]
+        or promotion.get("local_raw_staging_evicted") is not True
+        or promotion.get("clean_retrieval") is not True
+    ):
+        raise Phase16FullScanError("remote-authoritative segment receipt differs")
     return {
         "replicate_index": replicate,
         "segment_id": _segment_id(family_root.name, replicate),
-        "local_path": f"segments/replicate-{replicate}",
+        "local_path": (
+            f"segments/replicate-{replicate}"
+            if promotion is None
+            else None
+        ),
+        "local_staging_state": (
+            "present" if promotion is None else "evicted_after_remote_verification"
+        ),
+        "retained_index_path": (
+            None
+            if promotion is None
+            else f"retained-segments/replicate-{replicate}/run_index.parquet"
+        ),
         "root_sha256": publication["root_sha256"],
         "r2_uri": publication["uri"],
         "object_count": publication["object_count"],
@@ -1987,7 +2568,135 @@ def _publication_record(family_root: Path, replicate: int) -> dict[str, Any]:
         "publish_receipt_sha256": sha256_file(publish_path),
         "verify_receipt_sha256": sha256_file(verify_path),
         "bucket_lock": publish.get("bucket_lock"),
+        "remote_authoritative_receipt_sha256": (
+            sha256_file(promotion_path) if promotion is not None else None
+        ),
     }
+
+
+def _retained_segment_root(family_root: Path, replicate: int) -> Path:
+    return family_root / "retained-segments" / f"replicate-{replicate}"
+
+
+def _retained_segment_records(
+    family_root: Path, replicate: int, publication: Mapping[str, Any]
+) -> list[dict[str, Any]]:
+    retained = _retained_segment_root(family_root, replicate)
+    receipt = _strict_json(retained / "remote-authoritative.json")
+    index_path = retained / "run_index.parquet"
+    if (
+        receipt.get("schema_version")
+        != "kvbench-phase16-remote-authoritative-segment-1.0.0"
+        or receipt.get("segment_id") != _segment_id(family_root.name, replicate)
+        or receipt.get("replicate_index") != replicate
+        or receipt.get("root_sha256") != publication.get("root_sha256")
+        or receipt.get("r2_uri") != publication.get("r2_uri")
+        or receipt.get("terminal_records") != LOGICAL_POINTS
+        or receipt.get("clean_retrieval") is not True
+        or receipt.get("local_raw_staging_evicted") is not True
+        or receipt.get("run_index_sha256") != sha256_file(index_path)
+    ):
+        raise Phase16FullScanError("retained segment authority differs")
+    rows = _read_parquet(index_path)
+    for row in rows:
+        for field in (
+            "cache_accounting",
+            "cache_byte_breakdown",
+            "memory_evidence",
+        ):
+            value = row.get(field)
+            if isinstance(value, str):
+                try:
+                    parsed = json.loads(value)
+                except json.JSONDecodeError as error:
+                    raise Phase16FullScanError(
+                        "retained segment nested evidence differs"
+                    ) from error
+                row[field] = parsed
+    if len(rows) != LOGICAL_POINTS or any(row.get("r_hbm") is not None for row in rows):
+        raise Phase16FullScanError("retained segment record set differs")
+    return rows
+
+
+def promote_segment_remote(*, family_root: Path, replicate: int) -> dict[str, Any]:
+    """Evict verified local staging while retaining compact analysis indexes."""
+
+    if replicate not in range(REPLICATES) or _FAMILY_RE.fullmatch(family_root.name) is None:
+        raise Phase16FullScanError("segment promotion identity differs")
+    segment_root = family_root / "segments" / f"replicate-{replicate}"
+    if (
+        segment_root.is_symlink()
+        or not segment_root.is_dir()
+        or segment_root.parent.resolve(strict=True)
+        != (family_root / "segments").resolve(strict=True)
+    ):
+        raise Phase16FullScanError("segment promotion path differs")
+    publication = _publication_record(family_root, replicate)
+    artifact = validate_local_artifact(segment_root, environ={})
+    if artifact.root_sha256 != publication["root_sha256"]:
+        raise Phase16FullScanError("published segment root differs locally")
+    rows = _segment_records(segment_root)
+    if len(rows) != LOGICAL_POINTS:
+        raise Phase16FullScanError("published segment terminal coverage differs")
+    retained = _retained_segment_root(family_root, replicate)
+    retained.mkdir(parents=False, exist_ok=False)
+    controls = retained / "remote-controls"
+    controls.mkdir()
+    for name in (
+        "segment_manifest.json",
+        "segment-result.json",
+        "inventory.json",
+        "run_index.parquet",
+        "point_records.parquet",
+        "exclusions.parquet",
+    ):
+        shutil.copyfile(segment_root / name, retained / name)
+    for name in (
+        "manifest.json",
+        "artifact_inventory.json",
+        "checksums.sha256",
+        "COMPLETE",
+    ):
+        shutil.copyfile(segment_root / name, controls / name)
+    retained_rows = _read_parquet(retained / "run_index.parquet")
+    if len(retained_rows) != LOGICAL_POINTS:
+        raise Phase16FullScanError("retained segment index coverage differs")
+    reservation = _strict_json(family_root / "family-reservation.json")
+    bytes_evicted = sum(
+        path.stat().st_size for path in segment_root.rglob("*") if path.is_file()
+    )
+    prepared = {
+        "schema_version": "kvbench-phase16-remote-promotion-prepared-1.0.0",
+        "family_id": family_root.name,
+        "segment_id": _segment_id(family_root.name, replicate),
+        "replicate_index": replicate,
+        "execution_git_sha": reservation["execution_git_sha"],
+        "root_sha256": publication["root_sha256"],
+        "r2_uri": publication["r2_uri"],
+        "object_count": publication["object_count"],
+        "complete_last": True,
+        "clean_retrieval": True,
+        "terminal_records": LOGICAL_POINTS,
+        "run_index_sha256": sha256_file(retained / "run_index.parquet"),
+        "local_bytes_selected_for_eviction": bytes_evicted,
+    }
+    _durable_write(retained / "promotion-prepared.json", prepared)
+    shutil.rmtree(segment_root)
+    if segment_root.exists() or segment_root.is_symlink():
+        raise Phase16FullScanError("local segment staging eviction failed")
+    receipt = {
+        **prepared,
+        "schema_version": "kvbench-phase16-remote-authoritative-segment-1.0.0",
+        "promoted_at_utc": _utc_now(),
+        "remote_authoritative_after_verification": True,
+        "local_raw_staging_evicted": True,
+        "historical_remote_evidence_modified": False,
+    }
+    _durable_write(retained / "remote-authoritative.json", receipt)
+    for path in sorted(retained.rglob("*"), reverse=True):
+        path.chmod(0o555 if path.is_dir() else 0o444)
+    retained.chmod(0o555)
+    return receipt
 
 
 def _render_plots(
@@ -2164,10 +2873,17 @@ def materialize_outer(family_root: Path, *, git_sha: str) -> dict[str, Any]:
     all_records: list[dict[str, Any]] = []
     for index, segment in enumerate(segment_index):
         root = family_root / "segments" / f"replicate-{index}"
-        artifact = validate_local_artifact(root, environ={})
-        if artifact.root_sha256 != segment["root_sha256"]:
-            raise Phase16FullScanError("local segment root differs from R2 receipt")
-        all_records.extend(_segment_records(root))
+        if root.is_dir() and not root.is_symlink():
+            artifact = validate_local_artifact(root, environ={})
+            if artifact.root_sha256 != segment["root_sha256"]:
+                raise Phase16FullScanError(
+                    "local segment root differs from R2 receipt"
+                )
+            all_records.extend(_segment_records(root))
+        else:
+            all_records.extend(
+                _retained_segment_records(family_root, index, segment)
+            )
     if len(all_records) != PLANNED_PROCESS_RECORDS:
         raise Phase16FullScanError("Full Scan process record cardinality differs")
     summaries = point_summaries(all_records)
@@ -2275,8 +2991,13 @@ def materialize_outer(family_root: Path, *, git_sha: str) -> dict[str, Any]:
                 "family_id": family_root.name,
                 "execution_git_sha": git_sha,
                 "authorized_container_digest": PHASE16G_CONTAINER_DIGEST,
-                "decision": "0039",
+                "decision": "0040",
+                "geometry_decision": "0039",
                 "prefix_schema": PHASE16G_PREFIX_SCHEMA,
+                "logical_prefix_schema": logical_prefix.LOGICAL_PREFIX_SCHEMA,
+                "logical_prefix_artifact_count": EXPECTED_LOGICAL_PREFIX_ARTIFACTS,
+                "materialized_cache_snapshots_created": 0,
+                "cache_reconstruction_outside_timing": True,
                 "configurations": list(CONFIGURATIONS),
                 "method_fingerprints": CONFIG_FINGERPRINTS,
                 "batches": list(BATCH_SIZES),
@@ -2353,8 +3074,15 @@ def validate_full_scan(outer: Path) -> dict[str, Any]:
     if (
         family.get("family_id") != resolved.parent.name
         or family.get("authorized_container_digest") != PHASE16G_CONTAINER_DIGEST
-        or family.get("decision") != "0039"
+        or family.get("decision") != "0040"
+        or family.get("geometry_decision") != "0039"
         or family.get("prefix_schema") != PHASE16G_PREFIX_SCHEMA
+        or family.get("logical_prefix_schema")
+        != logical_prefix.LOGICAL_PREFIX_SCHEMA
+        or family.get("logical_prefix_artifact_count")
+        != EXPECTED_LOGICAL_PREFIX_ARTIFACTS
+        or family.get("materialized_cache_snapshots_created") != 0
+        or family.get("cache_reconstruction_outside_timing") is not True
         or family.get("configurations") != list(CONFIGURATIONS)
         or family.get("batches") != list(BATCH_SIZES)
         or family.get("seeds") != list(SEEDS)
@@ -2375,10 +3103,13 @@ def validate_full_scan(outer: Path) -> dict[str, Any]:
         if not isinstance(record, Mapping) or record.get("replicate_index") != index:
             raise Phase16FullScanError("Full Scan segment index differs")
         segment = family_root / "segments" / f"replicate-{index}"
-        segment_artifact = validate_local_artifact(segment, environ={})
-        if segment_artifact.root_sha256 != record.get("root_sha256"):
-            raise Phase16FullScanError("Full Scan segment root differs")
-        rows = _segment_records(segment)
+        if segment.is_dir() and not segment.is_symlink():
+            segment_artifact = validate_local_artifact(segment, environ={})
+            if segment_artifact.root_sha256 != record.get("root_sha256"):
+                raise Phase16FullScanError("Full Scan segment root differs")
+            rows = _segment_records(segment)
+        else:
+            rows = _retained_segment_records(family_root, index, record)
         if len(rows) != LOGICAL_POINTS:
             raise Phase16FullScanError("Full Scan segment terminal count differs")
         terminal += len(rows)
@@ -2406,6 +3137,8 @@ def validate_plan() -> dict[str, Any]:
     authority = load_phase16g_authority()
     feasibility = feasibility_records()
     prefixes = prefix_index(container_paths=False)
+    incompatible = restore_incompatible_prefix_index(container_paths=False)
+    logical_specs = logical_prefix_specs()
     return {
         "status": "PASS",
         "configurations": len(CONFIGURATIONS),
@@ -2421,16 +3154,11 @@ def validate_plan() -> dict[str, Any]:
             item["status"] == "capacity_infeasible" for item in feasibility
         ),
         "prefix_snapshots_available": len(prefixes),
-        "direct_prefix_logical_points": sum(
-            item["status"] == "feasible"
-            and (
-                str(item["method_config_id"]),
-                int(item["batch_size"]),
-                int(item["context_label"]),
-            )
-            not in prefixes
-            for item in feasibility
-        ),
+        "restore_incompatible_legacy_snapshots": len(incompatible),
+        "logical_prefix_artifacts": len(logical_specs),
+        "materialized_cache_snapshots_required": 0,
+        "cache_reconstruction_outside_timing": True,
+        "logical_prefix_decision": "0040",
         "orders_sha256": orders["orders_sha256"],
         "decision": authority["transition"]["decision"],
         "container": PHASE16G_CONTAINER_DIGEST,
@@ -2447,6 +3175,7 @@ def _parse_arguments(argv: Sequence[str] | None) -> argparse.Namespace:
     operations.add_argument("--run-segment", action="store_true")
     operations.add_argument("--run-worker", action="store_true")
     operations.add_argument("--finalize-segment", action="store_true")
+    operations.add_argument("--promote-segment-remote", action="store_true")
     operations.add_argument("--materialize-outer", action="store_true")
     operations.add_argument("--validate-full-scan", action="store_true")
     parser.add_argument("--output", type=Path)
@@ -2523,6 +3252,19 @@ def main(argv: Sequence[str] | None = None) -> int:
         if args.segment_root is None:
             raise Phase16FullScanError("segment root is required")
         print(json.dumps(finalize_segment(args.segment_root), sort_keys=True))
+        return 0
+    if args.promote_segment_remote:
+        if args.family_root is None or args.replicate is None:
+            raise Phase16FullScanError("segment promotion arguments are required")
+        print(
+            json.dumps(
+                promote_segment_remote(
+                    family_root=args.family_root,
+                    replicate=args.replicate,
+                ),
+                sort_keys=True,
+            )
+        )
         return 0
     if args.materialize_outer:
         if args.family_root is None or args.git_sha is None:

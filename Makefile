@@ -1901,7 +1901,7 @@ full-scan:
 	@echo '{"status":"validation_only","target":"full-scan","timing_collected":false}'
 
 test-phase16:
-	@$(PHASE3_ENV) $(PHASE3_PYTHON) -m unittest tests.unit.test_phase16_full_scan -v
+	@$(PHASE3_ENV) $(PHASE3_PYTHON) -m unittest tests.unit.test_phase16_full_scan tests.unit.test_phase16_logical_prefix -v
 
 validate-full-scan:
 	@test -n "$(PHASE16_FULL_SCAN_ARTIFACT)" || { echo '{"status":"BLOCKED","reason":"PHASE16_FULL_SCAN_ARTIFACT_required"}' >&2; exit 2; }

@@ -2,7 +2,11 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+import shutil
+import tempfile
+from types import SimpleNamespace
 import unittest
+from unittest import mock
 
 from scripts import phase16_full_scan as phase16
 
@@ -68,20 +72,14 @@ class Phase16FullScanTests(unittest.TestCase):
                 [r["order_index"] for r in segment["records"]], list(range(534))
             )
 
-    def test_prefix_sources_are_exact_and_missing_points_are_direct(self) -> None:
+    def test_prefix_sources_are_strict_but_logical_inputs_are_complete(self) -> None:
         index = phase16.prefix_index(container_paths=False)
-        self.assertEqual(len(index), 50)
-        direct = sum(
-            record["status"] == "feasible"
-            and (
-                record["method_config_id"],
-                record["batch_size"],
-                record["context_label"],
-            )
-            not in index
-            for record in self.feasibility
+        incompatible = phase16.restore_incompatible_prefix_index(
+            container_paths=False
         )
-        self.assertEqual(direct, 391)
+        self.assertEqual(len(index), 50)
+        self.assertEqual(len(incompatible), 282)
+        self.assertEqual(len(phase16.logical_prefix_specs()), 59)
         self.assertTrue(all(item["kind"] == "snapshot" for item in index.values()))
         self.assertTrue(
             all(
@@ -89,6 +87,35 @@ class Phase16FullScanTests(unittest.TestCase):
                 for (configuration, _, _), item in index.items()
             )
         )
+        self.assertTrue(
+            all(
+                item["readability"] == "readable_historical_layout"
+                and item["restore_compatibility"] == "restore_incompatible"
+                for item in incompatible.values()
+            )
+        )
+
+    def test_snapshot_restore_policy_preserves_strict_layout_identity(self) -> None:
+        mode, exact = phase16.snapshot_restore_policy(
+            current={"snapshot_root": "/exact"}, legacy_incompatible=None
+        )
+        self.assertEqual(mode, "optional_exact_snapshot")
+        self.assertEqual(exact["restore_compatibility"], "restore_allowed")
+        mode, legacy = phase16.snapshot_restore_policy(
+            current=None,
+            legacy_incompatible={
+                "snapshot_root": "/legacy",
+                "readability": "readable_historical_layout",
+                "restore_compatibility": "restore_incompatible",
+            },
+        )
+        self.assertEqual(mode, "logical_reconstruct")
+        self.assertEqual(legacy["restore_compatibility"], "restore_incompatible")
+        with self.assertRaises(phase16.Phase16FullScanError):
+            phase16.snapshot_restore_policy(
+                current={"snapshot_root": "/exact"},
+                legacy_incompatible={"snapshot_root": "/legacy"},
+            )
 
     def test_legacy_compressed_prefixes_fail_layout_source_match(self) -> None:
         entries = phase16._prefix_catalog_entries(
@@ -156,6 +183,11 @@ class Phase16FullScanTests(unittest.TestCase):
         self.assertEqual(
             authority["authorized_container_digest"], phase16.PHASE16G_CONTAINER_DIGEST
         )
+        preservation = phase16.preserved_timing_semantics_hashes()
+        self.assertTrue(preservation["unchanged"])
+        self.assertTrue(
+            all(item["unchanged"] for item in preservation["files"].values())
+        )
 
     def test_replacement_link_is_explicit_and_r_hbm_null(self) -> None:
         record = dict(self.orders["segments"][0]["records"][0])
@@ -177,6 +209,73 @@ class Phase16FullScanTests(unittest.TestCase):
         source = Path("scripts/phase16_full_scan.py").read_text(encoding="utf-8")
         self.assertIn('"feature_scope": "phase15_common_point_only"', source)
         self.assertIn('"extrapolation_permitted": False', source)
+
+    def test_verified_remote_promotion_retains_index_before_eviction(self) -> None:
+        temporary = Path(tempfile.mkdtemp(prefix="phase16-promotion-test."))
+        family = temporary / "phase16-20260831t000000000000z-12345678-abcdef"
+        segment = family / "segments" / "replicate-0"
+        try:
+            segment.mkdir(parents=True)
+            (family / "retained-segments").mkdir()
+            (family / "publication").mkdir()
+            (family / "family-reservation.json").write_text(
+                json.dumps({"execution_git_sha": "1" * 40}), encoding="utf-8"
+            )
+            for name in (
+                "segment_manifest.json",
+                "segment-result.json",
+                "inventory.json",
+                "run_index.parquet",
+                "point_records.parquet",
+                "exclusions.parquet",
+                "manifest.json",
+                "artifact_inventory.json",
+                "checksums.sha256",
+                "COMPLETE",
+            ):
+                (segment / name).write_bytes(name.encode("utf-8"))
+            (segment / "raw").mkdir()
+            (segment / "raw" / "payload").write_bytes(b"raw")
+            publication = {
+                "root_sha256": "a" * 64,
+                "r2_uri": "r2://bucket/segment/",
+                "object_count": 12,
+            }
+            with (
+                mock.patch.object(
+                    phase16, "_publication_record", return_value=publication
+                ),
+                mock.patch.object(
+                    phase16,
+                    "validate_local_artifact",
+                    return_value=SimpleNamespace(root_sha256="a" * 64),
+                ),
+                mock.patch.object(
+                    phase16,
+                    "_segment_records",
+                    return_value=[{"r_hbm": None}] * phase16.LOGICAL_POINTS,
+                ),
+                mock.patch.object(
+                    phase16,
+                    "_read_parquet",
+                    return_value=[{}] * phase16.LOGICAL_POINTS,
+                ),
+            ):
+                receipt = phase16.promote_segment_remote(
+                    family_root=family, replicate=0
+                )
+            self.assertTrue(receipt["local_raw_staging_evicted"])
+            self.assertFalse(segment.exists())
+            retained = family / "retained-segments" / "replicate-0"
+            self.assertTrue((retained / "run_index.parquet").is_file())
+            self.assertTrue((retained / "remote-authoritative.json").is_file())
+        finally:
+            for path in sorted(temporary.rglob("*"), reverse=True):
+                try:
+                    path.chmod(0o755 if path.is_dir() else 0o644)
+                except FileNotFoundError:
+                    pass
+            shutil.rmtree(temporary)
 
 
 if __name__ == "__main__":
