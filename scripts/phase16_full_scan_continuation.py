@@ -60,15 +60,22 @@ def _canonical_sha256(value: Any) -> str:
 
 
 def _git_blob(commit: str, relative: str) -> bytes:
-    result = subprocess.run(
-        ("/usr/bin/git", "show", f"{commit}:{relative}"),
-        cwd=phase16.REPOSITORY_ROOT,
-        check=False,
-        capture_output=True,
+    repositories = [phase16.REPOSITORY_ROOT]
+    controller_repository = os.environ.get(
+        "KVBENCH_PHASE16_CONTROLLER_REPOSITORY"
     )
-    if result.returncode != 0:
-        raise Phase16ContinuationError(f"Git blob is unavailable: {relative}")
-    return result.stdout
+    if controller_repository:
+        repositories.append(Path(controller_repository))
+    for repository in repositories:
+        result = subprocess.run(
+            ("/usr/bin/git", "show", f"{commit}:{relative}"),
+            cwd=repository,
+            check=False,
+            capture_output=True,
+        )
+        if result.returncode == 0:
+            return result.stdout
+    raise Phase16ContinuationError(f"Git blob is unavailable: {relative}")
 
 
 def timing_critical_equivalence(
