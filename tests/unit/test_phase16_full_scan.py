@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import math
 from pathlib import Path
 import shutil
 import tempfile
@@ -9,6 +10,60 @@ import unittest
 from unittest import mock
 
 from scripts import phase16_full_scan as phase16
+
+
+class Phase16StatisticsTests(unittest.TestCase):
+    def test_point_summary_aggregates_all_five_processes(self) -> None:
+        point = {"method_config_id": "bf16", "batch_size": 1,
+                 "context_label": 4096, "historical_context": 4096}
+        rows = []
+        for replicate in range(5):
+            rows.append({**point, "replicate_index": replicate, "status": "completed",
+                         "process_median_ms": 1.0, "output_checksum": "same",
+                         "kernel_path_fingerprint": "same", "allocation_fingerprint": "same",
+                         "finite_output": True, "no_backend_fallback": True,
+                         "allocation_stable": True, "kernel_path_stable": True,
+                         "host_wall_cuda_event_ratio": 1.1,
+                         "temperature_min_c": 40, "temperature_max_c": 41,
+                         "sm_clock_min_mhz": 2000, "sm_clock_max_mhz": 2000,
+                         "memory_clock_min_mhz": 1000, "memory_clock_max_mhz": 1000,
+                         "power_min_w": 200, "power_max_w": 210})
+        with mock.patch.object(phase16, "logical_points", return_value=[point]), \
+             mock.patch.object(phase16, "_byte_features", return_value={}):
+            result = phase16.point_summaries(rows)[0]
+            self.assertEqual(result["completed_replicates"], 5)
+            self.assertEqual(result["process_medians_ms"], [1.0] * 5)
+            self.assertEqual(result["disposition"], "stable")
+            rows[-1]["process_median_ms"] = 2.0
+            self.assertEqual(phase16.point_summaries(rows)[0]["disposition"], "unstable")
+            with self.assertRaises(phase16.Phase16FullScanError):
+                phase16.point_summaries(rows[:-1])
+
+    def test_five_processes_use_sample_standard_deviation(self) -> None:
+        result = phase16.point_statistics([1, 2, 3, 4, 5])
+        self.assertEqual(result["median_ms"], 3)
+        self.assertEqual(result["mean_ms"], 3)
+        self.assertEqual(result["minimum_ms"], 1)
+        self.assertEqual(result["maximum_ms"], 5)
+        self.assertAlmostEqual(result["standard_deviation_ms"], math.sqrt(2.5))
+        self.assertAlmostEqual(result["cv"], math.sqrt(2.5) / 3)
+
+    def test_three_processes_preserve_pilot_statistics(self) -> None:
+        values = [0.97, 1.0, 1.03]
+        self.assertEqual(
+            phase16.point_statistics(values), phase16.phase13.point_statistics(values)
+        )
+
+    def test_available_four_processes_and_frozen_cv_threshold(self) -> None:
+        self.assertEqual(phase16.point_statistics([1] * 4)["cv"], 0)
+        self.assertEqual(phase16.CV_THRESHOLD, 0.03)
+        self.assertGreater(phase16.point_statistics([1, 1, 1, 1, 2])["cv"], 0.03)
+
+    def test_reject_invalid_cardinality_and_values(self) -> None:
+        for values in ([1, 1], [1] * 6, [1, 1, 0], [1, 1, -1],
+                       [1, 1, float("nan")], [1, 1, float("inf")]):
+            with self.subTest(values=values), self.assertRaises(phase16.Phase16FullScanError):
+                phase16.point_statistics(values)
 
 
 class Phase16FullScanTests(unittest.TestCase):

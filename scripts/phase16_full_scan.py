@@ -2199,6 +2199,25 @@ def _byte_features(completed: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
     }
 
 
+def point_statistics(process_medians: Sequence[float]) -> dict[str, float]:
+    """Aggregate available Full Scan processes using frozen sample SD."""
+    if not 3 <= len(process_medians) <= REPLICATES:
+        raise Phase16FullScanError("Full Scan statistics require three to five processes")
+    values = [float(value) for value in process_medians]
+    if any(not math.isfinite(value) or value <= 0 for value in values):
+        raise Phase16FullScanError("Full Scan process median is invalid")
+    mean = statistics.mean(values)
+    standard_deviation = statistics.stdev(values)
+    return {
+        "median_ms": statistics.median(values),
+        "mean_ms": mean,
+        "standard_deviation_ms": standard_deviation,
+        "minimum_ms": min(values),
+        "maximum_ms": max(values),
+        "cv": standard_deviation / mean,
+    }
+
+
 def point_summaries(records: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
     grouped: dict[tuple[str, int, int], list[Mapping[str, Any]]] = defaultdict(list)
     for record in records:
@@ -2243,7 +2262,7 @@ def point_summaries(records: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]
             "power_max_w": None,
         }
         if len(eligible) >= 3:
-            stats = phase13.point_statistics(
+            stats = point_statistics(
                 [float(record["process_median_ms"]) for record in eligible]
             )
             output_agreement = len(
@@ -2869,6 +2888,13 @@ def materialize_outer(family_root: Path, *, git_sha: str) -> dict[str, Any]:
     ).stdout.strip()
     if observed_head != git_sha:
         raise Phase16FullScanError("outer analysis source differs")
+    reservation = _strict_json(family_root / "family-reservation.json")
+    execution_git_sha = reservation["execution_git_sha"]
+    execution_hashes = reservation["timing_critical_hashes"]
+    analysis_hashes = timing_critical_hashes()
+    for path, digest in execution_hashes["files"].items():
+        if path != "scripts/phase16_full_scan.py" and analysis_hashes["files"].get(path) != digest:
+            raise Phase16FullScanError("outer analysis timing dependency differs")
     segment_index = [_publication_record(family_root, index) for index in range(5)]
     all_records: list[dict[str, Any]] = []
     for index, segment in enumerate(segment_index):
@@ -2939,7 +2965,8 @@ def materialize_outer(family_root: Path, *, git_sha: str) -> dict[str, Any]:
     qc = {
         "schema_version": "kvbench-phase16-full-scan-qc-1.0.0",
         "family_id": family_root.name,
-        "execution_git_sha": git_sha,
+        "execution_git_sha": execution_git_sha,
+        "analysis_git_sha": git_sha,
         "status": phase_status,
         "base_logical_points": BASE_LOGICAL_POINTS,
         "adaptive_logical_points": ADAPTIVE_LOGICAL_POINTS,
@@ -2989,7 +3016,8 @@ def materialize_outer(family_root: Path, *, git_sha: str) -> dict[str, Any]:
             {
                 "schema_version": FAMILY_SCHEMA,
                 "family_id": family_root.name,
-                "execution_git_sha": git_sha,
+                "execution_git_sha": execution_git_sha,
+                "analysis_git_sha": git_sha,
                 "authorized_container_digest": PHASE16G_CONTAINER_DIGEST,
                 "decision": "0040",
                 "geometry_decision": "0039",
@@ -3008,7 +3036,8 @@ def materialize_outer(family_root: Path, *, git_sha: str) -> dict[str, Any]:
                 "replicates": REPLICATES,
                 "seeds": list(SEEDS),
                 "orders_sha256": _strict_json(ORDER_PATH)["orders_sha256"],
-                "timing_critical_hashes": timing_critical_hashes(),
+                "timing_critical_hashes": execution_hashes,
+                "analysis_dependency_hashes": analysis_hashes,
                 "segment_roots": segment_index,
                 "raw_segment_objects_duplicated": False,
                 "run_kind": "timing",
@@ -3071,6 +3100,7 @@ def validate_full_scan(outer: Path) -> dict[str, Any]:
     artifact = validate_local_artifact(resolved, environ={})
     family = _strict_json(resolved / "family_manifest.json")
     qc = _strict_json(resolved / "full_scan_qc.json")
+    reservation = _strict_json(resolved.parent / "family-reservation.json")
     if (
         family.get("family_id") != resolved.parent.name
         or family.get("authorized_container_digest") != PHASE16G_CONTAINER_DIGEST
@@ -3086,7 +3116,9 @@ def validate_full_scan(outer: Path) -> dict[str, Any]:
         or family.get("configurations") != list(CONFIGURATIONS)
         or family.get("batches") != list(BATCH_SIZES)
         or family.get("seeds") != list(SEEDS)
-        or family.get("timing_critical_hashes") != timing_critical_hashes()
+        or family.get("execution_git_sha") != reservation["execution_git_sha"]
+        or family.get("timing_critical_hashes") != reservation["timing_critical_hashes"]
+        or family.get("analysis_dependency_hashes") != timing_critical_hashes()
         or family.get("raw_segment_objects_duplicated") is not False
         or qc.get("planned_process_records") != PLANNED_PROCESS_RECORDS
         or qc.get("timing_rows_r_hbm_null") is not True
