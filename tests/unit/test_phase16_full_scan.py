@@ -50,9 +50,10 @@ class Phase16StatisticsTests(unittest.TestCase):
 
     def test_three_processes_preserve_pilot_statistics(self) -> None:
         values = [0.97, 1.0, 1.03]
-        self.assertEqual(
-            phase16.point_statistics(values), phase16.phase13.point_statistics(values)
-        )
+        with mock.patch.object(phase16.phase13, "REPLICATES", 3):
+            self.assertEqual(
+                phase16.point_statistics(values), phase16.phase13.point_statistics(values)
+            )
 
     def test_available_four_processes_and_frozen_cv_threshold(self) -> None:
         self.assertEqual(phase16.point_statistics([1] * 4)["cv"], 0)
