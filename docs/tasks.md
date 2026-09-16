@@ -22,8 +22,8 @@ authoritative local task index until issues are created elsewhere.
 | E13 | Pilot scan | E12 PASS; Phase 13B PASS; Phase 13F PASS; Phase 13T PASS; Phase 13R q4 workspace PASS | immutable randomized samples; QC; provisional knees; pilot gate | complete: fresh campaign `phase13-20260822t150835736582z-4ddd7b17-3a8fb3` preserves 810/810 records and cleanly retrieved root `feb2e5a8ebba8b729c182fc8170107c9acf8128edd3e5618c8f1b90530557531`. Phase 13D preserves its first 51 valid runs and failed-finalization record, then completes one replacement plus the frozen remaining 200 in a separate continuation segment. All 252 logical records pass QC, all 25 targets have resolved density/boundary statuses, and root `a8559a5e01edaad949df1e128c4bddff37638801cfc89f2eb8d4894c31ef82d2` is COMPLETE-last and cleanly retrieved. Phase 14 used this evidence as immutable entry authority. |
 | E14 | Nsight Systems integration | E13 and M14-GRAPH-AB PASS | nsys-only runs around knees; launch/sync/kernel evidence | complete: 32/32 selected traces and 16 eager/Graph pairs; Graph reduces CPU CUDA-call count and GPU idle in 16/16 while kernel count/order and observed overlap remain unchanged; profiler durations remain mechanism-only |
 | E15 | Nsight Compute integration | E13 | current-SM metric discovery; measured traffic; ncu-only runs | complete: 22/22 selected profiles, live SM120 metric discovery, all-ten B=1/L=131072 same-work traffic, exact kernel classification, and measured cache-path `r_hbm`; root `641fc02d8fa598097885b74a336b1b1f454d9844b90025cf0c4b427bee02d5e8` cleanly retrieved |
-| E16 | Full scan | pilot gate, M14-GRAPH-AB, E14-E15 | preregistered grid; feasibility/exclusion records; immutable samples | ready after Phase 15 PASS; not started; Full Scan remains CLOSED pending separate authorization |
-| E17 | Knee and response-surface fitting | E16 | candidate models; strict holdouts; session bootstrap CIs | pending |
+| E16 | Full scan | pilot gate, M14-GRAPH-AB, E14-E15 | preregistered grid; feasibility/exclusion records; immutable samples | complete: Phase 16R PASS; 2670 terminal records, 2205 completed, 465 capacity-infeasible; five remote-verified segments and host-wall closure root `5605558be0483ddfeffd251977306d3397aa27a66309324c6011e5043584103e`; 441 stable points, zero selective reruns |
+| E17 | Knee and response-surface fitting | E16 | candidate models; strict holdouts; session bootstrap CIs | READY after Phase 16R PASS; not started; separate authorization required |
 | E18 | Reproducibility package | E17 and all gates | pinned containers; reproduction commands; figures; final report | pending |
 
 ## Required post-pilot milestone
@@ -33,7 +33,7 @@ authoritative local task index until issues are created elsewhere.
 | M14-GRAPH-AB | Phase 14 CUDA Graph A/B mechanism experiment | E04 harness owner; execute after E13 pilot admission and before E16 | same method/cache/backend/shape with only Graph mode changed; output/cache identity; floor, slope, knee, launch-gap proxy, and backend evidence | complete through Phase 14C: source campaign preserves 660/660 feasible runs and five eager `unstable` groups. Among 14 fully identifiable comparisons, 0 support the complete launch-floor-only criterion; 4 are inconclusive from eager instability and 2 have no positive eager slope. The negative heterogeneous-effect result makes Phase 15 READY without rerunning timing; seven-object closure root `4cd29ea1b94201f493db8cef9ebd01933b4c4f573185eff317ec5af81e9fb000` is cleanly retrieved. |
 
 M14-GRAPH-AB is a named milestone, not a renumbering of the contract's E00-E18
-task list. E16 remains closed until its evidence is reviewed.
+task list. E16 is now complete under the separately authorized Phase 16R contract.
 
 ## Cross-cutting subtasks
 
@@ -89,8 +89,9 @@ task list. E16 remains closed until its evidence is reviewed.
   a valid heterogeneous negative mechanism result while retaining five eager
   unstable groups. Phase 15 then completes 32 Nsys and 22 NCU selected
   profiles, all-ten common-point physical traffic, durable publication, and
-  clean retrieval. Phase 16 is READY but not started; Full Scan and quality
-  execution remain unopened.
+  clean retrieval. Phase 16R subsequently completed the separately authorized
+  Full Scan with five independently published and verified segments. Phase 17
+  is READY but not started; quality execution remains LOCKED.
 - E12 includes an operator-level MHA control with identical head dimension and
   no GQA repetition.
 - B-011 through B-017 are resolved for native-host BF16 G1. The reporting-only

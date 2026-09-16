@@ -1,6 +1,6 @@
 # Project status
 
-Last updated: 2026-08-30
+Last updated: 2026-09-16
 Authoritative contracts: CODEX_WORKFLOW.md for active performance engineering;
 CODEX_POST_PERFORMANCE_QUALITY_VALIDATION.md for post-performance quality
 scheduling; CODEX_QUALITY_EVALUATION_ADDENDUM.md for non-conflicting quality
@@ -8,7 +8,21 @@ requirements; and AGENTS.md. Decision 0005 records precedence.
 
 ## Current state
 
-- Latest scoped phase: Phase 15 Profiler Subset `PASS`. Campaign
+- Latest scoped phase: Phase 16R Full Scan `PASS`. Family
+  `phase16-20260831t123029614620z-ec534d99-de80ac` preserves all 2670
+  terminal records: 2205 completed and 465 capacity-infeasible, with 38
+  explicitly linked infrastructure replacements and zero selective reruns.
+  All 441 feasible logical points are host-wall stable; maximum CV is
+  1.305276915%. Five segment roots, the original CUDA-event outer analysis,
+  and the append-only primary host-wall closure are COMPLETE-last and cleanly
+  retrieved. Primary host-wall root:
+  `5605558be0483ddfeffd251977306d3397aa27a66309324c6011e5043584103e`.
+  See `docs/phase_reports/phase16r-full-scan.md` and
+  `docs/evidence/phase16r/full-scan-publication.json`.
+  Full Scan is COMPLETE; G0-G5 remain PASS; Phase 17 is READY, not started;
+  Quality remains LOCKED and `PERFORMANCE_DATA_FROZEN` absent. Historical
+  prefix catalogs and stopped campaigns remain unchanged. No reboot occurred.
+- Historical Phase 15 Profiler Subset `PASS`. Campaign
   `phase15-20260828t144810363697z-446b334e-90460f` completed 32/32 selected
   Nsight Systems profiles and 22/22 selected Nsight Compute profiles with zero
   selected profiler failures. The common B=1/L=131072 Graph point covers all

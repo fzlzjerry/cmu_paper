@@ -1,6 +1,16 @@
 # Blockers
 
-Last updated: 2026-08-25.
+Last updated: 2026-09-16.
+
+## Current Phase 16R disposition
+
+Phase 16R Full Scan is PASS: all 2670 planned records are terminal, five
+segments and both analysis bundles are remotely verified, and all 441 feasible
+logical points are stable under the primary host-wall endpoint. The original
+CUDA-event outer remains immutable; a separately validated host-wall closure
+corrects only the derived endpoint. No active Phase 16R blocker remains.
+See `docs/phase_reports/phase16r-full-scan.md`. Phase 17 is READY, not started;
+Quality LOCKED. Earlier dispositions below remain historical evidence.
 
 ## Current disposition
 

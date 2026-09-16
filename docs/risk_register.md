@@ -1,6 +1,15 @@
 # Risk register
 
-Last updated: 2026-08-28 after the Phase 14 mechanism experiment.
+Last updated: 2026-09-16 after Phase 16R Full Scan closure.
+
+Phase 16R endpoint/custody risk: the first sealed outer used CUDA-event
+process medians, which are secondary diagnostics, not the primary host-wall
+endpoint. Never silently reinterpret its fields. The separate checksum-bound
+host-wall closure `5605558be0483ddfeffd251977306d3397aa27a66309324c6011e5043584103e`
+rederives 2205 raw results and passes clean retrieval. Five raw segments remain
+canonical in locked R2 after verified local staging eviction; prefix catalogs
+remain local. No timing rerun, physical-traffic extrapolation, or quality claim
+is authorized by this correction. Phase 17 must use the host-wall closure.
 
 | ID | Risk and evidence | Potential impact | Required mitigation / gate | Status |
 |---|---|---|---|---|
